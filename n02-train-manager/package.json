@@ -1,0 +1,17 @@
+{
+  "name": "n02-train-manager",
+  "version": "1.0.0",
+  "description": "N02 Limited Express Train Manager — Express backend serving rail/station data + static frontend",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
