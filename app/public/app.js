@@ -62,6 +62,93 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     // field save, blank-train factory and renderer.
     const DEFAULT_TRAIN_WEIGHT = 6;
     const DEFAULT_UNRIDDEN_OPACITY = 0.22;
+
+    // GPU route rendering. Train routes draw in a single deck.gl PathLayer
+    // (reprojected on the GPU each frame) instead of live Leaflet SVG paths,
+    // which removes the per-zoom reproject/repaint stall on the ~176k route
+    // points. Falls back to the SVG path automatically when deck.gl failed to
+    // load, or when the URL carries ?deck=0 (kept for A/B comparison).
+    const USE_DECKGL_ROUTES = (function () {
+      try {
+        if (/[?&]deck=0\b/.test(location.search)) return false;
+      } catch (e) { /* no location (file:// edge cases) — default on */ }
+      return Boolean(window.DeckRoutes && window.DeckRoutes.available);
+    })();
+
+    function hexToRgb(hex) {
+      const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+      return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [217, 54, 79];
+    }
+
+    // --- Route geometry simplification (pre-render decimation) -----------------
+    // The N02 source geometry is survey-grade: ~50 m median vertex spacing (down
+    // to <1 m at segment joins / curves), so a stitched route carries thousands
+    // of points that are visually redundant. We run Douglas-Peucker ONCE per
+    // route feature (cached), before the geometry is handed to the renderer, to
+    // drop the redundant vertices while preserving shape. On the real routes,
+    // an 8 m tolerance removes ~83% of points with <=8 m deviation (sub-pixel at
+    // country zoom, ~1 px at city zoom). Tunable via ?simplify=<meters> in the
+    // URL; ?simplify=0 disables it for an A/B comparison.
+    const ROUTE_SIMPLIFY_METERS = (function () {
+      try {
+        const m = /[?&]simplify=(\d+(?:\.\d+)?)/.exec(location.search);
+        if (m) return Number(m[1]);
+      } catch (e) { /* no location — use default */ }
+      return 8;
+    })();
+
+    // Perpendicular distance (metres) from point p to segment a-b, using a local
+    // equirectangular scaling (longitude compressed by cos(latitude)).
+    function perpDistanceMeters(p, a, b, sx, sy) {
+      const px = p[0] * sx, py = p[1] * sy;
+      const ax = a[0] * sx, ay = a[1] * sy;
+      const bx = b[0] * sx, by = b[1] * sy;
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      if (len2 === 0) return Math.hypot(px - ax, py - ay);
+      let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    }
+
+    // Iterative (stack-based) Douglas-Peucker. epsilon is in metres.
+    function douglasPeucker(points, epsilonMeters) {
+      if (!points || points.length < 3 || epsilonMeters <= 0) return points ? points.slice() : [];
+      const sx = 111320 * Math.cos((points[0][1] || 0) * Math.PI / 180);
+      const sy = 111320;
+      const keep = new Uint8Array(points.length);
+      keep[0] = 1; keep[points.length - 1] = 1;
+      const stack = [[0, points.length - 1]];
+      while (stack.length) {
+        const seg = stack.pop();
+        const s = seg[0], e = seg[1];
+        let maxD = -1, idx = -1;
+        for (let i = s + 1; i < e; i += 1) {
+          const d = perpDistanceMeters(points[i], points[s], points[e], sx, sy);
+          if (d > maxD) { maxD = d; idx = i; }
+        }
+        if (maxD > epsilonMeters && idx !== -1) {
+          keep[idx] = 1;
+          stack.push([s, idx]);
+          stack.push([idx, e]);
+        }
+      }
+      const out = [];
+      for (let i = 0; i < points.length; i += 1) if (keep[i]) out.push(points[i]);
+      return out;
+    }
+
+    // Simplified line arrays for a feature, computed once and cached on the
+    // feature object (WeakMap) so repeated record builds reuse the result.
+    const _simplifiedLineCache = new WeakMap();
+    function getSimplifiedRouteLines(feature) {
+      if (ROUTE_SIMPLIFY_METERS <= 0) return iterateGeometryLines(feature.geometry);
+      let cached = _simplifiedLineCache.get(feature);
+      if (cached) return cached;
+      cached = iterateGeometryLines(feature.geometry).map((line) => douglasPeucker(line, ROUTE_SIMPLIFY_METERS));
+      _simplifiedLineCache.set(feature, cached);
+      return cached;
+    }
     const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
     const N02_INSTITUTION_TYPE_CODES = new Set(DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES);
 
@@ -291,12 +378,23 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     // trains draw). Off by default: the map stays controlled by each train's
     // `visible` flag, matching the original behaviour.
     let mapFollowsSelectedDate = false;
-    let map, railSectionLayer, stationLayer, limitedExpressRouteLayer, stopLayer, passThroughLayer, limitedExpressRouteRenderer, baseOverlayRenderer;
+    let map, limitedExpressRouteLayer, stopLayer, passThroughLayer, limitedExpressRouteRenderer, baseOverlayRenderer;
     // Cached route render items (overlap-split run features) + viewport-cull state.
     // The split runs / overlap slots depend only on the train data (not zoom/pan),
     // so we memoise them and re-attach only the segments inside the current view.
     let cachedRouteItems = null, cachedRouteSignature = "", cachedRouteFocusActive = false, renderedRouteBounds = null, renderedRouteZoom = null;
+    // Tracks which pre-created layer objects are currently in limitedExpressRouteLayer.
+    // Enables O(delta) incremental add/remove on pan instead of O(n) recreate-all.
+    let currentlyRenderedRouteItems = [];
     const ROUTE_RENDER_MARGIN = 0.5;
+    // Pass-through markers number in the thousands and are sub-pixel clutter when
+    // zoomed out. Below this zoom they are not rendered at all, which removes a large
+    // chunk of per-frame Paint work (the trace showed Paint, not JS, is the
+    // bottleneck). A lightweight zoomend handler re-renders markers only when the
+    // view crosses this threshold — never on pan.
+    const PASSTHROUGH_MIN_ZOOM = 10;
+    let cachedOrderedTrains = [];
+    let passThroughShown = true;
     // Grid spatial index over route render items so the viewport cull is O(items in
     // view) instead of O(all items) — matters once a dataset has thousands of trains
     // / tens of thousands of split segments.
@@ -1266,8 +1364,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         route_sections: getRideRouteSectionsForTrain(train),
         stops: Array.isArray(train.stops) ? train.stops.map(canonicalStopShape) : []
       };
-      const geometryCache = normalizeRouteGeometryCache(train.route_geometry_cache);
-      if (geometryCache) normalized.route_geometry_cache = geometryCache;
+      // Route geometry is intentionally NOT persisted into the store anymore.
+      // It is cached cross-session in IndexedDB (warmed into runtimeRouteCache on
+      // boot) and re-solved on a miss, so embedding it here only bloated
+      // train-store.json (~96% of the file) and the in-memory train objects.
       return normalized;
     }
 
@@ -1377,10 +1477,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           : [],
         stops: train.stops.map(normalizeImportedStop)
       };
-      // Carry an optional persisted route geometry (fix #1) onto the in-memory
-      // train so the first render can reuse it instead of solving.
-      const geometryCache = normalizeRouteGeometryCache(train.route_geometry_cache);
-      if (geometryCache) normalized.route_geometry_cache = geometryCache;
+      // A legacy file may still carry route_geometry_cache; it stays in the
+      // allowed-keys list so import does not reject it, but we deliberately drop
+      // it instead of loading megabytes of geometry into memory. Geometry is
+      // rebuilt from IndexedDB / re-solved on first render.
       return normalized;
     }
 
@@ -1515,11 +1615,16 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
     function initMap() {
       map = L.map("map", { preferCanvas: true }).setView([36.4, 138.2], 5);
-      // Canvas (not SVG) for the train routes: with many trains the routes expand
-      // into thousands of path segments, and an SVG DOM of that size makes every
-      // pan/zoom and re-render slow. Canvas keeps interaction smooth; click/popup
-      // still work via Leaflet's canvas renderer.
-      limitedExpressRouteRenderer = L.canvas({ padding: 0.2 });
+      // SVG (not canvas) for the train routes + stop markers. The canvas renderer
+      // must fully re-stroke its buffer on every moveend and zoom — re-projecting
+      // ~176k route points plus thousands of stop/pass-through markers each gesture
+      // — which is the post-load drag/zoom jank. With SVG, panning is a free GPU
+      // transform of the existing paths (zero redraw) and zoom re-projects once.
+      // The heavy reference layers that once made an SVG DOM huge (the 21.9k-feature
+      // N02 rail network + 10.2k station vectors) are now raster tiles, so only the
+      // ~700 route paths remain in the DOM — well within SVG's comfort zone. This
+      // matches the early commit that rendered the full train set smoothly.
+      limitedExpressRouteRenderer = L.svg({ padding: 0.5 });
       // Separate canvas for the heavy static reference overlays (national N02
       // railway network + stations). Padding was 0.6, which made the canvas
       // buffer ~5x viewport area (x2 again on Retina); every repaint of the
@@ -1556,49 +1661,6 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       });
       const noBasemapLayer = L.layerGroup();
 
-      // National N02 railway network (~22k line features). Rendered as a single
-      // non-interactive canvas overlay: no per-section popup binding and no
-      // hit-testing, which is what keeps panning smooth. Train routes (below)
-      // remain fully interactive.
-      railSectionLayer = L.geoJSON(railSectionsGeoJson, {
-        renderer: baseOverlayRenderer,
-        interactive: false,
-        // smoothFactor must be set as a LAYER option (not inside style()), so
-        // Leaflet actually applies it during point simplification. The national
-        // overlay is ~22k lines / ~405k points; the canvas re-strokes ALL of it on
-        // every moveend, which is the dominant source of drag/zoom jank. A high
-        // smoothFactor drops near-collinear points at render time (purely visual
-        // simplification of a reference overlay — the underlying N02 data is
-        // untouched), cutting per-redraw cost sharply.
-        smoothFactor: 4,
-        style: () => ({ color: "#777", weight: 1, opacity: 0.45 })
-      });
-
-      // Station overlay (10k+ features). Off by default; rendered non-interactive
-      // on the base canvas so toggling it on no longer freezes the map. (The
-      // per-station tooltip/popup is dropped as part of making it lightweight.)
-      stationLayer = L.layerGroup();
-      L.geoJSON(stationsGeoJson, {
-        renderer: baseOverlayRenderer,
-        interactive: false,
-        // Same render-time simplification as the rail overlay (off by default, but
-        // keep it cheap to repaint when the user enables it). smoothFactor as a
-        // layer option so Leaflet actually honors it.
-        smoothFactor: 4,
-        style: () => ({ color: "#444", weight: 3, opacity: 0.35, dashArray: "3 4" })
-      }).addTo(stationLayer);
-      stationsGeoJson.features.forEach((feature) => {
-        L.circleMarker(toLatLng(feature), {
-          renderer: baseOverlayRenderer,
-          interactive: false,
-          radius: 4,
-          color: "#444",
-          weight: 1,
-          fillColor: "#fff",
-          fillOpacity: 0.85
-        }).addTo(stationLayer);
-      });
-
       limitedExpressRouteLayer = L.layerGroup();
       stopLayer = L.layerGroup();
       passThroughLayer = L.layerGroup();
@@ -1607,7 +1669,6 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       limitedExpressRouteLayer.addTo(map);
       stopLayer.addTo(map);
       passThroughLayer.addTo(map);
-      map.attributionControl.addAttribution('「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成');
 
       L.control.layers({
         "Simple OSM": simpleOsmLayer,
@@ -1616,54 +1677,64 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         "Local Tiles": localTileLayer,
         "No Basemap": noBasemapLayer
       }, {
-        "N02 Railway Sections": railSectionLayer,
-        "N02 Stations": stationLayer,
         "Limited Express Routes": limitedExpressRouteLayer,
         "Stops": stopLayer,
         "Pass-through Stations": passThroughLayer
       }).addTo(map);
 
-      // --- Zoom-gated heavy overlays -------------------------------------------
-      // The national railway/station overlays are ~405k / ~25k points. When zoomed
-      // out to the whole country they collapse into an unreadable blur anyway, yet
-      // Leaflet still re-projects and re-strokes every point on each moveend — the
-      // main cause of drag/zoom jank. So we only attach them to the map at or above
-      // this zoom. The layers-control checkbox still governs whether the user WANTS
-      // each one; below the threshold it's hidden regardless, above it's shown only
-      // if the user has it enabled.
-      const NATIONAL_OVERLAY_MIN_ZOOM = 8;
-      // Rail overlay defaults to "wanted" (it was on by default before); the
-      // station overlay defaults to off, matching the previous behaviour.
-      const heavyOverlays = [
-        { layer: railSectionLayer, wanted: true },
-        { layer: stationLayer, wanted: false }
-      ];
-      const syncHeavyOverlays = () => {
-        const show = map.getZoom() >= NATIONAL_OVERLAY_MIN_ZOOM;
-        heavyOverlays.forEach((o) => {
-          const shouldBeOn = o.wanted && show;
-          const isOn = map.hasLayer(o.layer);
-          if (shouldBeOn && !isOn) o.layer.addTo(map);
-          else if (!shouldBeOn && isOn) map.removeLayer(o.layer);
+      // The national rail/station overlays are pre-rendered tile layers, so the
+      // old zoom-gating that detached them below a zoom threshold is no longer
+      // needed — tiles are cheap at every zoom. The layers-control checkbox alone
+      // governs visibility.
+      //
+      // No moveend (pan) handler: route segments are attached once (SVG render-once)
+      // and Leaflet's SVG renderer repositions the existing paths on pan via a CSS
+      // transform. Recomputing an in-view set on every moveend was canvas-era work
+      // that is unnecessary — and was itself a source of post-load gesture jank.
+      //
+      // The only per-gesture work is this zoomend handler (fires on zoom, never on
+      // pan): when the view crosses PASSTHROUGH_MIN_ZOOM it re-renders the cheap
+      // marker layers so the thousands of pass-through circles are absent at low
+      // zoom. Routes need no zoom handler — their fixed screen-space smoothFactor
+      // self-adjusts level-of-detail with zoom.
+      map.on("zoomend", () => {
+        if (!cachedOrderedTrains.length) return;
+        if ((map.getZoom() >= PASSTHROUGH_MIN_ZOOM) !== passThroughShown) renderTrainMarkers();
+      });
+
+      // GPU route overlay. Attached once; fed the whole train set by
+      // renderRoutesInView(). Clicking a route selects its train and opens the
+      // same popup the SVG path used. The "Limited Express Routes" checkbox in
+      // the layers control toggles an empty LayerGroup in this mode, so mirror
+      // its add/remove onto the deck overlay's visibility.
+      if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.available) {
+        DeckRoutes.attach(map, { onClick: handleDeckRouteClick, onMarkerClick: handleDeckMarkerClick });
+        map.on("overlayadd", (e) => {
+          if (e.layer === limitedExpressRouteLayer) DeckRoutes.setVisible(true);
+          if (e.layer === stopLayer) DeckRoutes.setMarkerVisibility("stop", true);
+          if (e.layer === passThroughLayer) DeckRoutes.setMarkerVisibility("pass", true);
         });
-      };
-      // Keep the user's checkbox intent in sync without letting the control's
-      // add/remove fight the zoom gate.
-      map.on("overlayadd", (e) => {
-        const o = heavyOverlays.find((x) => x.layer === e.layer);
-        if (o) { o.wanted = true; syncHeavyOverlays(); }
-      });
-      map.on("overlayremove", (e) => {
-        const o = heavyOverlays.find((x) => x.layer === e.layer);
-        if (o) { o.wanted = false; }
-      });
-      map.on("zoomend", syncHeavyOverlays);
-      // Viewport culling for the ~67-train route layer: re-evaluate which route
-      // segments are in view once the map settles. renderRoutesInView short-circuits
-      // while the view stays inside the last rendered margin, so an in-margin pan
-      // costs nothing.
-      map.on("moveend", () => renderRoutesInView(false));
-      syncHeavyOverlays();
+        map.on("overlayremove", (e) => {
+          if (e.layer === limitedExpressRouteLayer) DeckRoutes.setVisible(false);
+          if (e.layer === stopLayer) DeckRoutes.setMarkerVisibility("stop", false);
+          if (e.layer === passThroughLayer) DeckRoutes.setMarkerVisibility("pass", false);
+        });
+      }
+    }
+
+    // deck.gl PathLayer click -> select train + open the segment popup at the
+    // clicked coordinate (deck has no per-feature Leaflet popup binding).
+    function handleDeckRouteClick(info) {
+      if (!info || !info.object) return;
+      const { train, feature } = info.object;
+      if (!train) return;
+      selectTrain(train.id);
+      if (info.coordinate && map) {
+        L.popup({ maxWidth: 320 })
+          .setLatLng([info.coordinate[1], info.coordinate[0]])
+          .setContent(buildTrainSegmentPopup(train, feature))
+          .openOn(map);
+      }
     }
 
     function bindEvents() {
@@ -2289,11 +2360,16 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
       if (dateScoped && getTrainDate(train) !== selectedDate) return;
 
-      const features = getMatchedRouteFeatures(train);
-      getRouteRenderItems(train, false, features, new Map()).forEach((item) => {
-        renderTrainRouteSegment(train, item.feature, { dimmed: false, focused: false, overlap: null })
-          .addTo(limitedExpressRouteLayer);
-      });
+      // In GPU mode the routes are drawn by the deck.gl PathLayer on the
+      // authoritative renderAll() at the end of import; skip allocating SVG
+      // segments here (markers below still give incremental import feedback).
+      if (!USE_DECKGL_ROUTES) {
+        const features = getMatchedRouteFeatures(train);
+        getRouteRenderItems(train, false, features, new Map()).forEach((item) => {
+          renderTrainRouteSegment(train, item.feature, { dimmed: false, focused: false, overlap: null })
+            .addTo(limitedExpressRouteLayer);
+        });
+      }
 
       const markerOptions = { dimmed: false, focused: false };
       (train.stops || []).forEach((stop) => {
@@ -2333,13 +2409,36 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       }
       cachedRouteFocusActive = focusActive;
 
-      // (2) Viewport culling. Attach only the route segments inside the current
-      // view (+ margin). Force a fresh render here because styles / focus / the
-      // cached set may have just changed; later pans are handled by the moveend
-      // handler installed in initMap.
-      renderRoutesInView(true);
+      // (2) Attach all route segments once (SVG render-once). Pan/zoom need no
+      // per-gesture work — Leaflet's SVG renderer transforms the existing paths.
+      renderRoutesInView();
 
-      orderedTrains.forEach((train) => {
+      cachedOrderedTrains = orderedTrains;
+      renderTrainMarkers();
+    }
+
+    // Markers are split out so the zoomend handler can re-render them (with the
+    // pass-through gate applied) when the view crosses PASSTHROUGH_MIN_ZOOM, without
+    // rebuilding the (far more expensive) route layers. Stops always render;
+    // pass-through markers — the numerous ones — are skipped below the zoom
+    // threshold so thousands of sub-pixel circles aren't painted when zoomed out.
+    function renderTrainMarkers() {
+      const focusActive = cachedRouteFocusActive;
+      passThroughShown = !map || map.getZoom() >= PASSTHROUGH_MIN_ZOOM;
+
+      // GPU path: stop + pass-through markers are drawn by a deck.gl
+      // ScatterplotLayer, so zoom no longer reprojects thousands of Leaflet SVG
+      // circles on the main thread (the remaining zoom stall). Rebuilding the
+      // record array on a pass-through-gate crossing is a cheap JS pass with no
+      // DOM work.
+      if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.layer) {
+        DeckRoutes.setMarkers(buildDeckMarkerRecords(cachedOrderedTrains, focusActive, passThroughShown));
+        return;
+      }
+
+      stopLayer.clearLayers();
+      passThroughLayer.clearLayers();
+      cachedOrderedTrains.forEach((train) => {
         const markerOptions = {
           dimmed: focusActive && train.id !== focusedTrainId,
           focused: focusActive && train.id === focusedTrainId
@@ -2347,25 +2446,38 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         (train.stops || []).forEach((stop) => {
           const stopFeature = getStopFeature(stop, train);
           if (!stopFeature) return;
-          if (stopFeature.properties.stop_type === "pass_through") renderPassThroughMarker(stopFeature, train, markerOptions).addTo(passThroughLayer);
-          else renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
+          if (stopFeature.properties.stop_type === "pass_through") {
+            if (passThroughShown) renderPassThroughMarker(stopFeature, train, markerOptions).addTo(passThroughLayer);
+          } else {
+            renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
+          }
         });
-        getComputedPassThroughFeatures(train).forEach((feature) => renderPassThroughMarker(feature, train, markerOptions).addTo(passThroughLayer));
+        if (passThroughShown) getComputedPassThroughFeatures(train).forEach((feature) => renderPassThroughMarker(feature, train, markerOptions).addTo(passThroughLayer));
       });
     }
 
     // Signature of everything the overlap split depends on (zoom-independent).
     function computeRouteSignature(orderedTrains, focusActive, dateScoped) {
-      const trainPart = orderedTrains.map((train) => (
-        `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`
-      )).join("|");
+      const trainPart = orderedTrains.map((train) => {
+        const base = `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`;
+        // The deck.gl path data bakes color/width/opacity per record, so a
+        // style-only edit must invalidate the cached items to re-emit them.
+        // (The SVG path rebuilds its layers on the same signature change.)
+        if (!USE_DECKGL_ROUTES) return base;
+        const s = train.style || {};
+        return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${train.visible === false ? 0 : 1}`;
+      }).join("|");
       return `${trainPart}|focus:${focusActive ? (focusedTrainId || "") : ""}|date:${dateScoped ? selectedDate : ""}`;
     }
 
     // Build the overlap map + split runs once, annotating each run with a cached
     // LatLngBounds so the viewport cull can test it without re-walking geometry.
     function buildRouteItems(orderedTrains, focusActive) {
-      const splitForOverlap = !focusActive;
+      // Parallel-offset display of overlapping routes has been removed: routes now
+      // always draw on their true track and simply stack when trains share a
+      // segment. Keeping splitForOverlap off skips the overlap map / run-splitting
+      // entirely (the related helpers are retained but no longer invoked).
+      const splitForOverlap = false;
       const routeFeaturesByTrain = new Map(orderedTrains.map((train) => [train.id, getMatchedRouteFeatures(train)]));
       const overlapRecords = splitForOverlap
         ? orderedTrains.flatMap((train) => getRouteSegmentRecords(train, routeFeaturesByTrain.get(train.id) || []))
@@ -2379,6 +2491,24 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         item.order = idx; // preserve draw order when a grid query returns a subset
       });
       routeItemsGrid = buildRouteItemsGrid(items);
+
+      // GPU path: routes are drawn by a single deck.gl PathLayer built from the
+      // items in renderRoutesInView(), so we skip allocating ~700 L.geoJSON SVG
+      // layers entirely (that allocation + its SVG paint was the cost being
+      // eliminated). The popup/click data still lives on each item via item.train
+      // / item.feature, which the deck onClick handler reads.
+      if (!USE_DECKGL_ROUTES) {
+        // Pre-create one Leaflet layer per item so renderRoutesInView can add/remove
+        // existing objects instead of allocating new ones on every moveend/zoom.
+        items.forEach((item) => {
+          item.leafletLayer = renderTrainRouteSegment(item.train, item.feature, {
+            dimmed: focusActive && item.train.id !== focusedTrainId,
+            focused: focusActive && item.train.id === focusedTrainId,
+            overlap: item.overlapInfo || null
+          });
+        });
+      }
+
       return items;
     }
 
@@ -2440,34 +2570,184 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       return bounds;
     }
 
+    // LOD helpers — mirrors the smoothFactor logic in renderTrainRouteSegment.
+    // Factored out so renderRoutesInView can detect tier changes and patch
+    // existing layers instead of recreating them.
+    function routeLodTier(zoom) {
+      return zoom >= 12 ? 0 : zoom >= 10 ? 1 : zoom >= 8 ? 2 : zoom >= 6 ? 3 : 4;
+    }
+    function routeLodSmoothFactor(zoom) {
+      return zoom >= 12 ? 1 : zoom >= 10 ? 1.5 : zoom >= 8 ? 3 : zoom >= 6 ? 6 : 10;
+    }
+
     // Attach only the cached route segments intersecting the current padded view.
     // `force` re-renders unconditionally (data/style changed); otherwise skip when
     // the previous padded render still covers the current view, so an in-margin pan
     // is a cheap no-op.
-    function renderRoutesInView(force) {
+    //
+    // Performance: layer objects are pre-created in buildRouteItems (one per item,
+    // per-signature). On pan/zoom, we do an O(delta) incremental diff — only add
+    // layers that entered the padded view and remove those that left. No new Leaflet
+    // objects are allocated on moveend/zoom, eliminating the dominant source of
+    // post-load drag/zoom jank.
+    // SVG render-once: attach every pre-created route segment a single time.
+    // With the SVG renderer, panning is a free CSS transform (no redraw) and zoom
+    // re-projects in one Leaflet pass, so the old canvas-era machinery — viewport
+    // culling, the spatial grid, per-moveend incremental add/remove, and per-tier
+    // LOD smoothFactor patching — is unnecessary. Re-attaching only runs when the
+    // train set / styling actually changes (via renderTrainLayers), never on a
+    // pan or zoom. clearLayers() first so any segments added incrementally by
+    // appendTrainToLayers during a progressive import are not double-counted.
+    function renderRoutesInView() {
       if (!map || !cachedRouteItems) return;
-      const viewBounds = map.getBounds();
-      const zoom = map.getZoom();
-      // Re-render when forced, when the zoom level changed (so the level-of-detail
-      // simplification refreshes), or when the view left the previously rendered
-      // margin. A pure in-margin pan at the same zoom stays a no-op.
-      if (!force && renderedRouteZoom === zoom && renderedRouteBounds && renderedRouteBounds.contains(viewBounds)) return;
-
-      const padded = viewBounds.pad(ROUTE_RENDER_MARGIN);
+      if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.layer) {
+        // GPU path — one PathLayer for the whole train set. No per-segment
+        // Leaflet objects, no SVG paint, no per-gesture work.
+        DeckRoutes.setData(buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive));
+        // Draw the selected train's route in a dedicated layer above all the
+        // others so a click reliably raises it to the top (intra-layer draw
+        // order isn't a guarantee in a single GPU layer).
+        DeckRoutes.setSelected(focusedTrainId || null);
+        return;
+      }
       limitedExpressRouteLayer.clearLayers();
-      const focusActive = cachedRouteFocusActive;
-      // O(items in view) via the spatial index; the precise bbox test below still
-      // filters candidates whose cell overlaps but whose bounds do not.
-      collectRouteItemsInView(padded).forEach((item) => {
-        if (item.bounds && item.bounds.isValid() && !padded.intersects(item.bounds)) return;
-        renderTrainRouteSegment(item.train, item.feature, {
-          dimmed: focusActive && item.train.id !== focusedTrainId,
-          focused: focusActive && item.train.id === focusedTrainId,
-          overlap: item.overlapInfo || null
-        }).addTo(limitedExpressRouteLayer);
+      cachedRouteItems.forEach((item) => {
+        if (item.leafletLayer) item.leafletLayer.addTo(limitedExpressRouteLayer);
       });
-      renderedRouteBounds = padded;
-      renderedRouteZoom = zoom;
+    }
+
+    // Flatten cached route items into deck.gl PathLayer records. Each record is a
+    // single polyline with its color/width/dash/opacity precomputed to match the
+    // SVG styling in renderTrainRouteSegment() exactly. A MultiLineString feature
+    // yields one record per line. Coordinates are [lng, lat] (deck LNGLAT space).
+    function buildDeckRouteRecords(items, focusActive) {
+      const records = [];
+      items.forEach((item) => {
+        const train = item.train;
+        const feature = item.feature;
+        const ridden = feature.properties && feature.properties.ride_segment === true;
+        const rgb = hexToRgb(train.style && train.style.color ? train.style.color : DEFAULT_TRAIN_COLOR);
+        const weight = Number((train.style && train.style.weight) || DEFAULT_TRAIN_WEIGHT);
+        const unriddenOpacity = Number(
+          train.style && train.style.unridden_opacity != null ? train.style.unridden_opacity : DEFAULT_UNRIDDEN_OPACITY
+        );
+        const focused = focusActive && train.id === focusedTrainId;
+        const dimmed = focusActive && train.id !== focusedTrainId;
+        const opacity = train.visible === false ? 0 : (
+          focused ? 1 :
+          dimmed ? 0.18 :
+          ridden ? 0.9 : unriddenOpacity
+        );
+        if (opacity <= 0) return; // hidden trains contribute nothing to the GPU buffer
+        const width = focused ? weight + 2 : (ridden ? weight : Math.max(2, weight - 1));
+        const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
+        const color = [rgb[0], rgb[1], rgb[2], alpha];
+        const dashed = !(focused || dimmed) && !ridden;
+        getSimplifiedRouteLines(feature).forEach((line) => {
+          if (!line || line.length < 2) return;
+          records.push({ path: line, color, width, dashed, train, feature });
+          if (PERF_DEBUG) { _simpStats.after += line.length; }
+        });
+        if (PERF_DEBUG) { iterateGeometryLines(feature.geometry).forEach((l) => { _simpStats.before += l.length; }); }
+      });
+      if (PERF_DEBUG && _simpStats.before) {
+        console.log(`[routes] simplify ${ROUTE_SIMPLIFY_METERS}m: ${_simpStats.before} -> ${_simpStats.after} pts (${(100 * _simpStats.after / _simpStats.before).toFixed(1)}% kept)`);
+        _simpStats.before = 0; _simpStats.after = 0;
+      }
+      return records;
+    }
+    const _simpStats = { before: 0, after: 0 };
+
+    // Flatten the visible trains' stop + pass-through markers into deck.gl
+    // ScatterplotLayer records. Fill/line colours, radius and stroke width are
+    // precomputed to match renderStopMarker() / renderPassThroughMarker()
+    // exactly (radius + width are in screen pixels). category lets the layers
+    // control toggle "Stops" / "Pass-through Stations" independently.
+    function deckMarkerRecord(feature, train, opts, kind) {
+      const p = feature.properties || {};
+      const coord = getFeatureDisplayCoordinate(feature);
+      if (!Array.isArray(coord) || coord.length < 2) return null;
+      const rgb = hexToRgb(train.style && train.style.color ? train.style.color : DEFAULT_TRAIN_COLOR);
+      const focused = opts.focused === true;
+      const dimmed = opts.dimmed === true;
+      if (kind === "pass") {
+        const active = p.ride_segment !== false;
+        const fillA = Math.round((active ? 0.35 : 0.12) * 255);
+        const lineA = Math.round((dimmed ? 0.18 : (active ? 0.45 : 0.18)) * 255);
+        return {
+          position: [coord[0], coord[1]],
+          radius: focused ? 5 : 4,
+          lineWidth: focused ? 2 : 1,
+          fillColor: [rgb[0], rgb[1], rgb[2], fillA],
+          lineColor: [rgb[0], rgb[1], rgb[2], lineA],
+          category: "pass", feature, train
+        };
+      }
+      const isTerminal = p.stop_type === "origin" || p.stop_type === "destination";
+      const active = p.ride_segment === true;
+      const fill = active ? [255, 255, 255, 255] : [rgb[0], rgb[1], rgb[2], Math.round(0.12 * 255)];
+      const lineA = Math.round((dimmed ? 0.22 : (active ? 1 : 0.32)) * 255);
+      return {
+        position: [coord[0], coord[1]],
+        radius: focused ? (isTerminal ? 11 : 9) : (isTerminal ? 9 : 7),
+        lineWidth: focused ? 4 : (active ? 3 : 2),
+        fillColor: fill,
+        lineColor: [rgb[0], rgb[1], rgb[2], lineA],
+        category: "stop", feature, train
+      };
+    }
+
+    // Computed pass-through stations only depend on a train's route_sections +
+    // ride flags (never on focus / selection / zoom), but resolving every passed
+    // station for all 67 trains is costly. Memoize so a focus-only change (a
+    // route/marker click) doesn't recompute them — this is the main fix for the
+    // on-click latency now that markers rebuild on the GPU on every selection.
+    const _computedPassThroughCache = new Map();
+    function getComputedPassThroughFeaturesCached(train) {
+      const key = `${train.id}|${getTrainRouteTemplateKey(train)}|${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`;
+      let v = _computedPassThroughCache.get(key);
+      if (!v) { v = getComputedPassThroughFeatures(train); _computedPassThroughCache.set(key, v); }
+      return v;
+    }
+
+    function buildDeckMarkerRecords(orderedTrains, focusActive, includePassThrough) {
+      const records = [];
+      (orderedTrains || []).forEach((train) => {
+        if (train.visible === false) return;
+        const opts = {
+          dimmed: focusActive && train.id !== focusedTrainId,
+          focused: focusActive && train.id === focusedTrainId
+        };
+        (train.stops || []).forEach((stop) => {
+          const stopFeature = getStopFeature(stop, train);
+          if (!stopFeature) return;
+          const isPass = stopFeature.properties.stop_type === "pass_through";
+          if (isPass && !includePassThrough) return;
+          const rec = deckMarkerRecord(stopFeature, train, opts, isPass ? "pass" : "stop");
+          if (rec) records.push(rec);
+        });
+        if (includePassThrough) {
+          getComputedPassThroughFeaturesCached(train).forEach((feature) => {
+            const rec = deckMarkerRecord(feature, train, opts, "pass");
+            if (rec) records.push(rec);
+          });
+        }
+      });
+      return records;
+    }
+
+    // deck.gl marker click -> select train + open the stop popup at the marker.
+    function handleDeckMarkerClick(info) {
+      if (!info || !info.object) return;
+      const { train, feature } = info.object;
+      if (!train) return;
+      selectTrain(train.id);
+      if (info.coordinate && map) {
+        L.popup({ maxWidth: 320 })
+          .setLatLng([info.coordinate[1], info.coordinate[0]])
+          .setContent(buildStopPopup(feature, train))
+          .openOn(map);
+      }
     }
 
     function getRouteRenderItems(train, splitForOverlap, features, overlapMap) {
@@ -2751,9 +3031,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       // Persist the freshly solved geometry so later sessions skip both the solve
       // and (if every train hits the cache) the route-graph build entirely.
       persistRouteCacheEntry(cacheKey, templateFeatures);
-      // Fix #1: persist the freshly solved geometry onto the train so exporting /
-      // auto-saving carries it and future opens can skip the solve entirely.
-      train.route_geometry_cache = { key: cacheKey, features: templateFeatures };
+      // Solved geometry is kept only in runtimeRouteCache (this session) and
+      // IndexedDB (cross-session). It is deliberately NOT attached back onto the
+      // train object, so train-store.json and the in-memory store stay lean.
 
       const concrete = dedupeSameTrainRouteFeatures(cloneRouteFeaturesForTrain(templateFeatures, train));
       concrete.forEach((feature) => matchedRoutesGeoJson.features.push(feature));
@@ -4007,9 +4287,6 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const color = train.style?.color || DEFAULT_TRAIN_COLOR;
       const weight = Number(train.style?.weight || DEFAULT_TRAIN_WEIGHT);
       const unriddenOpacity = Number(train.style?.unridden_opacity ?? DEFAULT_UNRIDDEN_OPACITY);
-      const isOverlap = Boolean(renderOptions.overlap);
-      const overlapSlot = renderOptions.overlap?.slot || 0;
-      const overlapCount = renderOptions.overlap?.count || 1;
       const focused = renderOptions.focused === true;
       const dimmed = renderOptions.dimmed === true;
       const baseOpacity = train.visible === false ? 0 : (
@@ -4017,44 +4294,30 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         dimmed ? 0.18 :
         ridden ? 0.9 : unriddenOpacity
       );
-      // Parallel-offset overlapping routes instead of stacking them on the same
-      // pixels. When `overlapCount` trains share a track segment, each is pushed
-      // perpendicular to the line by a constant pixel distance based on its slot,
-      // so every train's colour stays visible side-by-side (transit-map style).
-      // The offset (via leaflet.polylineoffset) is applied AFTER projection to
-      // layer points, so the gap is a fixed number of screen pixels at every zoom
-      // and works with the canvas renderer. Centre the fan around the true track:
-      // slot 0..count-1  ->  offsets  -(count-1)/2 .. +(count-1)/2  times spacing.
-      const offsetSpacingPx = Math.max(3.5, weight + 1.5);
-      const overlapOffset = isOverlap
-        ? (overlapSlot - (overlapCount - 1) / 2) * offsetSpacingPx
-        : 0;
-      // Lines no longer overlap pixel-for-pixel, so they can stay fully opaque —
-      // dropping the old opacity penalty keeps each colour crisp.
+      // Overlapping routes are drawn directly on their shared track (the old
+      // parallel-offset "transit map" fan-out has been removed); when trains share
+      // a segment the later-drawn route simply stacks on top.
 
-      // Level-of-detail: at low zoom the route's full vertex density is sub-pixel
-      // noise, so simplify aggressively (Douglas-Peucker via Leaflet's smoothFactor)
-      // to cut the points projected/stroked per frame; restore full detail zoomed
-      // in. renderRoutesInView re-renders on zoom-level change so this stays current.
-      // This is what bounds the heaviest case (zoomed out, every route in view) for
-      // any dataset size.
-      const zoom = map ? map.getZoom() : 12;
-      const lodSmoothFactor = zoom >= 12 ? 1 : zoom >= 10 ? 1.5 : zoom >= 8 ? 3 : zoom >= 6 ? 6 : 10;
-
+      // smoothFactor's Douglas-Peucker tolerance is measured in SCREEN PIXELS at the
+      // current zoom, so a single fixed value is automatic level-of-detail: at low
+      // zoom the compressed route collapses to far fewer painted segments, and zoomed
+      // in (where the route spreads across many pixels) almost no points are dropped,
+      // so it stays crisp. ~2.5px is visually lossless for a train line yet sharply
+      // cuts the segment count the SVG paint phase has to record at country zoom —
+      // directly attacking the Paint bottleneck the trace identified.
       return L.geoJSON(segmentFeature, {
         renderer: limitedExpressRouteRenderer,
-        offset: overlapOffset,
-        smoothFactor: lodSmoothFactor,
+        smoothFactor: 2.5,
         style: {
           color,
           weight: focused ? weight + 2 : (ridden ? weight : Math.max(2, weight - 1)),
           opacity: baseOpacity,
-          dashArray: focused || dimmed || isOverlap ? null : (ridden ? null : "4 6"),
+          dashArray: focused || dimmed ? null : (ridden ? null : "4 6"),
           dashOffset: null,
           lineCap: "round"
         },
         onEachFeature: (feature, layer) => {
-          layer.bindPopup(buildTrainSegmentPopup(train, feature));
+          layer.bindPopup(() => buildTrainSegmentPopup(train, feature));
           layer.on("click", () => selectTrain(train.id));
         }
       });
