@@ -46,6 +46,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const ROUTE_CACHE_DB_NAME = "n02-route-geometry-cache";
     const ROUTE_CACHE_STORE_NAME = "routes";
     const JAPAN_MAIN_ISLANDS_BOUNDS = [[30.85, 129.1], [45.75, 146.2]];
+    // All-Japan territory used to clamp the map: main islands plus Okinawa /
+    // the Nansei (southwest) islands — south to ~Yonaguni (24°N / 122.8°E).
+    const JAPAN_FULL_TERRITORY_BOUNDS = [[24.0, 122.8], [45.75, 146.2]];
 
     // Single source of truth for protocol/schema constants reused across the app.
     // Stores are now written as 1.3 (adds per-train `date`), but 1.2 (no date)
@@ -479,15 +482,15 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       scheduleRouteGraphPrebuild();
     });
 
-    // Build the (expensive, one-time) N02 routing graph during browser idle time
-    // instead of lazily on the first route solve. getRuntimeRouteGraph() is
-    // memoized, so this is a no-op if the boot store already triggered the build.
+    // Warm the lightweight rail-section spatial index during idle time (NOT the
+    // full ~377k-node graph, which is no longer built eagerly). This keeps the
+    // first on-demand regional solve from paying the index build synchronously.
     function scheduleRouteGraphPrebuild() {
       const prebuild = () => {
         try {
-          getRuntimeRouteGraph();
+          getRailSectionSpatialIndex();
         } catch (err) {
-          console.warn("Route graph prebuild failed; it will be built lazily on first use.", err);
+          console.warn("Rail-section index prebuild failed; it will be built lazily on first use.", err);
         }
       };
       if (typeof requestIdleCallback === "function") {
@@ -1701,6 +1704,12 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         if (!cachedOrderedTrains.length) return;
         if ((map.getZoom() >= PASSTHROUGH_MIN_ZOOM) !== passThroughShown) renderTrainMarkers();
       });
+
+      // Clamp the map over Japan: most zoomed-out view shows all territory
+      // centered in the middle ~50% of the viewport; panning is locked to that
+      // envelope. Recomputed on resize because minZoom depends on pixel size.
+      applyJapanMapConstraints();
+      map.on("resize", applyJapanMapConstraints);
 
       // GPU route overlay. Attached once; fed the whole train set by
       // renderRoutesInView(). Clicking a route selects its train and opens the
@@ -2995,12 +3004,14 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       }
 
       setStatus(els.fieldStatus, `Generating N02 railway route for ${train.number || train.id}...`, "warn");
-      const graph = getRuntimeRouteGraph();
       const generated = [];
       const warnings = [];
 
       routeSections.forEach((section, segmentIndex) => {
-        const result = solveRouteSectionOnN02Graph(section, segmentIndex, train, graph, allowedCodes);
+        // Solve on a small on-demand regional subgraph instead of the resident
+        // all-Japan graph; falls back to the full graph only if a region proves
+        // too small (see solveRouteSectionOnDemand), so results are unchanged.
+        const result = solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes);
         if (!result) {
           warnings.push(`${section.from || section.from_n02_station_code}→${section.to || section.to_n02_station_code}`);
           return;
@@ -3102,9 +3113,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       return [...new Set(codes)].sort();
     }
 
-    function getRuntimeRouteGraph() {
-      if (runtimeRouteGraph) return runtimeRouteGraph;
-
+    // Core graph builder shared by the full-network graph and the on-demand
+    // regional subgraphs. Builds nodes / edges / nodeMeta / spatial-grid from
+    // ONLY the given rail-section features (station transfer edges added later).
+    function buildRouteGraphFromFeatures(features) {
       const nodes = new Map();
       const adjacency = new Map();
       const grid = new Map();
@@ -3164,14 +3176,14 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
       // Python-equivalent rule: the routable graph is built ONLY from RailroadSection.
       // N02 Station LineString is used only for station snap candidates, never as a train-runnable edge.
-      (railSectionsGeoJson.features || []).forEach((feature) => {
+      (features || []).forEach((feature) => {
         const props = feature.properties || {};
         iterateGeometryLines(feature.geometry).forEach((line) => {
           for (let i = 0; i < line.length - 1; i += 1) addRailEdge(line[i], line[i + 1], props);
         });
       });
 
-      const graph = {
+      return {
         nodes,
         adjacency,
         grid,
@@ -3179,11 +3191,220 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         cellSize,
         stationSnapCache: new Map()
       };
-      addStationTransferConnectorEdges(graph);
+    }
 
+    // Full-network graph (~377k nodes). Retained as the guaranteed-correct
+    // fallback for on-demand solving; built lazily and memoized only if a
+    // regional subgraph proves insufficient — never eagerly at startup.
+    function getRuntimeRouteGraph() {
+      if (runtimeRouteGraph) return runtimeRouteGraph;
+      const graph = buildRouteGraphFromFeatures((railSectionsGeoJson && railSectionsGeoJson.features) || []);
+      addStationTransferConnectorEdges(graph);
       runtimeRouteGraph = graph;
-      console.info(`Runtime N02 railroad-only route graph built: ${nodes.size} nodes.`);
+      console.info(`Runtime N02 railroad-only route graph built (full network): ${graph.nodes.size} nodes.`);
       return runtimeRouteGraph;
+    }
+
+    // ---- On-demand regional route graphs ------------------------------------
+    // Instead of holding the whole-Japan graph resident, build small per-region
+    // subgraphs on demand and LRU-cache them. A subgraph built from EVERY rail
+    // feature inside a bbox is structurally identical to the full graph
+    // restricted to that bbox, so Dijkstra returns the SAME optimal path as long
+    // as that path stays inside the bbox. We check that at solve time
+    // (pathTouchesRegionEdge) and widen / fall back to the full graph otherwise,
+    // so on-demand results never differ from the all-Japan graph.
+
+    const RAIL_INDEX_CELL_DEG = 0.1;
+    let railSectionSpatialIndex = null;
+
+    function featureBbox(feature) {
+      if (feature.__railBbox !== undefined) return feature.__railBbox;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      iterateGeometryLines(feature.geometry).forEach((line) => {
+        for (const pt of line) {
+          if (pt[0] < minX) minX = pt[0];
+          if (pt[0] > maxX) maxX = pt[0];
+          if (pt[1] < minY) minY = pt[1];
+          if (pt[1] > maxY) maxY = pt[1];
+        }
+      });
+      const bbox = minX === Infinity ? null : [minX, minY, maxX, maxY];
+      feature.__railBbox = bbox;
+      return bbox;
+    }
+
+    // Coarse grid index over rail-section feature bboxes. Cheap (just bboxes +
+    // references), built once, so regional builds avoid scanning all 22k features.
+    function getRailSectionSpatialIndex() {
+      if (railSectionSpatialIndex) return railSectionSpatialIndex;
+      const grid = new Map();
+      const feats = (railSectionsGeoJson && railSectionsGeoJson.features) || [];
+      feats.forEach((feature) => {
+        const bbox = featureBbox(feature);
+        if (!bbox) return;
+        const x0 = Math.floor(bbox[0] / RAIL_INDEX_CELL_DEG);
+        const x1 = Math.floor(bbox[2] / RAIL_INDEX_CELL_DEG);
+        const y0 = Math.floor(bbox[1] / RAIL_INDEX_CELL_DEG);
+        const y1 = Math.floor(bbox[3] / RAIL_INDEX_CELL_DEG);
+        for (let x = x0; x <= x1; x += 1) {
+          for (let y = y0; y <= y1; y += 1) {
+            const k = `${x},${y}`;
+            let arr = grid.get(k);
+            if (!arr) { arr = []; grid.set(k, arr); }
+            arr.push(feature);
+          }
+        }
+      });
+      railSectionSpatialIndex = grid;
+      console.info(`Rail-section spatial index built: ${grid.size} cells over ${feats.length} features.`);
+      return grid;
+    }
+
+    function bboxIntersects(a, b) {
+      return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+    }
+
+    function railFeaturesInBbox(bbox) {
+      const grid = getRailSectionSpatialIndex();
+      const x0 = Math.floor(bbox[0] / RAIL_INDEX_CELL_DEG);
+      const x1 = Math.floor(bbox[2] / RAIL_INDEX_CELL_DEG);
+      const y0 = Math.floor(bbox[1] / RAIL_INDEX_CELL_DEG);
+      const y1 = Math.floor(bbox[3] / RAIL_INDEX_CELL_DEG);
+      const seen = new Set();
+      const out = [];
+      for (let x = x0; x <= x1; x += 1) {
+        for (let y = y0; y <= y1; y += 1) {
+          const arr = grid.get(`${x},${y}`);
+          if (!arr) continue;
+          for (const f of arr) {
+            if (seen.has(f)) continue;
+            seen.add(f);
+            const fb = featureBbox(f);
+            if (fb && bboxIntersects(fb, bbox)) out.push(f);
+          }
+        }
+      }
+      return out;
+    }
+
+    function stationFeaturesInBbox(bbox) {
+      const feats = (stationsGeoJson && stationsGeoJson.features) || [];
+      const out = [];
+      for (const f of feats) {
+        const c = getFeatureDisplayCoordinate(f);
+        if (c && c[0] >= bbox[0] && c[0] <= bbox[2] && c[1] >= bbox[1] && c[1] <= bbox[3]) out.push(f);
+      }
+      return out;
+    }
+
+    // Expand a bbox by a metric margin (longitude scaled by latitude).
+    function padBboxMeters(bbox, meters) {
+      const latPad = meters / 111320;
+      const midLat = (bbox[1] + bbox[3]) / 2;
+      const lonPad = meters / (111320 * Math.max(0.2, Math.cos(midLat * Math.PI / 180)));
+      return [bbox[0] - lonPad, bbox[1] - latPad, bbox[2] + lonPad, bbox[3] + latPad];
+    }
+
+    function bboxDiagonalMeters(bbox) {
+      return distanceMeters([bbox[0], bbox[1]], [bbox[2], bbox[3]]);
+    }
+
+    const REGION_QUANT_DEG = 0.25;
+    const REGIONAL_GRAPH_NODE_BUDGET = 140000;
+    const regionalGraphCache = new Map(); // quantized-bbox key -> graph (insertion order = LRU)
+    let regionalGraphNodeCount = 0;
+
+    function quantizeBboxOutward(bbox) {
+      return [
+        Math.floor(bbox[0] / REGION_QUANT_DEG) * REGION_QUANT_DEG,
+        Math.floor(bbox[1] / REGION_QUANT_DEG) * REGION_QUANT_DEG,
+        Math.ceil(bbox[2] / REGION_QUANT_DEG) * REGION_QUANT_DEG,
+        Math.ceil(bbox[3] / REGION_QUANT_DEG) * REGION_QUANT_DEG
+      ];
+    }
+
+    // Build (or reuse from LRU) the regional subgraph covering a bbox. Quantizing
+    // the bbox outward lets nearby sections share one subgraph; an LRU node budget
+    // caps total resident graph memory.
+    function getRegionalRouteGraph(bbox) {
+      const qbbox = quantizeBboxOutward(bbox);
+      const key = qbbox.map((v) => v.toFixed(2)).join(",");
+      const cached = regionalGraphCache.get(key);
+      if (cached) {
+        regionalGraphCache.delete(key); // LRU touch
+        regionalGraphCache.set(key, cached);
+        return cached;
+      }
+      const graph = buildRouteGraphFromFeatures(railFeaturesInBbox(qbbox));
+      addStationTransferConnectorEdges(graph, stationFeaturesInBbox(qbbox));
+      graph.regionBbox = qbbox;
+      regionalGraphCache.set(key, graph);
+      regionalGraphNodeCount += graph.nodes.size;
+      while (regionalGraphNodeCount > REGIONAL_GRAPH_NODE_BUDGET && regionalGraphCache.size > 1) {
+        const oldestKey = regionalGraphCache.keys().next().value;
+        const oldest = regionalGraphCache.get(oldestKey);
+        regionalGraphCache.delete(oldestKey);
+        regionalGraphNodeCount -= oldest.nodes.size;
+      }
+      console.info(`Regional route graph built: ${graph.nodes.size} nodes for ${key} (${regionalGraphCache.size} region(s) cached).`);
+      return graph;
+    }
+
+    // Bounding box of a section's resolved endpoint station candidates.
+    function sectionEndpointBbox(section, train, allowedCodes) {
+      const fromStations = resolveRouteEndpointStationCandidates({ name: section.from, n02_station_code: section.from_n02_station_code }, train, allowedCodes);
+      const toStations = resolveRouteEndpointStationCandidates({ name: section.to, n02_station_code: section.to_n02_station_code }, train, allowedCodes);
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      [...fromStations, ...toStations].forEach((f) => {
+        const c = getFeatureDisplayCoordinate(f);
+        if (!c) return;
+        if (c[0] < minX) minX = c[0];
+        if (c[0] > maxX) maxX = c[0];
+        if (c[1] < minY) minY = c[1];
+        if (c[1] > maxY) maxY = c[1];
+      });
+      return minX === Infinity ? null : [minX, minY, maxX, maxY];
+    }
+
+    // True if any vertex of the solved feature lies within marginDeg of the
+    // region edge — a signal the true optimum might leave the region, so the
+    // search should widen (or fall back to the full graph).
+    function pathTouchesRegionEdge(feature, regionBbox, marginDeg) {
+      if (!feature || !regionBbox) return false;
+      const coords = (feature.geometry && feature.geometry.coordinates) || [];
+      for (const c of coords) {
+        if (c[0] <= regionBbox[0] + marginDeg || c[0] >= regionBbox[2] - marginDeg ||
+            c[1] <= regionBbox[1] + marginDeg || c[1] >= regionBbox[3] - marginDeg) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // On-demand replacement for "solve on the full graph". Uses a small regional
+    // subgraph; widens it (and finally falls back to the full graph) if the
+    // solved path reaches the region edge, so the result matches the all-Japan
+    // graph while keeping resident graph memory bounded.
+    function solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes) {
+      const endpointBbox = sectionEndpointBbox(section, train, allowedCodes);
+      if (!endpointBbox) {
+        return solveRouteSectionOnN02Graph(section, segmentIndex, train, getRuntimeRouteGraph(), allowedCodes);
+      }
+      const straight = bboxDiagonalMeters(endpointBbox);
+      const margins = [Math.max(30000, straight * 0.6), Math.max(90000, straight * 1.5)];
+      let lastResult = null;
+      for (const margin of margins) {
+        const graph = getRegionalRouteGraph(padBboxMeters(endpointBbox, margin));
+        const result = solveRouteSectionOnN02Graph(section, segmentIndex, train, graph, allowedCodes);
+        if (result) {
+          lastResult = result;
+          if (!pathTouchesRegionEdge(result, graph.regionBbox, 0.02)) return result;
+        }
+      }
+      // The region wasn't conclusively large enough — use the full graph so the
+      // answer is provably identical to the original all-Japan solve.
+      const full = solveRouteSectionOnN02Graph(section, segmentIndex, train, getRuntimeRouteGraph(), allowedCodes);
+      return full || lastResult;
     }
 
     function intersects(a, b) {
@@ -3254,7 +3475,8 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       return intersects(meta?.institution_type_codes, preferred);
     }
 
-    function addStationTransferConnectorEdges(graph) {
+    function addStationTransferConnectorEdges(graph, stationFeatures) {
+      const stations = stationFeatures || (stationsGeoJson && stationsGeoJson.features) || [];
       const groups = new Map();
       const edgeKeys = new Set();
 
@@ -3288,7 +3510,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         }
       }
 
-      (stationsGeoJson.features || []).forEach((feature) => {
+      stations.forEach((feature) => {
         const key = stationTransferGroupKey(feature);
         const group = getGroup(key);
         const sourceLines = iterateGeometryLines(feature.geometry);
@@ -4405,10 +4627,27 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       els.importProgressText.textContent = "";
       els.importProgressWrap.hidden = true;
     }
-
     function fitJapanMainIslands() {
       if (!map) return;
       map.fitBounds(JAPAN_MAIN_ISLANDS_BOUNDS, { padding: [28, 28], animate: false });
+    }
+
+    // Force the map to stay over Japan. minZoom is whatever makes the full
+    // territory fit inside the central 50% of the viewport (≈25% ocean margin on
+    // each side); maxBounds + full viscosity stop panning past that envelope.
+    // minZoom is recomputed on resize because it depends on the pixel viewport.
+    function applyJapanMapConstraints() {
+      if (!map) return;
+      const territory = L.latLngBounds(JAPAN_FULL_TERRITORY_BOUNDS);
+      map.setMaxBounds(territory.pad(0.5));
+      map.options.maxBoundsViscosity = 1.0;
+      const size = map.getSize();
+      if (!size.x || !size.y) return;
+      const halfPad = L.point(size.x * 0.5, size.y * 0.5);
+      const minZoom = map.getBoundsZoom(territory, false, halfPad);
+      if (!isFinite(minZoom)) return;
+      map.setMinZoom(minZoom);
+      if (map.getZoom() < minZoom) map.setZoom(minZoom);
     }
 
     function validateTextareaJson() {
