@@ -25,8 +25,15 @@
   const L = global.L;
   const deck = global.deck;
   if (!L || !deck || !deck.Deck) {
-    console.warn("[deckgl-routes] Leaflet or deck.gl not present; GPU route overlay disabled.");
-    global.DeckRoutes = { available: false, attach() {}, setData() {}, setVisible() {} };
+    console.warn(
+      "[deckgl-routes] Leaflet or deck.gl not present; GPU route overlay disabled.",
+    );
+    global.DeckRoutes = {
+      available: false,
+      attach() {},
+      setData() {},
+      setVisible() {},
+    };
     return;
   }
 
@@ -42,14 +49,22 @@
       this._container = null;
     },
     getPane: function () {
-      return (this._map && this._map.getPane(this._paneName)) ||
-             (this._map && this._map.getPane("overlayPane"));
+      return (
+        (this._map && this._map.getPane(this._paneName)) ||
+        (this._map && this._map.getPane("overlayPane"))
+      );
     },
     _viewState: function () {
       const c = this._map.getCenter();
       // Leaflet zoom is 256px-tile based; deck's web-mercator view is the same
       // convention shifted by one (its "zoom 0" shows the whole world in 512px).
-      return { longitude: c.lng, latitude: c.lat, zoom: this._map.getZoom() - 1, pitch: 0, bearing: 0 };
+      return {
+        longitude: c.lng,
+        latitude: c.lat,
+        zoom: this._map.getZoom() - 1,
+        pitch: 0,
+        bearing: 0,
+      };
     },
     onAdd: function () {
       const pane = this.getPane();
@@ -57,20 +72,29 @@
       this._zoomAnimated = this._map._zoomAnimated && L.Browser.any3d;
       this._container = L.DomUtil.create("div");
       this._container.className = "leaflet-layer";
-      if (this._zoomAnimated) L.DomUtil.addClass(this._container, "leaflet-zoom-animated");
+      if (this._zoomAnimated)
+        L.DomUtil.addClass(this._container, "leaflet-zoom-animated");
       pane.appendChild(this._container);
-      this._deck = new deck.Deck(Object.assign({}, this.props, {
-        parent: this._container,
-        controller: false,            // Leaflet owns navigation; deck only draws + picks
-        style: { zIndex: "auto" },
-        viewState: this._viewState()
-      }));
+      this._deck = new deck.Deck(
+        Object.assign({}, this.props, {
+          parent: this._container,
+          controller: false, // Leaflet owns navigation; deck only draws + picks
+          style: { zIndex: "auto" },
+          viewState: this._viewState(),
+        }),
+      );
       this._update();
       return this;
     },
     onRemove: function () {
-      if (this._container) { L.DomUtil.remove(this._container); this._container = null; }
-      if (this._deck) { this._deck.finalize(); this._deck = null; }
+      if (this._container) {
+        L.DomUtil.remove(this._container);
+        this._container = null;
+      }
+      if (this._deck) {
+        this._deck.finalize();
+        this._deck = null;
+      }
       return this;
     },
     getEvents: function () {
@@ -79,7 +103,7 @@
         movestart: this._noop,
         moveend: this._update,
         zoom: this._onZoom,
-        zoomend: this._update
+        zoomend: this._update,
       };
       if (this._zoomAnimated) ev.zoomanim = this._onAnimZoom;
       return ev;
@@ -122,11 +146,18 @@
       const currentCenterPoint = map.project(map.getCenter(), zoom);
       const destCenterPoint = map.project(center, zoom);
       const centerOffset = destCenterPoint.subtract(currentCenterPoint);
-      const topLeftOffset = viewHalf.multiplyBy(-scale).add(position).add(viewHalf).subtract(centerOffset);
-      if (L.Browser.any3d) L.DomUtil.setTransform(this._container, topLeftOffset, scale);
+      const topLeftOffset = viewHalf
+        .multiplyBy(-scale)
+        .add(position)
+        .add(viewHalf)
+        .subtract(centerOffset);
+      if (L.Browser.any3d)
+        L.DomUtil.setTransform(this._container, topLeftOffset, scale);
       else L.DomUtil.setPosition(this._container, topLeftOffset);
     },
-    pickObject: function (opts) { return this._deck ? this._deck.pickObject(opts) : null; }
+    pickObject: function (opts) {
+      return this._deck ? this._deck.pickObject(opts) : null;
+    },
   });
 
   // --- Route overlay manager -------------------------------------------------
@@ -169,13 +200,22 @@
         p.style.zIndex = 350;
       }
       const self = this;
-      this.layer = new DeckLeafletLayer({
-        layers: [],
-        useDevicePixels: true,
-        getCursor: function (s) { return s.isHovering ? "pointer" : "inherit"; },
-        onClick: function (info) { self._onClick(info); },
-        onHover: function (info) { self._onHover(info); }
-      }, PANE);
+      this.layer = new DeckLeafletLayer(
+        {
+          layers: [],
+          useDevicePixels: true,
+          getCursor: function (s) {
+            return s.isHovering ? "pointer" : "inherit";
+          },
+          onClick: function (info) {
+            self._onClick(info);
+          },
+          onHover: function (info) {
+            self._onHover(info);
+          },
+        },
+        PANE,
+      );
       this.layer.addTo(map);
       return this;
     },
@@ -221,7 +261,9 @@
 
     _recomputeMarkerData: function () {
       const self = this;
-      this._markerData = this._markers.filter(function (m) { return self._markerVis[m.category] !== false; });
+      this._markerData = this._markers.filter(function (m) {
+        return self._markerVis[m.category] !== false;
+      });
       this._recomputeMarkerSplit();
     },
 
@@ -232,22 +274,32 @@
         this._selMarkerData = [];
         return;
       }
-      this._baseMarkerData = this._markerData.filter(function (m) { return !m.train || m.train.id !== sel; });
-      this._selMarkerData = this._markerData.filter(function (m) { return m.train && m.train.id === sel; });
+      this._baseMarkerData = this._markerData.filter(function (m) {
+        return !m.train || m.train.id !== sel;
+      });
+      this._selMarkerData = this._markerData.filter(function (m) {
+        return m.train && m.train.id === sel;
+      });
     },
 
     _recomputeHighlightData: function () {
       const id = this._hoverTrainId;
-      this._highlightData = (id && this._visible)
-        ? this._records.filter(function (r) { return r.train && r.train.id === id; })
-        : [];
+      this._highlightData =
+        id && this._visible
+          ? this._records.filter(function (r) {
+              return r.train && r.train.id === id;
+            })
+          : [];
     },
 
     _recomputeSelectedData: function () {
       const id = this._selectedTrainId;
-      this._selectedData = (id && this._visible)
-        ? this._records.filter(function (r) { return r.train && r.train.id === id; })
-        : [];
+      this._selectedData =
+        id && this._visible
+          ? this._records.filter(function (r) {
+              return r.train && r.train.id === id;
+            })
+          : [];
     },
 
     // Picked object carries `.category` for markers; route segments don't.
@@ -264,7 +316,8 @@
     // route. Early-return when the hovered train is unchanged, so moving along a
     // line does no work.
     _onHover: function (info) {
-      const id = info && info.object && info.object.train ? info.object.train.id : null;
+      const id =
+        info && info.object && info.object.train ? info.object.train.id : null;
       if (id === this._hoverTrainId) return;
       this._hoverTrainId = id;
       this._recomputeHighlightData();
@@ -282,61 +335,97 @@
         widthMinPixels: 1.2,
         capRounded: true,
         jointRounded: true,
-        getPath: function (d) { return d.path; },
-        getColor: function (d) { return d.color; },
-        getWidth: function (d) { return d.width; },
+        getPath: function (d) {
+          return d.path;
+        },
+        getColor: function (d) {
+          return d.color;
+        },
+        getWidth: function (d) {
+          return d.width;
+        },
         parameters: { depthTest: false },
         // Dashed styling for non-ridden segments, matching the SVG "4 6" dash.
-        extensions: hasDashExt ? [new deck.PathStyleExtension({ dash: true })] : [],
-        getDashArray: hasDashExt ? function (d) { return d.dashed ? [4, 6] : [0, 0]; } : undefined,
-        dashJustified: false
+        extensions: hasDashExt
+          ? [new deck.PathStyleExtension({ dash: true })]
+          : [],
+        getDashArray: hasDashExt
+          ? function (d) {
+              return d.dashed ? [4, 6] : [0, 0];
+            }
+          : undefined,
+        dashJustified: false,
       });
 
       // The whole hovered route, drawn over the base routes: same geometry, full
       // opacity, wider, in the train's colour — so the entire line lights up.
-      const highlightLayer = this._highlightData.length ? new deck.PathLayer({
-        id: "train-routes-highlight",
-        data: this._highlightData,
-        pickable: false,
-        widthUnits: "pixels",
-        widthMinPixels: 3,
-        capRounded: true,
-        jointRounded: true,
-        getPath: function (d) { return d.path; },
-        getColor: function (d) { return [d.color[0], d.color[1], d.color[2], 255]; },
-        getWidth: function (d) { return d.width + 4; },
-        parameters: { depthTest: false }
-      }) : null;
+      const highlightLayer = this._highlightData.length
+        ? new deck.PathLayer({
+            id: "train-routes-highlight",
+            data: this._highlightData,
+            pickable: false,
+            widthUnits: "pixels",
+            widthMinPixels: 3,
+            capRounded: true,
+            jointRounded: true,
+            getPath: function (d) {
+              return d.path;
+            },
+            getColor: function (d) {
+              return [d.color[0], d.color[1], d.color[2], 255];
+            },
+            getWidth: function (d) {
+              return d.width + 4;
+            },
+            parameters: { depthTest: false },
+          })
+        : null;
 
       // Selected route, raised above ALL other routes. A white casing + the
       // train's colour on top (transit-map style) makes the clicked line read
       // as floating above the rest, regardless of intra-layer draw order.
-      const selCasingLayer = this._selectedData.length ? new deck.PathLayer({
-        id: "train-routes-selected-casing",
-        data: this._selectedData,
-        pickable: false,
-        widthUnits: "pixels",
-        widthMinPixels: 5,
-        capRounded: true,
-        jointRounded: true,
-        getPath: function (d) { return d.path; },
-        getColor: function () { return [255, 255, 255, 235]; },
-        getWidth: function (d) { return d.width + 8; },
-        parameters: { depthTest: false }
-      }) : null;
-      const selLayer = this._selectedData.length ? new deck.PathLayer({
-        id: "train-routes-selected",
-        data: this._selectedData,
-        pickable: false,
-        widthUnits: "pixels",
-        widthMinPixels: 3,
-        capRounded: true,
-        jointRounded: true,
-        getPath: function (d) { return d.path; },
-        getColor: function (d) { return [d.color[0], d.color[1], d.color[2], 255]; },
-        getWidth: function (d) { return d.width + 3; },
-        parameters: { depthTest: false }
-      }) : null;
+      const selCasingLayer = this._selectedData.length
+        ? new deck.PathLayer({
+            id: "train-routes-selected-casing",
+            data: this._selectedData,
+            pickable: false,
+            widthUnits: "pixels",
+            widthMinPixels: 5,
+            capRounded: true,
+            jointRounded: true,
+            getPath: function (d) {
+              return d.path;
+            },
+            getColor: function () {
+              return [255, 255, 255, 235];
+            },
+            getWidth: function (d) {
+              return d.width + 8;
+            },
+            parameters: { depthTest: false },
+          })
+        : null;
+      const selLayer = this._selectedData.length
+        ? new deck.PathLayer({
+            id: "train-routes-selected",
+            data: this._selectedData,
+            pickable: false,
+            widthUnits: "pixels",
+            widthMinPixels: 3,
+            capRounded: true,
+            jointRounded: true,
+            getPath: function (d) {
+              return d.path;
+            },
+            getColor: function (d) {
+              return [d.color[0], d.color[1], d.color[2], 255];
+            },
+            getWidth: function (d) {
+              return d.width + 3;
+            },
+            parameters: { depthTest: false },
+          })
+        : null;
 
       // Stop + pass-through markers. radius/lineWidth in screen pixels, so they
       // stay constant size across zoom exactly like the Leaflet circles they
@@ -353,16 +442,31 @@
           radiusUnits: "pixels",
           lineWidthUnits: "pixels",
           radiusMinPixels: 1,
-          getPosition: function (d) { return d.position; },
-          getRadius: function (d) { return d.radius; },
-          getFillColor: function (d) { return d.fillColor; },
-          getLineColor: function (d) { return d.lineColor; },
-          getLineWidth: function (d) { return d.lineWidth; },
-          parameters: { depthTest: false }
+          getPosition: function (d) {
+            return d.position;
+          },
+          getRadius: function (d) {
+            return d.radius;
+          },
+          getFillColor: function (d) {
+            return d.fillColor;
+          },
+          getLineColor: function (d) {
+            return d.lineColor;
+          },
+          getLineWidth: function (d) {
+            return d.lineWidth;
+          },
+          parameters: { depthTest: false },
         });
       }
-      const baseMarkerLayer = makeMarkerLayer("train-markers", this._baseMarkerData);
-      const selMarkerLayer = this._selMarkerData.length ? makeMarkerLayer("train-markers-selected", this._selMarkerData) : null;
+      const baseMarkerLayer = makeMarkerLayer(
+        "train-markers",
+        this._baseMarkerData,
+      );
+      const selMarkerLayer = this._selMarkerData.length
+        ? makeMarkerLayer("train-markers-selected", this._selMarkerData)
+        : null;
 
       // Order (bottom -> top): all routes, hover highlight, other trains'
       // station circles, selected casing, selected line, then the selected
@@ -375,7 +479,7 @@
       if (selLayer) layers.push(selLayer);
       if (selMarkerLayer) layers.push(selMarkerLayer);
       this.layer.setProps({ layers: layers });
-    }
+    },
   };
 
   global.DeckRoutes = DeckRoutes;

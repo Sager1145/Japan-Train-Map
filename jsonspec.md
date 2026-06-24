@@ -1,14 +1,49 @@
 # N02 Limited Express Train JSON Specification
 
 版本：`1.3`（向后兼容 `1.2`）
-文件建议名：`TRAIN_JSON_SPEC.md`
+文件名：`jsonspec.md`
 适用范围：单 HTML N02 铁路地图、列车 JSON 导入/导出、JR-only 特急路线渲染、乘坐区间显示、停靠站/通过站管理。
+
+> 本文档分为**两大部分**，各自独立编号：
+> **第一部分（§1–§17）** 描述列车 JSON 的格式、字段、导入/导出与校验；
+> **第二部分（§2–§23，数据源）** 描述底层 N02 / OSM 数据源及其字段语义。
+> 引用「第 N 节」时按所在部分理解；跨部分引用会写明「数据源部分」。
 
 ---
 
+## 目录
+
+**第一部分 · 列车 JSON 规范**
+
+1. 基本原则（含 1.1 导出 / 1.2 导入三种形态）
+2. 顶层 Store 结构
+3. Train 对象规范（字段 / ID 规则 / `date`）
+4. Style 对象规范
+5. Route Policy 规范（含 `allowed_institution_type_codes`、`preferred_*`、`institution_filter_mode`）
+6. Route Sections 规范（含 `line_names` / `operator_names`）
+7. Stops 规范
+8. `ride_segment` 规则
+9. 通过站处理规则
+10. 时间字段规则
+11. 导入行为
+12. 导出行为
+13. 地图渲染规则
+14. matched_routes 规范
+15. 校验规则摘要
+16. 完整示例
+17. 实现必须遵守的核心规则
+
+**第二部分 · 数据源（N02 / OSM）规范**
+
+2. 数据源说明　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要　23. 遗留字段 `route_geometry_cache`
+
+---
+
+# 第一部分 · 列车 JSON 规范
+
 ## 1. 基本原则
 
-本系统只允许一种导入/导出 JSON 顶层格式：
+本系统的**权威（canonical）** JSON 顶层格式只有一种：
 
 ```json
 {
@@ -19,34 +54,33 @@
 
 > `schema_version` 当前为 `"1.3"`，新增了每个 train 的 `date` 字段（见 3.1 / 3.3）。
 > 导入与服务器保存同时兼容旧版 `"1.2"`：缺少 `date` 字段的旧 JSON 仍可正常导入，
-> 系统会按「当前选中日期 → 从 id 解析 → undated」的顺序自动补全 `date`。
+> 系统会按「JSON 内 date → 当前选中日期 → 从 id 解析 → undated」的顺序自动补全 `date`。
 
-不允许导入或导出以下格式：
+### 1.1 导出：永远是完整 store
 
-```json
-[
-  { "id": "odr_001" }
-]
-```
+导出 / 自动保存写出的永远是完整 store 对象（`{ schema_version, trains }`），即使只有一趟列车也包在 `trains` 数组内：
 
 ```json
 {
-  "id": "odr_001"
-}
-```
-
-所有列车数据都必须包在顶层 `trains` 数组内。即使只导出一趟列车，也必须导出为：
-
-```json
-{
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": [
-    {
-      "id": "odr_001"
-    }
+    { "id": "odr_001" }
   ]
 }
 ```
+
+### 1.2 导入：宽松接受三种形态
+
+为方便手工粘贴，导入解析（`parseImportedCanonicalStore`）额外接受两种简写，并在内部自动包装成完整 store：
+
+| 顶层形态 | 处理方式 |
+| ---- | ---- |
+| `{ "schema_version": "1.2"\|"1.3", "trains": [...] }` | 完整 store（必须含合法 `schema_version`，且不得含 `schema_version` / `trains` 以外的键） |
+| `[ { ...train }, ... ]` | 裸列车数组 → 包装为 `{ schema_version:"1.3", trains:[...] }` |
+| `{ "id": ..., "stops": [...] }` | 单个列车对象（同时含 `id` 与 `stops`）→ 包装为单元素 store |
+
+导入始终是**追加**（见第 11 节），不会覆盖现有列车；`schema_version` 仅在完整 store 形态下校验。
+裸数组 / 单列车形态会被赋予当前 `schema_version`（`1.3`）。
 
 ---
 
@@ -121,22 +155,26 @@
 
 ## 3. Train 对象规范
 
-### 3.1 Train 必填字段
+### 3.1 Train 字段
 
-| 字段               | 类型      | 必填 | 说明                              |
-| ---------------- | ------- | -: | ------------------------------- |
-| `id`             | string  |  是 | 列车唯一 ID                         |
-| `date`           | string  |  否 | 运行/行程日期，格式 `YYYY-MM-DD`（1.3 新增；缺省时按 3.3 规则自动补全） |
-| `number`         | string  |  是 | 车次，例如 `踊り子9号`                   |
-| `name`           | string  |  是 | 列车名，例如 `踊り子`                    |
-| `origin`         | string  |  是 | 列车运行起点                          |
-| `destination`    | string  |  是 | 列车运行终点                          |
-| `direction`      | string  |  是 | 方向，推荐 `up` / `down` / `unknown` |
-| `visible`        | boolean |  是 | 是否在地图上显示                        |
-| `style`          | object  |  是 | 样式设置                            |
-| `route_policy`   | object  |  是 | 路线匹配策略                          |
-| `route_sections` | array   |  是 | 站间 route section                |
-| `stops`          | array   |  是 | 完整停站/通过站数据                      |
+「必填」一栏指**导入校验**是否强制要求该字段。标记为「否」的字段可省略，导入时会被补成下表的默认值，而**导出时这些字段总是被写出**（已规范化）。
+
+| 字段               | 类型      | 必填 | 缺省默认值 | 说明                              |
+| ---------------- | ------- | -: | ---- | ------------------------------- |
+| `id`             | string  |  是 | —    | 列车唯一 ID（见 3.2）                  |
+| `number`         | string  |  是 | —    | 车次，例如 `踊り子9号`                   |
+| `name`           | string  |  是 | —    | 列车名，例如 `踊り子`                    |
+| `origin`         | string  |  是 | —    | 列车运行起点                          |
+| `destination`    | string  |  是 | —    | 列车运行终点                          |
+| `stops`          | array   |  是 | —    | 完整停站/通过站数据，至少 2 项（见第 7 节）       |
+| `date`           | string  |  否 | 见 3.3 | 运行/行程日期 `YYYY-MM-DD`（1.3 新增；缺省按 3.3 自动补全） |
+| `direction`      | string  |  否 | `"down"` | 方向，推荐 `up` / `down` / `unknown` |
+| `visible`        | boolean |  否 | `true` | 是否在地图上显示                        |
+| `style`          | object  |  否 | 见第 4 节 | 样式设置（缺省时用默认样式）                  |
+| `route_policy`   | object  |  否 | 见第 5 节 | 路线匹配策略（缺省时用默认策略）                |
+| `route_sections` | array   |  否 | `[]` / 由 stops 推导 | 站间 route section（缺省时按相邻 stops 自动生成，见 6.3） |
+
+> 还有一个**可选遗留字段** `route_geometry_cache`：导入时被接受但忽略（不加载、不再导出），详见第 23 节。除此之外，train 对象出现任何其它键都会导致导入失败（严格白名单）。
 
 ### 3.2 Train ID 规则
 
@@ -185,9 +223,13 @@ odr_001-3
 ```text
 1. train.date 是合法 YYYY-MM-DD            -> 直接使用（即使与当前选中日期不同，也以 JSON 内 date 为准）
 2. 当前 UI 选中了某个具体日期               -> 写入当前选中日期
-3. 从 id 前缀解析 YYYYMMDD                  -> 例如 20260703_01_haruka -> 2026-07-03
+3. 从 id 中解析 YYYYMMDD                    -> 例如 20260703_01_haruka -> 2026-07-03（取首个被非数字包围的 8 位日期）
 4. 以上都没有                              -> "undated"
 ```
+
+> 日期输入容错（`normalizeDateString`）：会先去除首尾空白、把 `/` 视作 `-`，再校验
+> `YYYY-MM-DD`（月 1–12、日 1–31）。`undated` 是保留值，表示「无法确定日期」的桶。
+> 校验（`validateTrain`）允许 `date` 缺省、为合法 `YYYY-MM-DD`、或恰为 `"undated"`。
 
 排序规则（所有列表）：
 
@@ -207,11 +249,13 @@ id ASC             # 最终 tiebreaker
 
 ### 4.1 字段
 
-| 字段                 | 类型     | 必填 | 默认值       | 说明           |
-| ------------------ | ------ | -: | --------- | ------------ |
-| `color`            | string |  是 | `#d9364f` | 正常乘坐区间颜色     |
-| `weight`           | number |  是 | `6`       | 正常线宽         |
-| `unridden_opacity` | number |  否 | `0.22`    | 非乘坐站/区间淡色透明度 |
+整个 `style` 对象以及其中每个字段都可省略；缺省时使用下表默认值。导出时三个字段总会被写出。
+
+| 字段                 | 类型     | 必填 | 默认值       | 约束 / 说明                     |
+| ------------------ | ------ | -: | --------- | --------------------------- |
+| `color`            | string |  否 | `#d9364f` | 正常乘坐区间颜色；**必须为 `#RRGGBB`（6 位十六进制）**，否则校验报错 |
+| `weight`           | number |  否 | `6`       | 正常线宽；编辑器允许范围 `1`–`14`        |
+| `unridden_opacity` | number |  否 | `0.22`    | 非乘坐站/区间淡色透明度（`0`–`1`）        |
 
 ### 4.2 示例
 
@@ -227,38 +271,60 @@ id ASC             # 最终 tiebreaker
 
 ## 5. Route Policy 规范
 
+整个 `route_policy` 可省略；缺省时用下表默认值。导出时所有字段都会被写出（已规范化）。
+
 ### 5.1 字段
 
-| 字段                                     | 类型      | 必填 | 固定/默认                  | 说明                |
-| -------------------------------------- | ------- | -: | ---------------------- | ----------------- |
-| `mode`                                 | string  |  是 | `single_primary_route` | 每趟列车只允许一条主路线      |
-| `jr_only`                              | boolean |  是 | `true`                 | 只使用 JR 数据         |
-| `allow_alternatives`                   | boolean |  是 | `false`                | 不允许候选路线并列显示       |
-| `allow_browser_straight_line_fallback` | boolean |  是 | `false`                | 禁止浏览器用直线伪装铁路线     |
-| `allowed_institution_type_codes`       | array   |  是 | `["1","2"]` 或 `["2"]`  | 允许的 N02_002 事业者种别 |
+| 字段                                     | 类型      | 必填 | 固定/默认                      | 说明 / 校验                                                   |
+| -------------------------------------- | ------- | -: | -------------------------- | ------------------------------------------------------- |
+| `mode`                                 | string  |  否 | `"single_primary_route"`   | **必须**恰为 `single_primary_route`，每趟列车只允许一条主路线              |
+| `jr_only`                              | boolean |  否 | `false`                    | 顾问性标记，必须为 boolean；实际过滤由 `allowed_institution_type_codes` 决定（见 5.4） |
+| `allow_alternatives`                   | boolean |  否 | `false`                    | **必须**为 `false`，不允许候选路线并列显示                              |
+| `allow_browser_straight_line_fallback` | boolean |  否 | `false`                    | **必须**为 `false`，禁止用直线伪装铁路线                               |
+| `allowed_institution_type_codes`       | array   |  否 | `["1","2","3","4","5"]`    | 允许的 N02_002 事业者种别，**只能含 `1`/`2`/`3`/`4`/`5`**（见 5.2）     |
+| `preferred_line_names`                 | array   |  否 | `[]`                       | 偏好路线名（`N02_003`），软偏置（见 5.3）；必须为字符串数组                     |
+| `preferred_operator_names`             | array   |  否 | `[]`                       | 偏好运营公司（`N02_004`），软偏置（见 5.3）；必须为字符串数组                    |
+| `institution_filter_mode`             | string  |  否 | `"soft"`                   | `soft` 或 `hard`（见 5.4）                                   |
 
-### 5.2 JR-only 规则
+### 5.2 `allowed_institution_type_codes` 取值
 
-`allowed_institution_type_codes` 只允许以下值：
+字段接受以下五个 `N02_002` 事业者种别码（详见数据源部分「N02_002 事业者种别代码」一节）；任何其它值都会导致校验失败：
 
 | 值     | 含义     |
 | ----- | ------ |
 | `"1"` | JR 新幹線 |
 | `"2"` | JR 在来線 |
+| `"3"` | 公営鉄道  |
+| `"4"` | 民営鉄道  |
+| `"5"` | 第三セクター |
 
-如果只显示 JR 在来线特急，使用：
-
-```json
-"allowed_institution_type_codes": ["2"]
-```
-
-如果同时允许新干线和 JR 在来线，使用：
+缺省（省略该字段）= **全量** `["1","2","3","4","5"]`。常用子集：
 
 ```json
-"allowed_institution_type_codes": ["1", "2"]
+"allowed_institution_type_codes": ["1", "2", "3", "4", "5"]   // 全量
+"allowed_institution_type_codes": ["1", "2"]                   // JR-only（新干线 + 在来线）
+"allowed_institution_type_codes": ["2"]                        // 仅 JR 在来线
 ```
 
-### 5.3 示例
+### 5.3 偏好提示：`preferred_line_names` / `preferred_operator_names`
+
+这两个数组是给 Dijkstra 寻路器的**软偏置**（不是硬约束）：偏离偏好线路/公司的边会被按距离比例加罚，使路线倾向于贴着指定线路/公司走，但当无可行偏好路径时仍可绕行。留空表示无偏好。
+
+> 提示区别于硬约束：若要**强制**某段必须走某条线/某家公司，应使用 `route_sections[].line_names` / `operator_names`（见第 6 节）。
+
+```json
+"preferred_line_names": ["日豊線"],
+"preferred_operator_names": ["九州旅客鉄道"]
+```
+
+### 5.4 `institution_filter_mode`：soft vs hard
+
+| 值        | 行为                                                                 |
+| -------- | ------------------------------------------------------------------ |
+| `"soft"`（默认） | `allowed_institution_type_codes` 作为**偏好**：非许可种别的边按距离比例加大罚分，但在没有许可路径时仍可借道（避免机场/直通区段出现可见缺口）。 |
+| `"hard"` | `allowed_institution_type_codes` 作为**硬白名单**：非许可种别的边被直接排除。仅在确实需要严格事业者白名单时使用。 |
+
+### 5.5 示例
 
 ```json
 "route_policy": {
@@ -266,7 +332,10 @@ id ASC             # 最终 tiebreaker
   "jr_only": true,
   "allow_alternatives": false,
   "allow_browser_straight_line_fallback": false,
-  "allowed_institution_type_codes": ["2"]
+  "allowed_institution_type_codes": ["2"],
+  "preferred_line_names": [],
+  "preferred_operator_names": [],
+  "institution_filter_mode": "soft"
 }
 ```
 
@@ -278,12 +347,20 @@ id ASC             # 最终 tiebreaker
 
 ### 6.1 字段
 
-| 字段                      | 类型          | 必填 | 说明          |
-| ----------------------- | ----------- | -: | ----------- |
-| `from`                  | string      |  是 | 区间起点站名      |
-| `to`                    | string      |  是 | 区间终点站名      |
-| `from_n02_station_code` | string/null |  是 | 起点 N02 駅コード |
-| `to_n02_station_code`   | string/null |  是 | 终点 N02 駅コード |
+每个 section 的起点必须**至少**有 `from` 或 `from_n02_station_code` 之一，终点同理（两者都缺会校验报错）。`line_names` / `operator_names` 为可选的**硬约束**提示。
+
+| 字段                      | 类型          | 必填 | 说明                                          |
+| ----------------------- | ----------- | -: | ------------------------------------------- |
+| `from`                  | string      |  否* | 区间起点站名（与 `from_n02_station_code` 至少有一个）      |
+| `to`                    | string      |  否* | 区间终点站名（与 `to_n02_station_code` 至少有一个）        |
+| `from_n02_station_code` | string/null |  否* | 起点 N02 駅コード（`N02_005c`）                      |
+| `to_n02_station_code`   | string/null |  否* | 终点 N02 駅コード（`N02_005c`）                      |
+| `line_names`            | array       |  否 | 限定该段必须走的路线名（`N02_003`）；字符串数组，留空表示不限          |
+| `operator_names`        | array       |  否 | 限定该段必须走的运营公司（`N02_004`）；字符串数组，留空表示不限         |
+
+> `*` 起点/终点各自的「名称」与「码」二选一即可，并非同时必填。
+>
+> **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。导入时也接受旧别名 `operator_hints`（等价于 `operator_names`），导出统一写为 `operator_names`。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
 
 ### 6.2 示例
 
@@ -326,14 +403,18 @@ stops[2] → stops[3]
 
 ### 7.1 Stop 字段
 
-| 字段                 | 类型          | 必填 | 说明                        |
-| ------------------ | ----------- | -: | ------------------------- |
-| `name`             | string      |  是 | 站名                        |
-| `n02_station_code` | string/null |  是 | N02 駅コード，即 `N02_005c`     |
-| `arrival`          | string/null |  是 | 到达时间，格式 `HH:MM`，可为 `null` |
-| `departure`        | string/null |  是 | 出发时间，格式 `HH:MM`，可为 `null` |
-| `stop_type`        | string      |  是 | 站点类型                      |
-| `ride_segment`     | boolean     |  是 | 该站是否处于实际乘坐状态              |
+导入时每个 stop **只强制要求 `name`**；其余字段缺省时按下表默认值补全。规范化 / 导出后每个 stop 都包含全部 6 个字段（这也是「完整 stops」的含义，见第 12 节）。stop 出现 6 个字段以外的键会导致导入失败。
+
+| 字段                 | 类型          | 导入必填 | 缺省默认值              | 说明                        |
+| ------------------ | ----------- | -: | ------------------ | ------------------------- |
+| `name`             | string      |  是 | —                  | 站名                        |
+| `n02_station_code` | string/null |  否 | `null`             | N02 駅コード，即 `N02_005c`     |
+| `arrival`          | string/null |  否 | `null`             | 到达时间，格式见第 10 节，可为 `null`  |
+| `departure`        | string/null |  否 | `null`             | 出发时间，格式见第 10 节，可为 `null`  |
+| `stop_type`        | string      |  否 | `"passenger_stop"` | 站点类型（见 7.2）               |
+| `ride_segment`     | boolean     |  否 | `false`            | 该站是否处于实际乘坐状态（导出时强制布尔）     |
+
+> 校验（`validateTrain`）对已规范化的 store 更严格：`ride_segment` 必须是 boolean，`arrival`/`departure` 必须是字符串或 `null`，`name` 与 `stop_type` 必须非空。内部编辑时会临时写入 `n02_group_code`，但它**不在** stop 的导出/导入字段内，导出时被丢弃。
 
 ### 7.2 stop_type 允许值
 
@@ -600,10 +681,12 @@ stop_type = pass_through
 
 ### 10.1 格式
 
-`arrival` 和 `departure` 必须是：
+`arrival` 和 `departure` 是 `"HH:MM"` 字符串或 `null`。系统支持**两种**跨日表示：
 
 ```text
-HH:MM
+24:10        # 直接用 >=24 的小时表示次日（推荐正则：^([01][0-9]|2[0-9]|3[0-9]):[0-5][0-9]$）
+25:30
+10:00+1      # 在时间后加 "+N" 表示第 N 天（解析器 parseTimeToMinutes 支持，排序按次日处理）
 ```
 
 或：
@@ -612,18 +695,10 @@ HH:MM
 null
 ```
 
-允许跨午夜时间：
-
-```text
-24:10
-25:30
-```
-
-推荐正则：
-
-```text
-^([01][0-9]|2[0-9]|3[0-9]):[0-5][0-9]$
-```
+> 排序解析（`parseTimeToMinutes`）接受 `H:MM` / `HH:MM`，以及可选的 `+N` 次日偏移（如 `10:00+1`）。
+> 无法解析或缺省的发车时间会让该列车在同日内排到最后，而不会报错（见 3.3 排序规则）。
+> 注意：`validateTrain` 只检查 `arrival`/`departure` 为字符串或 `null`，并不强制上面的格式——
+> 格式约定主要服务于显示与排序，请尽量遵循以获得正确的时间排序。
 
 ### 10.2 始发站
 
@@ -668,31 +743,30 @@ null
 
 ## 11. 导入行为
 
-### 11.1 只接受完整 Store
+### 11.1 接受的导入形态
 
-导入 JSON 必须是：
-
-```json
-{
-  "schema_version": "1.2",
-  "trains": []
-}
-```
+导出永远是完整 store；导入则按第 1.2 节宽松接受三种形态（完整 store / 裸列车数组 / 单列车对象），内部统一包装为完整 store 后再处理。
 
 ### 11.2 导入时追加
 
-导入时不得覆盖当前列车列表。
+导入时不得覆盖当前列车列表（逐条 progressive 追加）。
 
 正确行为：
 
 ```text
-读取 importedStore.trains
-→ 标准化每趟 train
+解析导入 JSON（store / 数组 / 单列车）
+→ 标准化每趟 train（补默认值、按 3.3 解析 date）
 → 追加到当前 trainStore.trains
-→ 如果 id 重复，自动改为唯一 id
-→ 保存到 localStorage
+→ 如果 id 重复，自动改为唯一 id（如 odr_001-2）
+→ 自动保存到服务器 train-store.json（PUT /api/train-store，去抖）
 → 自动选中最后导入的列车
 ```
+
+> 持久化说明：本系统以**服务器端 `data/train-store.json`** 作为唯一事实来源
+> （`GET/PUT/DELETE /api/train-store`），编辑会去抖自动保存、启动时自动载入，
+> 取代了早期的浏览器 localStorage 备份。仅有纯 UI 状态（当前选中日期 `selectedDate`、
+> 手动新增的空日期 `manualDates`、地图跟随/聚焦开关）仍存放在 localStorage，
+> **不**进入 canonical store。
 
 ### 11.3 导入后可编辑
 
@@ -703,7 +777,7 @@ null
 → 设置 selectedTrainId
 → 编辑区加载该 train
 → 可以编辑基本字段、stops、ride_segment
-→ 保存后更新 localStorage 和地图
+→ 保存后去抖写入服务器 train-store.json 并刷新地图
 ```
 
 ---
@@ -712,11 +786,11 @@ null
 
 ### 12.1 只导出 canonical store
 
-导出 JSON 永远必须是：
+导出 JSON 永远是当前版本的完整 store（带缩进的美化 JSON；服务器自动保存时写紧凑 JSON）：
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": []
 }
 ```
@@ -903,41 +977,59 @@ fromStop.ride_segment && toStop.ride_segment
 必须满足：
 
 ```text
-schema_version === "1.2"
+顶层是对象（非数组）
+只含 schema_version 与 trains 两个键（多余键报错）
+schema_version ∈ {"1.2", "1.3"}
 trains 是 array
-trains.length >= 1
+trains[*].id 不重复
 ```
+
+> 说明：导入时要求 `trains.length >= 1`（空 store 无可导入内容会报错）；但服务器保存 /
+> 导出允许空 `trains`（例如「全部删除」后保存的就是空 store）。
 
 ### 15.2 Train 校验
 
-每趟 train 必须满足：
+每趟 train 必须满足（`validateTrain`）：
 
 ```text
-id 非空
-number 非空
-name 非空
-origin 非空
-destination 非空
-visible 是 boolean
-style 是 object
-route_policy 是 object
-route_sections 是 array
-stops 是 array
-stops.length >= 2
+id / number / name / origin / destination  都是非空字符串
+id 在 store 内唯一（不得重复）
+stops 是 array 且 length >= 2
+首站不应同时有 arrival 和 departure；末站同理
+date 若出现：必须是合法 YYYY-MM-DD 或 "undated"
 ```
+
+下列字段为**可选**；只有在出现时才按规则校验（缺省时由规范化补默认值，见第 3/4/5/6 节）：
+
+```text
+style.color            若出现：必须匹配 ^#[0-9a-fA-F]{6}$
+route_sections         若出现：必须是 array；每段起点 from|from_n02_station_code 至少其一，
+                       终点同理；line_names / operator_names 若出现须为字符串数组
+route_policy.mode                                 须恰为 "single_primary_route"
+route_policy.jr_only                              须为 boolean
+route_policy.allow_alternatives                   须为 false
+route_policy.allow_browser_straight_line_fallback 须为 false
+route_policy.allowed_institution_type_codes       只能含 "1"/"2"/"3"/"4"/"5"
+route_policy.preferred_line_names / preferred_operator_names  须为字符串数组
+route_policy.institution_filter_mode              若出现须为 "soft" 或 "hard"
+```
+
+> 注意：`visible` 由导入规范化为布尔默认值，但 `validateTrain` 并不单独强校验其类型。
 
 ### 15.3 Stop 校验
 
-每个 stop 必须满足：
+已规范化 store 中每个 stop 必须满足：
 
 ```text
-name 字段存在
-n02_station_code 字段存在，允许 null
-arrival 字段存在，允许 null
-departure 字段存在，允许 null
-stop_type 字段存在
-ride_segment 字段存在且必须是 boolean
+name 非空
+stop_type 非空
+ride_segment 是 boolean
+arrival 是字符串或 null
+departure 是字符串或 null
+n02_station_code 允许 null
 ```
+
+（导入阶段更宽松：只要求 `name` 存在，其余按 7.1 补默认值。）
 
 ### 15.4 通过站校验
 
@@ -960,10 +1052,11 @@ origin / destination / passenger_stop 匹配失败
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": [
     {
       "id": "odr_001",
+      "date": "2026-07-03",
       "number": "踊り子9号",
       "name": "踊り子",
       "origin": "東京",
@@ -980,7 +1073,10 @@ origin / destination / passenger_stop 匹配失败
         "jr_only": true,
         "allow_alternatives": false,
         "allow_browser_straight_line_fallback": false,
-        "allowed_institution_type_codes": ["2"]
+        "allowed_institution_type_codes": ["2"],
+        "preferred_line_names": [],
+        "preferred_operator_names": [],
+        "institution_filter_mode": "soft"
       },
       "route_sections": [
         {
@@ -1074,8 +1170,8 @@ origin / destination / passenger_stop 匹配失败
 
 ## 17. 实现必须遵守的核心规则
 
-1. JSON 顶层只能是 `{ "schema_version": "1.2", "trains": [...] }`。
-2. 导入时 append，不覆盖现有 trains。
+1. 导出顶层永远是 `{ "schema_version": "1.3", "trains": [...] }`（兼容载入 `"1.2"`）；导入另宽松接受裸数组与单列车对象（见 1.2）。
+2. 导入时 append，不覆盖现有 trains；持久化到服务器 `train-store.json`（非 localStorage）。
 3. 导出时必须包含完整 stops。
 4. 每个 stop 必须包含 `ride_segment`。
 5. 每一站的 `ride_segment` 都可 toggle。
@@ -1089,6 +1185,13 @@ origin / destination / passenger_stop 匹配失败
 12. 每趟列车只允许一条 primary route。
 13. matched route 应按相邻停站拆成 segment features。
 14. JR-only 匹配必须只允许 `N02_002=["1","2"]` 或 `["2"]`。
+
+---
+
+# 第二部分 · 数据源（N02 / OSM）规范
+
+> 以下章节自成一套编号（§2–§23），描述列车 JSON 背后的 N02 铁路数据与 OSM 底图。
+> 这些是「构建器 / 数据源」层面的约定，与第一部分的列车 JSON 字段相互配合。
 
 ## 2. 数据源说明 / Data Sources
 
@@ -2215,7 +2318,7 @@ route_policy
 显示列车列表
 编辑 JSON
 导入/导出 canonical store
-保存 localStorage
+自动保存到服务器 train-store.json（仅 UI 状态用 localStorage）
 根据 ride_segment 调整站点和路线颜色
 显示 warnings
 ```
@@ -2275,18 +2378,23 @@ route_policy
 
 ---
 
-## 23. 可选字段：`route_geometry_cache`（线路几何缓存）
+## 23. 遗留可选字段：`route_geometry_cache`（线路几何缓存）
 
-为避免每次打开 / 导入 JSON 都在浏览器端重新对 N02 路网做 Dijkstra 寻路（大量列车时会造成明显卡顿），列车对象允许携带一个**可选**字段 `route_geometry_cache`，用于缓存已解算好的线路几何。
+> **现状（重要）**：该字段为**遗留兼容字段**。当前实现**不再把线路几何写进 train store**：
+> 导入时 `route_geometry_cache` 会被**接受但丢弃**（不加载到内存），导出 / 自动保存也**不会**写出它。
+> 因此 canonical store 始终是「精简的语义 JSON」，体积大幅缩小。早期版本曾把它内嵌进每趟列车，
+> 约占文件 ~96% 体积——现已移除。
 
-要点（与第 13、14 条并不冲突）：
+为避免每次打开 / 导入都在浏览器端重新对 N02 路网做 Dijkstra 寻路（大量列车时明显卡顿），
+解算结果改为缓存在**浏览器 IndexedDB**（库 `n02-route-geometry-cache`）中：
 
-1. **非权威、可重建**：语义数据（`stops`、`route_sections`、`route_policy`）仍是唯一事实来源；`route_geometry_cache` 只是这些语义在 N02 路网上的解算结果的记忆化缓存，随时可由程序重新生成。
-2. **可省略**：该字段可以完全不出现。缺失时，程序在首次渲染该列车时照常解算并填充。
-3. **自动失效**：字段内含一个 `key`，由该列车的 `route_sections` + `route_policy` + 允许的 `N02_002` 种别码派生。当上述任一项改变时 `key` 不再匹配，缓存被忽略并重新解算，因此不会显示过期几何。
-4. **可安全剥离**：不理解该字段的工具可以直接删除它，不影响语义正确性（只是下次打开会重新解算）。
+1. **唯一事实来源仍是语义数据**：`stops`、`route_sections`、`route_policy` 决定一切；几何只是其解算结果的记忆化缓存，随时可重建。
+2. **缓存键 / 自动失效**：缓存以 `railHash::cacheKey` 为键。`cacheKey` 由该列车的 `route_sections` + 偏好/过滤策略 + 允许的 `N02_002` 种别码派生；`railHash` 是当前 N02 路网内容的指纹。任一改变都会令旧条目不再命中并重新解算，因此不会显示过期几何；更换底层 N02 数据会整体失效旧缓存。
+3. **跨会话预热**：启动时把当前路网的缓存条目批量读入内存（`warmRouteCacheFromIndexedDb`）；命中则连重型路由图都无需构建，未命中才按需解算并回写 IndexedDB（`persistRouteCacheEntry`）。
+4. **与手写 JSON 无关**：手写 / 导出的列车 JSON **不应**也**不会**包含线路几何（与数据源部分「JSON 不直接保存 N02 geometry」一致）。
 
-形状：
+兼容性：导入白名单仍接受 `route_geometry_cache` 键（旧文件不会因此被拒），但其内容会被静默忽略。
+若你的工具仍在生成该字段，可安全移除——不影响任何语义。其历史形状如下（仅供识别旧文件）：
 
 ```json
 {
@@ -2298,5 +2406,3 @@ route_policy
   }
 }
 ```
-
-`features` 为模板形态的 GeoJSON 线要素数组（`train_id` 标记为 `__template__`），载入时按具体列车克隆。导入校验已将 `route_geometry_cache` 列为列车对象的合法可选键；导出 / 自动保存会在其存在时一并写出。
