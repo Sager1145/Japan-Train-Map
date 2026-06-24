@@ -50,7 +50,7 @@ npm start        # start the server / 启动服务器
 ```
 Japan Train Map/
 ├── README.md            # this file / 本文件
-├── jsonspec.md          # train JSON data spec (schema_version 1.2) / 列车 JSON 数据规范
+├── jsonspec.md          # train JSON data spec (schema_version 1.3, 1.2-compatible) / 列车 JSON 数据规范
 ├── samples/             # sample JSON (a real spec-compliant itinerary to import) / 示例 JSON，可在界面导入参考
 │   └── jr_limited_shinkansen_itinerary_*.json
 └── app/                 # the application / 应用本体
@@ -87,7 +87,7 @@ Once the server is running it exposes the following endpoints. / 服务器启动
 | `GET` | `/api/matched-routes` | Matched routes | 匹配后的路线 |
 | `GET` | `/api/matched-stops` | Matched stops | 匹配后的停靠站 |
 | `GET` | `/api/train-store` | Read the saved train store (404 if none saved) | 读取已保存的列车存储（无则返回 404） |
-| `PUT` | `/api/train-store` | Save the train store (body must be a `schema_version: "1.2"` store object) | 保存列车存储（请求体须为 `schema_version: "1.2"` 的存储对象） |
+| `PUT` | `/api/train-store` | Save the train store (body must be a `schema_version` `"1.3"` or `"1.2"` store object) | 保存列车存储（请求体须为 `schema_version` 为 `"1.3"` 或 `"1.2"` 的存储对象） |
 | `DELETE` | `/api/train-store` | Clear the saved store; next boot falls back to built-in defaults | 清空已保存的存储，下次启动回退到内置默认值 |
 
 | English | 中文 |
@@ -104,13 +104,14 @@ Once the server is running it exposes the following endpoints. / 服务器启动
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": []
 }
 ```
 
 | English | 中文 |
 | --- | --- |
+| Each train carries a `date` field (`YYYY-MM-DD`, added in 1.3). The sidebar groups trains by date — a date-button bar, the selected day's list, and an `全部` / All combined list — sorted by date then departure time. Older `1.2` JSON without `date` still imports: the date is taken from the currently-selected day, then inferred from the id prefix (e.g. `20260703_...` → `2026-07-03`), otherwise `undated`. | 每个 train 带有 `date` 字段（`YYYY-MM-DD`，1.3 新增）。侧栏按日期分组——日期按钮区、当前日期列表，以及 `全部` 总清单——并按日期与发车时间排序。没有 `date` 的旧版 `1.2` JSON 仍可导入：日期取当前选中日期，其次从 id 前缀解析（如 `20260703_...` → `2026-07-03`），都没有则为 `undated`。 |
 | Field meanings, route policy (`route_policy`), stops / pass-through stations (`route_sections`) and the optional geometry cache (`route_geometry_cache`) are fully defined in [`jsonspec.md`](./jsonspec.md). A real spec-compliant itinerary is provided under `samples/` and can be imported directly from the UI for reference. | 字段含义、路线策略（`route_policy`）、停靠站 / 通过站（`route_sections`）以及可选的几何缓存（`route_geometry_cache`）等完整定义见 [`jsonspec.md`](./jsonspec.md)。`samples/` 下提供了一份符合该规范的真实行程示例，可直接在界面中导入参考。 |
 
 ---

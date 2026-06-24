@@ -1,4 +1,40 @@
 const LOCAL_JSON_FILENAME = "n02-train-store.json";
+
+    // ---- Performance instrumentation (default OFF) --------------------------
+    // Flip PERF_DEBUG to true (or run `window.PERF_DEBUG = true` before load) to
+    // log how long the hot rendering / serialization / import paths take and to
+    // surface any main-thread "long task" (>50ms) via PerformanceObserver. The
+    // harness is a no-op when disabled so it costs nothing in normal use.
+    let PERF_DEBUG = (typeof window !== "undefined" && window.PERF_DEBUG === true);
+
+    function perfMeasure(label, fn) {
+      if (!PERF_DEBUG) return fn();
+      const start = performance.now();
+      const result = fn();
+      const end = performance.now();
+      console.log(`[perf] ${label}: ${(end - start).toFixed(1)}ms`);
+      return result;
+    }
+
+    // Long-task monitor: warns whenever the main thread is blocked >50ms, which
+    // is exactly what makes dragging / scrolling feel janky. Only attached when
+    // PERF_DEBUG is on so it never adds observer overhead in production.
+    function installLongTaskObserver() {
+      if (!PERF_DEBUG || typeof PerformanceObserver === "undefined") return;
+      try {
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.duration > 50) {
+              console.warn("[long-task]", `${entry.duration.toFixed(1)}ms`, entry);
+            }
+          }
+        });
+        observer.observe({ entryTypes: ["longtask"] });
+      } catch (err) {
+        console.warn("Long-task observer unavailable.", err);
+      }
+    }
+
     // The server-side data/train-store.json (served at /api/train-store) is now
     // the single source of truth: the editor auto-saves there and loads from it
     // on every boot, replacing the old browser-localStorage backup.
@@ -10,7 +46,14 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const JAPAN_MAIN_ISLANDS_BOUNDS = [[30.85, 129.1], [45.75, 146.2]];
 
     // Single source of truth for protocol/schema constants reused across the app.
-    const SCHEMA_VERSION = "1.2";
+    // Stores are now written as 1.3 (adds per-train `date`), but 1.2 (no date)
+    // is still accepted on import/load for backward compatibility.
+    const SCHEMA_VERSION = "1.3";
+    const ACCEPTED_SCHEMA_VERSIONS = ["1.2", "1.3"];
+    // Sentinel selectedDate value: show the combined "all trains" list.
+    const ALL_DATES = "__all__";
+    // Bucket for trains whose date could neither be supplied nor inferred.
+    const UNDATED = "undated";
     const DEFAULT_TRAIN_COLOR = "#d9364f";
     // Single source of truth for the default route style numbers. Previously the
     // literals 6 and 0.22 were repeated across the canonical serializer, editor,
@@ -19,6 +62,187 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const DEFAULT_UNRIDDEN_OPACITY = 0.22;
     const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
     const N02_INSTITUTION_TYPE_CODES = new Set(DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES);
+
+    // ------------------------------------------------------------------------
+    // Date grouping helpers. A train belongs to exactly one date bucket via its
+    // `date` field ("YYYY-MM-DD" or UNDATED). Every per-date / all-trains view is
+    // derived from the single `trainStore.trains` array, never stored separately,
+    // so the daily lists and the combined list can never drift out of sync.
+    // ------------------------------------------------------------------------
+    function isValidDateString(value) {
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+      const [y, m, d] = value.split("-").map(Number);
+      if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+      return true;
+    }
+
+    // Coerce arbitrary input to a canonical "YYYY-MM-DD" string, or null when it
+    // is not a usable date. Tolerates surrounding whitespace and "/" separators.
+    function normalizeDateString(value) {
+      if (typeof value !== "string") return null;
+      const trimmed = value.trim().replace(/\//g, "-");
+      return isValidDateString(trimmed) ? trimmed : null;
+    }
+
+    // Parse a leading YYYYMMDD out of a train id, e.g.
+    // "20260703_01_haruka_kix_shinosaka" -> "2026-07-03". Returns null if absent.
+    function inferDateFromTrainId(id) {
+      const match = /(?:^|[^0-9])(\d{4})(\d{2})(\d{2})(?:[^0-9]|$)/.exec(String(id || ""));
+      if (!match) return null;
+      const candidate = `${match[1]}-${match[2]}-${match[3]}`;
+      return isValidDateString(candidate) ? candidate : null;
+    }
+
+    // Resolve a train's date with the documented precedence:
+    //   1. an explicit valid train.date,
+    //   2. the caller's fallback (the currently-selected concrete date),
+    //   3. a date parsed from the id,
+    //   4. UNDATED.
+    function normalizeTrainDate(train, fallbackDate = null) {
+      const explicit = normalizeDateString(train && train.date);
+      if (explicit) return explicit;
+      const fallback = normalizeDateString(fallbackDate);
+      if (fallback) return fallback;
+      const inferred = inferDateFromTrainId(train && train.id);
+      if (inferred) return inferred;
+      return UNDATED;
+    }
+
+    // The date bucket a train currently lives in (defensive re-normalize).
+    function getTrainDate(train) {
+      return normalizeTrainDate(train);
+    }
+
+    // Convert "HH:mm" (optionally "HH:mm+1" for a next-day time) to minutes from
+    // midnight. Returns null when the value is missing or unparseable so callers
+    // can push such trains to the end instead of crashing.
+    function parseTimeToMinutes(value) {
+      if (typeof value !== "string") return null;
+      const match = /^(\d{1,2}):(\d{2})(?:\s*\+\s*(\d+))?/.exec(value.trim());
+      if (!match) return null;
+      const hours = Number(match[1]);
+      const minutes = Number(match[2]);
+      const dayOffset = match[3] ? Number(match[3]) : 0;
+      if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+      return dayOffset * 24 * 60 + hours * 60 + minutes;
+    }
+
+    // First meaningful departure time of a train, in minutes, following the
+    // documented priority. Returns Infinity when no departure exists so the
+    // train sorts last within its date.
+    function getTrainDepartureMinutes(train) {
+      const stops = Array.isArray(train && train.stops) ? train.stops : [];
+      if (!stops.length) return Infinity;
+      const firstStopDep = parseTimeToMinutes(stops[0].departure);
+      if (firstStopDep !== null) return firstStopDep;
+      const originStop = stops.find((stop) => stop && stop.stop_type === "origin");
+      if (originStop) {
+        const originDep = parseTimeToMinutes(originStop.departure);
+        if (originDep !== null) return originDep;
+      }
+      for (const stop of stops) {
+        const dep = parseTimeToMinutes(stop && stop.departure);
+        if (dep !== null) return dep;
+      }
+      return Infinity;
+    }
+
+    // Date sort key: real dates ascending, UNDATED always last.
+    function dateSortKey(date) {
+      return date === UNDATED ? "￿" : date;
+    }
+
+    // Comparator implementing: date ASC, departure ASC (missing last), id ASC.
+    function compareTrainsByDateAndDeparture(a, b) {
+      const dateA = dateSortKey(getTrainDate(a));
+      const dateB = dateSortKey(getTrainDate(b));
+      if (dateA < dateB) return -1;
+      if (dateA > dateB) return 1;
+      const depA = getTrainDepartureMinutes(a);
+      const depB = getTrainDepartureMinutes(b);
+      if (depA !== depB) return depA - depB;
+      return String(a.id).localeCompare(String(b.id));
+    }
+
+    function sortTrainsByDateAndDeparture(trains) {
+      return [...trains].sort(compareTrainsByDateAndDeparture);
+    }
+
+    // All date buckets currently in use, plus any manually-created empty dates,
+    // ordered earliest-first with UNDATED forced to the end.
+    function getAvailableDates(trains) {
+      const set = new Set();
+      (trains || []).forEach((train) => set.add(getTrainDate(train)));
+      manualDates.forEach((date) => {
+        const normalized = date === UNDATED ? UNDATED : normalizeDateString(date);
+        if (normalized) set.add(normalized);
+      });
+      return [...set].sort((a, b) => {
+        const ka = dateSortKey(a);
+        const kb = dateSortKey(b);
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+    }
+
+    function getTrainsForDate(trains, date) {
+      return (trains || []).filter((train) => getTrainDate(train) === date);
+    }
+
+    // ---- selectedDate / manualDates persistence (pure UI state) -------------
+    // Kept in localStorage (not the train store) so the canonical store schema
+    // stays exactly { schema_version, trains:[...] } as required.
+    const UI_STATE_STORAGE_KEY = "n02-train-manager-ui-state";
+
+    function persistUiDateState() {
+      try {
+        localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify({
+          selectedDate,
+          manualDates,
+          mapFollowsSelectedDate
+        }));
+      } catch (err) {
+        // Non-fatal: private-mode / disabled storage just means no restore.
+      }
+    }
+
+    // Returns true when a previously-saved selectedDate was restored, so the
+    // boot path knows whether to apply the "earliest date" first-run default.
+    function restoreUiDateState() {
+      try {
+        const raw = localStorage.getItem(UI_STATE_STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          if (Array.isArray(parsed.manualDates)) {
+            manualDates = parsed.manualDates
+              .map((d) => (d === UNDATED ? UNDATED : normalizeDateString(d)))
+              .filter(Boolean);
+          }
+          if (typeof parsed.mapFollowsSelectedDate === "boolean") mapFollowsSelectedDate = parsed.mapFollowsSelectedDate;
+          if (typeof parsed.selectedDate === "string") {
+            selectedDate = parsed.selectedDate;
+            return true;
+          }
+        }
+      } catch (err) {
+        // Ignore malformed saved UI state.
+      }
+      return false;
+    }
+
+    // Ensure selectedDate still points at something renderable after the train
+    // set changes (import / delete / boot). Never force-switches to the *last*
+    // date: keeps a still-valid selection, otherwise falls back to earliest.
+    function reconcileSelectedDate({ preferEarliestWhenAll = false } = {}) {
+      const dates = getAvailableDates(trainStore.trains);
+      if (selectedDate === ALL_DATES) {
+        if (preferEarliestWhenAll && dates.length) selectedDate = dates[0];
+        return;
+      }
+      if (!dates.includes(selectedDate)) {
+        selectedDate = dates.length ? dates[0] : ALL_DATES;
+      }
+    }
 
     // Document-relative (not root-absolute) so every API call — including the
     // train-store save/load — resolves next to index.html. This keeps the app
@@ -55,11 +279,25 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
     let selectedTrainId = null;
     let focusedTrainId = null;
-    let map, railSectionLayer, stationLayer, limitedExpressRouteLayer, stopLayer, passThroughLayer, limitedExpressRouteRenderer;
+    // Which date the sidebar list is filtered to. ALL_DATES shows the combined
+    // "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
+    let selectedDate = ALL_DATES;
+    // Dates the user created manually that may not yet have any train. Merged
+    // with the dates derived from trains when building the date-button bar.
+    let manualDates = [];
+    // When on, the map mirrors the sidebar date filter (only the selected date's
+    // trains draw). Off by default: the map stays controlled by each train's
+    // `visible` flag, matching the original behaviour.
+    let mapFollowsSelectedDate = false;
+    let map, railSectionLayer, stationLayer, limitedExpressRouteLayer, stopLayer, passThroughLayer, limitedExpressRouteRenderer, baseOverlayRenderer;
     let importInProgress = false;
 
     const els = {
       list: document.getElementById("train-list"),
+      dateBar: document.getElementById("date-bar"),
+      listTitle: document.getElementById("train-list-title"),
+      importTarget: document.getElementById("import-target"),
+      mapDateFilter: document.getElementById("map-date-filter"),
       search: document.getElementById("search-input"),
       importJson: document.getElementById("import-json-input"),
       importStatus: document.getElementById("import-status"),
@@ -82,6 +320,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     };
 
     document.addEventListener("DOMContentLoaded", async () => {
+      installLongTaskObserver();
       try {
         await loadAppData();
       } catch (err) {
@@ -95,6 +334,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         }
         return;
       }
+      // Restore the saved date filter (selectedDate / manual dates) before the
+      // first render so the date bar reflects the user's last choice.
+      const restoredSelectedDate = restoreUiDateState();
       initMap();
       bindEvents();
       fitJapanMainIslands();
@@ -106,7 +348,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       await replaceTrainStoreFromStoreProgressive(
         savedStore || getDefaultTrainStore(),
         savedStore ? "伺服器保存的 train-store.json" : "內建預設 JSON",
-        { persistEachStep: false, finalPersist: false }
+        // First run (no saved filter): default to the earliest date per spec 1.1.
+        // Returning user: keep their restored selection if it is still valid.
+        { persistEachStep: false, finalPersist: false, selectEarliestDate: !restoredSelectedDate }
       );
       if (!savedStore) {
         setStatus(els.importStatus, "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。", "warn");
@@ -339,21 +583,32 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
     // Persist every change to the server-side store (debounced). This is the
     // single source of truth that replaces the old localStorage backup.
-    function saveTrainStore() {
-      scheduleServerStoreSave(exportTrainStore());
-    }
-
     let serverStoreSaveTimer = null;
     let serverStoreSaveInFlight = false;
     let pendingServerStoreText = null;
+    // Marks the in-memory store dirty WITHOUT serializing. The expensive full
+    // JSON.stringify (which now also carries per-train route_geometry_cache) is
+    // deferred until the debounced flush actually runs, so a rapid burst of small
+    // mutations (visible toggles, field edits, ride_segment toggles) no longer
+    // pays one — let alone two — full serializations on the synchronous path.
+    let storeSaveDirty = false;
 
-    function scheduleServerStoreSave(jsonText = exportTrainStore()) {
-      pendingServerStoreText = jsonText;
+    function saveTrainStore() {
+      storeSaveDirty = true;
       clearTimeout(serverStoreSaveTimer);
       serverStoreSaveTimer = setTimeout(() => flushServerStoreSave(), SERVER_AUTOSAVE_DEBOUNCE_MS);
     }
 
+    // Serialize the store at most once per dirty window, lazily, right before a
+    // network write. Kept separate so force-flush paths can reuse it.
+    function serializePendingStoreIfDirty() {
+      if (!storeSaveDirty) return;
+      pendingServerStoreText = perfMeasure("serialize store", () => exportTrainStore());
+      storeSaveDirty = false;
+    }
+
     async function flushServerStoreSave() {
+      serializePendingStoreIfDirty();
       if (serverStoreSaveInFlight) return;
       if (pendingServerStoreText === null) return;
       serverStoreSaveInFlight = true;
@@ -372,9 +627,22 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         setStatus(els.jsonStatus, `自動保存到伺服器失敗：${error.message}`, "warn");
       } finally {
         serverStoreSaveInFlight = false;
-        // A newer change may have arrived while this request was in flight.
-        if (pendingServerStoreText !== null) flushServerStoreSave();
+        // A newer change may have arrived while this request was in flight
+        // (either already serialized, or just flagged dirty). Flush it.
+        if (pendingServerStoreText !== null || storeSaveDirty) flushServerStoreSave();
       }
+    }
+
+    // The read-only export textarea is a display convenience, not part of the
+    // edit path. Refreshing it ran a full exportTrainStore() (whole-store
+    // JSON.stringify) on EVERY mutation. Debounce it so rapid edits coalesce into
+    // a single serialization once the user pauses, off the interaction's hot path.
+    let exportTextareaTimer = null;
+    function scheduleExportTextareaRefresh() {
+      clearTimeout(exportTextareaTimer);
+      exportTextareaTimer = setTimeout(() => {
+        if (els.json) els.json.value = perfMeasure("export textarea", () => exportTrainStore());
+      }, 300);
     }
 
     // Load the saved store from the server. Returns null when nothing has been
@@ -527,11 +795,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     // + persist happens when the loop finishes.
     const PROGRESSIVE_APPEND_REPAINT_BATCH = 25;
 
-    async function runProgressiveAppend(trains, { persistEachStep = true, onProgress } = {}) {
+    async function runProgressiveAppend(trains, { persistEachStep = true, onProgress, fallbackDate = null } = {}) {
       const appendedIds = [];
       const total = trains.length;
       for (let index = 0; index < total; index += 1) {
-        const id = appendImportedTrain(trains[index]);
+        const id = appendImportedTrain(trains[index], fallbackDate);
         appendedIds.push(id);
         if (onProgress) onProgress({ count: appendedIds.length, total, id });
 
@@ -570,9 +838,13 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
     // Re-select the first imported train, re-validate the canonical store and
     // (optionally) persist. Shared tail of the two "replace" import paths.
-    function finalizeProgressiveLoad(appendedIds, { finalPersist = true } = {}) {
+    function finalizeProgressiveLoad(appendedIds, { finalPersist = true, selectEarliestDate = false } = {}) {
       selectedTrainId = appendedIds[0] || null;
       focusedTrainId = null;
+      // A full replace can invalidate the previous date filter. Drop to the
+      // earliest available date (or keep a still-valid one); on first boot we
+      // explicitly prefer the earliest date even when nothing was selected yet.
+      reconcileSelectedDate({ preferEarliestWhenAll: selectEarliestDate });
       validateTrainStore(buildCanonicalTrainStore());
       if (finalPersist) saveTrainStore();
       renderAll();
@@ -594,9 +866,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
         const appendedIds = await runProgressiveAppend(importedStore.trains, {
           persistEachStep: true,
+          // Per-item progress lives only in the progress bar's own text. The
+          // status line is left for the final summary so the two don't echo the
+          // same "n/total" message at once.
           onProgress: ({ count, total: t, id }) => {
             setImportProgress(count, t, `正在逐條載入 ${sourceLabel}：${count}/${t}：${id}`);
-            setStatus(els.importStatus, `正在逐條載入 ${sourceLabel}：${count}/${t}：${id}`, "ok");
           }
         });
 
@@ -624,20 +898,22 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
         const persistEachStep = Boolean(options.persistEachStep);
         const finalPersist = options.finalPersist !== false;
+        const selectEarliestDate = Boolean(options.selectEarliestDate);
 
         resetTrainStoreForProgressiveLoad();
         setImportProgress(0, total, `準備逐條載入 ${sourceLabel}：0/${total}`);
-        setStatus(els.importStatus, `正在從 ${sourceLabel} 逐條恢復列車：0/${total}`, "ok");
 
         const appendedIds = await runProgressiveAppend(importedStore.trains, {
           persistEachStep,
+          // Per-item progress lives only in the progress bar's own text; the
+          // status line is reserved for the final summary to avoid a duplicate
+          // "正在…n/total" line echoing the same thing.
           onProgress: ({ count, total: t, id }) => {
             setImportProgress(count, t, `正在逐條載入 ${sourceLabel}：${count}/${t}：${id}`);
-            setStatus(els.importStatus, `正在從 ${sourceLabel} 逐條恢復列車：${count}/${t}：${id}`, "ok");
           }
         });
 
-        finalizeProgressiveLoad(appendedIds, { finalPersist });
+        finalizeProgressiveLoad(appendedIds, { finalPersist, selectEarliestDate });
         setImportProgress(total, total, `完成：${total} 趟列車`);
         setStatus(els.importStatus, `已從 ${sourceLabel} 逐條恢復 ${total} 趟列車。`, "ok");
         return { count: appendedIds.length, ids: appendedIds };
@@ -699,7 +975,15 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const train = getTrain(trainId);
       if (!train) return;
       train.visible = train.visible === false;
-      persistAndRender();
+      // Incremental update: a visibility flip changes (a) this card's shown/hidden
+      // label and (b) the map. It does NOT change the date buckets, the editor, or
+      // the import target, so we skip rebuilding those. The map still gets one full
+      // renderTrainLayers pass because overlapping parallel routes share global
+      // offset slots that must be recomputed when the visible set changes. Saving
+      // is debounced (no synchronous full serialization here).
+      saveTrainStore();
+      perfMeasure("renderTrainList", renderTrainList);
+      perfMeasure("renderTrainLayers", renderTrainLayers);
     }
 
     function moveTrain(trainId, direction) {
@@ -838,6 +1122,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     function normalizeExportTrain(train) {
       const normalized = {
         id: train.id || "",
+        date: normalizeTrainDate(train),
         number: train.number || "",
         name: train.name || "",
         origin: train.origin || "",
@@ -875,8 +1160,8 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       if (Array.isArray(parsed.trains)) {
         assertOnlyKeys(parsed, ["schema_version", "trains"], "Store");
 
-        if (parsed.schema_version !== SCHEMA_VERSION) {
-          throw new Error(`schema_version must be "${SCHEMA_VERSION}".`);
+        if (!ACCEPTED_SCHEMA_VERSIONS.includes(parsed.schema_version)) {
+          throw new Error(`schema_version must be one of ${ACCEPTED_SCHEMA_VERSIONS.join(", ")}.`);
         }
 
         return parsed;
@@ -928,12 +1213,12 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       };
     }
 
-    function normalizeImportedTrain(train) {
+    function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       if (!train || typeof train !== "object" || Array.isArray(train)) {
         throw new Error("Each train must be an object.");
       }
 
-      assertOnlyKeys(train, ["id", "number", "name", "origin", "destination", "direction", "visible", "style", "route_policy", "route_sections", "stops", "route_geometry_cache"], "Train");
+      assertOnlyKeys(train, ["id", "date", "number", "name", "origin", "destination", "direction", "visible", "style", "route_policy", "route_sections", "stops", "route_geometry_cache"], "Train");
 
       if (!train.id) throw new Error("Each train must contain id.");
       if (!train.number) throw new Error(`Train ${train.id} must contain number.`);
@@ -946,6 +1231,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
       const normalized = {
         id: train.id,
+        date: normalizeTrainDate(train, fallbackDate),
         number: train.number,
         name: train.name,
         origin: train.origin,
@@ -979,8 +1265,14 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       return id;
     }
 
-    function appendImportedTrain(rawTrain) {
-      const train = normalizeImportedTrain(rawTrain);
+    // The concrete date to assign an undated imported train to: the currently
+    // selected date when one is active, otherwise null (let id-inference decide).
+    function currentImportFallbackDate() {
+      return selectedDate && selectedDate !== ALL_DATES ? selectedDate : null;
+    }
+
+    function appendImportedTrain(rawTrain, fallbackDate = currentImportFallbackDate()) {
+      const train = normalizeImportedTrain(rawTrain, { fallbackDate });
       const existingIds = new Set(trainStore.trains.map((t) => t.id));
       train.id = makeUniqueTrainId(train.id, existingIds);
 
@@ -1022,9 +1314,13 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         }
 
         // Append mode: unlike the "replace" paths this does NOT reset the store.
+        // Undated trains fall back to the currently-selected date (spec 3.1);
+        // trains carrying their own `date` keep it (spec 3.2), and when "全部"
+        // is active the date is inferred from the id instead.
         const appendedIds = await runProgressiveAppend(importedStore.trains, {
           persistEachStep: true,
-          onProgress
+          onProgress,
+          fallbackDate: currentImportFallbackDate()
         });
 
         return {
@@ -1078,6 +1374,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     }
 
     function persistAndRender() {
+      // Keep the date filter pointing at something renderable after add / delete
+      // / edit so a removed date can't leave the list stuck on an empty bucket.
+      reconcileSelectedDate();
       saveTrainStore();
       renderAll();
     }
@@ -1088,7 +1387,12 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       // into thousands of path segments, and an SVG DOM of that size makes every
       // pan/zoom and re-render slow. Canvas keeps interaction smooth; click/popup
       // still work via Leaflet's canvas renderer.
-      limitedExpressRouteRenderer = L.canvas({ padding: 0.5 });
+      limitedExpressRouteRenderer = L.canvas({ padding: 0.6 });
+      // Separate canvas for the heavy static reference overlays (national N02
+      // railway network + stations). A larger buffer means panning re-renders
+      // these ~22k features far less often, and everything drawn on it is
+      // non-interactive so Leaflet does no per-feature hit-testing for them.
+      baseOverlayRenderer = L.canvas({ padding: 0.6 });
 
       const simpleOsmLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         subdomains: "abcd",
@@ -1118,30 +1422,42 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       });
       const noBasemapLayer = L.layerGroup();
 
+      // National N02 railway network (~22k line features). Rendered as a single
+      // non-interactive canvas overlay: no per-section popup binding and no
+      // hit-testing, which is what keeps panning smooth. Train routes (below)
+      // remain fully interactive.
       railSectionLayer = L.geoJSON(railSectionsGeoJson, {
-        style: () => ({ color: "#777", weight: 1, opacity: 0.45 }),
-        onEachFeature: (feature, layer) => {
-          const p = feature.properties || {};
-          layer.bindPopup(buildRailPopup(p));
-        }
+        renderer: baseOverlayRenderer,
+        interactive: false,
+        // The national overlay is ~22k lines / ~405k points; the canvas re-strokes
+        // ALL of it on every moveend, which was the dominant source of map drag /
+        // zoom jank. A high smoothFactor makes Leaflet drop near-collinear points
+        // at render time (purely visual simplification of a reference overlay — the
+        // underlying N02 data is untouched), cutting per-redraw paint cost sharply.
+        style: () => ({ color: "#777", weight: 1, opacity: 0.45, smoothFactor: 3 })
       });
 
+      // Station overlay (10k+ features). Off by default; rendered non-interactive
+      // on the base canvas so toggling it on no longer freezes the map. (The
+      // per-station tooltip/popup is dropped as part of making it lightweight.)
       stationLayer = L.layerGroup();
       L.geoJSON(stationsGeoJson, {
-        style: () => ({ color: "#444", weight: 3, opacity: 0.35, dashArray: "3 4" }),
-        onEachFeature: (feature, layer) => {
-          layer.bindTooltip(`${stationName(feature)} station geometry`);
-          layer.bindPopup(buildStationPopup(feature));
-        }
+        renderer: baseOverlayRenderer,
+        interactive: false,
+        // Same render-time simplification as the rail overlay (off by default, but
+        // keep it cheap to repaint when the user enables it).
+        style: () => ({ color: "#444", weight: 3, opacity: 0.35, dashArray: "3 4", smoothFactor: 3 })
       }).addTo(stationLayer);
       stationsGeoJson.features.forEach((feature) => {
         L.circleMarker(toLatLng(feature), {
+          renderer: baseOverlayRenderer,
+          interactive: false,
           radius: 4,
           color: "#444",
           weight: 1,
           fillColor: "#fff",
           fillOpacity: 0.85
-        }).bindTooltip(stationName(feature)).bindPopup(buildStationPopup(feature)).addTo(stationLayer);
+        }).addTo(stationLayer);
       });
 
       limitedExpressRouteLayer = L.layerGroup();
@@ -1236,8 +1552,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           resetImportProgress();
           els.search.value = "";
           const result = await importCanonicalStoreAppendProgressive(els.importJson.value, ({ count, total, id }) => {
+            // Live count shown only in the progress bar; importStatus gets the
+            // final summary below so the two lines don't repeat each other.
             setImportProgress(count, total, `正在逐條載入 ${count}/${total}：${id}`);
-            setStatus(els.importStatus, `Imported ${count}/${total}: ${id}`, "ok");
           });
           setImportProgress(result.count, result.count, `完成：${result.count} 趟列車`);
           setStatus(
@@ -1279,6 +1596,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           // Cancel any pending autosave so it can't immediately re-create the file.
           clearTimeout(serverStoreSaveTimer);
           pendingServerStoreText = null;
+          storeSaveDirty = false;
           const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, { method: "DELETE" });
           if (!res.ok && res.status !== 404) throw new Error(`${res.status} ${res.statusText}`);
           await deleteStoredFileHandle();
@@ -1287,48 +1605,248 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           setStatus(els.jsonStatus, `清除保存資料失敗：${error.message}`, "err");
         }
       });
-      els.search.addEventListener("input", renderTrainList);
+      // Debounce search: re-rendering the list on every keystroke (and, before,
+      // JSON.stringify-ing every train including its route geometry per keystroke)
+      // made typing janky. Coalesce keystrokes into one render after a short pause.
+      let searchDebounceTimer = null;
+      els.search.addEventListener("input", () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(renderTrainList, 120);
+      });
+      document.getElementById("add-date").addEventListener("click", addManualDate);
+      document.getElementById("remove-empty-dates").addEventListener("click", removeEmptyDates);
+
+      // When the tab is hidden, flush any pending (debounced) save immediately so
+      // unsaved edits aren't lost if the page is backgrounded/closed. There are no
+      // always-on animation/interval loops in this app to pause; the only deferred
+      // work (route-graph prebuild) is a one-shot requestIdleCallback.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) flushServerStoreSave();
+      });
+      if (els.mapDateFilter) {
+        els.mapDateFilter.addEventListener("change", () => {
+          mapFollowsSelectedDate = els.mapDateFilter.checked;
+          persistUiDateState();
+          renderTrainLayers();
+        });
+      }
     }
 
     function renderAll({ updateJsonTextarea = true } = {}) {
-      renderTrainList();
-      renderEditor();
-      renderTrainLayers();
+      perfMeasure("renderDateButtons", renderDateButtons);
+      perfMeasure("renderTrainList", renderTrainList);
+      updateImportTarget();
+      perfMeasure("renderEditor", renderEditor);
+      perfMeasure("renderTrainLayers", renderTrainLayers);
       // Serializing the whole store to fill the export textarea is O(store size).
-      // Callers in hot loops (progressive import) skip it and let the final
-      // render populate the textarea once.
-      if (updateJsonTextarea) els.json.value = exportTrainStore();
+      // Callers in hot loops (progressive import) skip it; everyone else gets a
+      // debounced refresh so the serialization never blocks the interaction.
+      if (updateJsonTextarea) scheduleExportTextareaRefresh();
+    }
+
+    // Human-readable label for a date bucket used in buttons / titles.
+    function dateLabel(date) {
+      if (date === ALL_DATES) return "全部";
+      if (date === UNDATED) return "未分配日期";
+      return date;
+    }
+
+    // The date-selector bar: a "全部" button plus one button per available date
+    // (dynamically generated, no fixed cap), ordered earliest-first. The active
+    // date is highlighted. Clicking only re-scopes the sidebar list.
+    function renderDateButtons() {
+      if (!els.dateBar) return;
+      const dates = getAvailableDates(trainStore.trains);
+      els.dateBar.innerHTML = "";
+      const fragment = document.createDocumentFragment();
+
+      const makeButton = (date, label, count) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `date-btn${date === selectedDate ? " active" : ""}`;
+        btn.dataset.date = date;
+        const countHtml = count === null ? "" : `<span class="date-count">${count}</span>`;
+        btn.innerHTML = `${escapeHtml(label)}${countHtml}`;
+        btn.addEventListener("click", () => setSelectedDate(date));
+        fragment.appendChild(btn);
+      };
+
+      makeButton(ALL_DATES, "全部", trainStore.trains.length);
+      dates.forEach((date) => {
+        makeButton(date, dateLabel(date), getTrainsForDate(trainStore.trains, date).length);
+      });
+
+      els.dateBar.appendChild(fragment);
+      if (els.mapDateFilter) els.mapDateFilter.checked = mapFollowsSelectedDate;
+    }
+
+    // Switch the sidebar date filter. Does NOT reload the basemap or drop any
+    // imported train — it only changes which trains the list shows (and, when
+    // the "map follows date" toggle is on, which trains draw).
+    function setSelectedDate(date) {
+      selectedDate = date;
+      persistUiDateState();
+      renderDateButtons();
+      renderTrainList();
+      updateImportTarget();
+      if (mapFollowsSelectedDate) renderTrainLayers();
+    }
+
+    // Trains to show in the current sidebar scope, already sorted. "全部" shows
+    // everything (date ASC, departure ASC, undated last); a concrete date shows
+    // only that day's trains sorted by departure.
+    function getVisibleListTrains() {
+      const base = selectedDate === ALL_DATES
+        ? trainStore.trains
+        : getTrainsForDate(trainStore.trains, selectedDate);
+      return sortTrainsByDateAndDeparture(base);
     }
 
     function renderTrainList() {
       const query = els.search.value.trim().toLowerCase();
+      const showingAll = selectedDate === ALL_DATES;
+
+      if (els.listTitle) {
+        els.listTitle.textContent = showingAll
+          ? `全部列車（${trainStore.trains.length}）`
+          : `${dateLabel(selectedDate)} 列車`;
+      }
+
+      const trains = getVisibleListTrains()
+        .filter((train) => !query || trainMatchesQuery(train, query));
+
       els.list.innerHTML = "";
+
+      if (!trains.length) {
+        const empty = document.createElement("div");
+        empty.className = "list-empty";
+        empty.textContent = showingAll
+          ? (query ? "沒有符合搜尋的列車。" : "尚無任何列車，請匯入 JSON。")
+          : (query ? "此日期沒有符合搜尋的列車。" : "當前日期沒有列車，請匯入 JSON 到當前日期。");
+        els.list.appendChild(empty);
+        return;
+      }
+
       // Build the whole list in a detached fragment so the live DOM only reflows
       // once on insertion instead of once per train.
       const fragment = document.createDocumentFragment();
-      trainStore.trains
-        .filter((train) => !query || JSON.stringify(train).toLowerCase().includes(query))
-        .forEach((train) => {
-          const item = document.createElement("button");
-          item.type = "button";
-          item.className = `train-item${train.id === selectedTrainId ? " selected" : ""}${train.id === focusedTrainId ? " focused" : ""}`;
-          item.innerHTML = `
-            <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
-            <span style="min-width:0">
-              <span class="train-title">${escapeHtml(train.number || train.id)} ${escapeHtml(train.name || "")}</span>
-              <span class="train-meta">${escapeHtml(train.origin || "?")} → ${escapeHtml(train.destination || "?")} · ${train.stops?.length || 0} stops</span>
-            </span>
-            <span class="train-meta">${train.visible === false ? "hidden" : "shown"}</span>
-          `;
-          item.addEventListener("click", () => {
-            selectedTrainId = train.id;
-            focusedTrainId = train.id;
-            renderAll();
-            fitTrainBounds(train);
-          });
-          fragment.appendChild(item);
-        });
+      trains.forEach((train) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.dataset.trainId = train.id;
+        item.className = `train-item${train.id === selectedTrainId ? " selected" : ""}${train.id === focusedTrainId ? " focused" : ""}`;
+        // In the combined "全部" view each card shows its date badge; per-date
+        // views omit it (the whole list is one date already).
+        const dateBadge = showingAll
+          ? `<span class="train-date-badge">${escapeHtml(dateLabel(getTrainDate(train)))}</span>`
+          : "";
+        const depMinutes = getTrainDepartureMinutes(train);
+        const depText = depMinutes === Infinity ? "—:—" : formatMinutes(depMinutes);
+        item.innerHTML = `
+          <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
+          <span style="min-width:0">
+            <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(train.name || "")}</span>
+            <span class="train-meta">${escapeHtml(train.origin || "?")} → ${escapeHtml(train.destination || "?")} · 發 ${escapeHtml(depText)} · ${train.stops?.length || 0} stops</span>
+          </span>
+          <span class="train-meta">${train.visible === false ? "hidden" : "shown"}</span>
+        `;
+        item.addEventListener("click", () => selectTrain(train.id, { fit: true }));
+        fragment.appendChild(item);
+      });
       els.list.appendChild(fragment);
+    }
+
+    // Lightweight search match. The old code ran JSON.stringify(train) — which now
+    // serializes each train's full route_geometry_cache — for every train on every
+    // keystroke. Match only the human-facing fields (id, number, name, direction,
+    // endpoints, date, and stop names) instead. Built lazily and reused.
+    function trainMatchesQuery(train, query) {
+      const parts = [
+        train.id, train.number, train.name, train.direction,
+        train.origin, train.destination, getTrainDate(train)
+      ];
+      (train.stops || []).forEach((stop) => { if (stop && stop.name) parts.push(stop.name); });
+      return parts.join(" ").toLowerCase().includes(query);
+    }
+
+    // Toggle the `.selected` / `.focused` classes on the existing list cards
+    // instead of rebuilding the whole list. Selecting a train used to call
+    // renderAll() — a full date-bar + list + editor + map rebuild — just to move
+    // a highlight. This touches only the two affected nodes' classList.
+    function updateSelectionHighlight() {
+      const kids = els.list.children;
+      for (let i = 0; i < kids.length; i += 1) {
+        const el = kids[i];
+        const id = el.dataset && el.dataset.trainId;
+        if (!id) continue;
+        el.classList.toggle("selected", id === selectedTrainId);
+        el.classList.toggle("focused", id === focusedTrainId);
+      }
+    }
+
+    // Select + focus a train with the minimum work needed: update the list
+    // highlight in place, refresh the editor for the new selection, and redraw
+    // the map ONCE (focus changes route dimming, so the map layer does need a
+    // pass). Crucially this does NOT rebuild the date bar or the whole list, and
+    // the export textarea refresh is debounced — so clicking through trains stays
+    // snappy. Shared by the sidebar list and the on-map route click.
+    function selectTrain(id, { fit = false } = {}) {
+      selectedTrainId = id;
+      focusedTrainId = id;
+      updateSelectionHighlight();
+      perfMeasure("renderEditor", renderEditor);
+      perfMeasure("renderTrainLayers", renderTrainLayers);
+      scheduleExportTextareaRefresh();
+      if (fit) {
+        const train = getTrain(id);
+        if (train) fitTrainBounds(train);
+      }
+    }
+
+    // Render minutes-from-midnight back to "HH:mm" (wrapping next-day times).
+    function formatMinutes(total) {
+      const wrapped = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+      const hh = String(Math.floor(wrapped / 60)).padStart(2, "0");
+      const mm = String(wrapped % 60).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+
+    // Show where an imported JSON will land, so the user knows before importing.
+    function updateImportTarget() {
+      if (!els.importTarget) return;
+      if (selectedDate && selectedDate !== ALL_DATES) {
+        els.importTarget.innerHTML = `當前匯入目標：<strong>${escapeHtml(dateLabel(selectedDate))}</strong>（沒有 date 的列車會加入此日期）`;
+      } else {
+        els.importTarget.innerHTML = "當前匯入目標：<strong>JSON 內 date 欄位 / 自動從 id 識別</strong>（選一個日期可改為匯入到該日期）";
+      }
+    }
+
+    // Add a manual (possibly empty) date bucket, then jump to it.
+    function addManualDate() {
+      const input = prompt("輸入新增日期（YYYY-MM-DD）：", "");
+      if (input === null) return;
+      const normalized = normalizeDateString(input);
+      if (!normalized) {
+        setStatus(els.importStatus, `無效的日期格式：「${input}」。請使用 YYYY-MM-DD。`, "err");
+        return;
+      }
+      if (!manualDates.includes(normalized)) manualDates.push(normalized);
+      setSelectedDate(normalized);
+      setStatus(els.importStatus, `已新增日期 ${normalized}，並切換為當前匯入目標。`, "ok");
+    }
+
+    // Drop manually-created date buttons that hold no trains. Dates still backed
+    // by at least one train are derived from the trains and cannot be removed
+    // here (delete the trains instead).
+    function removeEmptyDates() {
+      const used = new Set(trainStore.trains.map(getTrainDate));
+      const before = manualDates.length;
+      manualDates = manualDates.filter((date) => used.has(date));
+      reconcileSelectedDate();
+      persistUiDateState();
+      renderAll();
+      const removed = before - manualDates.length;
+      setStatus(els.importStatus, removed ? `已刪除 ${removed} 個空日期。` : "沒有可刪除的空日期。", removed ? "ok" : "warn");
     }
 
     function renderEditor() {
@@ -1421,8 +1939,8 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           if (field === "name") applyStationMetadata(train.stops[index], train);
 
           saveTrainStore();
-          renderTrainLayers();
-          els.json.value = exportTrainStore();
+          perfMeasure("renderTrainLayers", renderTrainLayers);
+          scheduleExportTextareaRefresh();
           if (refreshStopsTable) renderStopsTable(train);
         });
       });
@@ -1561,7 +2079,13 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       stopLayer.clearLayers();
       passThroughLayer.clearLayers();
 
-      const visibleTrains = trainStore.trains.filter((train) => train.visible !== false);
+      // Default: the map is driven purely by each train's `visible` flag. When
+      // the optional "map follows date" toggle is on and a concrete date is
+      // selected, also restrict the map to that date's trains.
+      const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
+      const visibleTrains = trainStore.trains.filter((train) => (
+        train.visible !== false && (!dateScoped || getTrainDate(train) === selectedDate)
+      ));
       const focusActive = Boolean(focusedTrainId && visibleTrains.some((train) => train.id === focusedTrainId));
       const orderedTrains = focusActive
         ? [...visibleTrains.filter((train) => train.id !== focusedTrainId), ...visibleTrains.filter((train) => train.id === focusedTrainId)]
@@ -3159,11 +3683,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         },
         onEachFeature: (feature, layer) => {
           layer.bindPopup(buildTrainSegmentPopup(train, feature));
-          layer.on("click", () => {
-            selectedTrainId = train.id;
-            focusedTrainId = train.id;
-            renderAll();
-          });
+          layer.on("click", () => selectTrain(train.id));
         }
       });
     }
@@ -3175,6 +3695,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const focused = renderOptions.focused === true;
       const dimmed = renderOptions.dimmed === true;
       return L.circleMarker(toLatLng(stopFeature), {
+        renderer: limitedExpressRouteRenderer,
         radius: focused ? (isTerminal ? 11 : 9) : (isTerminal ? 9 : 7),
         color,
         weight: focused ? 4 : (active ? 3 : 2),
@@ -3190,6 +3711,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const focused = renderOptions.focused === true;
       const dimmed = renderOptions.dimmed === true;
       return L.circleMarker(toLatLng(stopFeature), {
+        renderer: limitedExpressRouteRenderer,
         radius: focused ? 5 : 4,
         color,
         weight: focused ? 2 : 1,
@@ -3285,7 +3807,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     function validateTrainStore(store) {
       if (!store || typeof store !== "object" || Array.isArray(store)) throw new Error("JSON root must be an object.");
       assertOnlyKeys(store, ["schema_version", "trains"], "Store");
-      if (store.schema_version !== SCHEMA_VERSION) throw new Error(`schema_version must be "${SCHEMA_VERSION}".`);
+      if (!ACCEPTED_SCHEMA_VERSIONS.includes(store.schema_version)) throw new Error(`schema_version must be one of ${ACCEPTED_SCHEMA_VERSIONS.join(", ")}.`);
       if (!Array.isArray(store.trains)) throw new Error("trains must be an array.");
       const ids = new Set();
       store.trains.forEach((train, index) => validateTrain(train, index, ids));
@@ -3299,6 +3821,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       });
       if (ids.has(train.id)) throw new Error(`${prefix}: duplicate id ${train.id}.`);
       ids.add(train.id);
+      if (train.date !== undefined && train.date !== UNDATED && !isValidDateString(train.date)) {
+        throw new Error(`${prefix}: date must be "YYYY-MM-DD" or "${UNDATED}".`);
+      }
       if (!Array.isArray(train.stops) || train.stops.length < 2) throw new Error(`${prefix}: stops must contain at least 2 rows.`);
       if (train.stops[0].departure && train.stops[0].arrival) throw new Error(`${prefix}: first stop should not need both arrival and departure.`);
       const last = train.stops[train.stops.length - 1];
@@ -3462,3 +3987,4 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     function escapeAttr(value) {
       return escapeHtml(value).replace(/`/g, "&#96;");
     }
+    // (end of app.js)

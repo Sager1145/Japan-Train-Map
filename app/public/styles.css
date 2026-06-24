@@ -139,6 +139,77 @@
     button.icon { width: 32px; padding: 0; display: inline-grid; place-items: center; }
     button:disabled { opacity: 0.45; cursor: not-allowed; }
 
+    /* Date selector bar: wraps and scrolls so an unbounded number of date
+       buttons never breaks the sidebar layout. */
+    .date-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 132px;
+      overflow: auto;
+      padding-bottom: 2px;
+    }
+
+    .date-btn {
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid #bfc7cf;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .date-btn:hover { border-color: #8f9aa5; background: #f7f9fa; }
+    .date-btn.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+    .date-btn .date-count { opacity: 0.75; margin-left: 4px; font-size: 11px; }
+    .date-btn.active .date-count { opacity: 0.9; }
+
+    .inline-check {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .inline-check input { width: auto; }
+
+    .train-list-title { margin: 8px 0 6px; font-size: 13px; font-weight: 700; color: var(--text); }
+
+    .import-target { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .import-target strong { color: var(--accent-2); }
+
+    .list-empty {
+      padding: 14px 10px;
+      border: 1px dashed var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      background: #fbfcfd;
+    }
+
+    .train-date-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-right: 5px;
+      border-radius: 999px;
+      background: #eef1f4;
+      color: #4a5763;
+      font-size: 11px;
+      font-weight: 600;
+      vertical-align: 1px;
+    }
+
     .train-list {
       display: grid;
       gap: 6px;

@@ -41,6 +41,7 @@
 <button id="validate-import-json">驗證匯入 JSON</button>
 <button class="primary" id="apply-import-json">開始載入 / 逐條匯入</button>
 </div>
+<div class="import-target" id="import-target"></div>
 <div class="progress-wrap" id="import-progress-wrap" hidden>
   <div class="progress-track"><div class="progress-fill" id="import-progress-fill"></div></div>
   <div class="progress-text" id="import-progress-text"></div>
@@ -49,6 +50,13 @@
 </section>
 <section class="section">
 <h2>列車清單</h2>
+<div class="date-bar" id="date-bar"></div>
+<div class="toolbar" style="margin-top:6px">
+<button id="add-date">新增日期</button>
+<button id="remove-empty-dates">刪除空日期</button>
+<label class="inline-check"><input id="map-date-filter" type="checkbox"/> 地圖僅顯示當前日期</label>
+</div>
+<div class="train-list-title" id="train-list-title"></div>
 <div class="train-list" id="train-list"></div>
 </section>
 <section class="section">

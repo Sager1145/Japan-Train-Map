@@ -54,7 +54,9 @@ app.get("/api", (req, res) => {
 // replacing the old browser-localStorage backup.
 // ---------------------------------------------------------------------------
 const TRAIN_STORE_FILE = path.join(DATA_DIR, "train-store.json");
-const SCHEMA_VERSION = "1.2";
+// Stores are written as 1.3 (per-train `date`); 1.2 is still accepted so old
+// saved stores and exports keep loading/saving without a migration step.
+const ACCEPTED_SCHEMA_VERSIONS = ["1.2", "1.3"];
 
 // Read the saved store. 404 (not 500) when nothing has been saved yet, so the
 // frontend can cleanly fall back to its built-in defaults.
@@ -79,8 +81,8 @@ app.put("/api/train-store", express.json({ limit: "25mb" }), async (req, res) =>
   if (!store || typeof store !== "object" || Array.isArray(store)) {
     return res.status(400).json({ error: "Body must be a train store object." });
   }
-  if (store.schema_version !== SCHEMA_VERSION) {
-    return res.status(400).json({ error: `schema_version must be "${SCHEMA_VERSION}".` });
+  if (!ACCEPTED_SCHEMA_VERSIONS.includes(store.schema_version)) {
+    return res.status(400).json({ error: `schema_version must be one of ${ACCEPTED_SCHEMA_VERSIONS.join(", ")}.` });
   }
   if (!Array.isArray(store.trains)) {
     return res.status(400).json({ error: "trains must be an array." });

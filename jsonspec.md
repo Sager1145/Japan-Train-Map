@@ -1,6 +1,6 @@
 # N02 Limited Express Train JSON Specification
 
-版本：`1.2`
+版本：`1.3`（向后兼容 `1.2`）
 文件建议名：`TRAIN_JSON_SPEC.md`
 适用范围：单 HTML N02 铁路地图、列车 JSON 导入/导出、JR-only 特急路线渲染、乘坐区间显示、停靠站/通过站管理。
 
@@ -12,10 +12,14 @@
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": []
 }
 ```
+
+> `schema_version` 当前为 `"1.3"`，新增了每个 train 的 `date` 字段（见 3.1 / 3.3）。
+> 导入与服务器保存同时兼容旧版 `"1.2"`：缺少 `date` 字段的旧 JSON 仍可正常导入，
+> 系统会按「当前选中日期 → 从 id 解析 → undated」的顺序自动补全 `date`。
 
 不允许导入或导出以下格式：
 
@@ -52,17 +56,18 @@
 
 | 字段               | 类型     | 必填 | 说明            |
 | ---------------- | ------ | -: | ------------- |
-| `schema_version` | string |  是 | 当前固定为 `"1.2"` |
+| `schema_version` | string |  是 | 当前为 `"1.3"`，兼容旧版 `"1.2"` |
 | `trains`         | array  |  是 | 列车数组          |
 
 ### 2.2 顶层示例
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": [
     {
       "id": "odr_001",
+      "date": "2026-07-03",
       "number": "踊り子9号",
       "name": "踊り子",
       "origin": "東京",
@@ -121,6 +126,7 @@
 | 字段               | 类型      | 必填 | 说明                              |
 | ---------------- | ------- | -: | ------------------------------- |
 | `id`             | string  |  是 | 列车唯一 ID                         |
+| `date`           | string  |  否 | 运行/行程日期，格式 `YYYY-MM-DD`（1.3 新增；缺省时按 3.3 规则自动补全） |
 | `number`         | string  |  是 | 车次，例如 `踊り子9号`                   |
 | `name`           | string  |  是 | 列车名，例如 `踊り子`                    |
 | `origin`         | string  |  是 | 列车运行起点                          |
@@ -154,6 +160,46 @@ shinano_001
 odr_001-2
 odr_001-3
 ```
+
+### 3.3 Train 日期字段（`date`，1.3 新增）
+
+每个 train 可携带运行/行程日期字段：
+
+```json
+"date": "2026-07-03"
+```
+
+| 项目  | 说明                       |
+| --- | ------------------------ |
+| 字段名 | `date`                   |
+| 类型  | string                   |
+| 格式  | `YYYY-MM-DD`             |
+| 含义  | 该列车所属运行日期 / 行程日期         |
+| 示例  | `2026-07-03`、`2026-07-24` |
+
+侧栏按 `date` 把列车分组：日期按钮区 + 当前日期列表 + `全部` 总清单。日期分组完全由
+`trains[*].date` 派生，不维护独立的每日数组，避免每日清单与全部清单不同步。
+
+导入/载入时 `date` 的解析优先级（`normalizeTrainDate`）：
+
+```text
+1. train.date 是合法 YYYY-MM-DD            -> 直接使用（即使与当前选中日期不同，也以 JSON 内 date 为准）
+2. 当前 UI 选中了某个具体日期               -> 写入当前选中日期
+3. 从 id 前缀解析 YYYYMMDD                  -> 例如 20260703_01_haruka -> 2026-07-03
+4. 以上都没有                              -> "undated"
+```
+
+排序规则（所有列表）：
+
+```text
+date ASC
+departure ASC      # 取 stops[0].departure -> origin stop -> 第一个非空 departure
+missing_time LAST  # 没有发车时间的列车排在该日期最后
+id ASC             # 最终 tiebreaker
+```
+
+发车时间支持跨日标记（如 `10:00+1`），排序时按次日时间处理，且不会因此崩溃。
+`全部` 总清单只汇总显示，不改变任何列车的 `date` 归属。
 
 ---
 
