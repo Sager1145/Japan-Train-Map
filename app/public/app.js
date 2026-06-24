@@ -20,7 +20,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
     const N02_INSTITUTION_TYPE_CODES = new Set(DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES);
 
-    const API_BASE = "/api";
+    // Document-relative (not root-absolute) so every API call — including the
+    // train-store save/load — resolves next to index.html. This keeps the app
+    // working when it is served from a sub-path (e.g. behind a reverse proxy at
+    // /something/) instead of only from the domain root.
+    const API_BASE = "./api";
     const fetchJson = async (path) => {
       const res = await fetch(`${API_BASE}/${path}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
@@ -107,7 +111,30 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       if (!savedStore) {
         setStatus(els.importStatus, "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。", "warn");
       }
+
+      // Warm up the heavy N02 routing graph in the background so the first local
+      // JSON open / import doesn't pay that one-time build cost synchronously
+      // (which would freeze the UI mid-open).
+      scheduleRouteGraphPrebuild();
     });
+
+    // Build the (expensive, one-time) N02 routing graph during browser idle time
+    // instead of lazily on the first route solve. getRuntimeRouteGraph() is
+    // memoized, so this is a no-op if the boot store already triggered the build.
+    function scheduleRouteGraphPrebuild() {
+      const prebuild = () => {
+        try {
+          getRuntimeRouteGraph();
+        } catch (err) {
+          console.warn("Route graph prebuild failed; it will be built lazily on first use.", err);
+        }
+      };
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(prebuild, { timeout: 3000 });
+      } else {
+        setTimeout(prebuild, 0);
+      }
+    }
 
     function clone(value) {
       return JSON.parse(JSON.stringify(value));
@@ -470,8 +497,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         localJsonFileHandle = handle;
         await storeFileHandle(handle);
         const file = await handle.getFile();
+        // replaceTrainStoreFromJsonText() already finishes with finalizeProgressiveLoad()
+        // -> renderAll(), so an extra renderAll() here is a redundant full repaint
+        // (and full store re-serialization). Don't double-render.
         await replaceTrainStoreFromJsonText(await file.text(), `本地 JSON：${file.name}`);
-        renderAll();
         return;
       }
 
@@ -491,17 +520,52 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     // Shared per-train progressive append loop. Every import/restore path runs the
     // same append -> (optional persist) -> repaint -> progress -> yield sequence;
     // keeping it here means a change to that ordering only has to be made once.
+    // Repaint the map/list at most once per this many appended trains during an
+    // import. The previous code repainted and re-serialized the entire store on
+    // every single train, which made importing N trains O(N^2). Now appends are
+    // O(N); the user still sees periodic progress, and one authoritative repaint
+    // + persist happens when the loop finishes.
+    const PROGRESSIVE_APPEND_REPAINT_BATCH = 25;
+
     async function runProgressiveAppend(trains, { persistEachStep = true, onProgress } = {}) {
       const appendedIds = [];
-      for (let index = 0; index < trains.length; index += 1) {
+      const total = trains.length;
+      for (let index = 0; index < total; index += 1) {
         const id = appendImportedTrain(trains[index]);
         appendedIds.push(id);
-        if (persistEachStep) saveTrainStore();
-        renderAll();
-        if (onProgress) onProgress({ count: appendedIds.length, total: trains.length, id });
+        if (onProgress) onProgress({ count: appendedIds.length, total, id });
+
+        // Fix #2: yield to the browser, then solve THIS train's route off the
+        // render path. Spreading the (cached or freshly solved) route work one
+        // train per frame keeps the page responsive and the progress bar moving,
+        // instead of solving a whole batch synchronously inside renderAll().
         await waitForImportPaint();
+        warmRouteCacheForTrain(getTrain(id));
+
+        // Repaint only on batch boundaries; routes are already cached by the
+        // warm-up above, so these renders do cheap lookups, not Dijkstra.
+        const isLast = index === total - 1;
+        if (!isLast && (index + 1) % PROGRESSIVE_APPEND_REPAINT_BATCH === 0) {
+          renderAll({ updateJsonTextarea: false });
+        }
       }
+      // Single full repaint + persist for the whole batch.
+      renderAll();
+      if (persistEachStep) saveTrainStore();
       return appendedIds;
+    }
+
+    // Pre-compute (and cache) one train's route geometry without touching the DOM,
+    // so the heavy solve happens between animation frames rather than as a single
+    // blocking burst during rendering (fix #2). Failures are swallowed — the
+    // normal render path will surface any genuine routing problem.
+    function warmRouteCacheForTrain(train) {
+      if (!train) return;
+      try {
+        generateMatchedRouteFeaturesForTrain(train);
+      } catch (err) {
+        console.warn(`Route warm-up failed for ${train?.id}; will retry on render.`, err);
+      }
     }
 
     // Re-select the first imported train, re-validate the canonical store and
@@ -761,8 +825,18 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       return codeMatches || nameMatches;
     }
 
+    // Optional persisted route geometry (fix #1). Defensive: any malformed cache
+    // is dropped (returns null) so it can be re-solved, never breaking the
+    // export/import round-trip.
+    function normalizeRouteGeometryCache(cache) {
+      if (!cache || typeof cache !== "object" || Array.isArray(cache)) return null;
+      if (typeof cache.key !== "string" || !cache.key) return null;
+      if (!Array.isArray(cache.features) || !cache.features.length) return null;
+      return { key: cache.key, features: cache.features };
+    }
+
     function normalizeExportTrain(train) {
-      return {
+      const normalized = {
         id: train.id || "",
         number: train.number || "",
         name: train.name || "",
@@ -775,6 +849,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         route_sections: getRideRouteSectionsForTrain(train),
         stops: Array.isArray(train.stops) ? train.stops.map(canonicalStopShape) : []
       };
+      const geometryCache = normalizeRouteGeometryCache(train.route_geometry_cache);
+      if (geometryCache) normalized.route_geometry_cache = geometryCache;
+      return normalized;
     }
 
     function buildCanonicalTrainStore() {
@@ -856,7 +933,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         throw new Error("Each train must be an object.");
       }
 
-      assertOnlyKeys(train, ["id", "number", "name", "origin", "destination", "direction", "visible", "style", "route_policy", "route_sections", "stops"], "Train");
+      assertOnlyKeys(train, ["id", "number", "name", "origin", "destination", "direction", "visible", "style", "route_policy", "route_sections", "stops", "route_geometry_cache"], "Train");
 
       if (!train.id) throw new Error("Each train must contain id.");
       if (!train.number) throw new Error(`Train ${train.id} must contain number.`);
@@ -867,7 +944,7 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         throw new Error(`Train ${train.id} must contain at least 2 stops.`);
       }
 
-      return {
+      const normalized = {
         id: train.id,
         number: train.number,
         name: train.name,
@@ -882,6 +959,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
           : [],
         stops: train.stops.map(normalizeImportedStop)
       };
+      // Carry an optional persisted route geometry (fix #1) onto the in-memory
+      // train so the first render can reuse it instead of solving.
+      const geometryCache = normalizeRouteGeometryCache(train.route_geometry_cache);
+      if (geometryCache) normalized.route_geometry_cache = geometryCache;
+      return normalized;
     }
 
     function makeUniqueTrainId(baseId, existingIds) {
@@ -1002,7 +1084,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
 
     function initMap() {
       map = L.map("map", { preferCanvas: true }).setView([36.4, 138.2], 5);
-      limitedExpressRouteRenderer = L.svg({ padding: 0.5 });
+      // Canvas (not SVG) for the train routes: with many trains the routes expand
+      // into thousands of path segments, and an SVG DOM of that size makes every
+      // pan/zoom and re-render slow. Canvas keeps interaction smooth; click/popup
+      // still work via Leaflet's canvas renderer.
+      limitedExpressRouteRenderer = L.canvas({ padding: 0.5 });
 
       const simpleOsmLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         subdomains: "abcd",
@@ -1131,8 +1217,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         const file = els.localJsonFileInput.files?.[0];
         if (!file) return;
         try {
+          // No trailing renderAll(): replaceTrainStoreFromJsonText() already
+          // repaints once via finalizeProgressiveLoad().
           await replaceTrainStoreFromJsonText(await file.text(), `本地 JSON：${file.name}`);
-          renderAll();
         } catch (error) {
           setStatus(els.importStatus, error.message, "err");
         }
@@ -1203,16 +1290,22 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       els.search.addEventListener("input", renderTrainList);
     }
 
-    function renderAll() {
+    function renderAll({ updateJsonTextarea = true } = {}) {
       renderTrainList();
       renderEditor();
       renderTrainLayers();
-      els.json.value = exportTrainStore();
+      // Serializing the whole store to fill the export textarea is O(store size).
+      // Callers in hot loops (progressive import) skip it and let the final
+      // render populate the textarea once.
+      if (updateJsonTextarea) els.json.value = exportTrainStore();
     }
 
     function renderTrainList() {
       const query = els.search.value.trim().toLowerCase();
       els.list.innerHTML = "";
+      // Build the whole list in a detached fragment so the live DOM only reflows
+      // once on insertion instead of once per train.
+      const fragment = document.createDocumentFragment();
       trainStore.trains
         .filter((train) => !query || JSON.stringify(train).toLowerCase().includes(query))
         .forEach((train) => {
@@ -1233,8 +1326,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
             renderAll();
             fitTrainBounds(train);
           });
-          els.list.appendChild(item);
+          fragment.appendChild(item);
         });
+      els.list.appendChild(fragment);
     }
 
     function renderEditor() {
@@ -1731,6 +1825,17 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         return dedupeSameTrainRouteFeatures(cloneRouteFeaturesForTrain(cached, train));
       }
 
+      // Fix #1: reuse geometry persisted in the train's JSON. If the train carries
+      // a cached route whose key still matches its current sections/policy, seed
+      // the in-memory cache from it and skip the expensive Dijkstra solve. Any
+      // change to stops/sections/policy changes cacheKey, so a stale cache is
+      // simply ignored and re-solved below.
+      const persisted = train.route_geometry_cache;
+      if (persisted && persisted.key === cacheKey && Array.isArray(persisted.features) && persisted.features.length) {
+        runtimeRouteCache.set(cacheKey, persisted.features);
+        return dedupeSameTrainRouteFeatures(cloneRouteFeaturesForTrain(persisted.features, train));
+      }
+
       setStatus(els.fieldStatus, `Generating N02 railway route for ${train.number || train.id}...`, "warn");
       const graph = getRuntimeRouteGraph();
       const generated = [];
@@ -1765,6 +1870,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         }
       }));
       runtimeRouteCache.set(cacheKey, templateFeatures);
+      // Fix #1: persist the freshly solved geometry onto the train so exporting /
+      // auto-saving carries it and future opens can skip the solve entirely.
+      train.route_geometry_cache = { key: cacheKey, features: templateFeatures };
 
       const concrete = dedupeSameTrainRouteFeatures(cloneRouteFeaturesForTrain(templateFeatures, train));
       concrete.forEach((feature) => matchedRoutesGeoJson.features.push(feature));

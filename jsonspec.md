@@ -2226,3 +2226,31 @@ route_policy
 18. 使用 N02 必须显示国土交通省国土数值情報出典。
 19. 使用 OSM 底图必须显示 OpenStreetMap contributors。
 20. 不得从 OSM 官方瓦片服务器批量下载离线瓦片。
+
+---
+
+## 23. 可选字段：`route_geometry_cache`（线路几何缓存）
+
+为避免每次打开 / 导入 JSON 都在浏览器端重新对 N02 路网做 Dijkstra 寻路（大量列车时会造成明显卡顿），列车对象允许携带一个**可选**字段 `route_geometry_cache`，用于缓存已解算好的线路几何。
+
+要点（与第 13、14 条并不冲突）：
+
+1. **非权威、可重建**：语义数据（`stops`、`route_sections`、`route_policy`）仍是唯一事实来源；`route_geometry_cache` 只是这些语义在 N02 路网上的解算结果的记忆化缓存，随时可由程序重新生成。
+2. **可省略**：该字段可以完全不出现。缺失时，程序在首次渲染该列车时照常解算并填充。
+3. **自动失效**：字段内含一个 `key`，由该列车的 `route_sections` + `route_policy` + 允许的 `N02_002` 种别码派生。当上述任一项改变时 `key` 不再匹配，缓存被忽略并重新解算，因此不会显示过期几何。
+4. **可安全剥离**：不理解该字段的工具可以直接删除它，不影响语义正确性（只是下次打开会重新解算）。
+
+形状：
+
+```json
+{
+  "route_geometry_cache": {
+    "key": "<派生自 sections/policy/institution codes 的字符串>",
+    "features": [
+      { "type": "Feature", "geometry": { "type": "LineString", "coordinates": [] }, "properties": {} }
+    ]
+  }
+}
+```
+
+`features` 为模板形态的 GeoJSON 线要素数组（`train_id` 标记为 `__template__`），载入时按具体列车克隆。导入校验已将 `route_geometry_cache` 列为列车对象的合法可选键；导出 / 自动保存会在其存在时一并写出。
