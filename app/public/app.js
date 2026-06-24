@@ -43,6 +43,8 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const FILE_HANDLE_DB_NAME = "n02-train-store-file-handle-db";
     const FILE_HANDLE_STORE_NAME = "handles";
     const FILE_HANDLE_KEY = "local-json-file-handle";
+    const ROUTE_CACHE_DB_NAME = "n02-route-geometry-cache";
+    const ROUTE_CACHE_STORE_NAME = "routes";
     const JAPAN_MAIN_ISLANDS_BOUNDS = [[30.85, 129.1], [45.75, 146.2]];
 
     // Single source of truth for protocol/schema constants reused across the app.
@@ -290,6 +292,18 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     // `visible` flag, matching the original behaviour.
     let mapFollowsSelectedDate = false;
     let map, railSectionLayer, stationLayer, limitedExpressRouteLayer, stopLayer, passThroughLayer, limitedExpressRouteRenderer, baseOverlayRenderer;
+    // Cached route render items (overlap-split run features) + viewport-cull state.
+    // The split runs / overlap slots depend only on the train data (not zoom/pan),
+    // so we memoise them and re-attach only the segments inside the current view.
+    let cachedRouteItems = null, cachedRouteSignature = "", cachedRouteFocusActive = false, renderedRouteBounds = null, renderedRouteZoom = null;
+    const ROUTE_RENDER_MARGIN = 0.5;
+    // Grid spatial index over route render items so the viewport cull is O(items in
+    // view) instead of O(all items) — matters once a dataset has thousands of trains
+    // / tens of thousands of split segments.
+    let routeItemsGrid = null;
+    const ROUTE_GRID_CELL_DEG = 0.1;           // ~11 km cells
+    const ROUTE_GRID_MAX_CELLS_PER_ITEM = 256; // huge-bbox items go in an always-checked bucket
+    const ROUTE_GRID_QUERY_CELL_LIMIT = 4096;  // above this (zoomed way out) just scan all items
     let importInProgress = false;
 
     const els = {
@@ -341,6 +355,11 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       bindEvents();
       fitJapanMainIslands();
       renderAll();
+
+      // Warm the persistent route-geometry cache (IndexedDB) BEFORE the progressive
+      // load runs its solves, so cached trains hit memory and the heavy route graph
+      // is never built. Best-effort and namespaced to the current rail network.
+      await warmRouteCacheFromIndexedDb();
 
       // Boot from the server-saved store; if nothing has been saved yet, fall
       // back to the built-in defaults (and do not persist them until edited).
@@ -701,6 +720,99 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       });
     }
 
+    // --- Persistent route-geometry cache (IndexedDB) -------------------------
+    // Solved route geometry is expensive (route-graph build + Dijkstra). Persisting
+    // it keyed by railHash::cacheKey means that across sessions — and for ANY
+    // dataset — a train whose sections/policy already solved once is restored
+    // instantly, and the heavy route graph is never even built when every train hits
+    // the warmed cache (getRuntimeRouteGraph runs only on a miss). railHash
+    // namespaces entries to the current rail network, so changing the underlying N02
+    // data transparently invalidates stale geometry.
+    let railContentHashCache = null;
+    function getRailContentHash() {
+      if (railContentHashCache) return railContentHashCache;
+      const feats = (railSectionsGeoJson && railSectionsGeoJson.features) || [];
+      // Cheap deterministic content signature (hashing the full 12MB text every
+      // boot would be wasteful): feature count + a sampled coordinate sweep.
+      let h = 0x811c9dc5;
+      const mix = (n) => { h ^= (n | 0); h = Math.imul(h, 0x01000193) >>> 0; };
+      mix(feats.length);
+      // Full content hash (~tens of ms over ~405k points, one-time at boot): every
+      // coordinate is mixed in — not a sample — so ANY change to the rail geometry
+      // changes the namespace and invalidates stale cached routes. Avoids the blind
+      // spots a sparse sample would leave between sampled features.
+      for (let i = 0; i < feats.length; i += 1) {
+        const geom = feats[i] && feats[i].geometry;
+        const coords = geom && geom.coordinates;
+        if (!Array.isArray(coords)) { mix(0); continue; }
+        const lines = geom.type === "MultiLineString" ? coords : [coords];
+        for (let li = 0; li < lines.length; li += 1) {
+          const line = lines[li];
+          if (!Array.isArray(line)) continue;
+          mix(line.length);
+          for (let pi = 0; pi < line.length; pi += 1) {
+            const pt = line[pi];
+            if (Array.isArray(pt)) { mix(pt[0] * 1e5); mix(pt[1] * 1e5); }
+          }
+        }
+      }
+      railContentHashCache = `r${(h >>> 0).toString(36)}-${feats.length}`;
+      return railContentHashCache;
+    }
+
+    function openRouteCacheDb() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) { reject(new Error("IndexedDB is unavailable.")); return; }
+        const request = indexedDB.open(ROUTE_CACHE_DB_NAME, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore(ROUTE_CACHE_STORE_NAME);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("Could not open route cache DB."));
+      });
+    }
+
+    // Bulk-load all persisted route geometry for the current rail network into the
+    // in-memory runtimeRouteCache, so the synchronous solve path hits memory and
+    // never triggers the route-graph build. Best-effort: any failure just falls
+    // back to solving on demand.
+    async function warmRouteCacheFromIndexedDb() {
+      if (!window.indexedDB) return;
+      const prefix = `${getRailContentHash()}::`;
+      try {
+        const db = await openRouteCacheDb();
+        await new Promise((resolve) => {
+          const tx = db.transaction(ROUTE_CACHE_STORE_NAME, "readonly");
+          const req = tx.objectStore(ROUTE_CACHE_STORE_NAME).openCursor();
+          let warmed = 0;
+          req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor) return;
+            const key = String(cursor.key);
+            if (key.startsWith(prefix) && Array.isArray(cursor.value) && cursor.value.length) {
+              runtimeRouteCache.set(key.slice(prefix.length), cursor.value);
+              warmed += 1;
+            }
+            cursor.continue();
+          };
+          tx.oncomplete = () => { db.close(); if (warmed) console.info(`Warmed ${warmed} route(s) from IndexedDB.`); resolve(); };
+          tx.onerror = () => { db.close(); resolve(); };
+        });
+      } catch (err) {
+        console.warn("Route cache warm-up skipped.", err);
+      }
+    }
+
+    // Fire-and-forget persist of one solved route's geometry for future sessions.
+    function persistRouteCacheEntry(cacheKey, features) {
+      if (!window.indexedDB || !Array.isArray(features) || !features.length) return;
+      const storeKey = `${getRailContentHash()}::${cacheKey}`;
+      openRouteCacheDb().then((db) => {
+        const tx = db.transaction(ROUTE_CACHE_STORE_NAME, "readwrite");
+        tx.objectStore(ROUTE_CACHE_STORE_NAME).put(features, storeKey);
+        tx.oncomplete = () => db.close();
+        tx.onerror = () => db.close();
+      }).catch((err) => console.warn("Route cache persist skipped.", err));
+    }
+
     async function storeFileHandle(handle) {
       if (!supportsFileSystemAccess() || !handle) return;
       try {
@@ -782,42 +894,62 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
       selectedTrainId = null;
       focusedTrainId = null;
+      // Drop the cached route render items so a re-import can't briefly draw the
+      // previous store's segments (the cache is keyed by train data, which is
+      // about to be replaced).
+      cachedRouteItems = null;
+      cachedRouteSignature = "";
+      renderedRouteBounds = null;
+      routeItemsGrid = null;
       renderAll();
     }
 
     // Shared per-train progressive append loop. Every import/restore path runs the
-    // same append -> (optional persist) -> repaint -> progress -> yield sequence;
-    // keeping it here means a change to that ordering only has to be made once.
-    // Repaint the map/list at most once per this many appended trains during an
-    // import. The previous code repainted and re-serialized the entire store on
-    // every single train, which made importing N trains O(N^2). Now appends are
-    // O(N); the user still sees periodic progress, and one authoritative repaint
-    // + persist happens when the loop finishes.
-    const PROGRESSIVE_APPEND_REPAINT_BATCH = 25;
-
+    // same append -> yield -> solve route -> draw THIS train -> progress sequence,
+    // so a change to that ordering only has to be made once.
+    //
+    // The map is built up one train at a time: each iteration adds exactly ONE new
+    // route line (and its markers) onto the existing layers via appendTrainToLayers
+    // — it never clears and re-draws the whole map mid-load. Because each train's
+    // route is solved off the render path and only its own line is drawn, the loop
+    // stays O(N) and the page keeps responding while lines appear progressively.
+    // A single authoritative renderAll() at the end re-renders with the correct
+    // cross-train overlap offsets and refreshes the date bar / export textarea.
     async function runProgressiveAppend(trains, { persistEachStep = true, onProgress, fallbackDate = null } = {}) {
       const appendedIds = [];
       const total = trains.length;
+      // Time-budget chunked scheduling. Keep processing trains until ~FRAME_BUDGET_MS
+      // of work has accumulated, THEN yield one frame — instead of paying a whole
+      // frame per train (which made N trains cost >= N frames regardless of how
+      // cheap each one was). Cached/cheap trains now fly through many per frame; a
+      // heavy solve still yields right after. Wall-clock tracks real work and the
+      // approach scales to any N.
+      const FRAME_BUDGET_MS = 12;
+      const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+      // One initial yield so the progress UI paints before the (possibly heavy)
+      // first solve / route-graph build blocks the thread.
+      await waitForImportPaint();
+      let frameStart = now();
       for (let index = 0; index < total; index += 1) {
         const id = appendImportedTrain(trains[index], fallbackDate);
         appendedIds.push(id);
+
+        const appendedTrain = getTrain(id);
+        warmRouteCacheForTrain(appendedTrain);
+
+        // Draw just this one train incrementally: one more line on the map, one
+        // more card in the list (O(1)). No full-list rebuild, no full-map clear.
+        perfMeasure("appendTrainToLayers", () => appendTrainToLayers(appendedTrain));
+        appendTrainListItemIncremental(appendedTrain);
         if (onProgress) onProgress({ count: appendedIds.length, total, id });
 
-        // Fix #2: yield to the browser, then solve THIS train's route off the
-        // render path. Spreading the (cached or freshly solved) route work one
-        // train per frame keeps the page responsive and the progress bar moving,
-        // instead of solving a whole batch synchronously inside renderAll().
-        await waitForImportPaint();
-        warmRouteCacheForTrain(getTrain(id));
-
-        // Repaint only on batch boundaries; routes are already cached by the
-        // warm-up above, so these renders do cheap lookups, not Dijkstra.
-        const isLast = index === total - 1;
-        if (!isLast && (index + 1) % PROGRESSIVE_APPEND_REPAINT_BATCH === 0) {
-          renderAll({ updateJsonTextarea: false });
+        if (now() - frameStart >= FRAME_BUDGET_MS) {
+          await waitForImportPaint();
+          frameStart = now();
         }
       }
-      // Single full repaint + persist for the whole batch.
+      // Single authoritative repaint: full sorted list + date bar + cross-train
+      // overlap offsets, all once at the end.
       renderAll();
       if (persistEachStep) saveTrainStore();
       return appendedIds;
@@ -1387,12 +1519,14 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       // into thousands of path segments, and an SVG DOM of that size makes every
       // pan/zoom and re-render slow. Canvas keeps interaction smooth; click/popup
       // still work via Leaflet's canvas renderer.
-      limitedExpressRouteRenderer = L.canvas({ padding: 0.6 });
+      limitedExpressRouteRenderer = L.canvas({ padding: 0.2 });
       // Separate canvas for the heavy static reference overlays (national N02
-      // railway network + stations). A larger buffer means panning re-renders
-      // these ~22k features far less often, and everything drawn on it is
-      // non-interactive so Leaflet does no per-feature hit-testing for them.
-      baseOverlayRenderer = L.canvas({ padding: 0.6 });
+      // railway network + stations). Padding was 0.6, which made the canvas
+      // buffer ~5x viewport area (x2 again on Retina); every repaint of the
+      // ~405k-point overlay then had to stroke that whole oversized buffer.
+      // A small padding keeps the buffer near viewport size so each redraw
+      // touches far fewer pixels — the main per-gesture freeze shrinks sharply.
+      baseOverlayRenderer = L.canvas({ padding: 0.15 });
 
       const simpleOsmLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         subdomains: "abcd",
@@ -1429,12 +1563,15 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       railSectionLayer = L.geoJSON(railSectionsGeoJson, {
         renderer: baseOverlayRenderer,
         interactive: false,
-        // The national overlay is ~22k lines / ~405k points; the canvas re-strokes
-        // ALL of it on every moveend, which was the dominant source of map drag /
-        // zoom jank. A high smoothFactor makes Leaflet drop near-collinear points
-        // at render time (purely visual simplification of a reference overlay — the
-        // underlying N02 data is untouched), cutting per-redraw paint cost sharply.
-        style: () => ({ color: "#777", weight: 1, opacity: 0.45, smoothFactor: 3 })
+        // smoothFactor must be set as a LAYER option (not inside style()), so
+        // Leaflet actually applies it during point simplification. The national
+        // overlay is ~22k lines / ~405k points; the canvas re-strokes ALL of it on
+        // every moveend, which is the dominant source of drag/zoom jank. A high
+        // smoothFactor drops near-collinear points at render time (purely visual
+        // simplification of a reference overlay — the underlying N02 data is
+        // untouched), cutting per-redraw cost sharply.
+        smoothFactor: 4,
+        style: () => ({ color: "#777", weight: 1, opacity: 0.45 })
       });
 
       // Station overlay (10k+ features). Off by default; rendered non-interactive
@@ -1445,8 +1582,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         renderer: baseOverlayRenderer,
         interactive: false,
         // Same render-time simplification as the rail overlay (off by default, but
-        // keep it cheap to repaint when the user enables it).
-        style: () => ({ color: "#444", weight: 3, opacity: 0.35, dashArray: "3 4", smoothFactor: 3 })
+        // keep it cheap to repaint when the user enables it). smoothFactor as a
+        // layer option so Leaflet actually honors it.
+        smoothFactor: 4,
+        style: () => ({ color: "#444", weight: 3, opacity: 0.35, dashArray: "3 4" })
       }).addTo(stationLayer);
       stationsGeoJson.features.forEach((feature) => {
         L.circleMarker(toLatLng(feature), {
@@ -1465,7 +1604,6 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       passThroughLayer = L.layerGroup();
 
       simpleOsmLayer.addTo(map);
-      railSectionLayer.addTo(map);
       limitedExpressRouteLayer.addTo(map);
       stopLayer.addTo(map);
       passThroughLayer.addTo(map);
@@ -1484,6 +1622,48 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         "Stops": stopLayer,
         "Pass-through Stations": passThroughLayer
       }).addTo(map);
+
+      // --- Zoom-gated heavy overlays -------------------------------------------
+      // The national railway/station overlays are ~405k / ~25k points. When zoomed
+      // out to the whole country they collapse into an unreadable blur anyway, yet
+      // Leaflet still re-projects and re-strokes every point on each moveend — the
+      // main cause of drag/zoom jank. So we only attach them to the map at or above
+      // this zoom. The layers-control checkbox still governs whether the user WANTS
+      // each one; below the threshold it's hidden regardless, above it's shown only
+      // if the user has it enabled.
+      const NATIONAL_OVERLAY_MIN_ZOOM = 8;
+      // Rail overlay defaults to "wanted" (it was on by default before); the
+      // station overlay defaults to off, matching the previous behaviour.
+      const heavyOverlays = [
+        { layer: railSectionLayer, wanted: true },
+        { layer: stationLayer, wanted: false }
+      ];
+      const syncHeavyOverlays = () => {
+        const show = map.getZoom() >= NATIONAL_OVERLAY_MIN_ZOOM;
+        heavyOverlays.forEach((o) => {
+          const shouldBeOn = o.wanted && show;
+          const isOn = map.hasLayer(o.layer);
+          if (shouldBeOn && !isOn) o.layer.addTo(map);
+          else if (!shouldBeOn && isOn) map.removeLayer(o.layer);
+        });
+      };
+      // Keep the user's checkbox intent in sync without letting the control's
+      // add/remove fight the zoom gate.
+      map.on("overlayadd", (e) => {
+        const o = heavyOverlays.find((x) => x.layer === e.layer);
+        if (o) { o.wanted = true; syncHeavyOverlays(); }
+      });
+      map.on("overlayremove", (e) => {
+        const o = heavyOverlays.find((x) => x.layer === e.layer);
+        if (o) { o.wanted = false; }
+      });
+      map.on("zoomend", syncHeavyOverlays);
+      // Viewport culling for the ~67-train route layer: re-evaluate which route
+      // segments are in view once the map settles. renderRoutesInView short-circuits
+      // while the view stays inside the last rendered margin, so an in-margin pan
+      // costs nothing.
+      map.on("moveend", () => renderRoutesInView(false));
+      syncHeavyOverlays();
     }
 
     function bindEvents() {
@@ -1730,30 +1910,53 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       // Build the whole list in a detached fragment so the live DOM only reflows
       // once on insertion instead of once per train.
       const fragment = document.createDocumentFragment();
-      trains.forEach((train) => {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.dataset.trainId = train.id;
-        item.className = `train-item${train.id === selectedTrainId ? " selected" : ""}${train.id === focusedTrainId ? " focused" : ""}`;
-        // In the combined "全部" view each card shows its date badge; per-date
-        // views omit it (the whole list is one date already).
-        const dateBadge = showingAll
-          ? `<span class="train-date-badge">${escapeHtml(dateLabel(getTrainDate(train)))}</span>`
-          : "";
-        const depMinutes = getTrainDepartureMinutes(train);
-        const depText = depMinutes === Infinity ? "—:—" : formatMinutes(depMinutes);
-        item.innerHTML = `
-          <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
-          <span style="min-width:0">
-            <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(train.name || "")}</span>
-            <span class="train-meta">${escapeHtml(train.origin || "?")} → ${escapeHtml(train.destination || "?")} · 發 ${escapeHtml(depText)} · ${train.stops?.length || 0} stops</span>
-          </span>
-          <span class="train-meta">${train.visible === false ? "hidden" : "shown"}</span>
-        `;
-        item.addEventListener("click", () => selectTrain(train.id, { fit: true }));
-        fragment.appendChild(item);
-      });
+      trains.forEach((train) => fragment.appendChild(buildTrainListItemElement(train, showingAll)));
       els.list.appendChild(fragment);
+    }
+
+    // Build ONE sidebar card. Shared by the full renderTrainList() and the
+    // incremental per-train append used during progressive import, so both render
+    // identically.
+    function buildTrainListItemElement(train, showingAll) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.dataset.trainId = train.id;
+      item.className = `train-item${train.id === selectedTrainId ? " selected" : ""}${train.id === focusedTrainId ? " focused" : ""}`;
+      // In the combined "全部" view each card shows its date badge; per-date views
+      // omit it (the whole list is one date already).
+      const dateBadge = showingAll
+        ? `<span class="train-date-badge">${escapeHtml(dateLabel(getTrainDate(train)))}</span>`
+        : "";
+      const depMinutes = getTrainDepartureMinutes(train);
+      const depText = depMinutes === Infinity ? "—:—" : formatMinutes(depMinutes);
+      item.innerHTML = `
+        <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
+        <span style="min-width:0">
+          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(train.name || "")}</span>
+          <span class="train-meta">${escapeHtml(train.origin || "?")} → ${escapeHtml(train.destination || "?")} · 發 ${escapeHtml(depText)} · ${train.stops?.length || 0} stops</span>
+        </span>
+        <span class="train-meta">${train.visible === false ? "hidden" : "shown"}</span>
+      `;
+      item.addEventListener("click", () => selectTrain(train.id, { fit: true }));
+      return item;
+    }
+
+    // Same date + search predicate renderTrainList() applies, for a single train.
+    function trainPassesListFilter(train) {
+      const query = els.search.value.trim().toLowerCase();
+      if (query && !trainMatchesQuery(train, query)) return false;
+      if (selectedDate !== ALL_DATES && getTrainDate(train) !== selectedDate) return false;
+      return true;
+    }
+
+    // Append exactly one card during progressive import (O(1)) instead of
+    // rebuilding the whole list each iteration (which was O(N^2) over the import).
+    // The authoritative sorted list is rebuilt once by the final renderAll().
+    function appendTrainListItemIncremental(train) {
+      if (!trainPassesListFilter(train)) return;
+      const empty = els.list.querySelector(".list-empty");
+      if (empty) empty.remove();
+      els.list.appendChild(buildTrainListItemElement(train, selectedDate === ALL_DATES));
     }
 
     // Lightweight search match. The old code ran JSON.stringify(train) — which now
@@ -2074,8 +2277,35 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       );
     }
 
+    // Add ONE train's route line + markers onto the existing map layers WITHOUT
+    // clearing anything. Used during progressive load so each train appears one at
+    // a time (one new line per train) instead of all-at-once. Overlap offset slots
+    // are intentionally skipped here (they are a global, all-trains computation);
+    // the single authoritative renderTrainLayers() at the end of the load applies
+    // the correct parallel-offset styling. Honors the same visibility / date-scope
+    // rules as the full render so hidden or out-of-scope trains don't draw.
+    function appendTrainToLayers(train) {
+      if (!train || train.visible === false) return;
+      const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
+      if (dateScoped && getTrainDate(train) !== selectedDate) return;
+
+      const features = getMatchedRouteFeatures(train);
+      getRouteRenderItems(train, false, features, new Map()).forEach((item) => {
+        renderTrainRouteSegment(train, item.feature, { dimmed: false, focused: false, overlap: null })
+          .addTo(limitedExpressRouteLayer);
+      });
+
+      const markerOptions = { dimmed: false, focused: false };
+      (train.stops || []).forEach((stop) => {
+        const stopFeature = getStopFeature(stop, train);
+        if (!stopFeature) return;
+        if (stopFeature.properties.stop_type === "pass_through") renderPassThroughMarker(stopFeature, train, markerOptions).addTo(passThroughLayer);
+        else renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
+      });
+      getComputedPassThroughFeatures(train).forEach((feature) => renderPassThroughMarker(feature, train, markerOptions).addTo(passThroughLayer));
+    }
+
     function renderTrainLayers() {
-      limitedExpressRouteLayer.clearLayers();
       stopLayer.clearLayers();
       passThroughLayer.clearLayers();
 
@@ -2090,26 +2320,24 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const orderedTrains = focusActive
         ? [...visibleTrains.filter((train) => train.id !== focusedTrainId), ...visibleTrains.filter((train) => train.id === focusedTrainId)]
         : visibleTrains;
-      const splitForOverlap = !focusActive;
-      const routeFeaturesByTrain = new Map(orderedTrains.map((train) => [train.id, getMatchedRouteFeatures(train)]));
-      const overlapRecords = splitForOverlap
-        ? orderedTrains.flatMap((train) => getRouteSegmentRecords(train, routeFeaturesByTrain.get(train.id) || []))
-        : [];
-      const overlapMap = splitForOverlap ? buildRouteOverlapMap(overlapRecords, orderedTrains) : new Map();
-      const routeItems = orderedTrains.flatMap((train) => (
-        getRouteRenderItems(train, splitForOverlap, routeFeaturesByTrain.get(train.id) || [], overlapMap)
-      ));
-      const routeItemsByTrain = groupRouteItemsByTrain(routeItems);
 
-      orderedTrains.forEach((train) => {
-        (routeItemsByTrain.get(train.id) || []).forEach((item) => {
-          renderTrainRouteSegment(train, item.feature, {
-            dimmed: focusActive && train.id !== focusedTrainId,
-            focused: focusActive && train.id === focusedTrainId,
-            overlap: item.overlapInfo || null
-          }).addTo(limitedExpressRouteLayer);
-        });
-      });
+      // (1) Overlap-split caching. The split runs + overlap slots are a function of
+      // the train set / order / route geometry / ride flags / focus only — never of
+      // zoom or pan — so recompute them only when that signature changes. With ~67
+      // trains this skips rebuilding the overlap map and re-splitting every route on
+      // selection changes, style-only edits, and view moves.
+      const signature = computeRouteSignature(orderedTrains, focusActive, dateScoped);
+      if (!cachedRouteItems || signature !== cachedRouteSignature) {
+        cachedRouteItems = buildRouteItems(orderedTrains, focusActive);
+        cachedRouteSignature = signature;
+      }
+      cachedRouteFocusActive = focusActive;
+
+      // (2) Viewport culling. Attach only the route segments inside the current
+      // view (+ margin). Force a fresh render here because styles / focus / the
+      // cached set may have just changed; later pans are handled by the moveend
+      // handler installed in initMap.
+      renderRoutesInView(true);
 
       orderedTrains.forEach((train) => {
         const markerOptions = {
@@ -2124,6 +2352,122 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         });
         getComputedPassThroughFeatures(train).forEach((feature) => renderPassThroughMarker(feature, train, markerOptions).addTo(passThroughLayer));
       });
+    }
+
+    // Signature of everything the overlap split depends on (zoom-independent).
+    function computeRouteSignature(orderedTrains, focusActive, dateScoped) {
+      const trainPart = orderedTrains.map((train) => (
+        `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`
+      )).join("|");
+      return `${trainPart}|focus:${focusActive ? (focusedTrainId || "") : ""}|date:${dateScoped ? selectedDate : ""}`;
+    }
+
+    // Build the overlap map + split runs once, annotating each run with a cached
+    // LatLngBounds so the viewport cull can test it without re-walking geometry.
+    function buildRouteItems(orderedTrains, focusActive) {
+      const splitForOverlap = !focusActive;
+      const routeFeaturesByTrain = new Map(orderedTrains.map((train) => [train.id, getMatchedRouteFeatures(train)]));
+      const overlapRecords = splitForOverlap
+        ? orderedTrains.flatMap((train) => getRouteSegmentRecords(train, routeFeaturesByTrain.get(train.id) || []))
+        : [];
+      const overlapMap = splitForOverlap ? buildRouteOverlapMap(overlapRecords, orderedTrains) : new Map();
+      const items = orderedTrains.flatMap((train) => (
+        getRouteRenderItems(train, splitForOverlap, routeFeaturesByTrain.get(train.id) || [], overlapMap)
+      ));
+      items.forEach((item, idx) => {
+        item.bounds = routeFeatureBounds(item.feature);
+        item.order = idx; // preserve draw order when a grid query returns a subset
+      });
+      routeItemsGrid = buildRouteItemsGrid(items);
+      return items;
+    }
+
+    function routeGridCellRange(bounds) {
+      return {
+        minX: Math.floor(bounds.getWest() / ROUTE_GRID_CELL_DEG),
+        maxX: Math.floor(bounds.getEast() / ROUTE_GRID_CELL_DEG),
+        minY: Math.floor(bounds.getSouth() / ROUTE_GRID_CELL_DEG),
+        maxY: Math.floor(bounds.getNorth() / ROUTE_GRID_CELL_DEG)
+      };
+    }
+
+    // Bucket each item into every cell its bounds overlaps. Items with a
+    // pathologically large bbox (or none) go in an always-checked "oversized" list
+    // so insertion cost stays bounded.
+    function buildRouteItemsGrid(items) {
+      const grid = { cells: new Map(), oversized: [] };
+      items.forEach((item) => {
+        const b = item.bounds;
+        if (!b || !b.isValid()) { grid.oversized.push(item); return; }
+        const r = routeGridCellRange(b);
+        const span = (r.maxX - r.minX + 1) * (r.maxY - r.minY + 1);
+        if (span > ROUTE_GRID_MAX_CELLS_PER_ITEM) { grid.oversized.push(item); return; }
+        for (let x = r.minX; x <= r.maxX; x += 1) {
+          for (let y = r.minY; y <= r.maxY; y += 1) {
+            const key = `${x}:${y}`;
+            let bucket = grid.cells.get(key);
+            if (!bucket) { bucket = []; grid.cells.set(key, bucket); }
+            bucket.push(item);
+          }
+        }
+      });
+      return grid;
+    }
+
+    // Candidate items whose cells overlap the padded view, returned in original
+    // draw order. Falls back to all items when the grid is absent or the query area
+    // is huge (zoomed out), where gathering cells costs more than a full scan.
+    function collectRouteItemsInView(padded) {
+      if (!routeItemsGrid || !cachedRouteItems) return cachedRouteItems || [];
+      const r = routeGridCellRange(padded);
+      const span = (r.maxX - r.minX + 1) * (r.maxY - r.minY + 1);
+      if (span > ROUTE_GRID_QUERY_CELL_LIMIT) return cachedRouteItems;
+      const seen = new Set(routeItemsGrid.oversized);
+      for (let x = r.minX; x <= r.maxX; x += 1) {
+        for (let y = r.minY; y <= r.maxY; y += 1) {
+          const bucket = routeItemsGrid.cells.get(`${x}:${y}`);
+          if (bucket) for (let i = 0; i < bucket.length; i += 1) seen.add(bucket[i]);
+        }
+      }
+      return [...seen].sort((a, b) => a.order - b.order);
+    }
+
+    function routeFeatureBounds(feature) {
+      const bounds = L.latLngBounds([]);
+      getFeaturePathCoordinates(feature).forEach((coord) => {
+        if (Array.isArray(coord) && coord.length >= 2) bounds.extend([coord[1], coord[0]]);
+      });
+      return bounds;
+    }
+
+    // Attach only the cached route segments intersecting the current padded view.
+    // `force` re-renders unconditionally (data/style changed); otherwise skip when
+    // the previous padded render still covers the current view, so an in-margin pan
+    // is a cheap no-op.
+    function renderRoutesInView(force) {
+      if (!map || !cachedRouteItems) return;
+      const viewBounds = map.getBounds();
+      const zoom = map.getZoom();
+      // Re-render when forced, when the zoom level changed (so the level-of-detail
+      // simplification refreshes), or when the view left the previously rendered
+      // margin. A pure in-margin pan at the same zoom stays a no-op.
+      if (!force && renderedRouteZoom === zoom && renderedRouteBounds && renderedRouteBounds.contains(viewBounds)) return;
+
+      const padded = viewBounds.pad(ROUTE_RENDER_MARGIN);
+      limitedExpressRouteLayer.clearLayers();
+      const focusActive = cachedRouteFocusActive;
+      // O(items in view) via the spatial index; the precise bbox test below still
+      // filters candidates whose cell overlaps but whose bounds do not.
+      collectRouteItemsInView(padded).forEach((item) => {
+        if (item.bounds && item.bounds.isValid() && !padded.intersects(item.bounds)) return;
+        renderTrainRouteSegment(item.train, item.feature, {
+          dimmed: focusActive && item.train.id !== focusedTrainId,
+          focused: focusActive && item.train.id === focusedTrainId,
+          overlap: item.overlapInfo || null
+        }).addTo(limitedExpressRouteLayer);
+      });
+      renderedRouteBounds = padded;
+      renderedRouteZoom = zoom;
     }
 
     function getRouteRenderItems(train, splitForOverlap, features, overlapMap) {
@@ -2364,6 +2708,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
       const persisted = train.route_geometry_cache;
       if (persisted && persisted.key === cacheKey && Array.isArray(persisted.features) && persisted.features.length) {
         runtimeRouteCache.set(cacheKey, persisted.features);
+        // Also seed the cross-session IndexedDB cache so other trains / future
+        // sessions with the same sections benefit even without an embedded cache.
+        persistRouteCacheEntry(cacheKey, persisted.features);
         return dedupeSameTrainRouteFeatures(cloneRouteFeaturesForTrain(persisted.features, train));
       }
 
@@ -2401,6 +2748,9 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         }
       }));
       runtimeRouteCache.set(cacheKey, templateFeatures);
+      // Persist the freshly solved geometry so later sessions skip both the solve
+      // and (if every train hits the cache) the route-graph build entirely.
+      persistRouteCacheEntry(cacheKey, templateFeatures);
       // Fix #1: persist the freshly solved geometry onto the train so exporting /
       // auto-saving carries it and future opens can skip the solve entirely.
       train.route_geometry_cache = { key: cacheKey, features: templateFeatures };
@@ -3667,16 +4017,38 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         dimmed ? 0.18 :
         ridden ? 0.9 : unriddenOpacity
       );
-      const overlapOpacityFactor = isOverlap && !focused && !dimmed
-        ? Math.max(0.28, 1 / Math.sqrt(Math.max(1, overlapCount)))
-        : 1;
+      // Parallel-offset overlapping routes instead of stacking them on the same
+      // pixels. When `overlapCount` trains share a track segment, each is pushed
+      // perpendicular to the line by a constant pixel distance based on its slot,
+      // so every train's colour stays visible side-by-side (transit-map style).
+      // The offset (via leaflet.polylineoffset) is applied AFTER projection to
+      // layer points, so the gap is a fixed number of screen pixels at every zoom
+      // and works with the canvas renderer. Centre the fan around the true track:
+      // slot 0..count-1  ->  offsets  -(count-1)/2 .. +(count-1)/2  times spacing.
+      const offsetSpacingPx = Math.max(3.5, weight + 1.5);
+      const overlapOffset = isOverlap
+        ? (overlapSlot - (overlapCount - 1) / 2) * offsetSpacingPx
+        : 0;
+      // Lines no longer overlap pixel-for-pixel, so they can stay fully opaque —
+      // dropping the old opacity penalty keeps each colour crisp.
+
+      // Level-of-detail: at low zoom the route's full vertex density is sub-pixel
+      // noise, so simplify aggressively (Douglas-Peucker via Leaflet's smoothFactor)
+      // to cut the points projected/stroked per frame; restore full detail zoomed
+      // in. renderRoutesInView re-renders on zoom-level change so this stays current.
+      // This is what bounds the heaviest case (zoomed out, every route in view) for
+      // any dataset size.
+      const zoom = map ? map.getZoom() : 12;
+      const lodSmoothFactor = zoom >= 12 ? 1 : zoom >= 10 ? 1.5 : zoom >= 8 ? 3 : zoom >= 6 ? 6 : 10;
 
       return L.geoJSON(segmentFeature, {
         renderer: limitedExpressRouteRenderer,
+        offset: overlapOffset,
+        smoothFactor: lodSmoothFactor,
         style: {
           color,
           weight: focused ? weight + 2 : (ridden ? weight : Math.max(2, weight - 1)),
-          opacity: baseOpacity * overlapOpacityFactor,
+          opacity: baseOpacity,
           dashArray: focused || dimmed || isOverlap ? null : (ridden ? null : "4 6"),
           dashOffset: null,
           lineCap: "round"
