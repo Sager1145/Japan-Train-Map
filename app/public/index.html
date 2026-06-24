@@ -129,7 +129,10 @@
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<script src="leaflet.polylineoffset.js"></script>
+<!-- deck.gl 9 standalone UMD (Deck, PathLayer, PathStyleExtension) + GPU route overlay.
+     Routes render on the GPU; pass ?deck=0 in the URL to fall back to SVG rendering. -->
+<script src="https://unpkg.com/deck.gl@9.0.38/dist.min.js"></script>
+<script src="deckgl-routes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -89,7 +89,10 @@ app.put("/api/train-store", express.json({ limit: "25mb" }), async (req, res) =>
   }
   const tmpFile = `${TRAIN_STORE_FILE}.${process.pid}.tmp`;
   try {
-    await fs.promises.writeFile(tmpFile, JSON.stringify(store, null, 2), "utf8");
+    // Write compact (no indentation). The store no longer embeds per-train
+    // route_geometry_cache, but compact serialization still avoids the ~3x
+    // size inflation that pretty-printing added to every save.
+    await fs.promises.writeFile(tmpFile, JSON.stringify(store), "utf8");
     await fs.promises.rename(tmpFile, TRAIN_STORE_FILE);
     res.json({ ok: true, trains: store.trains.length });
   } catch (err) {
