@@ -1,138 +1,190 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
-<head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1" name="viewport"/>
-<title>N02 Limited Express Train Manager</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-<link rel="stylesheet" href="styles.css"/>
-</head>
-<body>
-<div id="app">
-<aside id="sidebar">
-<header>
-<h1>N02 特急列車管理</h1>
-<div class="hint">OSM Overlay / 伺服器 train-store.json 自動保存載入 / 逐條匯入</div>
-</header>
-<section class="section">
-<h2>搜尋與操作</h2>
-<div class="row">
-<input id="search-input" placeholder="搜尋車次、列車、車站或 ID"/>
-</div>
-<div class="toolbar" style="margin-top:8px">
-<button class="primary" id="add-train">新增列車</button>
-<button id="duplicate-train">複製</button>
-<button class="danger" id="delete-train">刪除</button>
-<button class="danger" id="delete-all-trains">全部刪除</button>
-<button id="fit-selected">定位</button>
-<button id="clear-selection">取消選擇</button>
-</div>
-</section>
-<section class="section">
-<h2>JSON 匯入 / 本地資料</h2>
-<textarea class="import-json-area" id="import-json-input" placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件' spellcheck="false"></textarea>
-<div class="toolbar" style="margin-top:8px">
-<button id="open-local-json">打開本地 JSON</button>
-<button id="save-local-json">保存 / 另存 JSON</button>
-<input class="file-input-hidden" id="local-json-file-input" type="file" accept="application/json,.json"/>
-</div>
-<div class="toolbar" style="margin-top:8px">
-<button id="validate-import-json">驗證匯入 JSON</button>
-<button class="primary" id="apply-import-json">開始載入 / 逐條匯入</button>
-</div>
-<div class="import-target" id="import-target"></div>
-<div class="progress-wrap" id="import-progress-wrap" hidden>
-  <div class="progress-track"><div class="progress-fill" id="import-progress-fill"></div></div>
-  <div class="progress-text" id="import-progress-text"></div>
-</div>
-<div class="status" id="import-status"></div>
-</section>
-<section class="section">
-<h2>列車清單</h2>
-<div class="date-bar" id="date-bar"></div>
-<div class="toolbar" style="margin-top:6px">
-<button id="add-date">新增日期</button>
-<button id="remove-empty-dates">刪除空日期</button>
-<label class="inline-check"><input id="map-date-filter" type="checkbox"/> 地圖僅顯示當前日期</label>
-</div>
-<div class="train-list-title" id="train-list-title"></div>
-<div class="train-list" id="train-list"></div>
-</section>
-<section class="section">
-<h2>列車資料</h2>
-<div class="form-grid">
-<label>列車 ID <input id="field-id"/></label>
-<label>車次 <input id="field-number"/></label>
-<label>列車名稱 <input id="field-name"/></label>
-<label>方向 <input id="field-direction" placeholder="下行 / 上行"/></label>
-<label>起站 <input id="field-origin"/></label>
-<label>終站 <input id="field-destination"/></label>
-<label>顏色 <input id="field-color" type="color"/></label>
-<label>線寬 <input id="field-weight" max="14" min="1" type="number"/></label>
-</div>
-<div class="toolbar" style="margin-top:8px">
-<button class="primary" id="save-fields">套用欄位</button>
-<button id="toggle-visible">顯示/隱藏</button>
-<button id="move-up">上移</button>
-<button id="move-down">下移</button>
-</div>
-<div class="status" id="field-status"></div>
-</section>
-<section class="section">
-<h2>停靠站與通過站</h2>
-<div style="overflow:auto">
-<table>
-<thead>
-<tr>
-<th style="width:34px">序</th>
-<th style="width:96px">車站</th>
-<th style="width:62px">到</th>
-<th style="width:62px">發</th>
-<th style="width:104px">類型</th>
-<th style="width:72px">乘坐</th>
-<th style="width:86px">操作</th>
-</tr>
-</thead>
-<tbody id="stops-body"></tbody>
-</table>
-</div>
-<div class="toolbar" style="margin-top:8px">
-<button id="add-stop">新增停站</button>
-<button id="rebuild-route">依停站重建路線</button>
-</div>
-</section>
-<section class="section">
-<h2>JSON 匯出</h2>
-<textarea id="train-json-input" readonly spellcheck="false"></textarea>
-<div class="toolbar" style="margin-top:8px">
-<button id="export-json">匯出 JSON</button>
-<button id="download-json">下載 JSON</button>
-<button id="reset-defaults">重置示例</button>
-</div>
-<div class="toolbar" style="margin-top:8px">
-<button id="download-html">下載目前 HTML</button>
-<button class="danger" id="clear-storage">清除保存資料</button>
-</div>
-<div class="status" id="json-status"></div>
-</section>
-<section class="section">
-<h2>圖例與資料來源</h2>
-<div class="hint"><span class="legend-dot" style="color:#777"></span>N02 full railway overlay (N02_002=1/2/3/4/5)</div>
-<div class="hint"><span class="legend-dot" style="color:#444"></span>N02 full station overlay (N02_002=1/2/3/4/5)</div>
-<div class="hint"><span class="legend-dot" style="color:var(--accent)"></span>特急路線、停靠與通過站 overlay</div>
-<p class="hint">鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成。</p>
-<p class="hint">Map data © OpenStreetMap contributors. N02 railway data © Ministry of Land, Infrastructure, Transport and Tourism of Japan, CC BY 4.0.</p>
-</section>
-</aside>
-<main id="map"></main>
-</div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<!-- deck.gl 9 standalone UMD (Deck, PathLayer, PathStyleExtension) + GPU route overlay.
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <title>N02 Limited Express Train Manager</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header>
+          <h1>N02 特急列車管理</h1>
+          <div class="hint">
+            OSM Overlay / 伺服器 train-store.json 自動保存載入 / 逐條匯入
+          </div>
+        </header>
+        <section class="section">
+          <h2>搜尋與操作</h2>
+          <div class="row">
+            <input id="search-input" placeholder="搜尋車次、列車、車站或 ID" />
+          </div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button class="primary" id="add-train">新增列車</button>
+            <button id="duplicate-train">複製</button>
+            <button class="danger" id="delete-train">刪除</button>
+            <button class="danger" id="delete-all-trains">全部刪除</button>
+            <button id="fit-selected">定位</button>
+            <button id="clear-selection">取消選擇</button>
+            <button id="toggle-focus-zoom" type="button" aria-pressed="true">
+              自動聚焦：開
+            </button>
+          </div>
+        </section>
+        <section class="section">
+          <h2>JSON 匯入 / 本地資料</h2>
+          <textarea
+            class="import-json-area"
+            id="import-json-input"
+            placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件'
+            spellcheck="false"
+          ></textarea>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="open-local-json">打開本地 JSON</button>
+            <button id="save-local-json">保存 / 另存 JSON</button>
+            <input
+              class="file-input-hidden"
+              id="local-json-file-input"
+              type="file"
+              accept="application/json,.json"
+            />
+          </div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="validate-import-json">驗證匯入 JSON</button>
+            <button class="primary" id="apply-import-json">
+              開始載入 / 逐條匯入
+            </button>
+          </div>
+          <div class="import-target" id="import-target"></div>
+          <div class="progress-wrap" id="import-progress-wrap" hidden>
+            <div class="progress-track">
+              <div class="progress-fill" id="import-progress-fill"></div>
+            </div>
+            <div class="progress-text" id="import-progress-text"></div>
+          </div>
+          <div class="status" id="import-status"></div>
+        </section>
+        <section class="section">
+          <h2>列車清單</h2>
+          <div class="date-bar" id="date-bar"></div>
+          <div class="toolbar" style="margin-top: 6px">
+            <button id="add-date">新增日期</button>
+            <button id="remove-empty-dates">刪除空日期</button>
+            <label class="inline-check"
+              ><input id="map-date-filter" type="checkbox" />
+              地圖僅顯示當前日期</label
+            >
+          </div>
+          <div class="train-list-title" id="train-list-title"></div>
+          <div class="train-list" id="train-list"></div>
+        </section>
+        <section class="section">
+          <h2>列車資料</h2>
+          <div class="form-grid">
+            <label>列車 ID <input id="field-id" /></label>
+            <label>車次 <input id="field-number" /></label>
+            <label>列車名稱 <input id="field-name" /></label>
+            <label
+              >方向 <input id="field-direction" placeholder="下行 / 上行"
+            /></label>
+            <label>起站 <input id="field-origin" /></label>
+            <label>終站 <input id="field-destination" /></label>
+            <label>顏色 <input id="field-color" type="color" /></label>
+            <label
+              >線寬 <input id="field-weight" max="14" min="1" type="number"
+            /></label>
+          </div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button class="primary" id="save-fields">套用欄位</button>
+            <button id="toggle-visible">顯示/隱藏</button>
+            <button id="move-up">上移</button>
+            <button id="move-down">下移</button>
+          </div>
+          <div class="status" id="field-status"></div>
+        </section>
+        <section class="section">
+          <h2>停靠站與通過站</h2>
+          <div style="overflow: auto">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 34px">序</th>
+                  <th style="width: 96px">車站</th>
+                  <th style="width: 62px">到</th>
+                  <th style="width: 62px">發</th>
+                  <th style="width: 104px">類型</th>
+                  <th style="width: 72px">乘坐</th>
+                  <th style="width: 86px">操作</th>
+                </tr>
+              </thead>
+              <tbody id="stops-body"></tbody>
+            </table>
+          </div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="add-stop">新增停站</button>
+            <button id="rebuild-route">依停站重建路線</button>
+          </div>
+        </section>
+        <section class="section">
+          <h2>JSON 匯出</h2>
+          <textarea
+            id="train-json-input"
+            readonly
+            spellcheck="false"
+          ></textarea>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="export-json">匯出 JSON</button>
+            <button id="download-json">下載 JSON</button>
+            <button id="reset-defaults">重置示例</button>
+          </div>
+          <div class="toolbar" style="margin-top: 8px">
+            <button id="download-html">下載目前 HTML</button>
+            <button class="danger" id="clear-storage">清除保存資料</button>
+          </div>
+          <div class="status" id="json-status"></div>
+        </section>
+        <section class="section">
+          <h2>圖例與資料來源</h2>
+          <div class="hint">
+            <span class="legend-dot" style="color: #777"></span>N02 full railway
+            overlay (N02_002=1/2/3/4/5)
+          </div>
+          <div class="hint">
+            <span class="legend-dot" style="color: #444"></span>N02 full station
+            overlay (N02_002=1/2/3/4/5)
+          </div>
+          <div class="hint">
+            <span class="legend-dot" style="color: var(--accent)"></span
+            >特急路線、停靠與通過站 overlay
+          </div>
+          <p class="hint">
+            鐵路線資料：「国土数値情報（鉄道データ
+            N02）」（国土交通省）を加工して作成。
+          </p>
+          <p class="hint">
+            Map data © OpenStreetMap contributors. N02 railway data © Ministry
+            of Land, Infrastructure, Transport and Tourism of Japan, CC BY 4.0.
+          </p>
+        </section>
+      </aside>
+      <main id="map"></main>
+    </div>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <!-- deck.gl 9 standalone UMD (Deck, PathLayer, PathStyleExtension) + GPU route overlay.
      Routes render on the GPU; pass ?deck=0 in the URL to fall back to SVG rendering. -->
-<script src="https://unpkg.com/deck.gl@9.0.38/dist.min.js"></script>
-<script src="deckgl-routes.js"></script>
-<script src="app.js"></script>
-</body>
+    <script src="https://unpkg.com/deck.gl@9.0.38/dist.min.js"></script>
+    <script src="deckgl-routes.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>

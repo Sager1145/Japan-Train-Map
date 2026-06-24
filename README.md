@@ -89,10 +89,13 @@ Once the server is running it exposes the following endpoints. / 服务器启动
 | `GET` | `/api/train-store` | Read the saved train store (404 if none saved) | 读取已保存的列车存储（无则返回 404） |
 | `PUT` | `/api/train-store` | Save the train store (body must be a `schema_version` `"1.3"` or `"1.2"` store object) | 保存列车存储（请求体须为 `schema_version` 为 `"1.3"` 或 `"1.2"` 的存储对象） |
 | `DELETE` | `/api/train-store` | Clear the saved store; next boot falls back to built-in defaults | 清空已保存的存储，下次启动回退到内置默认值 |
+| `POST` | `/api/agent/import` | **Agent control:** import a full `1.3` store; open maps re-solve & render it automatically (`?mode=append` to merge) | **代理操作：** 导入完整 `1.3` 存储，已打开的地图自动重算并渲染（`?mode=append` 合并） |
+| `GET` | `/api/events` | Server-Sent Events stream of `store-changed` notifications (the frontend uses this for live refresh) | `store-changed` 通知的 SSE 流（前端用于实时刷新） |
 
 | English | 中文 |
 | --- | --- |
 | The frontend loads from the train-store endpoint on boot and auto-saves edits back via `PUT` — no manual action needed. API calls resolve relative to `index.html` (so the app also works when served under a sub-path). | 前端启动时从 train-store 接口载入数据，编辑后自动通过 `PUT` 保存，无需手动操作。API 调用相对于 `index.html` 解析（因此部署在子路径下也能正常工作）。 |
+| **AI agents** can drive the app directly: `POST` a rail plan to `/api/agent/import` and every open map live-refreshes via `/api/events` (Server-Sent Events) — re-solving and re-rendering the route with no manual reload. See [`AGENT.md`](./AGENT.md) for the full agent guide. | **AI 代理**可直接操作本应用：将行程 `POST` 到 `/api/agent/import`，所有已打开的地图通过 `/api/events`（SSE）实时刷新——自动重算并重绘路线，无需手动刷新。完整代理指南见 [`AGENT.md`](./AGENT.md)。 |
 
 ---
 
