@@ -1796,10 +1796,17 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     const NON_PREFERRED_INSTITUTION_LENGTH_FACTOR = 180;
     const NON_PREFERRED_INSTITUTION_EDGE_PENALTY = 5000;
     const NON_PREFERRED_STATION_SNAP_PENALTY = 20000;
-    const NON_PREFERRED_OPERATOR_LENGTH_FACTOR = 100;
-    const NON_PREFERRED_OPERATOR_EDGE_PENALTY = 3500;
-    const NON_PREFERRED_LINE_LENGTH_FACTOR = 140;
-    const NON_PREFERRED_LINE_EDGE_PENALTY = 4500;
+    // Soft preferred-line/operator bias for route Dijkstra. These are deliberately
+    // BOUNDED, length-proportional multipliers (a non-preferred metre costs a few
+    // preferred metres) — NOT the old route-dominating 140x/100x plus a flat
+    // per-edge constant. The flat per-edge penalty scaled with the *number* of
+    // N02 micro-segments, so a short branch line (e.g. 内子線, ~93 vertices over
+    // 5 km) accumulated ~400k of penalty and a finely-segmented same-line detour
+    // looked cheaper than the real path. Keeping the bias proportional to distance
+    // makes it resolution-independent and stops a same-line detour from beating a
+    // shorter mixed-line path.
+    const NON_PREFERRED_OPERATOR_LENGTH_FACTOR = 6;
+    const NON_PREFERRED_LINE_LENGTH_FACTOR = 8;
     const NON_PREFERRED_OPERATOR_STATION_SNAP_PENALTY = 12000;
     const NON_PREFERRED_LINE_STATION_SNAP_PENALTY = 15000;
     const STATION_TRANSFER_NODE_RADIUS_DEG = 0.0035;
@@ -2675,6 +2682,24 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
         solve_mode: commonLines.size || commonOperators.size ? "soft_fallback_after_home_attempts" : "no_common_line_soft_fallback"
       });
 
+      // Final safety net: a fully unbiased, institution-only attempt with the
+      // preferred line/operator hints CLEARED. Every attempt above keeps the
+      // preferred-line penalty, which can make a long same-line detour cheaper
+      // than the real path when a segment must leave the shared line onto a
+      // branch/through line (e.g. 宇和海 between 伊予大洲 and 内子 must run
+      // 予讃線 -> 内子線 -> 予讃線). Those detours then trip the detour guard and
+      // the whole segment gets dropped, leaving a big visible gap. Clearing the
+      // hints lets the shortest valid JR path win instead of cutting the segment
+      // off. It runs last, so it only takes over when every biased attempt failed.
+      pushAttempt({
+        requiredLines: new Set(),
+        requiredOperators: new Set(),
+        preferredLines: new Set(),
+        preferredOperators: new Set(),
+        requirePreferredInstitution: true,
+        solve_mode: "institution_only_unbiased_fallback"
+      });
+
       return attempts;
     }
 
@@ -2693,10 +2718,10 @@ const LOCAL_JSON_FILENAME = "n02-train-store.json";
     function nonPreferredLineOperatorPenalty(edge, preferredLines, preferredOperators) {
       let penalty = 0;
       if (preferredLines.size && edge.line_name && !preferredLines.has(edge.line_name)) {
-        penalty += edge.length * NON_PREFERRED_LINE_LENGTH_FACTOR + NON_PREFERRED_LINE_EDGE_PENALTY;
+        penalty += edge.length * NON_PREFERRED_LINE_LENGTH_FACTOR;
       }
       if (preferredOperators.size && edge.operator && !preferredOperators.has(edge.operator)) {
-        penalty += edge.length * NON_PREFERRED_OPERATOR_LENGTH_FACTOR + NON_PREFERRED_OPERATOR_EDGE_PENALTY;
+        penalty += edge.length * NON_PREFERRED_OPERATOR_LENGTH_FACTOR;
       }
       return penalty;
     }
