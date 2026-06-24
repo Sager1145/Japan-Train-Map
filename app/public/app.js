@@ -28,7 +28,6 @@ function installLongTaskObserver() {
           console.warn("[long-task]", `${entry.duration.toFixed(1)}ms`, entry);
         }
       }
-      let cached = _simplifiedLineCache.get(feature);
     });
     observer.observe({ entryTypes: ["longtask"] });
   } catch (err) {
