@@ -72,6 +72,304 @@ const DEFAULT_TRAIN_COLOR = "#d9364f";
 const DEFAULT_TRAIN_WEIGHT = 6;
 const DEFAULT_UNRIDDEN_OPACITY = 0.22;
 
+// ------------------------------------------------------------------------
+// Global display-tuning settings. These are pure UI/presentation knobs that
+// scale or override the numbers returned by the three style helpers
+// (routeSegmentStyleValues / stopMarkerStyleValues / passThroughMarkerStyleValues),
+// so they affect BOTH the SVG and the deck.gl render paths uniformly. They are
+// NOT part of the canonical train store — they live in localStorage only, so
+// the exported JSON schema stays exactly { schema_version, trains:[...] }.
+// ------------------------------------------------------------------------
+const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings";
+const DISPLAY_DEFAULTS = {
+  routeWidthScale: 1, // multiplies each train's route line width
+  riddenOpacity: 0.9, // opacity of ridden (ride_segment=true) route segments
+  unriddenOpacity: 0.22, // opacity of unridden (dimmed) route segments
+  dimOpacity: 0.18, // opacity of trains not on the selected date
+  terminalRadius: 9, // px radius of origin / destination markers
+  stopRadius: 7, // px radius of passenger / operational stop markers
+  passRadius: 4, // px radius of pass-through markers
+  markerStrokeScale: 1, // multiplies every marker's stroke width
+  focusBoost: 2, // extra line width / marker radius for the selected train
+  mapOpacity: 0.3, // basemap tile opacity; lower fades the map toward pure white
+  onlyEndpoints: false, // show only the trip's first origin + last destination
+};
+// Live working copy (mutated by the UI; seeded from localStorage on boot).
+const DISPLAY = { ...DISPLAY_DEFAULTS };
+// Slider definitions for the "顯示調節" submenu (built dynamically in JS so the
+// HTML stays tiny and every control is wired the same way).
+const DISPLAY_CONTROLS = [
+  { key: "routeWidthScale", label: "線路粗細", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
+  { key: "riddenOpacity", label: "已乘區間透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "unriddenOpacity", label: "未乘區間透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "dimOpacity", label: "非當前日期淡化", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
+  { key: "terminalRadius", label: "端點（起 / 終站）大小", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
+  { key: "stopRadius", label: "停靠站大小", min: 2, max: 16, step: 1, fmt: (x) => x + "px" },
+  { key: "passRadius", label: "通過站大小", min: 1, max: 12, step: 1, fmt: (x) => x + "px" },
+  { key: "markerStrokeScale", label: "標記邊框粗細", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
+  { key: "focusBoost", label: "選中放大量", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
+  { key: "mapOpacity", label: "地圖底圖透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+];
+// Checkbox toggles for the submenu (booleans, rendered under the sliders).
+const DISPLAY_TOGGLES = [
+  { key: "onlyEndpoints", label: "僅顯示首尾端點（隱藏中間停站）" },
+];
+
+function loadDisplaySettings() {
+  try {
+    const raw = localStorage.getItem(DISPLAY_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      for (const k of Object.keys(DISPLAY_DEFAULTS)) {
+        const def = DISPLAY_DEFAULTS[k];
+        const v = parsed[k];
+        if (typeof def === "boolean") {
+          if (typeof v === "boolean") DISPLAY[k] = v;
+        } else if (typeof v === "number" && isFinite(v)) {
+          DISPLAY[k] = v;
+        }
+      }
+    }
+  } catch (err) {
+    // Non-fatal: disabled storage just means defaults.
+  }
+}
+
+function persistDisplaySettings() {
+  try {
+    localStorage.setItem(DISPLAY_STORAGE_KEY, JSON.stringify(DISPLAY));
+  } catch (err) {
+    /* ignore */
+  }
+}
+
+// Apply a settings change: persist, drop the route-item cache so segments are
+// re-emitted with the new numbers, then re-render both layers.
+function applyDisplaySettings() {
+  persistDisplaySettings();
+  applyMapOpacity();
+  cachedRouteItems = null;
+  cachedRouteSignature = "";
+  if (typeof renderTrainLayers === "function") renderTrainLayers();
+}
+
+// Build + wire the submenu sliders. Safe to call once after the DOM exists.
+function setupDisplaySettingsPanel() {
+  const body = document.getElementById("display-settings-body");
+  if (!body) return;
+  body.innerHTML = "";
+  DISPLAY_CONTROLS.forEach((cfg) => {
+    const wrap = document.createElement("label");
+    wrap.className = "display-control";
+    const head = document.createElement("span");
+    head.className = "display-control-head";
+    const name = document.createElement("span");
+    name.textContent = cfg.label;
+    const val = document.createElement("span");
+    val.className = "display-control-val";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = cfg.min;
+    input.max = cfg.max;
+    input.step = cfg.step;
+    input.value = DISPLAY[cfg.key];
+    val.textContent = cfg.fmt(Number(DISPLAY[cfg.key]));
+    input.addEventListener("input", () => {
+      DISPLAY[cfg.key] = Number(input.value);
+      val.textContent = cfg.fmt(Number(input.value));
+      applyDisplaySettings();
+    });
+    head.appendChild(name);
+    head.appendChild(val);
+    wrap.appendChild(head);
+    wrap.appendChild(input);
+    body.appendChild(wrap);
+    cfg._input = input;
+    cfg._val = val;
+  });
+  DISPLAY_TOGGLES.forEach((cfg) => {
+    const wrap = document.createElement("label");
+    wrap.className = "inline-check display-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = Boolean(DISPLAY[cfg.key]);
+    const span = document.createElement("span");
+    span.textContent = cfg.label;
+    input.addEventListener("change", () => {
+      DISPLAY[cfg.key] = input.checked;
+      applyDisplaySettings();
+    });
+    wrap.appendChild(input);
+    wrap.appendChild(span);
+    body.appendChild(wrap);
+    cfg._input = input;
+  });
+  const reset = document.getElementById("display-settings-reset");
+  if (reset) {
+    reset.addEventListener("click", () => {
+      Object.assign(DISPLAY, DISPLAY_DEFAULTS);
+      DISPLAY_CONTROLS.forEach((cfg) => {
+        if (!cfg._input) return;
+        cfg._input.value = DISPLAY[cfg.key];
+        cfg._val.textContent = cfg.fmt(Number(DISPLAY[cfg.key]));
+      });
+      DISPLAY_TOGGLES.forEach((cfg) => {
+        if (cfg._input) cfg._input.checked = Boolean(DISPLAY[cfg.key]);
+      });
+      applyDisplaySettings();
+    });
+  }
+}
+
+// ------------------------------------------------------------------------
+// Helpers backing the new display features: basemap opacity, the
+// "only first/last endpoint" toggle, and the hover / selection station-name
+// and line-name labels. Kept together so the feature is easy to find.
+// ------------------------------------------------------------------------
+function applyMapOpacity() {
+  if (!map || typeof L === "undefined") return;
+  const v = Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity)));
+  map.eachLayer((layer) => {
+    if (layer instanceof L.TileLayer && typeof layer.setOpacity === "function") {
+      layer.setOpacity(v);
+    }
+  });
+}
+
+// Trip order = index in the canonical store (legs are built in travel order).
+function trainTripIndex(train) {
+  const i = trainStore.trains.indexOf(train);
+  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+}
+
+// The very first origin + the very last destination among the given trains.
+function computeGlobalEndpoints(trains) {
+  if (!trains || !trains.length) return { firstId: null, lastId: null };
+  let first = trains[0];
+  let last = trains[0];
+  let fi = trainTripIndex(first);
+  let li = trainTripIndex(last);
+  trains.forEach((t) => {
+    const idx = trainTripIndex(t);
+    if (idx < fi) {
+      fi = idx;
+      first = t;
+    }
+    if (idx > li) {
+      li = idx;
+      last = t;
+    }
+  });
+  return { firstId: first.id, lastId: last.id };
+}
+
+// When the "only endpoints" toggle is on, allow only the trip's first origin
+// marker and last destination marker; otherwise allow everything.
+function passesOnlyEndpoints(endpoints, train, stopFeature) {
+  if (!DISPLAY.onlyEndpoints) return true;
+  const st = stopFeature.properties && stopFeature.properties.stop_type;
+  if (train.id === endpoints.firstId && st === "origin") return true;
+  if (train.id === endpoints.lastId && st === "destination") return true;
+  return false;
+}
+
+// Which train's origin/destination name labels to show: the hovered train wins,
+// otherwise the selected train (so a selection keeps its labels pinned).
+let hoverLabelTrainId = null;
+function updateEndpointLabels() {
+  if (!endpointLabelLayer) return;
+  endpointLabelLayer.clearLayers();
+  const id = hoverLabelTrainId || selectedTrainId;
+  if (!id) return;
+  const train = trainStore.trains.find((t) => t.id === id);
+  if (!train || train.visible === false) return;
+  const dateActive = selectedDate !== ALL_DATES;
+  if (mapFollowsSelectedDate && dateActive && getTrainDate(train) !== selectedDate)
+    return;
+  ["origin", "destination"].forEach((kind) => {
+    const stop = (train.stops || []).find((x) => x.stop_type === kind);
+    if (!stop) return;
+    const feature = getStopFeature(stop, train);
+    if (!feature) return;
+    const name = feature.properties.name || stopName(stop);
+    if (!name) return;
+    const labelTime = kind === "origin" ? stop.departure : stop.arrival;
+    const labelTag = kind === "origin" ? "发" : "到";
+    const labelHtml = labelTime
+      ? `${escapeHtml(name)} <span class="station-label-time">${labelTag} ${escapeHtml(labelTime)}</span>`
+      : escapeHtml(name);
+    // Standalone (source-less) tooltip rather than a circleMarker: with the map
+    // in preferCanvas mode a circleMarker would spin up a full-map Leaflet canvas
+    // in the overlay pane ABOVE the deck.gl canvas, and that canvas swallows the
+    // mouse events deck needs for route hover/click. A tooltip lives in the
+    // tooltip pane with pointer-events:none, so it never blocks picking.
+    const tip = L.tooltip({
+      permanent: true,
+      direction: "top",
+      offset: [0, -8],
+      className: "station-label",
+      opacity: 1,
+      interactive: false,
+    })
+      .setLatLng(toLatLng(feature))
+      .setContent(labelHtml);
+    endpointLabelLayer.addLayer(tip);
+  });
+}
+
+// deck.gl hover -> mirror the hovered train into the endpoint labels.
+function handleDeckHover(id) {
+  hoverLabelTrainId = id || null;
+  updateEndpointLabels();
+}
+
+// deck.gl floating tooltip: a marker shows just its station name; a route
+// segment shows the line name plus its origin -> destination endpoints.
+function deckGetTooltip(info) {
+  const o = info && info.object;
+  if (!o) return null;
+  const style = {
+    background: "rgba(30,37,44,0.92)",
+    color: "#fff",
+    fontSize: "11px",
+    fontWeight: "700",
+    padding: "3px 7px",
+    borderRadius: "4px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+  };
+  if (o.category) {
+    const pr = (o.feature && o.feature.properties) || {};
+    const name = pr.name || "";
+    if (!name) return null;
+    const times = [];
+    if (pr.arrival) times.push(`到 ${escapeHtml(pr.arrival)}`);
+    if (pr.departure) times.push(`发 ${escapeHtml(pr.departure)}`);
+    const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
+    return { html: `<b>${escapeHtml(name)}</b>${timeHtml}`, style };
+  }
+  const t = o.train;
+  if (!t) return null;
+  const line = t.name || t.number || "";
+  const num = t.number && t.number !== t.name ? t.number : "";
+  const origin = t.origin || "";
+  const dest = t.destination || "";
+  const numHtml = num
+    ? `<br><span style="opacity:0.85">车号 ${escapeHtml(num)}</span>`
+    : "";
+  // Anchor the line tooltip ABOVE the cursor (bottom-centre at the pointer) and
+  // nudge it up a little, so it clears the mouse and the line underneath.
+  const lineStyle = {
+    ...style,
+    transform: "translate(-50%, -100%)",
+    marginTop: "-16px",
+  };
+  return {
+    html: `<b>${escapeHtml(line)}</b>${numHtml}<br>${escapeHtml(origin)} \u2192 ${escapeHtml(dest)}`,
+    style: lineStyle,
+  };
+}
+
 // GPU route rendering. Train routes draw in a single deck.gl PathLayer
 // (reprojected on the GPU each frame) instead of live Leaflet SVG paths,
 // which removes the per-zoom reproject/repaint stall on the ~176k route
@@ -420,6 +718,7 @@ async function loadAppData() {
 let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
 let selectedTrainId = null;
 let focusedTrainId = null;
+let endpointLabelLayer = null;
 // Which date the sidebar list is filtered to. ALL_DATES shows the combined
 // "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
 let selectedDate = ALL_DATES;
@@ -487,6 +786,9 @@ const els = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   installLongTaskObserver();
+  // Seed the display-tuning knobs from localStorage before the first render so
+  // the user's saved line widths / sizes / opacities apply on load.
+  loadDisplaySettings();
   try {
     await loadAppData();
   } catch (err) {
@@ -504,6 +806,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // first render so the date bar reflects the user's last choice.
   const restoredSelectedDate = restoreUiDateState();
   initMap();
+  applyMapOpacity();
   bindEvents();
   fitJapanMainIslands();
   renderAll();
@@ -2091,11 +2394,13 @@ function initMap() {
   limitedExpressRouteLayer = L.layerGroup();
   stopLayer = L.layerGroup();
   passThroughLayer = L.layerGroup();
+  endpointLabelLayer = L.layerGroup();
 
-  simpleOsmLayer.addTo(map);
+  osmOnlineLayer.addTo(map);
   limitedExpressRouteLayer.addTo(map);
   stopLayer.addTo(map);
   passThroughLayer.addTo(map);
+  endpointLabelLayer.addTo(map);
 
   L.control
     .layers(
@@ -2140,6 +2445,7 @@ function initMap() {
   // envelope. Recomputed on resize because minZoom depends on pixel size.
   applyJapanMapConstraints();
   map.on("resize", applyJapanMapConstraints);
+  map.on("baselayerchange", applyMapOpacity);
 
   // GPU route overlay. Attached once; fed the whole train set by
   // renderRoutesInView(). Clicking a route selects its train and opens the
@@ -2150,6 +2456,8 @@ function initMap() {
     DeckRoutes.attach(map, {
       onClick: handleDeckRouteClick,
       onMarkerClick: handleDeckMarkerClick,
+      onHover: handleDeckHover,
+      getTooltip: deckGetTooltip,
     });
     map.on("overlayadd", (e) => {
       if (e.layer === limitedExpressRouteLayer) DeckRoutes.setVisible(true);
@@ -2182,6 +2490,7 @@ function handleDeckRouteClick(info) {
 }
 
 function bindEvents() {
+  setupDisplaySettingsPanel();
   document
     .getElementById("add-train")
     .addEventListener("click", () => addTrain());
@@ -3180,6 +3489,7 @@ function renderTrainLayers() {
 function renderTrainMarkers() {
   const focusActive = cachedRouteFocusActive;
   passThroughShown = !map || map.getZoom() >= PASSTHROUGH_MIN_ZOOM;
+  updateEndpointLabels();
 
   // GPU path: stop + pass-through markers are drawn by a deck.gl
   // ScatterplotLayer, so zoom no longer reprojects thousands of Leaflet SVG
@@ -3199,11 +3509,13 @@ function renderTrainMarkers() {
 
   stopLayer.clearLayers();
   passThroughLayer.clearLayers();
+  const endpoints = computeGlobalEndpoints(cachedOrderedTrains);
   cachedOrderedTrains.forEach((train) => {
     const markerOptions = trainScopeFlags(train);
     (train.stops || []).forEach((stop) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
+      if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       if (stopFeature.properties.stop_type === "pass_through") {
         if (passThroughShown)
           renderPassThroughMarker(stopFeature, train, markerOptions).addTo(
@@ -3213,7 +3525,7 @@ function renderTrainMarkers() {
         renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
       }
     });
-    if (passThroughShown)
+    if (passThroughShown && !DISPLAY.onlyEndpoints)
       getComputedPassThroughFeatures(train).forEach((feature) =>
         renderPassThroughMarker(feature, train, markerOptions).addTo(
           passThroughLayer,
@@ -3441,12 +3753,14 @@ function buildDeckMarkerRecords(
   includePassThrough,
 ) {
   const records = [];
+  const endpoints = computeGlobalEndpoints(orderedTrains);
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
     const opts = trainScopeFlags(train);
     (train.stops || []).forEach((stop) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
+      if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       const isPass = stopFeature.properties.stop_type === "pass_through";
       if (isPass && !includePassThrough) return;
       const rec = deckMarkerRecord(
@@ -3457,7 +3771,7 @@ function buildDeckMarkerRecords(
       );
       if (rec) records.push(rec);
     });
-    if (includePassThrough) {
+    if (includePassThrough && !DISPLAY.onlyEndpoints) {
       getComputedPassThroughFeaturesCached(train).forEach((feature) => {
         const rec = deckMarkerRecord(feature, train, opts, "pass");
         if (rec) records.push(rec);
@@ -5801,22 +6115,20 @@ function routeSegmentStyleValues(
   ridden,
   { focused = false, dimmed = false } = {},
 ) {
-  const weight = Number(train.style?.weight || DEFAULT_TRAIN_WEIGHT);
-  const unriddenOpacity = Number(
-    train.style?.unridden_opacity ?? DEFAULT_UNRIDDEN_OPACITY,
-  );
+  const weight =
+    Number(train.style?.weight || DEFAULT_TRAIN_WEIGHT) * DISPLAY.routeWidthScale;
   const opacity =
     train.visible === false
       ? 0
       : focused
         ? 1
         : dimmed
-          ? 0.18
+          ? DISPLAY.dimOpacity
           : ridden
-            ? 0.9
-            : unriddenOpacity;
+            ? DISPLAY.riddenOpacity
+            : DISPLAY.unriddenOpacity;
   const width = focused
-    ? weight + 2
+    ? weight + DISPLAY.focusBoost
     : ridden
       ? weight
       : Math.max(2, weight - 1);
@@ -5829,12 +6141,16 @@ function stopMarkerStyleValues(
   isTerminal,
   { focused = false, dimmed = false } = {},
 ) {
+  const baseRadius = isTerminal ? DISPLAY.terminalRadius : DISPLAY.stopRadius;
   return {
-    radius: focused ? (isTerminal ? 11 : 9) : isTerminal ? 9 : 7,
-    lineWidth: focused ? 4 : active ? 3 : 2,
+    radius: focused ? baseRadius + DISPLAY.focusBoost : baseRadius,
+    lineWidth: Math.max(
+      1,
+      Math.round((focused ? 4 : active ? 3 : 2) * DISPLAY.markerStrokeScale),
+    ),
     fillWhite: active,
     fillOpacity: active ? 1 : 0.12,
-    lineOpacity: dimmed ? 0.22 : active ? 1 : 0.32,
+    lineOpacity: dimmed ? DISPLAY.dimOpacity : active ? 1 : 0.32,
   };
 }
 
@@ -5843,10 +6159,12 @@ function passThroughMarkerStyleValues(
   { focused = false, dimmed = false } = {},
 ) {
   return {
-    radius: focused ? 5 : 4,
-    lineWidth: focused ? 2 : 1,
+    radius: focused
+      ? DISPLAY.passRadius + Math.round(DISPLAY.focusBoost / 2)
+      : DISPLAY.passRadius,
+    lineWidth: Math.max(1, Math.round((focused ? 2 : 1) * DISPLAY.markerStrokeScale)),
     fillOpacity: active ? 0.35 : 0.12,
-    lineOpacity: dimmed ? 0.18 : active ? 0.45 : 0.18,
+    lineOpacity: dimmed ? DISPLAY.dimOpacity : active ? 0.45 : 0.18,
   };
 }
 
@@ -5867,6 +6185,10 @@ function renderTrainRouteSegment(train, segmentFeature, renderOptions = {}) {
   // so it stays crisp. ~2.5px is visually lossless for a train line yet sharply
   // cuts the segment count the SVG paint phase has to record at country zoom —
   // directly attacking the Paint bottleneck the trace identified.
+  const segNum =
+    train.number && train.number !== train.name ? train.number : "";
+  const lineLabel =
+    (train.name || train.number || "") + (segNum ? `\u3000${segNum}` : "");
   return L.geoJSON(segmentFeature, {
     renderer: limitedExpressRouteRenderer,
     smoothFactor: 2.5,
@@ -5880,7 +6202,24 @@ function renderTrainRouteSegment(train, segmentFeature, renderOptions = {}) {
     },
     onEachFeature: (feature, layer) => {
       layer.bindPopup(() => buildTrainSegmentPopup(train, feature));
+      if (lineLabel)
+        layer.bindTooltip(lineLabel, {
+          sticky: true,
+          direction: "top",
+          offset: [0, -12],
+          className: "line-label",
+        });
       layer.on("click", () => pickTrain(train.id));
+      layer.on("mouseover", () => {
+        hoverLabelTrainId = train.id;
+        updateEndpointLabels();
+      });
+      layer.on("mouseout", () => {
+        if (hoverLabelTrainId === train.id) {
+          hoverLabelTrainId = null;
+          updateEndpointLabels();
+        }
+      });
     },
   });
 }
@@ -5902,7 +6241,13 @@ function renderStopMarker(stopFeature, train, renderOptions = {}) {
     fillColor: style.fillWhite ? "#fff" : color,
     fillOpacity: style.fillOpacity,
     opacity: style.lineOpacity,
-  }).bindPopup(buildStopPopup(stopFeature, train));
+  })
+    .bindPopup(buildStopPopup(stopFeature, train))
+    .bindTooltip(stopTooltipHtml(stopFeature.properties), {
+      direction: "top",
+      className: "station-label",
+      opacity: 1,
+    });
 }
 
 function renderPassThroughMarker(stopFeature, train, renderOptions = {}) {
@@ -5919,7 +6264,13 @@ function renderPassThroughMarker(stopFeature, train, renderOptions = {}) {
     fillColor: color,
     fillOpacity: style.fillOpacity,
     opacity: style.lineOpacity,
-  }).bindPopup(buildStopPopup(stopFeature, train));
+  })
+    .bindPopup(buildStopPopup(stopFeature, train))
+    .bindTooltip(stopTooltipHtml(stopFeature.properties), {
+      direction: "top",
+      className: "station-label",
+      opacity: 1,
+    });
 }
 
 function toLatLng(feature) {
@@ -6176,6 +6527,15 @@ function validateTrain(train, index, ids) {
     throw new Error(`${prefix}: style.color must be #RRGGBB.`);
 }
 
+function stopTooltipHtml(props) {
+  const pr = props || {};
+  const name = escapeHtml(pr.name || "");
+  const times = [];
+  if (pr.arrival) times.push(`\u5230 ${escapeHtml(pr.arrival)}`);
+  if (pr.departure) times.push(`\u53d1 ${escapeHtml(pr.departure)}`);
+  return times.length ? `${name}<br>${times.join("\u3000")}` : name;
+}
+
 function buildStopPopup(stopFeature, train) {
   const p = stopFeature.properties || {};
   return popupHtml(`${train.number || ""} ${train.name || ""}`, [
@@ -6197,9 +6557,14 @@ function buildStopPopup(stopFeature, train) {
 function buildTrainSegmentPopup(train, feature) {
   const p = feature.properties || {};
   const ridden = p.ride_segment === true;
+  const fromStop = (train.stops || []).find((x) => stopName(x) === p.from);
+  const toStop = (train.stops || []).find((x) => stopName(x) === p.to);
   return popupHtml(`${train.number || ""} ${train.name || ""}`, [
     ["Train ID", train.id],
+    ["車號", train.number || "-"],
     ["Segment", `${p.from || ""} → ${p.to || ""}`],
+    ["Departure", (fromStop && fromStop.departure) || "-"],
+    ["Arrival", (toStop && toStop.arrival) || "-"],
     ["Ride", ridden ? "Yes" : "No"],
     ["segment_index", p.segment_index ?? "-"],
     ["Route ID", p.route_id || "-"],
@@ -6254,6 +6619,7 @@ function downloadText(filename, text, type) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
 
 function escapeHtml(value) {
   return String(value ?? "").replace(
