@@ -264,6 +264,19 @@ function computeGlobalEndpoints(trains) {
   return { firstId: first.id, lastId: last.id };
 }
 
+// Endpoints for the current view scope. With a concrete date selected, the
+// "only endpoints" toggle shows THAT day's first origin + last destination;
+// with "全部" showing it falls back to the whole trip's global endpoints.
+function computeScopedEndpoints(trains) {
+  if (selectedDate !== ALL_DATES) {
+    const dayTrains = (trains || []).filter(
+      (t) => getTrainDate(t) === selectedDate,
+    );
+    if (dayTrains.length) return computeGlobalEndpoints(dayTrains);
+  }
+  return computeGlobalEndpoints(trains);
+}
+
 // When the "only endpoints" toggle is on, allow only the trip's first origin
 // marker and last destination marker; otherwise allow everything.
 function passesOnlyEndpoints(endpoints, train, stopFeature) {
@@ -354,19 +367,22 @@ function deckGetTooltip(info) {
   const num = t.number && t.number !== t.name ? t.number : "";
   const origin = t.origin || "";
   const dest = t.destination || "";
+  const oStop = (t.stops || []).find((x) => x.stop_type === "origin");
+  const dStop = (t.stops || []).find((x) => x.stop_type === "destination");
+  const times = [];
+  if (oStop && oStop.departure) times.push(`发 ${escapeHtml(oStop.departure)}`);
+  if (dStop && dStop.arrival) times.push(`到 ${escapeHtml(dStop.arrival)}`);
   const numHtml = num
     ? `<br><span style="opacity:0.85">车号 ${escapeHtml(num)}</span>`
     : "";
-  // Anchor the line tooltip ABOVE the cursor (bottom-centre at the pointer) and
-  // nudge it up a little, so it clears the mouse and the line underneath.
-  const lineStyle = {
-    ...style,
-    transform: "translate(-50%, -100%)",
-    marginTop: "-16px",
-  };
+  const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
+  // The visible box is an INNER element shifted above the cursor via CSS; the
+  // OUTER element is positioned by deck.gl through its own transform, so we must
+  // NOT set transform on it (doing so wipes deck's positioning and hides the
+  // popup entirely — the bug this replaces).
   return {
-    html: `<b>${escapeHtml(line)}</b>${numHtml}<br>${escapeHtml(origin)} \u2192 ${escapeHtml(dest)}`,
-    style: lineStyle,
+    html: `<div class="map-line-tip"><b>${escapeHtml(line)}</b>${numHtml}<br>${escapeHtml(origin)} \u2192 ${escapeHtml(dest)}${timeHtml}</div>`,
+    style: { background: "transparent", boxShadow: "none", padding: "0", margin: "0" },
   };
 }
 
@@ -3011,9 +3027,9 @@ function fitDateBounds(date) {
     );
   });
   if (layers.length) {
-    map.fitBounds(L.featureGroup(layers).getBounds(), {
-      padding: [32, 32],
-      maxZoom: 13,
+    smoothFitBounds(L.featureGroup(layers).getBounds(), {
+      padding: [90, 90],
+      maxZoom: 12,
     });
     return;
   }
@@ -3025,7 +3041,7 @@ function fitDateBounds(date) {
     }),
   );
   if (points.length)
-    map.fitBounds(L.latLngBounds(points), { padding: [32, 32], maxZoom: 13 });
+    smoothFitBounds(L.latLngBounds(points), { padding: [90, 90], maxZoom: 12 });
 }
 
 // Render minutes-from-midnight back to "HH:mm" (wrapping next-day times).
@@ -3509,7 +3525,7 @@ function renderTrainMarkers() {
 
   stopLayer.clearLayers();
   passThroughLayer.clearLayers();
-  const endpoints = computeGlobalEndpoints(cachedOrderedTrains);
+  const endpoints = computeScopedEndpoints(cachedOrderedTrains);
   cachedOrderedTrains.forEach((train) => {
     const markerOptions = trainScopeFlags(train);
     (train.stops || []).forEach((stop) => {
@@ -3753,7 +3769,7 @@ function buildDeckMarkerRecords(
   includePassThrough,
 ) {
   const records = [];
-  const endpoints = computeGlobalEndpoints(orderedTrains);
+  const endpoints = computeScopedEndpoints(orderedTrains);
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
     const opts = trainScopeFlags(train);
@@ -6303,12 +6319,28 @@ function coordinatesEqual(a, b) {
   );
 }
 
+// Smoothly animate the map to a bounds for focus actions. flyToBounds always
+// performs a combined zoom+pan flight (no teleport), so even a long jump glides.
+// fitBounds, by contrast, snaps instantly for any move beyond ~one screen — the
+// source of the focus "jump". Invalid/empty bounds are ignored.
+function smoothFitBounds(bounds, opts) {
+  if (!map || !bounds) return;
+  if (typeof bounds.isValid === "function" && !bounds.isValid()) return;
+  const { maxZoom = 13, padding = [90, 90] } = opts || {};
+  map.flyToBounds(bounds, {
+    padding,
+    maxZoom,
+    duration: 0.8,
+    easeLinearity: 0.25,
+  });
+}
+
 function fitTrainBounds(train) {
   if (!train) return;
   const features = getMatchedRouteFeatures(train);
   if (features.length) {
     const group = L.featureGroup(features.map((feature) => L.geoJSON(feature)));
-    map.fitBounds(group.getBounds(), { padding: [32, 32], maxZoom: 13 });
+    smoothFitBounds(group.getBounds(), { padding: [90, 90], maxZoom: 12 });
     return;
   }
   const points = (train.stops || [])
@@ -6316,7 +6348,7 @@ function fitTrainBounds(train) {
     .filter(Boolean)
     .map(toLatLng);
   if (points.length)
-    map.fitBounds(L.latLngBounds(points), { padding: [32, 32], maxZoom: 13 });
+    smoothFitBounds(L.latLngBounds(points), { padding: [90, 90], maxZoom: 12 });
 }
 
 function setImportProgress(count, total, label = "") {

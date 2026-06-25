@@ -101,6 +101,7 @@
       const ev = {
         viewreset: this._reset,
         movestart: this._noop,
+        move: this._onMove,
         moveend: this._update,
         zoom: this._onZoom,
         zoomend: this._update,
@@ -113,6 +114,14 @@
       if (this._deck) this._deck.setProps(props);
     },
     _noop: function () {},
+    // During a flyTo flight Leaflet moves the map frame-by-frame (no CSS
+    // transform), firing "move" each frame. Re-sync the GPU overlay on those
+    // frames so the routes glide WITH the basemap instead of freezing and then
+    // snapping at moveend. Guarded to flyTo only (_flyToFrame is set) so normal
+    // CSS pan/zoom animations keep their existing, cheaper handling.
+    _onMove: function () {
+      if (this._map && this._map._flyToFrame != null) this._update();
+    },
     _update: function () {
       if (!this._container || !this._deck) return;
       if (this._map._animatingZoom) return;
