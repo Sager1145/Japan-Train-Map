@@ -213,6 +213,11 @@
           onHover: function (info) {
             self._onHover(info);
           },
+          getTooltip: function (info) {
+            return self._handlers.getTooltip
+              ? self._handlers.getTooltip(info)
+              : null;
+          },
         },
         PANE,
       );
@@ -322,15 +327,40 @@
       this._hoverTrainId = id;
       this._recomputeHighlightData();
       this._compose();
+      if (this._handlers.onHover) this._handlers.onHover(id);
     },
 
     _compose: function () {
       if (!this.layer) return;
       const self = this;
+      // Transparent, comfortably-wide PICK layer. deck.gl path picking uses the
+      // rendered line width as the hit target, so a thin cosmetic line (small
+      // "線路粗細") would be nearly unclickable. This invisible layer keeps a
+      // generous, width-independent click/hover target underneath the visible
+      // line; it sits BELOW the markers so a marker click still wins.
+      const pickLayer = new deck.PathLayer({
+        id: "train-routes-pick",
+        data: this._routeData,
+        pickable: true,
+        widthUnits: "pixels",
+        widthMinPixels: 12,
+        capRounded: true,
+        jointRounded: true,
+        getPath: function (d) {
+          return d.path;
+        },
+        getColor: function () {
+          return [0, 0, 0, 0];
+        },
+        getWidth: function (d) {
+          return Math.max(d.width + 8, 14);
+        },
+        parameters: { depthTest: false },
+      });
       const routeLayer = new deck.PathLayer({
         id: "train-routes",
         data: this._routeData,
-        pickable: true,
+        pickable: false,
         widthUnits: "pixels",
         widthMinPixels: 1.2,
         capRounded: true,
@@ -472,7 +502,7 @@
       // station circles, selected casing, selected line, then the selected
       // train's own circles on top. => the selected line covers other lines'
       // circles, but its own stops stay visible.
-      const layers = [routeLayer];
+      const layers = [pickLayer, routeLayer];
       if (highlightLayer) layers.push(highlightLayer);
       layers.push(baseMarkerLayer);
       if (selCasingLayer) layers.push(selCasingLayer);
