@@ -522,3 +522,23 @@ details[open] > .submenu-summary::before {
   font-weight: 600;
   margin-left: 2px;
 }
+
+/* Line hover popup: floats above the cursor (deck.gl positions the outer
+   wrapper at the pointer; this inner box lifts the visible content up so it
+   never sits under the mouse or covers the line). */
+.map-line-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, calc(-100% - 14px));
+  background: rgba(30, 37, 44, 0.92);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 3px 7px;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  pointer-events: none;
+}
