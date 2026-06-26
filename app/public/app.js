@@ -99,20 +99,20 @@ const DISPLAY = { ...DISPLAY_DEFAULTS };
 // Slider definitions for the "顯示調節" submenu (built dynamically in JS so the
 // HTML stays tiny and every control is wired the same way).
 const DISPLAY_CONTROLS = [
-  { key: "routeWidthScale", label: "線路粗細", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
-  { key: "riddenOpacity", label: "已乘區間透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "unriddenOpacity", label: "未乘區間透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "dimOpacity", label: "非當前日期淡化", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
-  { key: "terminalRadius", label: "端點（起 / 終站）大小", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
-  { key: "stopRadius", label: "停靠站大小", min: 2, max: 16, step: 1, fmt: (x) => x + "px" },
-  { key: "passRadius", label: "通過站大小", min: 1, max: 12, step: 1, fmt: (x) => x + "px" },
-  { key: "markerStrokeScale", label: "標記邊框粗細", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
-  { key: "focusBoost", label: "選中放大量", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
-  { key: "mapOpacity", label: "地圖底圖透明度", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "routeWidthScale", labelKey: "disp.routeWidthScale", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
+  { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "unriddenOpacity", labelKey: "disp.unriddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
+  { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
+  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => x + "px" },
+  { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px" },
+  { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
+  { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
+  { key: "mapOpacity", labelKey: "disp.mapOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
 ];
 // Checkbox toggles for the submenu (booleans, rendered under the sliders).
 const DISPLAY_TOGGLES = [
-  { key: "onlyEndpoints", label: "僅顯示首尾端點（隱藏中間停站）" },
+  { key: "onlyEndpoints", labelKey: "disp.onlyEndpoints" },
 ];
 
 function loadDisplaySettings() {
@@ -165,7 +165,7 @@ function setupDisplaySettingsPanel() {
     const head = document.createElement("span");
     head.className = "display-control-head";
     const name = document.createElement("span");
-    name.textContent = cfg.label;
+    name.textContent = I18N.t(cfg.labelKey);
     const val = document.createElement("span");
     val.className = "display-control-val";
     const input = document.createElement("input");
@@ -187,6 +187,7 @@ function setupDisplaySettingsPanel() {
     body.appendChild(wrap);
     cfg._input = input;
     cfg._val = val;
+    cfg._name = name;
   });
   DISPLAY_TOGGLES.forEach((cfg) => {
     const wrap = document.createElement("label");
@@ -195,7 +196,7 @@ function setupDisplaySettingsPanel() {
     input.type = "checkbox";
     input.checked = Boolean(DISPLAY[cfg.key]);
     const span = document.createElement("span");
-    span.textContent = cfg.label;
+    span.textContent = I18N.t(cfg.labelKey);
     input.addEventListener("change", () => {
       DISPLAY[cfg.key] = input.checked;
       applyDisplaySettings();
@@ -204,6 +205,7 @@ function setupDisplaySettingsPanel() {
     wrap.appendChild(span);
     body.appendChild(wrap);
     cfg._input = input;
+    cfg._span = span;
   });
   const reset = document.getElementById("display-settings-reset");
   if (reset) {
@@ -305,10 +307,10 @@ function updateEndpointLabels() {
     if (!stop) return;
     const feature = getStopFeature(stop, train);
     if (!feature) return;
-    const name = feature.properties.name || stopName(stop);
+    const name = I18N.placeName(feature.properties.name || stopName(stop));
     if (!name) return;
     const labelTime = kind === "origin" ? stop.departure : stop.arrival;
-    const labelTag = kind === "origin" ? "发" : "到";
+    const labelTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
     const labelHtml = labelTime
       ? `${escapeHtml(name)} <span class="station-label-time">${labelTag} ${escapeHtml(labelTime)}</span>`
       : escapeHtml(name);
@@ -356,10 +358,10 @@ function deckGetTooltip(info) {
     const name = pr.name || "";
     if (!name) return null;
     const times = [];
-    if (pr.arrival) times.push(`到 ${escapeHtml(pr.arrival)}`);
-    if (pr.departure) times.push(`发 ${escapeHtml(pr.departure)}`);
+    if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
+    if (pr.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);
     const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
-    return { html: `<b>${escapeHtml(name)}</b>${timeHtml}`, style };
+    return { html: `<b>${escapeHtml(I18N.placeName(name))}</b>${timeHtml}`, style };
   }
   const t = o.train;
   if (!t) return null;
@@ -370,10 +372,10 @@ function deckGetTooltip(info) {
   const oStop = (t.stops || []).find((x) => x.stop_type === "origin");
   const dStop = (t.stops || []).find((x) => x.stop_type === "destination");
   const times = [];
-  if (oStop && oStop.departure) times.push(`发 ${escapeHtml(oStop.departure)}`);
-  if (dStop && dStop.arrival) times.push(`到 ${escapeHtml(dStop.arrival)}`);
+  if (oStop && oStop.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(oStop.departure)}`);
+  if (dStop && dStop.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(dStop.arrival)}`);
   const numHtml = num
-    ? `<br><span style="opacity:0.85">车号 ${escapeHtml(num)}</span>`
+    ? `<br><span style="opacity:0.85">${I18N.t("field.carNo")} ${escapeHtml(num)}</span>`
     : "";
   const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
   // The visible box is an INNER element shifted above the cursor via CSS; the
@@ -381,7 +383,7 @@ function deckGetTooltip(info) {
   // NOT set transform on it (doing so wipes deck's positioning and hides the
   // popup entirely — the bug this replaces).
   return {
-    html: `<div class="map-line-tip"><b>${escapeHtml(line)}</b>${numHtml}<br>${escapeHtml(origin)} \u2192 ${escapeHtml(dest)}${timeHtml}</div>`,
+    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin))} \u2192 ${escapeHtml(I18N.placeName(dest))}${timeHtml}</div>`,
     style: { background: "transparent", boxShadow: "none", padding: "0", margin: "0" },
   };
 }
@@ -814,7 +816,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Use the shared status helper so this critical failure gets the same
       // ".status err" styling as every other error path (the CSS only
       // defines .status.err, not .status.error).
-      setStatus(status, `資料載入失敗：${err.message}`, "err");
+      setStatus(status, I18N.t("status.loadFailed", { msg: err.message }), "err");
     }
     return;
   }
@@ -837,7 +839,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const savedStore = await loadTrainStoreFromServer();
   await replaceTrainStoreFromStoreProgressive(
     savedStore || getDefaultTrainStore(),
-    savedStore ? "伺服器保存的 train-store.json" : "內建預設 JSON",
+    savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
     // First run (no saved filter): default to the earliest date per spec 1.1.
     // Returning user: keep their restored selection if it is still valid.
     {
@@ -849,7 +851,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!savedStore) {
     setStatus(
       els.importStatus,
-      "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。",
+      I18N.t("status.noSavedStore"),
       "warn",
     );
   }
@@ -911,18 +913,18 @@ async function handleExternalStoreChange(detail) {
       // Store was cleared on the server: fall back to built-in defaults.
       await replaceTrainStoreFromStoreProgressive(
         getDefaultTrainStore(),
-        "伺服器已清除（內建預設）",
+        I18N.t("src.serverCleared"),
         { persistEachStep: false, finalPersist: false },
       );
-      setStatus(els.importStatus, "伺服器端的資料已被清除，已回退到內建預設。", "warn");
+      setStatus(els.importStatus, I18N.t("status.serverClearedFallback"), "warn");
       return;
     }
     const savedStore = await loadTrainStoreFromServer();
     if (!savedStore) return;
     const sourceLabel =
       detail && detail.source === "agent"
-        ? "AI 代理導入"
-        : "其他來源更新";
+        ? I18N.t("src.agentImport")
+        : I18N.t("src.otherUpdate");
     await replaceTrainStoreFromStoreProgressive(savedStore, sourceLabel, {
       // The server is already the source of truth — don't re-save (that would
       // echo back through SSE), and keep the user's current date selection.
@@ -931,7 +933,7 @@ async function handleExternalStoreChange(detail) {
     });
     setStatus(
       els.importStatus,
-      `已自動載入${sourceLabel}：共 ${savedStore.trains.length} 趟列車。`,
+      I18N.t("status.autoLoaded", { label: sourceLabel, count: savedStore.trains.length }),
       "ok",
     );
   } catch (err) {
@@ -1232,10 +1234,10 @@ async function flushServerStoreSave() {
       body: jsonText,
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    setStatus(els.jsonStatus, "已自動保存到伺服器 train-store.json。", "ok");
+    setStatus(els.jsonStatus, I18N.t("status.autosaveOk"), "ok");
   } catch (error) {
     console.warn("Autosave to server train-store failed.", error);
-    setStatus(els.jsonStatus, `自動保存到伺服器失敗：${error.message}`, "warn");
+    setStatus(els.jsonStatus, I18N.t("status.autosaveFail", { msg: error.message }), "warn");
   } finally {
     serverStoreSaveInFlight = false;
     // A newer change may have arrived while this request was in flight
@@ -1492,7 +1494,7 @@ async function writeLocalJsonFile(
     downloadText(LOCAL_JSON_FILENAME, jsonText, "application/json");
     setStatus(
       els.jsonStatus,
-      "此瀏覽器不支援直接寫入本地檔案，已改為下載 JSON。",
+      I18N.t("status.noFsApi"),
       "warn",
     );
     return false;
@@ -1513,7 +1515,7 @@ async function writeLocalJsonFile(
 
   if (!localJsonFileHandle) return false;
   if (!(await verifyFileHandlePermission(localJsonFileHandle, true))) {
-    throw new Error("沒有本地 JSON 的寫入權限。");
+    throw new Error(I18N.t("err.noWritePerm"));
   }
 
   const writable = await localJsonFileHandle.createWritable();
@@ -1542,7 +1544,7 @@ async function openLocalJsonFile() {
     // (and full store re-serialization). Don't double-render.
     await replaceTrainStoreFromJsonText(
       await file.text(),
-      `本地 JSON：${file.name}`,
+      I18N.t("src.localJson", { name: file.name }),
     );
     return;
   }
@@ -1669,7 +1671,7 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
     if (!total) throw new Error(`${sourceLabel} contains no trains.`);
 
     resetTrainStoreForProgressiveLoad();
-    setImportProgress(0, total, `準備逐條載入 ${sourceLabel}：0/${total}`);
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
 
     const appendedIds = await runProgressiveAppend(importedStore.trains, {
       persistEachStep: true,
@@ -1680,7 +1682,7 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
         setImportProgress(
           count,
           t,
-          `正在逐條載入 ${sourceLabel}：${count}/${t}：${id}`,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
         );
       },
     });
@@ -1688,10 +1690,10 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
     finalizeProgressiveLoad(appendedIds, { finalPersist: true });
     setStatus(
       els.importStatus,
-      `已逐條載入 ${sourceLabel}，共 ${total} 趟列車。`,
+      I18N.t("status.loadedAll", { label: sourceLabel, total }),
       "ok",
     );
-    setImportProgress(total, total, `完成：${total} 趟列車`);
+    setImportProgress(total, total, I18N.t("prog.done", { count: total }));
   } finally {
     importInProgress = false;
   }
@@ -1724,7 +1726,7 @@ async function replaceTrainStoreFromStoreProgressive(
     const selectEarliestDate = Boolean(options.selectEarliestDate);
 
     resetTrainStoreForProgressiveLoad();
-    setImportProgress(0, total, `準備逐條載入 ${sourceLabel}：0/${total}`);
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
 
     const appendedIds = await runProgressiveAppend(importedStore.trains, {
       persistEachStep,
@@ -1735,16 +1737,16 @@ async function replaceTrainStoreFromStoreProgressive(
         setImportProgress(
           count,
           t,
-          `正在逐條載入 ${sourceLabel}：${count}/${t}：${id}`,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
         );
       },
     });
 
     finalizeProgressiveLoad(appendedIds, { finalPersist, selectEarliestDate });
-    setImportProgress(total, total, `完成：${total} 趟列車`);
+    setImportProgress(total, total, I18N.t("prog.done", { count: total }));
     setStatus(
       els.importStatus,
-      `已從 ${sourceLabel} 逐條恢復 ${total} 趟列車。`,
+      I18N.t("status.restoredAll", { label: sourceLabel, total }),
       "ok",
     );
     return { count: appendedIds.length, ids: appendedIds };
@@ -1895,6 +1897,9 @@ function normalizeExportRouteSection(section) {
     normalized.line_names = [...section.line_names];
   if (Array.isArray(section.operator_names) && section.operator_names.length)
     normalized.operator_names = [...section.operator_names];
+  // Branch-portion train number / name (optional; see normalizeImportedRouteSection).
+  if (section.number) normalized.number = String(section.number);
+  if (section.name) normalized.name = String(section.name);
   return normalized;
 }
 
@@ -2092,11 +2097,13 @@ function normalizeImportedRouteSection(section) {
       "line_names",
       "operator_names",
       "operator_hints",
+      "number",
+      "name",
     ],
     "Route section",
   );
 
-  return {
+  const normalized = {
     from: section.from || "",
     to: section.to || "",
     from_n02_station_code: section.from_n02_station_code || null,
@@ -2112,6 +2119,12 @@ function normalizeImportedRouteSection(section) {
           .filter(Boolean)
       : [],
   };
+  // Optional per-section branch train number / name: some limited expresses run
+  // a branch portion under a DIFFERENT 号 (e.g. はやぶさ↔こまち, しおかぜ↔いしづち).
+  // When present it is shown for that segment in the route popup.
+  if (section.number) normalized.number = String(section.number);
+  if (section.name) normalized.name = String(section.name);
+  return normalized;
 }
 
 function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
@@ -2238,7 +2251,7 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
       onProgress({
         count: 0,
         total: importedStore.trains.length,
-        id: "準備載入",
+        id: I18N.t("prog.preparingId"),
       });
     }
 
@@ -2400,10 +2413,17 @@ function initMap() {
       attribution: "© OpenStreetMap contributors",
     },
   );
+  // Offline basemap: tiles pre-downloaded into public/tiles (z5–z12 over the
+  // itinerary corridor). maxNativeZoom caps real tiles at 12; Leaflet upscales
+  // them for z13+ so deep zoom shows a (blurrier) map instead of blank. A light
+  // gray errorTileUrl keeps any missing tile from rendering as a broken image.
   const localTileLayer = L.tileLayer("./tiles/{z}/{x}/{y}.png", {
-    maxZoom: 14,
-    attribution:
-      "Local tiles / © OpenStreetMap contributors if derived from OSM",
+    minNativeZoom: 5,
+    maxNativeZoom: 12,
+    maxZoom: 19,
+    errorTileUrl:
+      "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='256'%20height='256'%3E%3Crect%20width='256'%20height='256'%20fill='%23eef0f2'/%3E%3C/svg%3E",
+    attribution: "Offline tiles © OpenStreetMap contributors © CARTO",
   });
   const noBasemapLayer = L.layerGroup();
 
@@ -2412,7 +2432,9 @@ function initMap() {
   passThroughLayer = L.layerGroup();
   endpointLabelLayer = L.layerGroup();
 
-  osmOnlineLayer.addTo(map);
+  // Default to the offline local tiles so the UI works with no internet.
+  // The online basemaps remain selectable in the layers control.
+  localTileLayer.addTo(map);
   limitedExpressRouteLayer.addTo(map);
   stopLayer.addTo(map);
   passThroughLayer.addTo(map);
@@ -2421,10 +2443,10 @@ function initMap() {
   L.control
     .layers(
       {
-        "Simple OSM": simpleOsmLayer,
-        "Simple OSM + Labels": simpleOsmLabelLayer,
-        "OSM Standard": osmOnlineLayer,
-        "Local Tiles": localTileLayer,
+        "Local Tiles (Offline)": localTileLayer,
+        "OSM Standard (online)": osmOnlineLayer,
+        "Simple OSM (online)": simpleOsmLayer,
+        "Simple OSM + Labels (online)": simpleOsmLabelLayer,
         "No Basemap": noBasemapLayer,
       },
       {
@@ -2507,6 +2529,23 @@ function handleDeckRouteClick(info) {
 
 function bindEvents() {
   setupDisplaySettingsPanel();
+  // Re-render every dynamically-built UI string when the language changes.
+  // (Static [data-i18n] DOM is handled by I18N.applyStatic; this covers the
+  // JS-generated bits: display-panel labels, the focus button, the date bar,
+  // train list/cards, editor, import target and the on-map labels.)
+  if (window.I18N && typeof I18N.onChange === "function") {
+    I18N.onChange(() => {
+      DISPLAY_CONTROLS.forEach((cfg) => {
+        if (cfg._name) cfg._name.textContent = I18N.t(cfg.labelKey);
+      });
+      DISPLAY_TOGGLES.forEach((cfg) => {
+        if (cfg._span) cfg._span.textContent = I18N.t(cfg.labelKey);
+      });
+      updateFocusZoomButton();
+      renderAll();
+      updateEndpointLabels();
+    });
+  }
   document
     .getElementById("add-train")
     .addEventListener("click", () => addTrain());
@@ -2514,13 +2553,13 @@ function bindEvents() {
     .getElementById("duplicate-train")
     .addEventListener("click", () => duplicateTrain(selectedTrainId));
   document.getElementById("delete-train").addEventListener("click", () => {
-    if (selectedTrainId && confirm("Delete selected train?"))
+    if (selectedTrainId && confirm(I18N.t("confirm.deleteTrain")))
       deleteTrain(selectedTrainId);
   });
   document.getElementById("delete-all-trains").addEventListener("click", () => {
-    if (trainStore.trains.length && confirm("Delete all trains?")) {
+    if (trainStore.trains.length && confirm(I18N.t("confirm.deleteAll"))) {
       deleteAllTrains();
-      setStatus(els.jsonStatus, "All trains deleted.", "warn");
+      setStatus(els.jsonStatus, I18N.t("status.allDeleted"), "warn");
     }
   });
   document
@@ -2554,7 +2593,7 @@ function bindEvents() {
     .addEventListener("click", async () => {
       try {
         fitJapanMainIslands();
-        setImportProgress(0, 1, "正在打開本地 JSON...");
+        setImportProgress(0, 1, I18N.t("prog.openingLocal"));
         await openLocalJsonFile();
         // Opening a local file replaces the store; persist it to the server now.
         await flushServerStoreSave();
@@ -2567,7 +2606,7 @@ function bindEvents() {
     .addEventListener("click", async () => {
       try {
         await writeLocalJsonFile(exportTrainStore(), true);
-        setStatus(els.jsonStatus, `已保存到 ${LOCAL_JSON_FILENAME}。`, "ok");
+        setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
       } catch (error) {
         setStatus(els.jsonStatus, error.message, "err");
       }
@@ -2580,7 +2619,7 @@ function bindEvents() {
       // repaints once via finalizeProgressiveLoad().
       await replaceTrainStoreFromJsonText(
         await file.text(),
-        `本地 JSON：${file.name}`,
+        I18N.t("src.localJson", { name: file.name }),
       );
     } catch (error) {
       setStatus(els.importStatus, error.message, "err");
@@ -2609,18 +2648,18 @@ function bindEvents() {
             setImportProgress(
               count,
               total,
-              `正在逐條載入 ${count}/${total}：${id}`,
+              I18N.t("prog.loadingShort", { count, total, id }),
             );
           },
         );
         setImportProgress(
           result.count,
           result.count,
-          `完成：${result.count} 趟列車`,
+          I18N.t("prog.done", { count: result.count }),
         );
         setStatus(
           els.importStatus,
-          `Imported ${result.count} train(s): ${result.ids.join(", ")}`,
+          I18N.t("status.imported", { count: result.count, ids: result.ids.join(", ") }),
           "ok",
         );
         // Force-flush the debounced server autosave so the import is persisted now.
@@ -2636,7 +2675,7 @@ function bindEvents() {
     els.json.value = exportTrainStore();
     setStatus(
       els.jsonStatus,
-      "Current train store exported to textarea.",
+      I18N.t("status.exported"),
       "ok",
     );
   });
@@ -2645,7 +2684,7 @@ function bindEvents() {
     .addEventListener("click", async () => {
       try {
         await writeLocalJsonFile(exportTrainStore(), true);
-        setStatus(els.jsonStatus, `已保存到 ${LOCAL_JSON_FILENAME}。`, "ok");
+        setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
       } catch (error) {
         setStatus(els.jsonStatus, error.message, "err");
       }
@@ -2660,7 +2699,7 @@ function bindEvents() {
     selectedTrainId = trainStore.trains[0]?.id || null;
     focusedTrainId = null;
     persistAndRender();
-    setStatus(els.jsonStatus, "Reset to embedded defaults.", "ok");
+    setStatus(els.jsonStatus, I18N.t("status.resetDefaults"), "ok");
   });
   document
     .getElementById("clear-storage")
@@ -2679,11 +2718,11 @@ function bindEvents() {
         await deleteStoredFileHandle();
         setStatus(
           els.jsonStatus,
-          "已清除伺服器保存的 train-store.json 與本地檔案授權。重新載入時會使用內建預設資料。",
+          I18N.t("status.clearedAll"),
           "warn",
         );
       } catch (error) {
-        setStatus(els.jsonStatus, `清除保存資料失敗：${error.message}`, "err");
+        setStatus(els.jsonStatus, I18N.t("status.clearFail", { msg: error.message }), "err");
       }
     });
   // Debounce search: re-rendering the list on every keystroke (and, before,
@@ -2727,7 +2766,7 @@ function bindEvents() {
 function updateFocusZoomButton() {
   const btn = els.toggleFocusZoom;
   if (!btn) return;
-  btn.textContent = `自動聚焦：${focusZoomEnabled ? "開" : "關"}`;
+  btn.textContent = I18N.t("btn.autoFocus") + I18N.t(focusZoomEnabled ? "state.on" : "state.off");
   btn.setAttribute("aria-pressed", focusZoomEnabled ? "true" : "false");
   btn.classList.toggle("active", focusZoomEnabled);
 }
@@ -2746,8 +2785,8 @@ function renderAll({ updateJsonTextarea = true } = {}) {
 
 // Human-readable label for a date bucket used in buttons / titles.
 function dateLabel(date) {
-  if (date === ALL_DATES) return "全部";
-  if (date === UNDATED) return "未分配日期";
+  if (date === ALL_DATES) return I18N.t("date.all");
+  if (date === UNDATED) return I18N.t("date.undated");
   return date;
 }
 
@@ -2772,7 +2811,7 @@ function renderDateButtons() {
     fragment.appendChild(btn);
   };
 
-  makeButton(ALL_DATES, "全部", trainStore.trains.length);
+  makeButton(ALL_DATES, I18N.t("date.all"), trainStore.trains.length);
   dates.forEach((date) => {
     makeButton(
       date,
@@ -2849,8 +2888,8 @@ function renderTrainList() {
 
   if (els.listTitle) {
     els.listTitle.textContent = showingAll
-      ? `全部列車（${trainStore.trains.length}）`
-      : `${dateLabel(selectedDate)} 列車`;
+      ? I18N.t("list.allTitle", { count: trainStore.trains.length })
+      : I18N.t("list.dateTitle", { date: dateLabel(selectedDate) });
   }
 
   const trains = getVisibleListTrains().filter(
@@ -2864,11 +2903,11 @@ function renderTrainList() {
     empty.className = "list-empty";
     empty.textContent = showingAll
       ? query
-        ? "沒有符合搜尋的列車。"
-        : "尚無任何列車，請匯入 JSON。"
+        ? I18N.t("empty.allSearch")
+        : I18N.t("empty.allNone")
       : query
-        ? "此日期沒有符合搜尋的列車。"
-        : "當前日期沒有列車，請匯入 JSON 到當前日期。";
+        ? I18N.t("empty.dateSearch")
+        : I18N.t("empty.dateNone");
     els.list.appendChild(empty);
     return;
   }
@@ -2900,10 +2939,10 @@ function buildTrainListItemElement(train, showingAll) {
   item.innerHTML = `
         <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
         <span style="min-width:0">
-          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(train.name || "")}</span>
-          <span class="train-meta">${escapeHtml(train.origin || "?")} → ${escapeHtml(train.destination || "?")} · 發 ${escapeHtml(depText)} · ${train.stops?.length || 0} stops</span>
+          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(I18N.trainName(train.name || ""))}</span>
+          <span class="train-meta">${escapeHtml(I18N.placeName(train.origin || "?"))} → ${escapeHtml(I18N.placeName(train.destination || "?"))} · ${I18N.t("tag.dep")} ${escapeHtml(depText)} · ${train.stops?.length || 0} ${I18N.t("unit.stops")}</span>
         </span>
-        <span class="train-meta">${train.visible === false ? "hidden" : "shown"}</span>
+        <span class="train-meta">${train.visible === false ? I18N.t("state.hidden") : I18N.t("state.shown")}</span>
       `;
   item.addEventListener("click", () => pickTrain(train.id));
   return item;
@@ -3056,22 +3095,23 @@ function formatMinutes(total) {
 function updateImportTarget() {
   if (!els.importTarget) return;
   if (selectedDate && selectedDate !== ALL_DATES) {
-    els.importTarget.innerHTML = `當前匯入目標：<strong>${escapeHtml(dateLabel(selectedDate))}</strong>（沒有 date 的列車會加入此日期）`;
+    els.importTarget.innerHTML = I18N.t("import.targetDate", {
+      date: escapeHtml(dateLabel(selectedDate)),
+    });
   } else {
-    els.importTarget.innerHTML =
-      "當前匯入目標：<strong>JSON 內 date 欄位 / 自動從 id 識別</strong>（選一個日期可改為匯入到該日期）";
+    els.importTarget.innerHTML = I18N.t("import.targetAuto");
   }
 }
 
 // Add a manual (possibly empty) date bucket, then jump to it.
 function addManualDate() {
-  const input = prompt("輸入新增日期（YYYY-MM-DD）：", "");
+  const input = prompt(I18N.t("prompt.addDate"), "");
   if (input === null) return;
   const normalized = normalizeDateString(input);
   if (!normalized) {
     setStatus(
       els.importStatus,
-      `無效的日期格式：「${input}」。請使用 YYYY-MM-DD。`,
+      I18N.t("status.invalidDate", { input }),
       "err",
     );
     return;
@@ -3080,7 +3120,7 @@ function addManualDate() {
   setSelectedDate(normalized);
   setStatus(
     els.importStatus,
-    `已新增日期 ${normalized}，並切換為當前匯入目標。`,
+    I18N.t("status.dateAdded", { date: normalized }),
     "ok",
   );
 }
@@ -3098,7 +3138,7 @@ function removeEmptyDates() {
   const removed = before - manualDates.length;
   setStatus(
     els.importStatus,
-    removed ? `已刪除 ${removed} 個空日期。` : "沒有可刪除的空日期。",
+    removed ? I18N.t("status.emptyDatesRemoved", { count: removed }) : I18N.t("status.noEmptyDates"),
     removed ? "ok" : "warn",
   );
 }
@@ -3159,7 +3199,7 @@ function renderStopsTable(train) {
           <td><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
           <td>
             <select data-stop-field="stop_type" data-stop-index="${index}">
-              ${["origin", "passenger_stop", "pass_through", "operational_stop", "destination"].map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${type}</option>`).join("")}
+              ${["origin", "passenger_stop", "pass_through", "operational_stop", "destination"].map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${I18N.t("stoptype." + type)}</option>`).join("")}
             </select>
           </td>
           <td>
@@ -3167,8 +3207,9 @@ function renderStopsTable(train) {
               type="checkbox"
               data-stop-field="ride_segment"
               data-stop-index="${index}"
-              ${stop.ride_segment ? "checked" : ""}
-              title="此站是否按实际乘坐区间正常显示；关闭时站点和相邻区间淡色显示"
+              ${(isPassThroughStop(stop) ? effectiveStopRide(train.stops, index) : stop.ride_segment) ? "checked" : ""}
+              ${isPassThroughStop(stop) ? "disabled" : ""}
+              title="${escapeAttr(isPassThroughStop(stop) ? "通過站不可單獨切換：隨其所在停靠站區間自動顯示／隱藏 (pass-through follows its stop interval)" : I18N.t("tip.rideSegment"))}"
             >
           </td>
           <td class="stop-actions">
@@ -3190,6 +3231,12 @@ function renderStopsTable(train) {
       let refreshStopsTable = false;
 
       if (field === "ride_segment") {
+        // Pass-through stations are not individually toggleable; their visibility
+        // is derived from the bounding stops. Ignore any stray event and redraw.
+        if (isPassThroughStop(train.stops[index])) {
+          renderStopsTable(train);
+          return;
+        }
         const enabled = event.target.checked;
         train.stops[index][field] = enabled;
 
@@ -3255,7 +3302,7 @@ function saveSelectedFields() {
     trainStore = temp;
     selectedTrainId = next.id;
     persistAndRender();
-    setStatus(els.fieldStatus, "Fields saved.", "ok");
+    setStatus(els.fieldStatus, I18N.t("status.fieldsSaved"), "ok");
   } catch (error) {
     setStatus(els.fieldStatus, error.message, "err");
   }
@@ -3339,6 +3386,26 @@ function setAdjacentPassThroughStops(train, stopIndex, enabled) {
   return changedBefore || changedAfter;
 }
 
+// Effective "ridden" (shown) state of a stop for display & hiding.
+//   - A real stopping station uses its own ride_segment flag (user-toggleable).
+//   - A pass-through (非停車站) is NOT individually toggleable: it inherits the
+//     ride state of the stop-to-stop interval it lies in, i.e. it is shown only
+//     when BOTH bounding stopping stations are ridden. So hiding the interval
+//     between two stops automatically hides every pass-through inside it.
+// "Hidden" everywhere means truly not drawn (see routeSegmentStyleValues /
+// the marker loops), not merely a lower opacity.
+function effectiveStopRide(stops, index) {
+  const stop = stops && stops[index];
+  if (!stop) return false;
+  if (isStoppingStation(stop)) return stop.ride_segment === true;
+  const prev = findPreviousStoppingStationIndex(stops, index);
+  const next = findNextStoppingStationIndex(stops, index);
+  if (prev < 0 || next < 0) return stop.ride_segment === true;
+  return (
+    stops[prev].ride_segment === true && stops[next].ride_segment === true
+  );
+}
+
 function applyStationMetadata(stop, train) {
   const station = resolveStationForTrain(stop, train);
   if (!station) return;
@@ -3407,20 +3474,26 @@ function appendTrainToLayers(train) {
   }
 
   const markerOptions = { dimmed: false, focused: false };
-  (train.stops || []).forEach((stop) => {
+  (train.stops || []).forEach((stop, idx) => {
     const stopFeature = getStopFeature(stop, train);
     if (!stopFeature) return;
+    // Hide (do not draw at all) any stop/pass-through that is not effectively
+    // ridden. Pass-throughs inherit their interval's ride state.
+    const eff = effectiveStopRide(train.stops, idx);
+    if (!eff) return;
+    stopFeature.properties.ride_segment = eff;
     if (stopFeature.properties.stop_type === "pass_through")
       renderPassThroughMarker(stopFeature, train, markerOptions).addTo(
         passThroughLayer,
       );
     else renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
   });
-  getComputedPassThroughFeatures(train).forEach((feature) =>
+  getComputedPassThroughFeatures(train).forEach((feature) => {
+    if (feature.properties && feature.properties.ride_segment === false) return;
     renderPassThroughMarker(feature, train, markerOptions).addTo(
       passThroughLayer,
-    ),
-  );
+    );
+  });
 }
 
 // Three-tier emphasis for the current scope, drawn bottom→top as:
@@ -3773,12 +3846,16 @@ function buildDeckMarkerRecords(
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
     const opts = trainScopeFlags(train);
-    (train.stops || []).forEach((stop) => {
+    (train.stops || []).forEach((stop, idx) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
       if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       const isPass = stopFeature.properties.stop_type === "pass_through";
       if (isPass && !includePassThrough) return;
+      // Hidden (not effectively ridden) markers are dropped entirely.
+      const eff = effectiveStopRide(train.stops, idx);
+      if (!eff) return;
+      stopFeature.properties.ride_segment = eff;
       const rec = deckMarkerRecord(
         stopFeature,
         train,
@@ -3789,6 +3866,8 @@ function buildDeckMarkerRecords(
     });
     if (includePassThrough && !DISPLAY.onlyEndpoints) {
       getComputedPassThroughFeaturesCached(train).forEach((feature) => {
+        if (feature.properties && feature.properties.ride_segment === false)
+          return;
         const rec = deckMarkerRecord(feature, train, opts, "pass");
         if (rec) records.push(rec);
       });
@@ -6045,8 +6124,11 @@ function getMatchedRouteFeatures(train) {
 
 function isRideSegment(train, segmentIndex) {
   const stops = train.stops || [];
+  // A geometry segment is ridden (shown) only when both of its endpoints are
+  // effectively ridden — pass-through endpoints inherit their interval state.
   return Boolean(
-    stops[segmentIndex]?.ride_segment && stops[segmentIndex + 1]?.ride_segment,
+    effectiveStopRide(stops, segmentIndex) &&
+      effectiveStopRide(stops, segmentIndex + 1),
   );
 }
 
@@ -6133,22 +6215,20 @@ function routeSegmentStyleValues(
 ) {
   const weight =
     Number(train.style?.weight || DEFAULT_TRAIN_WEIGHT) * DISPLAY.routeWidthScale;
+  // Unridden intervals are now hidden ENTIRELY (opacity 0), not drawn pale.
+  // opacity 0 makes the GPU path drop the segment (see buildDeckRouteRecords'
+  // `opacity <= 0` guard) and the SVG path render nothing. The whole-train
+  // "dimmed" state (other selected date) still applies to ridden segments.
   const opacity =
-    train.visible === false
+    train.visible === false || !ridden
       ? 0
       : focused
         ? 1
         : dimmed
           ? DISPLAY.dimOpacity
-          : ridden
-            ? DISPLAY.riddenOpacity
-            : DISPLAY.unriddenOpacity;
-  const width = focused
-    ? weight + DISPLAY.focusBoost
-    : ridden
-      ? weight
-      : Math.max(2, weight - 1);
-  const dashed = !(focused || dimmed) && !ridden;
+          : DISPLAY.riddenOpacity;
+  const width = focused ? weight + DISPLAY.focusBoost : weight;
+  const dashed = false;
   return { opacity, width, dashed };
 }
 
@@ -6201,10 +6281,16 @@ function renderTrainRouteSegment(train, segmentFeature, renderOptions = {}) {
   // so it stays crisp. ~2.5px is visually lossless for a train line yet sharply
   // cuts the segment count the SVG paint phase has to record at country zoom —
   // directly attacking the Paint bottleneck the trace identified.
-  const segNum =
-    train.number && train.number !== train.name ? train.number : "";
-  const lineLabel =
-    (train.name || train.number || "") + (segNum ? `\u3000${segNum}` : "");
+  // Per-segment label: prefer the branch portion's own \u53f7/name when set.
+  const segSection = routeSectionForSegment(train, segmentFeature.properties || {});
+  const branchNum = segSection && segSection.number;
+  const segNum = branchNum
+    ? branchNum
+    : train.number && train.number !== train.name
+      ? train.number
+      : "";
+  const labelName = (segSection && segSection.name) || train.name || train.number || "";
+  const lineLabel = labelName + (segNum ? `\u3000${segNum}` : "");
   return L.geoJSON(segmentFeature, {
     renderer: limitedExpressRouteRenderer,
     smoothFactor: 2.5,
@@ -6586,14 +6672,38 @@ function buildStopPopup(stopFeature, train) {
   ]);
 }
 
+function routeSectionForSegment(train, p) {
+  const sections = Array.isArray(train.route_sections)
+    ? train.route_sections
+    : [];
+  const idx = Number(p.segment_index);
+  if (Number.isInteger(idx) && sections[idx]) return sections[idx];
+  return sections.find((s) => s.from === p.from && s.to === p.to) || null;
+}
+
 function buildTrainSegmentPopup(train, feature) {
   const p = feature.properties || {};
   const ridden = p.ride_segment === true;
   const fromStop = (train.stops || []).find((x) => stopName(x) === p.from);
   const toStop = (train.stops || []).find((x) => stopName(x) === p.to);
-  return popupHtml(`${train.number || ""} ${train.name || ""}`, [
+  // Branch portion may run under a different number; show it for this segment.
+  const section = routeSectionForSegment(train, p);
+  const segNumber = (section && section.number) || train.number || "-";
+  const segName = (section && section.name) || "";
+  const isBranch = Boolean(
+    section && section.number && section.number !== train.number,
+  );
+  const rows = [
     ["Train ID", train.id],
-    ["車號", train.number || "-"],
+    ["車號", segNumber],
+  ];
+  if (isBranch)
+    rows.push([
+      "支線車號 / Branch",
+      `${section.number}${segName ? "　" + segName : ""}`,
+    ]);
+  return popupHtml(`${segNumber} ${segName || train.name || ""}`, [
+    ...rows,
     ["Segment", `${p.from || ""} → ${p.to || ""}`],
     ["Departure", (fromStop && fromStop.departure) || "-"],
     ["Arrival", (toStop && toStop.arrival) || "-"],

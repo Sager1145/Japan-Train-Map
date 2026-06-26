@@ -362,6 +362,24 @@ id ASC             # 最终 tiebreaker
 >
 > **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。导入时也接受旧别名 `operator_hints`（等价于 `operator_names`），导出统一写为 `operator_names`。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
 
+### 6.1b 支线车号 `number` / `name`（可选）
+
+部分特急在某一区间会以**不同的车号 / 列车名**运行（典型如新干线併结后分割：はやぶさ↔こまち、こまち↔はやぶさ、しおかぜ↔いしづち；或在来线直通区间改号）。可在该区间所属的 route_section 上附加可选字段：
+
+| 字段       | 类型     | 必填 | 说明                                       |
+| -------- | ------ | -: | ---------------------------------------- |
+| `number` | string |  否 | 该区间实际运行的车号（当与 train 顶层 `number` 不同时填写） |
+| `name`   | string |  否 | 该区间的列车名（可选）                              |
+
+设置后，地图上**该区间的 popup 与悬浮标签显示此支线车号**（而非列车顶层车号），并额外标注「支線車號 / Branch」。未设置时沿用列车顶层 `number`。导入/导出均保留此二字段（仅在非空时写出）；其余规则与 `line_names` / `operator_names` 一致（不影响寻路，仅用于显示）。
+
+```json
+"route_sections": [
+  { "from": "仙台", "to": "盛岡", "number": "はやぶさ95号" },
+  { "from": "盛岡", "to": "秋田", "number": "こまち95号" }
+]
+```
+
 ### 6.2 示例
 
 ```json
@@ -459,31 +477,22 @@ stops[2] → stops[3]
 
 表示该站不处于实际乘坐状态，淡色显示。
 
-### 8.2 每一站都可以 toggle
+### 8.2 toggle 规则（停靠站可切换，通过站不可单独切换）
 
-所有站点都可以设置：
+**只有停靠站可以单独 toggle `ride_segment`**：`origin` / `destination` / `passenger_stop` / `operational_stop`。终点站也可以 toggle，不得强制 disabled。
 
-```json
-"ride_segment": true
-```
+**通过站（`pass_through`）不可单独 toggle。** 它的 `ride_segment` 由所在「停靠站→停靠站」区间派生：仅当它两侧最近的两个停靠站 `ride_segment` 同时为 `true` 时，该通过站才算乘坐（显示）；否则未乘坐（隐藏）。编辑器中通过站的 toggle 复选框为 disabled（只读，显示派生值）。
 
-或：
+因此「隐藏某段区间」只通过切换停靠站完成：把区间一端（或两端）停靠站的 `ride_segment` 置为 `false`，**该区间内的全部通过站会自动随之隐藏**。
 
-```json
-"ride_segment": false
-```
-
-包括：
+派生规则（实现 `effectiveStopRide`）：
 
 ```text
-origin
-destination
-passenger_stop
-operational_stop
-pass_through
+停靠站           ride = stop.ride_segment === true
+通过站           ride = 前一停靠站.ride_segment === true
+                        && 后一停靠站.ride_segment === true
+区间(段) i→i+1    ride = effectiveRide(i) && effectiveRide(i+1)
 ```
-
-终点站也可以 toggle，不得强制 disabled。
 
 ### 8.3 区间显示规则
 
@@ -581,6 +590,46 @@ E  ride_segment=false
 A↔B / C↔D / D↔E 区间   → 淡色
 B↔C 区间               → 正常颜色
 ```
+
+---
+
+## 8.6 特急全区间规范（支线列车 / 全区间写入、部分显示）
+
+> 这是「搜索/录入 JSON 信息」时对**特急、新干线**类列车的硬性要求；普通/快速等区间列车可只写实际乘坐段。
+
+### 8.6.1 必须写入列车的「全区间」
+
+每一趟特急/新干线在 JSON 中必须按其**实际运行全程**录入：从该次列车的**始发终着站**到**终点终着站**的**全部停车站**，而不是只写乘客实际乘坐的一段。
+
+```text
+列车全区间 = 该车次官方「始发站 → 终着站」的全部停车站（按 停车型态/时刻表）
+乘坐区间   = 乘客实际「上车站 → 下车站」的子区间
+```
+
+例如：南風20号 实际运行 高知 → 岡山，乘客只乘 高知 → 阿波池田。
+则 stops 必须写 高知…大歩危…阿波池田…琴平…多度津…宇多津…児島…岡山（全程），
+而不是只写到 阿波池田。
+
+### 8.6.2 只显示实际乘坐区间
+
+- 乘坐区间内的停车站：`ride_segment = true`（正常显示）。
+- 乘坐区间以外（上车前 / 下车后 的全部站点与通过站）：`ride_segment = false`，按 §13.4 **完全隐藏（不绘制）**。
+- 因此地图上仍只看到乘客实际乘坐的一段，但 JSON 已保留该特急的完整运行区间，可随时改动乘坐范围而不必重新查询全程。
+- `origin` / `destination` 顶层字段仍可记为「实际上/下车站」用于行程语义；`direction` 记为该车次的「行き先」终着站（见车号方向约定）。
+
+### 8.6.3 支线列车（併结分割 / 直通改号）
+
+部分特急在全区间内会**分段以不同车号运行**（新干线併结后在某站分割：はやぶさ↔こまち、こまち↔はやぶさ；在来线直通改号：かもめ↔リレーかもめ 等）。此时：
+
+- 在对应区间的 `route_section` 上写 `number`（必要时 `name`）标明该段实际车号（见 §6.1b）。
+- 列车顶层 `number` 可写併结名（如 `はやぶさ95号・こまち95号`）；各支线段用 section 的 `number` 覆盖显示。
+- 地图该段 popup / 悬浮标签显示对应支线车号，并标注「支線車號 / Branch」。
+
+### 8.6.4 校验
+
+- 特急/新干线 `stops` 应覆盖该车次全区间（首站=始发终着、末站=终点终着）。
+- 至少一个停车站 `ride_segment=true`（即必须有实际乘坐区间）。
+- 其余规则沿用 §7 / §8 / §13。
 
 ---
 
@@ -883,16 +932,17 @@ opacity = 0.92
 dashArray = null
 ```
 
-### 13.4 淡色区间
+### 13.4 未乘坐区间 / 站点：完全隐藏
 
-任意一端 `ride_segment=false`：
+任意一端 `ride_segment=false`（区间不在乘坐范围内）时，该 route segment 以及其内的全部通过站、未乘坐停靠站 **完全不绘制（彻底隐藏）**，不再是淡色显示：
 
 ```text
-color = train.style.color
-weight = max(2, train.style.weight - 1)
-opacity = train.style.unridden_opacity || 0.22
-dashArray = "4 6"
+未乘坐区间        opacity = 0，不加入渲染（SVG 不画、GPU 缓冲跳过）
+未乘坐停靠站      不绘制 marker
+区间内通过站      随区间一并隐藏，不绘制 marker
 ```
+
+> 旧版「淡色＋虚线」（`unridden_opacity` / `dashArray "4 6"`）表示未乘坐区间的做法已废弃：现在未乘坐 = 彻底隐藏。`style.unridden_opacity` 字段保留以兼容旧 JSON，但不再用于此渲染。
 
 ### 13.5 禁止直线 fallback
 
