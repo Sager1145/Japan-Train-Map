@@ -122,6 +122,11 @@
     "th.actions": { zh: "操作", en: "Actions" },
     "btn.addStop": { zh: "新增停站", en: "Add Stop" },
     "btn.rebuildRoute": { zh: "依停站重建路線", en: "Rebuild Route from Stops" },
+    // branch (支線) grouping in the stops table
+    "branch.tag": { zh: "支線／Branch", en: "Branch" },
+    "branch.junction": { zh: "分歧站／Junction", en: "Junction" },
+    "branch.rideAll": { zh: "整段乘坐／隱藏", en: "Ride / hide whole branch" },
+    "branch.noline": { zh: "（未指定路線）", en: "(no line set)" },
 
     // JSON export
     "sec.export": { zh: "JSON 匯出", en: "JSON Export" },

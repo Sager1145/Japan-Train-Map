@@ -418,6 +418,46 @@ td select {
   display: flex;
   gap: 3px;
 }
+/* Branch (支線) grouping in the stops table */
+tr.branch-header td {
+  background: #f4f7fb;
+  padding: 6px 6px;
+  border-bottom: 1px solid #d8dee6;
+}
+tr.branch-header strong {
+  font-size: 12px;
+}
+.branch-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.branch-tag {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid #cdd5df;
+  border-radius: 8px;
+  padding: 0 6px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.branch-ride {
+  float: right;
+  font-size: 11px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+tr.branch-junction td {
+  color: var(--muted);
+  background: #fafbfc;
+  font-style: italic;
+}
 .legend-dot {
   display: inline-block;
   width: 10px;

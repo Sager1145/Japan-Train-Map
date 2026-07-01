@@ -120,7 +120,16 @@
     // snapping at moveend. Guarded to flyTo only (_flyToFrame is set) so normal
     // CSS pan/zoom animations keep their existing, cheaper handling.
     _onMove: function () {
-      if (this._map && this._map._flyToFrame != null) this._update();
+      // Reproject the GPU overlay every frame during a flyTo flight OR a
+      // continuous smooth-wheel zoom. Both drive the map via map._move
+      // (not Leaflet's CSS zoom animation), so without this the routes
+      // would lag the basemap and only snap into place at moveend.
+      // deck.gl redraw is GPU-cheap, so per-frame updates are fine.
+      if (
+        this._map &&
+        (this._map._flyToFrame != null || this._map._smoothWheelZooming)
+      )
+        this._update();
     },
     _update: function () {
       if (!this._container || !this._deck) return;
@@ -356,13 +365,15 @@
         capRounded: true,
         jointRounded: true,
         getPath: function (d) {
-          return d.path;
+          return d.pickPath || d.path;
         },
         getColor: function () {
           return [0, 0, 0, 0];
         },
         getWidth: function (d) {
-          return Math.max(d.width + 8, 14);
+          // Per-lane hit width: for fanned overlapping lines this is the lane
+          // spacing, so each parallel line gets its own selectable target.
+          return d.pickWidth != null ? d.pickWidth : Math.max(d.width + 8, 14);
         },
         parameters: { depthTest: false },
       });
