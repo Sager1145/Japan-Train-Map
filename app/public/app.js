@@ -1,4 +1,55 @@
+// =========================================================================
+//  app.js — N02 Limited Express Train Manager (frontend)
+//
+//  Single-file Leaflet + deck.gl map editor. Loads rail/station data and the
+//  saved train store from the Express backend, solves each route client-side
+//  (Dijkstra over the N02 rail graph) and renders routes, stops and
+//  pass-through stations. Auto-saves edits back to the server store.
+//
+//  CONTENTS  (search "§N." to jump to a section)
+//
+//   §1  Performance instrumentation (opt-in via PERF_DEBUG)
+//   §2  App-wide constants: protocol/schema, storage keys, map bounds, style defaults
+//   §3  Display-tuning settings & control panel (localStorage-only, not in store)
+//   §4  Display-feature helpers (basemap opacity, endpoint labels, deck hover/tooltip)
+//   §5  Route-geometry simplification (Douglas-Peucker pre-render decimation)
+//   §6  Date grouping, sorting & UI date-state persistence
+//   §7  Backend API client & app-data loading
+//   §8  Core mutable state & cached DOM element references
+//   §9  Boot sequence (runs once on DOMContentLoaded)
+//   §10 Live refresh via Server-Sent Events + background route-graph prebuild
+//   §11 Station resolution & generic data accessors
+//   §12 Train store: built-in defaults & debounced server autosave
+//   §13 File System Access API & IndexedDB key/value (file-handle) store
+//   §14 Persistent route-geometry cache (IndexedDB, namespaced by rail-content hash)
+//   §15 Local JSON file open / save (File System Access, with download fallback)
+//   §16 Progressive load / import engine (one train at a time, time-budgeted)
+//   §17 Train CRUD (add / update / duplicate / delete / move / visibility)
+//   §18 Canonical export & serialization (single definition of the saved schema)
+//   §19 Import parsing & normalization (lenient inbound -> canonical shape)
+//   §20 Blank-train factory, id helpers & persist/render glue
+//   §21 Map initialization (Leaflet + deck.gl overlay, tile layers, panes)
+//   §22 Event binding (all sidebar / editor / map UI event handlers)
+//   §23 Render orchestration & sidebar (date bar + train list)
+//   §24 Editor panel & stops table (per-train field + stop editing)
+//   §25 Route rebuild & layer / marker rendering (SVG + deck record assembly)
+//   §26 Parallel-offset overlap display & deck.gl record builders
+//   §27 Route matching, template keys, feature generation & full graph construction
+//   §28 On-demand regional route graphs & rail-section spatial index
+//   §29 Route solving: institution/edge rules, route hints & Dijkstra
+//   §30 Geometry helpers & matched-route feature assembly
+//   §31 Visual styling (single source of truth) & render primitives
+//   §32 Map fit, bounds clamping & import progress UI
+//   §33 Validation (export textarea, store, branch-leak, per-train)
+//   §34 Popups & tooltips (stop / route-segment HTML)
+//   §35 Misc utilities (status line, color, portable HTML, download, HTML escaping)
+// =========================================================================
+
 const LOCAL_JSON_FILENAME = "n02-train-store.json";
+
+// =========================================================================
+//  §1.  Performance instrumentation (opt-in via PERF_DEBUG)
+// =========================================================================
 
 // ---- Performance instrumentation (default OFF) --------------------------
 // Flip PERF_DEBUG to true (or run `window.PERF_DEBUG = true` before load) to
@@ -34,6 +85,10 @@ function installLongTaskObserver() {
     console.warn("Long-task observer unavailable.", err);
   }
 }
+
+// =========================================================================
+//  §2.  App-wide constants: protocol/schema, storage keys, map bounds, style defaults
+// =========================================================================
 
 // The server-side data/train-store.json (served at /api/train-store) is now
 // the single source of truth: the editor auto-saves there and loads from it
@@ -71,6 +126,23 @@ const DEFAULT_TRAIN_COLOR = "#d9364f";
 // field save, blank-train factory and renderer.
 const DEFAULT_TRAIN_WEIGHT = 6;
 const DEFAULT_UNRIDDEN_OPACITY = 0.22;
+
+// N02 "institution type" (事業者種別, field N02_002) classifies a line's
+// operator. The default route policy allows all five classes; a train may
+// narrow it (e.g. ["1","2"] = JR-only). N02_INSTITUTION_TYPE_CODES is the
+// validation whitelist for codes supplied in imported route policies.
+// (Grouped here with the other app-wide protocol constants; these two
+// previously lived down in the route-simplification block, far from kin.)
+//   1 = JR 新幹線    2 = JR 在来線    3 = 公営鉄道
+//   4 = 民営鉄道     5 = 第三セクター
+const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
+const N02_INSTITUTION_TYPE_CODES = new Set(
+  DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES,
+);
+
+// =========================================================================
+//  §3.  Display-tuning settings & control panel (localStorage-only, not in store)
+// =========================================================================
 
 // ------------------------------------------------------------------------
 // Global display-tuning settings. These are pure UI/presentation knobs that
@@ -223,6 +295,10 @@ function setupDisplaySettingsPanel() {
     });
   }
 }
+
+// =========================================================================
+//  §4.  Display-feature helpers (basemap opacity, endpoint labels, deck hover/tooltip)
+// =========================================================================
 
 // ------------------------------------------------------------------------
 // Helpers backing the new display features: basemap opacity, the
@@ -409,6 +485,10 @@ function hexToRgb(hex) {
     : [217, 54, 79];
 }
 
+// =========================================================================
+//  §5.  Route-geometry simplification (Douglas-Peucker pre-render decimation)
+// =========================================================================
+
 // --- Route geometry simplification (pre-render decimation) -----------------
 // The N02 source geometry is survey-grade: ~50 m median vertex spacing (down
 // to <1 m at segment joins / curves), so a stitched route carries thousands
@@ -493,10 +573,10 @@ function getSimplifiedRouteLines(feature) {
   _simplifiedLineCache.set(feature, cached);
   return cached;
 }
-const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
-const N02_INSTITUTION_TYPE_CODES = new Set(
-  DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES,
-);
+
+// =========================================================================
+//  §6.  Date grouping, sorting & UI date-state persistence
+// =========================================================================
 
 // ------------------------------------------------------------------------
 // Date grouping helpers. A train belongs to exactly one date bucket via its
@@ -689,6 +769,10 @@ function reconcileSelectedDate({ preferEarliestWhenAll = false } = {}) {
   }
 }
 
+// =========================================================================
+//  §7.  Backend API client & app-data loading
+// =========================================================================
+
 // Document-relative (not root-absolute) so every API call — including the
 // train-store save/load — resolves next to index.html. This keeps the app
 // working when it is served from a sub-path (e.g. behind a reverse proxy at
@@ -733,6 +817,10 @@ async function loadAppData() {
 
   stationCandidatesIndex = buildStationCandidatesIndex(stationsGeoJson);
 }
+// =========================================================================
+//  §8.  Core mutable state & cached DOM element references
+// =========================================================================
+
 let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
 let selectedTrainId = null;
 let focusedTrainId = null;
@@ -774,6 +862,9 @@ let cachedOrderedTrains = [];
 let passThroughShown = true;
 let importInProgress = false;
 
+// Cached DOM references. app.js is loaded at the END of <body> (no `defer`),
+// so the document is fully parsed when this runs — getElementById here at
+// module-eval time resolves every element synchronously, before first render.
 const els = {
   list: document.getElementById("train-list"),
   dateBar: document.getElementById("date-bar"),
@@ -801,6 +892,10 @@ const els = {
   weight: document.getElementById("field-weight"),
   toggleFocusZoom: document.getElementById("toggle-focus-zoom"),
 };
+
+// =========================================================================
+//  §9.  Boot sequence (runs once on DOMContentLoaded)
+// =========================================================================
 
 document.addEventListener("DOMContentLoaded", async () => {
   installLongTaskObserver();
@@ -866,6 +961,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // route shows up automatically.
   subscribeToStoreEvents();
 });
+
+// =========================================================================
+//  §10.  Live refresh via Server-Sent Events + background route-graph prebuild
+// =========================================================================
 
 // ---------------------------------------------------------------------------
 // Live refresh: subscribe to the server's SSE stream and, when the saved store
@@ -967,6 +1066,10 @@ function scheduleRouteGraphPrebuild() {
     setTimeout(prebuild, 0);
   }
 }
+
+// =========================================================================
+//  §11.  Station resolution & generic data accessors
+// =========================================================================
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -1182,6 +1285,10 @@ function resolveStationCandidates(stopOrName) {
   return nameCandidates.length ? nameCandidates : codeCandidates;
 }
 
+// =========================================================================
+//  §12.  Train store: built-in defaults & debounced server autosave
+// =========================================================================
+
 function getDefaultTrainStore() {
   return {
     schema_version: SCHEMA_VERSION,
@@ -1284,6 +1391,10 @@ async function loadTrainStoreFromServer() {
 
 let localJsonFileHandle = null;
 
+// =========================================================================
+//  §13.  File System Access API & IndexedDB key/value (file-handle) store
+// =========================================================================
+
 function supportsFileSystemAccess() {
   return (
     typeof window.showOpenFilePicker === "function" &&
@@ -1337,6 +1448,10 @@ async function idbDeleteValue(key) {
     };
   });
 }
+
+// =========================================================================
+//  §14.  Persistent route-geometry cache (IndexedDB, namespaced by rail-content hash)
+// =========================================================================
 
 // --- Persistent route-geometry cache (IndexedDB) -------------------------
 // Solved route geometry is expensive (route-graph build + Dijkstra). Persisting
@@ -1458,6 +1573,10 @@ function persistRouteCacheEntry(cacheKey, features) {
     .catch((err) => console.warn("Route cache persist skipped.", err));
 }
 
+// =========================================================================
+//  §15.  Local JSON file open / save (File System Access, with download fallback)
+// =========================================================================
+
 async function storeFileHandle(handle) {
   if (!supportsFileSystemAccess() || !handle) return;
   try {
@@ -1552,6 +1671,10 @@ async function openLocalJsonFile() {
   els.localJsonFileInput.value = "";
   els.localJsonFileInput.click();
 }
+
+// =========================================================================
+//  §16.  Progressive load / import engine (one train at a time, time-budgeted)
+// =========================================================================
 
 // Clear the in-memory store and selection before a full progressive reload.
 // Shared by the two "replace" import paths so the reset has one definition.
@@ -1755,6 +1878,10 @@ async function replaceTrainStoreFromStoreProgressive(
   }
 }
 
+// =========================================================================
+//  §17.  Train CRUD (add / update / duplicate / delete / move / visibility)
+// =========================================================================
+
 function addTrain(train) {
   const base = train || createBlankTrain();
   const candidate = clone(base);
@@ -1831,6 +1958,10 @@ function moveTrain(trainId, direction) {
   trainStore.trains.splice(next, 0, train);
   persistAndRender();
 }
+
+// =========================================================================
+//  §18.  Canonical export & serialization (single definition of the saved schema)
+// =========================================================================
 
 function exportTrainStore() {
   return JSON.stringify(buildCanonicalTrainStore(), null, 2);
@@ -2015,6 +2146,10 @@ function buildCanonicalTrainStore() {
     trains: trainStore.trains.map(normalizeExportTrain),
   };
 }
+
+// =========================================================================
+//  §19.  Import parsing & normalization (lenient inbound -> canonical shape)
+// =========================================================================
 
 function parseImportedCanonicalStore(json) {
   const parsed = typeof json === "string" ? JSON.parse(json) : json;
@@ -2212,9 +2347,18 @@ function appendImportedTrain(
   const existingIds = new Set(trainStore.trains.map((t) => t.id));
   train.id = makeUniqueTrainId(train.id, existingIds);
 
-  const tempStore = buildCanonicalTrainStore();
-  tempStore.trains.push(normalizeExportTrain(train));
-  validateTrainStore(tempStore);
+  // Validate ONLY the incoming train. Previously this rebuilt the whole
+  // canonical store and re-validated every already-appended train (including
+  // warnBranchLeak's per-section station resolution) on EVERY append — an
+  // O(N²) pass that dominated large imports. Id uniqueness against the
+  // existing store is already guaranteed by makeUniqueTrainId, and the one
+  // authoritative full-store validateTrainStore() still runs at the end of
+  // the load in finalizeProgressiveLoad().
+  validateTrain(
+    normalizeExportTrain(train),
+    trainStore.trains.length,
+    existingIds,
+  );
 
   trainStore.trains.push(train);
   selectedTrainId = train.id;
@@ -2273,6 +2417,10 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
     importInProgress = false;
   }
 }
+
+// =========================================================================
+//  §20.  Blank-train factory, id helpers & persist/render glue
+// =========================================================================
 
 function createBlankTrain() {
   return {
@@ -2366,8 +2514,148 @@ function persistAndRender() {
   renderAll();
 }
 
+// =========================================================================
+//  §21.  Map initialization (Leaflet + deck.gl overlay, tile layers, panes)
+// =========================================================================
+
+// =========================================================================
+//  Smooth wheel / trackpad zoom (continuous, cursor-anchored)
+// =========================================================================
+// Leaflet's built-in scroll-wheel zoom is stepped: it debounces a wheel burst
+// and jumps by (at least) one zoom level. With zoomSnap:0 that instead produced
+// tiny stuttery increments. This handler replaces it with a smooth zoom: each
+// wheel / trackpad-pinch event nudges a target zoom (`_goalZoom`) and a
+// requestAnimationFrame loop eases the real map zoom toward it via map._move(),
+// anchoring the zoom under the pointer. Because it drives the map with
+// map._move (not Leaflet's CSS zoom animation), it sets map._smoothWheelZooming
+// so the deck.gl overlay bridge knows to reproject the routes on these frames.
+// In Chromium / Edge a trackpad pinch arrives as wheel events with ctrlKey set;
+// preventDefault keeps the browser from page-zooming so the map zooms instead.
+if (typeof L !== "undefined" && L.Map && L.Handler) {
+  L.Map.mergeOptions({ smoothWheelZoom: true, smoothSensitivity: 1 });
+  L.Map.SmoothWheelZoom = L.Handler.extend({
+    addHooks() {
+      // Bind a NON-PASSIVE wheel listener directly so preventDefault()
+      // reliably blocks the browser's ctrl+wheel page-zoom on a trackpad
+      // pinch (Chromium/Edge) — otherwise the page zooms, not the map.
+      this._wheelListener = this._onWheel.bind(this);
+      this._map._container.addEventListener("wheel", this._wheelListener, {
+        passive: false,
+      });
+    },
+    removeHooks() {
+      if (this._wheelListener) {
+        this._map._container.removeEventListener(
+          "wheel",
+          this._wheelListener,
+          { passive: false },
+        );
+        this._wheelListener = null;
+      }
+    },
+    _onWheel(e) {
+      if (!this._isWheeling) this._startWheel(e);
+      this._wheeling(e);
+      // Map owns the wheel: stop the page from scrolling / pinch-zooming.
+      L.DomEvent.preventDefault(e);
+      L.DomEvent.stopPropagation(e);
+    },
+    _startWheel(e) {
+      const map = this._map;
+      map._stop();
+      if (map._panAnim) map._panAnim.stop();
+      this._isWheeling = true;
+      this._moved = false;
+      map._smoothWheelZooming = true; // deck overlay bridge follows this flag
+      this._goalZoom = map.getZoom();
+      this._centerPoint = map.getSize()._divideBy(2);
+      this._startLatLng = map.containerPointToLatLng(this._centerPoint);
+      this._mousePoint = map.mouseEventToContainerPoint(e);
+      this._wheelStartLatLng = map.containerPointToLatLng(this._mousePoint);
+      this._raf = L.Util.requestAnimFrame(this._tick, this);
+    },
+    _wheeling(e) {
+      const map = this._map;
+      // Normalize the wheel/pinch delta to a pixel-ish scale (mice and
+      // trackpads report different deltaMode units), then CLAMP so one big
+      // mouse notch cannot leap across the whole zoom range. A trackpad
+      // pinch (ctrlKey in Chromium/Edge) sends smaller, more frequent
+      // deltas, so it gets a little more gain. NOTE: raw deltaY is used,
+      // not L.DomEvent.getWheelDelta — the latter divides by a browser
+      // wheelPxFactor that shrank pinch deltas almost to nothing.
+      let delta = e.deltaY;
+      if (e.deltaMode === 1)
+        delta *= 20; // DOM_DELTA_LINE -> px
+      else if (e.deltaMode === 2) delta *= 60; // DOM_DELTA_PAGE -> px
+      delta = Math.max(-50, Math.min(50, delta));
+      const gain = (e.ctrlKey ? 0.022 : 0.015) * map.options.smoothSensitivity;
+      // deltaY > 0 is a downward / pinch-in gesture => zoom OUT.
+      this._goalZoom = map._limitZoom(this._goalZoom - delta * gain);
+      this._mousePoint = map.mouseEventToContainerPoint(e);
+      clearTimeout(this._endTimer);
+      this._endTimer = setTimeout(() => this._endWheel(), 220);
+    },
+    _endWheel() {
+      this._isWheeling = false;
+      this._map._smoothWheelZooming = false;
+      L.Util.cancelAnimFrame(this._raf);
+      if (this._moved) this._map._moveEnd(true); // fires zoomend + moveend
+    },
+    _tick() {
+      const map = this._map;
+      const current = map.getZoom();
+      // Ease the live zoom toward the target. Stop emitting moves once settled,
+      // but keep the rAF alive until the gesture ends so further wheel input
+      // resumes smoothly without restarting the loop.
+      if (Math.abs(this._goalZoom - current) > 0.002) {
+        const zoom =
+          Math.round((current + (this._goalZoom - current) * 0.25) * 100) / 100;
+        const offset = this._mousePoint.subtract(this._centerPoint);
+        let center =
+          offset.x === 0 && offset.y === 0
+            ? this._startLatLng
+            : map.unproject(
+                map.project(this._wheelStartLatLng, zoom).subtract(offset),
+                zoom,
+              );
+        // Respect the Japan max-bounds clamp so the cursor-anchored pan can't
+        // drift off-territory and snap back at moveend.
+        if (map.options.maxBounds)
+          center = map._limitCenter(center, zoom, map.options.maxBounds);
+        if (!this._moved) {
+          map._moveStart(true, false);
+          this._moved = true;
+        }
+        map._move(center, zoom);
+      }
+      this._raf = L.Util.requestAnimFrame(this._tick, this);
+    },
+  });
+  L.Map.addInitHook("addHandler", "smoothWheelZoom", L.Map.SmoothWheelZoom);
+}
+
 function initMap() {
-  map = L.map("map", { preferCanvas: true }).setView([36.4, 138.2], 5);
+  map = L.map("map", {
+    preferCanvas: true,
+    // Continuous, cursor-anchored smooth zoom. Leaflet's default stepped
+    // scroll-wheel zoom is turned OFF and replaced by the SmoothWheelZoom
+    // handler defined above (eases the zoom toward a pointer-anchored target
+    // each animation frame): smooth for a trackpad pinch (ctrl+wheel in
+    // Chromium/Edge) and semi-smooth for a mouse wheel. smoothSensitivity
+    // scales how far each wheel/pinch delta moves the target (higher = faster).
+    scrollWheelZoom: false,
+    smoothWheelZoom: true,
+    smoothSensitivity: 1,
+    // Fractional zoom levels so the eased zoom (and flyTo / fitBounds) settle
+    // between integer steps instead of snapping. The deck.gl route overlay and
+    // applyJapanMapConstraints() are both fractional-aware.
+    zoomSnap: 0,
+    zoomAnimation: true,
+    // Smooth momentum panning: a released drag glides to a stop.
+    inertia: true,
+    inertiaDeceleration: 2500,
+    easeLinearity: 0.2,
+  }).setView([36.4, 138.2], 5);
   // SVG (not canvas) for the train routes + stop markers. The canvas renderer
   // must fully re-stroke its buffer on every moveend and zoom — re-projecting
   // ~176k route points plus thousands of stop/pass-through markers each gesture
@@ -2476,6 +2764,15 @@ function initMap() {
     if (!cachedOrderedTrains.length) return;
     if (map.getZoom() >= PASSTHROUGH_MIN_ZOOM !== passThroughShown)
       renderTrainMarkers();
+    // Parallel-offset lanes are spaced in screen pixels; rebuild the route
+    // records at the new zoom so overlapping lines stay evenly fanned.
+    if (
+      _deckHasOverlaps &&
+      USE_DECKGL_ROUTES &&
+      window.DeckRoutes &&
+      DeckRoutes.layer
+    )
+      renderRoutesInView();
   });
 
   // Clamp the map over Japan: most zoomed-out view shows all territory
@@ -2526,6 +2823,10 @@ function handleDeckRouteClick(info) {
       .openOn(map);
   }
 }
+
+// =========================================================================
+//  §22.  Event binding (all sidebar / editor / map UI event handlers)
+// =========================================================================
 
 function bindEvents() {
   setupDisplaySettingsPanel();
@@ -2761,6 +3062,10 @@ function bindEvents() {
   }
   updateFocusZoomButton();
 }
+
+// =========================================================================
+//  §23.  Render orchestration & sidebar (date bar + train list)
+// =========================================================================
 
 // Reflect the auto-focus toggle state on its button.
 function updateFocusZoomButton() {
@@ -3143,6 +3448,10 @@ function removeEmptyDates() {
   );
 }
 
+// =========================================================================
+//  §24.  Editor panel & stops table (per-train field + stop editing)
+// =========================================================================
+
 function renderEditor() {
   const train = getTrain();
   const disabled = !train;
@@ -3188,10 +3497,88 @@ function renderEditor() {
   renderStopsTable(train);
 }
 
+// Colour palette for branch (支線) groups in the stops table. Each maximal run
+// of consecutive route_sections that share the same line_names (+ branch number)
+// becomes one branch and gets the next colour.
+const BRANCH_COLORS = [
+  "#2563eb",
+  "#16a34a",
+  "#db2777",
+  "#d97706",
+  "#7c3aed",
+  "#0891b2",
+  "#dc2626",
+  "#4d7c0f",
+];
+
+// Derive branches from the train's per-adjacent-stop route_sections. A branch
+// spans stops [startIdx..endIdx] (inclusive); adjacent branches SHARE the
+// boundary stop, which is the divergence station (支线分理处). Trains with no
+// line_names collapse to a single unlabeled branch (ordinary single-line view).
+function deriveTrainBranches(train) {
+  const stops = train.stops || [];
+  if (stops.length < 2)
+    return [
+      {
+        line: "",
+        number: "",
+        startIdx: 0,
+        endIdx: Math.max(0, stops.length - 1),
+        colorIndex: 0,
+      },
+    ];
+  const sections = getRideRouteSectionsForTrain(train);
+  if (!sections.length)
+    return [
+      { line: "", number: "", startIdx: 0, endIdx: stops.length - 1, colorIndex: 0 },
+    ];
+  const keyOf = (s) =>
+    `${(s.line_names || []).map(String).slice().sort().join(",")}|${s.number || ""}`;
+  const branches = [];
+  let cur = null;
+  sections.forEach((sec, i) => {
+    const k = keyOf(sec);
+    if (!cur || cur.key !== k) {
+      cur = {
+        key: k,
+        line: (sec.line_names || [])[0] || "",
+        number: sec.number || "",
+        startIdx: i,
+        endIdx: i + 1,
+        colorIndex: branches.length,
+      };
+      branches.push(cur);
+    } else {
+      cur.endIdx = i + 1;
+    }
+  });
+  return branches;
+}
+
 function renderStopsTable(train) {
   els.stopsBody.innerHTML = "";
-  (train.stops || []).forEach((stop, index) => {
+  const stops = train.stops || [];
+  const branches = deriveTrainBranches(train);
+  const showHeaders =
+    branches.length > 1 ||
+    (branches[0] && (branches[0].line || branches[0].number));
+
+  // Owning branch of each stop = first branch that contains it (so a shared
+  // junction is owned by the earlier branch and only toggled/edited once).
+  const ownerOf = new Array(stops.length).fill(0);
+  const ownedSeen = new Set();
+  branches.forEach((b, bi) => {
+    for (let i = b.startIdx; i <= b.endIdx; i += 1) {
+      if (!ownedSeen.has(i)) {
+        ownerOf[i] = bi;
+        ownedSeen.add(i);
+      }
+    }
+  });
+
+  const editableRow = (stop, index, color) => {
     const tr = document.createElement("tr");
+    tr.style.borderLeft = `4px solid ${color}`;
     tr.innerHTML = `
           <td>${index + 1}</td>
           <td><input data-stop-field="name" data-stop-index="${index}" value="${escapeAttr(stopName(stop))}"></td>
@@ -3218,10 +3605,79 @@ function renderStopsTable(train) {
             <button class="icon danger" title="Delete" data-stop-action="delete" data-stop-index="${index}">×</button>
           </td>
         `;
-    els.stopsBody.appendChild(tr);
+    return tr;
+  };
+
+  const editableSeen = new Set();
+  branches.forEach((b, bi) => {
+    const color = BRANCH_COLORS[b.colorIndex % BRANCH_COLORS.length];
+    if (showHeaders) {
+      const label =
+        (b.line || I18N.t("branch.noline")) + (b.number ? ` · ${b.number}` : "");
+      const htr = document.createElement("tr");
+      htr.className = "branch-header";
+      htr.innerHTML = `<td colspan="7" style="border-left:4px solid ${color}">
+            <span class="branch-swatch" style="background:${color}"></span>
+            <strong>${escapeHtml(label)}</strong>
+            ${b.number ? `<span class="branch-tag">${escapeHtml(I18N.t("branch.tag"))}</span>` : ""}
+            <label class="branch-ride"><input type="checkbox" data-branch-ride="${bi}"> ${escapeHtml(I18N.t("branch.rideAll"))}</label>
+          </td>`;
+      els.stopsBody.appendChild(htr);
+    }
+    for (let i = b.startIdx; i <= b.endIdx; i += 1) {
+      const stop = stops[i];
+      if (!stop) continue;
+      if (editableSeen.has(i)) {
+        // Already rendered editable in the previous branch — show the shared
+        // divergence station as a read-only anchor so each branch starts at it.
+        const tr = document.createElement("tr");
+        tr.className = "branch-junction";
+        tr.style.borderLeft = `4px solid ${color}`;
+        tr.innerHTML = `
+              <td>${i + 1}</td>
+              <td>${escapeHtml(stopName(stop))} <span class="branch-tag">${escapeHtml(I18N.t("branch.junction"))}</span></td>
+              <td>${escapeHtml(stop.arrival ?? "")}</td>
+              <td>${escapeHtml(stop.departure ?? "")}</td>
+              <td>${escapeHtml(I18N.t("stoptype." + stop.stop_type))}</td>
+              <td></td><td></td>`;
+        els.stopsBody.appendChild(tr);
+        continue;
+      }
+      editableSeen.add(i);
+      els.stopsBody.appendChild(editableRow(stop, i, showHeaders ? color : ""));
+    }
+  });
+
+  // Branch master toggle: ride/hide every owned stopping station in one click.
+  branches.forEach((b, bi) => {
+    const cb = els.stopsBody.querySelector(`[data-branch-ride="${bi}"]`);
+    if (!cb) return;
+    const owned = [];
+    for (let i = b.startIdx; i <= b.endIdx; i += 1) {
+      if (ownerOf[i] === bi && isStoppingStation(stops[i])) owned.push(stops[i]);
+    }
+    const on = owned.filter((s) => s.ride_segment === true).length;
+    cb.checked = owned.length > 0 && on === owned.length;
+    cb.indeterminate = on > 0 && on < owned.length;
+    cb.addEventListener("change", (event) => {
+      const t = getTrain();
+      if (!t) return;
+      const value = event.target.checked;
+      for (let i = b.startIdx; i <= b.endIdx; i += 1) {
+        if (ownerOf[i] === bi && isStoppingStation(t.stops[i])) {
+          t.stops[i].ride_segment = value;
+          setAdjacentPassThroughStops(t, i, value);
+        }
+      }
+      saveTrainStore();
+      perfMeasure("renderTrainLayers", renderTrainLayers);
+      scheduleExportTextareaRefresh();
+      renderStopsTable(t);
+    });
   });
 
   els.stopsBody.querySelectorAll("[data-stop-field]").forEach((input) => {
+
     input.addEventListener("change", (event) => {
       const train = getTrain();
       const index = Number(event.target.dataset.stopIndex);
@@ -3431,6 +3887,10 @@ function mutateStop(index, action) {
     ];
   persistAndRender();
 }
+
+// =========================================================================
+//  §25.  Route rebuild & layer / marker rendering (SVG + deck record assembly)
+// =========================================================================
 
 function rebuildSelectedRoute() {
   const train = getTrain();
@@ -3646,6 +4106,13 @@ function buildRouteItems(orderedTrains, focusActive) {
   // always draw on their true track and simply stack when trains share a
   // segment. Keeping splitForOverlap off skips the overlap map / run-splitting
   // entirely (the related helpers are retained but no longer invoked).
+  // Parallel-offset of overlapping routes is applied in buildDeckRouteRecords
+  // (deck path); the Leaflet split path stays off.
+  // TODO(dead-code): with splitForOverlap pinned false, the Leaflet split-path
+  // overlap helpers (getRouteSegmentRecords, buildRouteOverlapMap,
+  // splitRouteFeatureIntoStyledRuns, getRouteOverlapInfoForKey) are unreachable
+  // in both the deck and ?deck=0 SVG paths. Retained intentionally (see note
+  // above); remove only if the SVG split path is formally dropped.
   const splitForOverlap = false;
   const routeFeaturesByTrain = new Map(
     orderedTrains.map((train) => [train.id, getMatchedRouteFeatures(train)]),
@@ -3726,15 +4193,109 @@ function renderRoutesInView() {
   });
 }
 
+// =========================================================================
+//  §26.  Parallel-offset overlap display & deck.gl record builders
+// =========================================================================
+
+// --- Parallel-offset display of overlapping routes -------------------------
+// When N trains share an identical drawn segment, fan them into N parallel
+// lanes (each base_width/N wide) so every line stays visible and individually
+// hover/clickable. Offsets are computed in screen pixels at the CURRENT zoom
+// (constant on-screen spacing) and rebuilt on zoomend; the pick layer uses the
+// per-lane spacing as its hit width so any one of the N lanes can be selected.
+let _deckHasOverlaps = false;
+
+function overlapOffsetDeg(px) {
+  if (!map || !px) return 0;
+  const z = map.getZoom();
+  const lat = map.getCenter().lat;
+  const metersPerPx =
+    (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z);
+  return (px * metersPerPx) / 111320; // degrees of latitude per `px` pixels
+}
+
+// Offset a polyline perpendicular to its local direction by `offsetDeg`
+// (signed, in degrees of latitude). The normal sign is canonicalised so two
+// trains traversing the SAME segment in OPPOSITE directions still fan to
+// opposite sides instead of stacking on top of each other.
+function offsetPathWorld(line, offsetDeg) {
+  if (!offsetDeg) return line;
+  const m = line.length;
+  const out = new Array(m);
+  for (let i = 0; i < m; i += 1) {
+    const a = line[Math.max(0, i - 1)];
+    const b = line[Math.min(m - 1, i + 1)];
+    const coslat = Math.cos((line[i][1] * Math.PI) / 180) || 1e-6;
+    const dx = (b[0] - a[0]) * coslat;
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (nx < -1e-12 || (Math.abs(nx) <= 1e-12 && ny < 0)) {
+      nx = -nx;
+      ny = -ny;
+    }
+    out[i] = [
+      line[i][0] + (nx / coslat) * offsetDeg,
+      line[i][1] + ny * offsetDeg,
+    ];
+  }
+  return out;
+}
+
+// Index every drawn segment by the direction-independent key the route dedupe
+// uses, so shared N02 track (identical coordinates) is detected exactly. Slot
+// order is stable (by train order of appearance) so a train keeps the same lane
+// along the whole shared stretch.
+function buildDeckOverlapMap(items) {
+  const rank = new Map();
+  items.forEach((it) => {
+    if (it.train && !rank.has(it.train.id)) rank.set(it.train.id, rank.size);
+  });
+  const seg = new Map();
+  items.forEach((item) => {
+    const tid = item.train && item.train.id;
+    if (!tid) return;
+    getSimplifiedRouteLines(item.feature).forEach((line) => {
+      for (let i = 0; i < line.length - 1; i += 1) {
+        const key = routeCoordinateSegmentKey(line[i], line[i + 1]);
+        let ids = seg.get(key);
+        if (!ids) {
+          ids = new Set();
+          seg.set(key, ids);
+        }
+        ids.add(tid);
+      }
+    });
+  });
+  return {
+    infoFor(line, i, tid) {
+      const ids = seg.get(routeCoordinateSegmentKey(line[i], line[i + 1]));
+      if (!ids || ids.size < 2) return { count: 1, slot: 0 };
+      const ordered = [...ids].sort(
+        (a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0),
+      );
+      return { count: ids.size, slot: Math.max(0, ordered.indexOf(tid)) };
+    },
+  };
+}
+
 // Flatten cached route items into deck.gl PathLayer records. Each record is a
-// single polyline with its color/width/dash/opacity precomputed to match the
-// SVG styling in renderTrainRouteSegment() exactly. A MultiLineString feature
-// yields one record per line. Coordinates are [lng, lat] (deck LNGLAT space).
+// single polyline with color/width/dash/opacity precomputed. Overlapping
+// stretches are split into runs and fanned into parallel offset lanes.
 function buildDeckRouteRecords(items, focusActive) {
+  const overlap = buildDeckOverlapMap(items);
+  _deckHasOverlaps = false;
+  const spacingPx = Math.max(
+    DEFAULT_TRAIN_WEIGHT * (DISPLAY.routeWidthScale || 1),
+    5,
+  );
+  const spacingDeg = overlapOffsetDeg(spacingPx);
   const records = [];
   items.forEach((item) => {
     const train = item.train;
     const feature = item.feature;
+    const tid = train && train.id;
     const ridden =
       feature.properties && feature.properties.ride_segment === true;
     const rgb = hexToRgb(
@@ -3752,27 +4313,43 @@ function buildDeckRouteRecords(items, focusActive) {
     const color = [rgb[0], rgb[1], rgb[2], alpha];
     getSimplifiedRouteLines(feature).forEach((line) => {
       if (!line || line.length < 2) return;
-      records.push({ path: line, color, width, dashed, train, feature });
-      if (PERF_DEBUG) {
-        _simpStats.after += line.length;
+      let runStart = 0;
+      let prev = overlap.infoFor(line, 0, tid);
+      const flush = (endInclusive, info) => {
+        const runLine = line.slice(runStart, endInclusive + 1);
+        if (runLine.length < 2) return;
+        const n = info.count;
+        if (n > 1) _deckHasOverlaps = true;
+        // Visible line stays on its TRUE track at full width (no parallel
+        // fan-out). Only the invisible PICK target is offset into per-train
+        // lanes, so moving the mouse across an overlap can select each line.
+        const offDeg = n > 1 ? (info.slot - (n - 1) / 2) * spacingDeg : 0;
+        records.push({
+          path: runLine,
+          pickPath: offDeg ? offsetPathWorld(runLine, offDeg) : runLine,
+          color,
+          width,
+          dashed,
+          train,
+          feature,
+          pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 8, 14),
+        });
+      };
+      for (let i = 1; i < line.length - 1; i += 1) {
+        const cur = overlap.infoFor(line, i, tid);
+        if (cur.count !== prev.count || cur.slot !== prev.slot) {
+          flush(i, prev);
+          runStart = i;
+          prev = cur;
+        }
       }
+      flush(line.length - 1, prev);
     });
-    if (PERF_DEBUG) {
-      iterateGeometryLines(feature.geometry).forEach((l) => {
-        _simpStats.before += l.length;
-      });
-    }
   });
-  if (PERF_DEBUG && _simpStats.before) {
-    console.log(
-      `[routes] simplify ${ROUTE_SIMPLIFY_METERS}m: ${_simpStats.before} -> ${_simpStats.after} pts (${((100 * _simpStats.after) / _simpStats.before).toFixed(1)}% kept)`,
-    );
-    _simpStats.before = 0;
-    _simpStats.after = 0;
-  }
   return records;
 }
 const _simpStats = { before: 0, after: 0 };
+
 
 // Flatten the visible trains' stop + pass-through markers into deck.gl
 // ScatterplotLayer records. Fill/line colours, radius and stroke width are
@@ -4079,6 +4656,10 @@ function getComputedPassThroughFeatures(train) {
   });
   return computed;
 }
+
+// =========================================================================
+//  §27.  Route matching, template keys, feature generation & full graph construction
+// =========================================================================
 
 function getTrainRouteTemplateKey(train) {
   return (train.route_sections || [])
@@ -4426,6 +5007,10 @@ function getRuntimeRouteGraph() {
   return runtimeRouteGraph;
 }
 
+// =========================================================================
+//  §28.  On-demand regional route graphs & rail-section spatial index
+// =========================================================================
+
 // ---- On-demand regional route graphs ------------------------------------
 // Instead of holding the whole-Japan graph resident, build small per-region
 // subgraphs on demand and LRU-cache them. A subgraph built from EVERY rail
@@ -4717,6 +5302,10 @@ function nearbyGraphNodes(coord, graph, radiusDeg = 0.0015, limit = 30) {
   found.sort((a, b) => a.distance - b.distance);
   return found.slice(0, limit);
 }
+
+// =========================================================================
+//  §29.  Route solving: institution/edge rules, route hints & Dijkstra
+// =========================================================================
 
 function preferredInstitutionSet(allowedCodes) {
   return new Set((allowedCodes || []).map(String).filter(Boolean));
@@ -5054,62 +5643,70 @@ function solveRouteSectionOnN02Graph(
       continue;
     }
 
+    // ONE multi-source → multi-target Dijkstra per attempt instead of a
+    // from×to nested loop of full runs (12×12 = up to 144 per attempt). All
+    // from-candidates are seeded into the heap at their snap-penalty cost, so
+    // each settled target yields the pair-optimal (path cost + from-snap)
+    // route; the to-snap and line-mismatch scoring below is unchanged.
     let attemptBest = null;
-    fromCandidates.forEach((fromCandidate) => {
-      toCandidates.forEach((toCandidate) => {
-        const solved = dijkstraBetweenExactNodes(
-          graph,
-          fromCandidate.key,
-          toCandidate.key,
-          train,
-          allowedCodes,
-          segmentHints,
-        );
-        if (!solved) return;
-        const straight = distanceMeters(
-          graph.nodes.get(fromCandidate.key),
-          graph.nodes.get(toCandidate.key),
-        );
-        const physicalLength = pathLengthMeters(graph, solved.pathKeys);
-        const detourLimit = Math.max(straight * 3.8 + 6000, 12000);
-        if (straight > 1500 && physicalLength > detourLimit) {
-          console.warn("Rejected likely detour path.", {
-            section,
-            physicalLength,
-            straight,
-            detourLimit,
-            hints: segmentHints,
-          });
-          return;
-        }
-        // Snap distance is not a drawable route. Treat it as an error term, not
-        // as a cheap substitute for real rail geometry. This prevents short
-        // segments such as 成田空港→空港第2ビル from being truncated by choosing
-        // two far-along station candidates whose Dijkstra path is only a few
-        // dozen meters long.
-        const snapPenalty =
-          (fromCandidate.distance + toCandidate.distance) *
-          STATION_SNAP_COST_FACTOR;
-        const totalCost = solved.cost + snapPenalty;
-        const linePenalty = routeLineMismatchPenalty(
-          graph,
-          solved.pathKeys,
-          segmentHints,
-        );
-        const scoredCost = totalCost + linePenalty;
-        if (!attemptBest || scoredCost < attemptBest.scoredCost) {
-          attemptBest = {
-            ...solved,
-            scoredCost,
-            totalCost,
-            physicalLength,
-            snapFrom: fromCandidate.distance,
-            snapTo: toCandidate.distance,
-            fromCandidate,
-            toCandidate,
-          };
-        }
-      });
+    const fromByKey = new Map(fromCandidates.map((c) => [c.key, c]));
+    const toByKey = new Map(toCandidates.map((c) => [c.key, c]));
+    const solvedTargets = dijkstraFromCandidateSources(
+      graph,
+      fromCandidates,
+      new Set(toByKey.keys()),
+      train,
+      allowedCodes,
+      segmentHints,
+    );
+    solvedTargets.forEach((solved) => {
+      if (!solved.pathKeys || solved.pathKeys.length < 2) return;
+      const fromCandidate = fromByKey.get(solved.sourceKey);
+      const toCandidate = toByKey.get(solved.targetKey);
+      if (!fromCandidate || !toCandidate) return;
+      const straight = distanceMeters(
+        graph.nodes.get(fromCandidate.key),
+        graph.nodes.get(toCandidate.key),
+      );
+      const physicalLength = pathLengthMeters(graph, solved.pathKeys);
+      const detourLimit = Math.max(straight * 3.8 + 6000, 12000);
+      if (straight > 1500 && physicalLength > detourLimit) {
+        console.warn("Rejected likely detour path.", {
+          section,
+          physicalLength,
+          straight,
+          detourLimit,
+          hints: segmentHints,
+        });
+        return;
+      }
+      // Snap distance is not a drawable route. Treat it as an error term, not
+      // as a cheap substitute for real rail geometry. This prevents short
+      // segments such as 成田空港→空港第2ビル from being truncated by choosing
+      // two far-along station candidates whose Dijkstra path is only a few
+      // dozen meters long.
+      const snapPenalty =
+        (fromCandidate.distance + toCandidate.distance) *
+        STATION_SNAP_COST_FACTOR;
+      const totalCost = solved.cost + snapPenalty;
+      const linePenalty = routeLineMismatchPenalty(
+        graph,
+        solved.pathKeys,
+        segmentHints,
+      );
+      const scoredCost = totalCost + linePenalty;
+      if (!attemptBest || scoredCost < attemptBest.scoredCost) {
+        attemptBest = {
+          pathKeys: solved.pathKeys,
+          scoredCost,
+          totalCost,
+          physicalLength,
+          snapFrom: fromCandidate.distance,
+          snapTo: toCandidate.distance,
+          fromCandidate,
+          toCandidate,
+        };
+      }
     });
 
     // Important: the first successful attempt wins. This prevents a soft fallback
@@ -5766,10 +6363,19 @@ function getStationCandidateGraphNodes(
   return sliced;
 }
 
-function dijkstraBetweenExactNodes(
+// Multi-source → multi-target Dijkstra. Every from-candidate is seeded into
+// the heap at its snap-penalty cost (distance × STATION_SNAP_COST_FACTOR), so
+// a single run over the graph settles, for each target node, the pair-optimal
+// combination of (source snap + path cost) — replacing the former per-pair
+// dijkstraBetweenExactNodes nested loop (up to sources×targets full runs per
+// attempt) with exactly one run per attempt. The search stops as soon as all
+// targets are settled. Each result reports which source won via `sourceKey`
+// (tracked through relaxation) plus the PURE path cost with the seed snap
+// penalty subtracted back out, so the caller's scoring stays unchanged.
+function dijkstraFromCandidateSources(
   graph,
-  sourceKey,
-  targetKey,
+  sourceCandidates,
+  targetKeys,
   train,
   allowedCodes,
   segmentHints = {
@@ -5779,21 +6385,31 @@ function dijkstraBetweenExactNodes(
     requiredOperators: new Set(),
   },
 ) {
-  const distance = new Map([[sourceKey, 0]]);
+  const distance = new Map();
   const previous = new Map();
+  const sourceOf = new Map();
+  const seedCost = new Map();
   const heap = new MinHeap();
-  heap.push({ key: sourceKey, priority: 0 });
+  sourceCandidates.forEach((candidate) => {
+    const init = candidate.distance * STATION_SNAP_COST_FACTOR;
+    if (init < (distance.get(candidate.key) ?? Infinity)) {
+      distance.set(candidate.key, init);
+      sourceOf.set(candidate.key, candidate.key);
+      seedCost.set(candidate.key, init);
+      heap.push({ key: candidate.key, priority: init });
+    }
+  });
   const visited = new Set();
+  const remaining = new Set(targetKeys);
+  const settled = [];
 
-  while (heap.size()) {
+  while (heap.size() && remaining.size) {
     const current = heap.pop();
     if (visited.has(current.key)) continue;
     visited.add(current.key);
-    if (current.key === targetKey) {
-      return {
-        cost: current.priority,
-        pathKeys: reconstructPath(previous, sourceKey, targetKey),
-      };
+    if (remaining.has(current.key)) {
+      remaining.delete(current.key);
+      settled.push({ targetKey: current.key, settledCost: current.priority });
     }
     const edges = graph.adjacency.get(current.key) || [];
     edges.forEach((edge) => {
@@ -5817,11 +6433,23 @@ function dijkstraBetweenExactNodes(
       if (nextCost < (distance.get(edge.to) ?? Infinity)) {
         distance.set(edge.to, nextCost);
         previous.set(edge.to, current.key);
+        sourceOf.set(edge.to, sourceOf.get(current.key));
         heap.push({ key: edge.to, priority: nextCost });
       }
     });
   }
-  return null;
+
+  return settled.map((entry) => {
+    const sourceKey = sourceOf.get(entry.targetKey);
+    return {
+      targetKey: entry.targetKey,
+      sourceKey,
+      // Pure path cost (matches the old per-pair solved.cost): subtract the
+      // winning source's seeded snap cost back out.
+      cost: entry.settledCost - (seedCost.get(sourceKey) || 0),
+      pathKeys: reconstructPath(previous, sourceKey, entry.targetKey),
+    };
+  });
 }
 
 function pathLengthMeters(graph, pathKeys) {
@@ -5991,6 +6619,10 @@ function distanceMeters(a, b) {
     Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
   return 2 * radius * Math.asin(Math.sqrt(x));
 }
+
+// =========================================================================
+//  §30.  Geometry helpers & matched-route feature assembly
+// =========================================================================
 
 function iterateGeometryLines(geometry) {
   if (!geometry || !geometry.coordinates) return [];
@@ -6197,6 +6829,10 @@ function getStopFeature(stop, train) {
     },
   };
 }
+
+// =========================================================================
+//  §31.  Visual styling (single source of truth) & render primitives
+// =========================================================================
 
 // ------------------------------------------------------------------------
 // Single source of truth for route / marker visual styling. The SVG render
@@ -6405,6 +7041,10 @@ function coordinatesEqual(a, b) {
   );
 }
 
+// =========================================================================
+//  §32.  Map fit, bounds clamping & import progress UI
+// =========================================================================
+
 // Smoothly animate the map to a bounds for focus actions. flyToBounds always
 // performs a combined zoom+pan flight (no teleport), so even a long jump glides.
 // fitBounds, by contrast, snaps instantly for any move beyond ~one screen — the
@@ -6478,6 +7118,10 @@ function applyJapanMapConstraints() {
   if (map.getZoom() < minZoom) map.setZoom(minZoom);
 }
 
+// =========================================================================
+//  §33.  Validation (export textarea, store, branch-leak, per-train)
+// =========================================================================
+
 function validateTextareaJson() {
   try {
     const parsed = parseImportedCanonicalStore(els.importJson.value);
@@ -6518,6 +7162,64 @@ function validateTrainStore(store) {
   const ids = new Set();
   store.trains.forEach((train, index) => validateTrain(train, index, ids));
   return true;
+}
+
+// §6.4 advisory branch-leak detection. Non-fatal (console warnings only) so
+// import never fails on these, but it flags (a) route_sections that cross a
+// junction / 支线分理处 without a hard line constraint, and (b) pass_through
+// stops whose resolved line is on none of the adjacent sections' line_names —
+// the classic "wrong branch" leak (e.g. シーサイドライナー picking up 有田 /
+// 肥前浜 past 早岐). Defensive: silently returns if station data isn't loaded.
+function warnBranchLeak(train) {
+  try {
+    if (typeof resolveStationCandidates !== "function") return;
+    const stops = train.stops || [];
+    const sections = Array.isArray(train.route_sections)
+      ? train.route_sections
+      : [];
+    const linesOf = (stopLike) => {
+      const set = new Set();
+      (resolveStationCandidates(stopLike) || []).forEach((feature) => {
+        const ln = stationLineName(feature);
+        if (ln) set.add(String(ln));
+      });
+      return set;
+    };
+    sections.forEach((section, i) => {
+      if (Array.isArray(section.line_names) && section.line_names.length)
+        return;
+      const fromLines = linesOf({
+        name: section.from,
+        n02_station_code: section.from_n02_station_code,
+      });
+      const toLines = linesOf({
+        name: section.to,
+        n02_station_code: section.to_n02_station_code,
+      });
+      if (fromLines.size > 1 || toLines.size > 1) {
+        console.warn(
+          `[§6.4] Train ${train.id} section ${i + 1} (${section.from}→${section.to}) crosses a junction but has no line_names; routing may leak onto the wrong branch.`,
+        );
+      }
+    });
+    stops.forEach((stop, idx) => {
+      if (stop.stop_type !== "pass_through") return;
+      const adjLines = new Set();
+      [sections[idx - 1], sections[idx]].forEach((s) =>
+        (s?.line_names || []).forEach((l) => adjLines.add(String(l))),
+      );
+      if (!adjLines.size) return;
+      const stopLines = linesOf(stop);
+      if (!stopLines.size) return;
+      if (![...stopLines].some((l) => adjLines.has(l))) {
+        console.warn(
+          `[§6.4] Train ${train.id} pass_through "${stopName(stop)}" (lines: ${[...stopLines].join("/")}) is on none of the adjacent section line_names (${[...adjLines].join("/")}); likely wrong-branch leak.`,
+        );
+      }
+    });
+  } catch (_) {
+    // Advisory only; never block import on the heuristic.
+  }
 }
 
 function validateTrain(train, index, ids) {
@@ -6643,7 +7345,12 @@ function validateTrain(train, index, ids) {
   const color = train.style?.color;
   if (color && !/^#[0-9a-fA-F]{6}$/.test(color))
     throw new Error(`${prefix}: style.color must be #RRGGBB.`);
+  warnBranchLeak(train);
 }
+
+// =========================================================================
+//  §34.  Popups & tooltips (stop / route-segment HTML)
+// =========================================================================
 
 function stopTooltipHtml(props) {
   const pr = props || {};
@@ -6732,6 +7439,10 @@ function popupHtml(title, rows) {
     )
     .join("")}</div>`;
 }
+
+// =========================================================================
+//  §35.  Misc utilities (status line, color, portable HTML, download, HTML escaping)
+// =========================================================================
 
 function setStatus(el, message, type) {
   el.textContent = message;

@@ -2,6 +2,8 @@
 
 const path = require("path");
 const fs = require("fs");
+const zlib = require("zlib");
+const { pipeline } = require("stream/promises");
 const express = require("express");
 
 const app = express();
@@ -46,17 +48,79 @@ const DATA_FILES = {
   "matched-stops": "matched-stops.json",
 };
 
-// Serve each dataset from disk. Files are sent as-is (already valid JSON)
-// to avoid parsing the large (~12 MB) rail-sections payload on every request.
+// ---------------------------------------------------------------------------
+// Dataset delivery. rail-sections.json is ~12 MB and stations.json ~3.3 MB of
+// coordinate-heavy GeoJSON (compresses ~85%), so each dataset is served:
+//   - gzip-encoded when the client accepts it, from a lazily (re)generated
+//     sidecar <file>.gz that is rebuilt whenever the source file is newer —
+//     zero compression CPU on the request path after the first build;
+//   - with a weak ETag derived from the SOURCE file's size+mtime, so once the
+//     1-hour Cache-Control expires the browser revalidates and gets a 304
+//     instead of re-downloading the full payload.
+// Files are still streamed as-is (never parsed) exactly as before.
+// ---------------------------------------------------------------------------
+const gzipBuilds = new Map(); // filePath -> in-flight build promise
+
+function datasetEtag(stat) {
+  return `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+}
+
+async function ensureGzipSidecar(filePath, sourceStat) {
+  const gzPath = `${filePath}.gz`;
+  const gzStat = await fs.promises.stat(gzPath).catch(() => null);
+  if (gzStat && gzStat.mtimeMs > sourceStat.mtimeMs) return gzPath;
+  // Coalesce concurrent requests into one build (temp file + rename so a
+  // half-written sidecar is never served).
+  if (!gzipBuilds.has(filePath)) {
+    const tmpPath = `${gzPath}.${process.pid}.tmp`;
+    const build = pipeline(
+      fs.createReadStream(filePath),
+      zlib.createGzip({ level: 6 }),
+      fs.createWriteStream(tmpPath),
+    )
+      .then(() => fs.promises.rename(tmpPath, gzPath))
+      .catch(async (err) => {
+        await fs.promises.unlink(tmpPath).catch(() => {});
+        throw err;
+      })
+      .finally(() => gzipBuilds.delete(filePath));
+    gzipBuilds.set(filePath, build);
+  }
+  await gzipBuilds.get(filePath);
+  return gzPath;
+}
+
 for (const [route, file] of Object.entries(DATA_FILES)) {
   const filePath = path.join(DATA_DIR, file);
-  app.get(`/api/${route}`, (req, res) => {
-    if (!fs.existsSync(filePath)) {
+  app.get(`/api/${route}`, async (req, res) => {
+    let stat;
+    try {
+      stat = await fs.promises.stat(filePath);
+    } catch (err) {
       return res.status(404).json({ error: `Dataset not found: ${route}` });
     }
-    res.type("application/json");
+
+    const etag = datasetEtag(stat);
     res.setHeader("Cache-Control", "public, max-age=3600");
-    fs.createReadStream(filePath)
+    res.setHeader("ETag", etag);
+    res.setHeader("Vary", "Accept-Encoding");
+    if (req.headers["if-none-match"] === etag) {
+      return res.status(304).end();
+    }
+    res.type("application/json");
+
+    let streamPath = filePath;
+    if (/\bgzip\b/.test(req.headers["accept-encoding"] || "")) {
+      try {
+        streamPath = await ensureGzipSidecar(filePath, stat);
+        res.setHeader("Content-Encoding", "gzip");
+      } catch (err) {
+        console.warn(`gzip sidecar unavailable for ${file}; serving raw.`, err);
+        streamPath = filePath;
+      }
+    }
+
+    fs.createReadStream(streamPath)
       .on("error", (err) => {
         console.error(`Error streaming ${file}:`, err);
         if (!res.headersSent)
