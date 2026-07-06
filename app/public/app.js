@@ -226,6 +226,15 @@ function applyDisplaySettings() {
   applyMapOpacity();
   cachedRouteItems = null;
   cachedRouteSignature = "";
+  // DISPLAY values (dimOpacity, routeWidthScale, …) are NOT part of the route
+  // signature, so the signature-keyed overlap/record caches must be dropped
+  // explicitly — e.g. dimOpacity crossing 0 changes which segments are drawn
+  // and therefore the lane counts.
+  if (typeof invalidateDeckRouteCaches === "function")
+    invalidateDeckRouteCaches();
+  // focusBoost is drawn by the SEL layer's paint expression, not the records.
+  if (window.RailMap && RailMap.setFocusBoost)
+    RailMap.setFocusBoost(DISPLAY.focusBoost);
   if (typeof renderTrainLayers === "function") renderTrainLayers();
 }
 
@@ -415,6 +424,7 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
     (time ? ` ${timeTag} ${time}` : "");
   return {
     latlng,
+    tid: train.id,
     html: `${badgeHtml}${escapeHtml(name)}${timeHtml}`,
     key: `${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}|${kind}`,
     dayEndpoint: !!opts.dayEndpoint,
@@ -479,6 +489,10 @@ function updateEndpointLabels() {
         : "station-label") +
       " station-label--" +
       spec.direction;
+    // Hover spotlight: while a train is hovered, other trains' endpoint
+    // labels fade with the rest of the map (mirrors railmap's HOVER_DIM).
+    if (hoverLabelTrainId && spec.tid !== hoverLabelTrainId)
+      el.style.opacity = "0.25";
     el.innerHTML = spec.html;
     const marker = new maplibregl.Marker({
       element: el,
@@ -581,12 +595,21 @@ function deckGetTooltip(info) {
     ? `<br><span style="opacity:0.85">${I18N.t("field.carNo")} ${escapeHtml(num)}</span>`
     : "";
   const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
+  // Hovering an overlapped stretch: show which parallel lane this train is
+  // (date order, left/top = earliest) and hint that sliding sideways switches.
+  const overlapHtml =
+    o.overlapCount > 1
+      ? `<br><span style="opacity:0.8">\u21c6 ${I18N.t("tip.overlap", {
+          slot: o.overlapSlot + 1,
+          count: o.overlapCount,
+        })}</span>`
+      : "";
   // The visible box is an INNER element shifted above the cursor via CSS; the
   // OUTER element is positioned by deck.gl through its own transform, so we must
   // NOT set transform on it (doing so wipes deck's positioning and hides the
   // popup entirely — the bug this replaces).
   return {
-    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin))} \u2192 ${escapeHtml(I18N.placeName(dest))}${timeHtml}</div>`,
+    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin))} \u2192 ${escapeHtml(I18N.placeName(dest))}${timeHtml}${overlapHtml}</div>`,
     style: { background: "transparent", boxShadow: "none", padding: "0", margin: "0" },
   };
 }
@@ -644,16 +667,22 @@ function perpDistanceMeters(p, a, b, sx, sy) {
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-// Iterative (stack-based) Douglas-Peucker. epsilon is in metres.
-function douglasPeucker(points, epsilonMeters) {
-  if (!points || points.length < 3 || epsilonMeters <= 0)
-    return points ? points.slice() : [];
+// Iterative (stack-based) Douglas-Peucker. epsilon is in metres. Returns the
+// ASCENDING ORIGINAL INDICES of the kept vertices (both ends always kept), so
+// callers can correlate every simplified vertex back to the source geometry.
+function douglasPeuckerIndices(points, epsilonMeters) {
+  const n = points ? points.length : 0;
+  if (n < 3 || epsilonMeters <= 0) {
+    const all = new Array(n);
+    for (let i = 0; i < n; i += 1) all[i] = i;
+    return all;
+  }
   const sx = 111320 * Math.cos(((points[0][1] || 0) * Math.PI) / 180);
   const sy = 111320;
-  const keep = new Uint8Array(points.length);
+  const keep = new Uint8Array(n);
   keep[0] = 1;
-  keep[points.length - 1] = 1;
-  const stack = [[0, points.length - 1]];
+  keep[n - 1] = 1;
+  const stack = [[0, n - 1]];
   while (stack.length) {
     const seg = stack.pop();
     const s = seg[0],
@@ -674,21 +703,40 @@ function douglasPeucker(points, epsilonMeters) {
     }
   }
   const out = [];
-  for (let i = 0; i < points.length; i += 1) if (keep[i]) out.push(points[i]);
+  for (let i = 0; i < n; i += 1) if (keep[i]) out.push(i);
   return out;
 }
 
-// Simplified line arrays for a feature, computed once and cached on the
-// feature object (WeakMap) so repeated record builds reuse the result.
-const _simplifiedLineCache = new WeakMap();
-function getSimplifiedRouteLines(feature) {
-  if (ROUTE_SIMPLIFY_METERS <= 0) return iterateGeometryLines(feature.geometry);
-  let cached = _simplifiedLineCache.get(feature);
+// Route lines for a feature, computed once and cached on the feature object
+// (WeakMap). Each entry pairs the ORIGINAL (normalized) line with the display
+// simplification and the per-segment overlap keys:
+//   orig    — the full normalized coordinate array (exact shared N02 coords),
+//   keepIdx — ascending original indices Douglas-Peucker kept (null = all,
+//             when ?simplify=0),
+//   segKeys — routeCoordinateSegmentKey per ORIGINAL segment (segKeys[i] is
+//             the direction-independent key of orig[i]→orig[i+1]).
+// Overlap detection works on `orig`/`segKeys` — identical for every train
+// sharing the same N02 track — while drawing uses the keepIdx subset. This
+// way per-feature simplification differences can never fragment an overlap
+// corridor (the old cause of parallel lanes breaking into little pieces).
+const _routeLinePairCache = new WeakMap();
+function getRouteLinePairs(feature) {
+  let cached = _routeLinePairCache.get(feature);
   if (cached) return cached;
-  cached = iterateGeometryLines(feature.geometry).map((line) =>
-    douglasPeucker(line, ROUTE_SIMPLIFY_METERS),
-  );
-  _simplifiedLineCache.set(feature, cached);
+  cached = iterateGeometryLines(feature.geometry).map((orig) => {
+    const segKeys = new Array(Math.max(0, orig.length - 1));
+    for (let i = 0; i < orig.length - 1; i += 1)
+      segKeys[i] = routeCoordinateSegmentKey(orig[i], orig[i + 1]);
+    return {
+      orig,
+      keepIdx:
+        ROUTE_SIMPLIFY_METERS > 0
+          ? douglasPeuckerIndices(orig, ROUTE_SIMPLIFY_METERS)
+          : null,
+      segKeys,
+    };
+  });
+  _routeLinePairCache.set(feature, cached);
   return cached;
 }
 
@@ -967,6 +1015,7 @@ let map;
 // so we memoise them and re-attach only the segments inside the current view.
 let cachedRouteItems = null,
   cachedRouteSignature = "",
+  cachedRouteOverlapSignature = "",
   cachedRouteFocusActive = false,
   cachedRouteDateActive = false;
 // Pass-through markers number in the thousands and are sub-pixel clutter when
@@ -2759,6 +2808,9 @@ async function initMap() {
     },
     basemap ? basemap.layers.map((l) => l.id) : [],
   );
+  // Selected-train width boost lives in the SEL layer's paint expression
+  // (records stay selection-independent — picking a train rebuilds nothing).
+  RailMap.setFocusBoost(DISPLAY.focusBoost);
   buildMapLayersControl(Boolean(basemap));
 
   // Basemap tile failures are expected degradation (offline) — never fatal.
@@ -2769,15 +2821,20 @@ async function initMap() {
     console.warn("[map]", msg || e);
   });
 
-  // Marker LOD: re-render markers when the view crosses PASSTHROUGH_MIN_ZOOM
-  // (the numerous white pass-through dots hide at low zoom); otherwise just
-  // re-layout the endpoint labels (their overlap layout is pixel-space).
+  // Marker LOD is handled by the pass layers' minzoom (no re-render); zoom
+  // only re-layouts the endpoint labels (their overlap layout is pixel-space).
   map.on("zoomend", () => {
     if (!cachedOrderedTrains.length) return;
-    if (map.getZoom() >= PASSTHROUGH_MIN_ZOOM !== passThroughShown)
-      renderTrainMarkers();
-    else updateEndpointLabels();
+    updateEndpointLabels();
+    // Parallel pick lanes are offset in degrees computed from a PIXEL spacing
+    // at the previous view; refresh them so the lanes keep a constant
+    // on-screen spacing (no-op when the px→degree factor barely moved).
+    maybeRefreshOverlapOffsets();
   });
+
+  // Long north/south pans change the latitude correction even at constant
+  // zoom — refresh the lane offsets when the drift exceeds the threshold.
+  map.on("moveend", maybeRefreshOverlapOffsets);
 
   // Clamp the map over Japan; minZoom depends on the pixel viewport.
   applyJapanMapConstraints();
@@ -3918,18 +3975,25 @@ function rebuildSelectedRoute() {
 // the single authoritative renderTrainLayers() at the end of the load applies
 // the correct parallel-offset styling. Honors the same visibility / date-scope
 // rules as the full render so hidden or out-of-scope trains don't draw.
+let _appendRenderTimer = null;
 function appendTrainToLayers(train) {
   if (!train || train.visible === false) return;
   const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
   if (dateScoped && getTrainDate(train) !== selectedDate) return;
 
   // GL mode: incremental feedback = drop the route-item cache and re-issue
-  // the layers for every train loaded so far (a cheap JS record rebuild +
-  // one GeoJSON setData; no per-train DOM work). The single authoritative
-  // renderAll() at the end of the load still applies the final styling.
+  // the layers for the trains loaded so far. Rebuilding the overlap map is
+  // O(all segments), so per-train renders make a big import O(N²) — batch
+  // appends landing within one short window into a single render. The
+  // authoritative renderAll() at the end of the load still applies the final
+  // styling.
   cachedRouteItems = null;
   cachedRouteSignature = "";
-  if (typeof renderTrainLayers === "function" && map) renderTrainLayers();
+  if (_appendRenderTimer || !map) return;
+  _appendRenderTimer = setTimeout(() => {
+    _appendRenderTimer = null;
+    if (typeof renderTrainLayers === "function" && map) renderTrainLayers();
+  }, 120);
 }
 
 // Three-tier emphasis for the current scope, drawn bottom→top as:
@@ -3968,31 +4032,36 @@ function renderTrainLayers() {
     selectedTrainId &&
     visibleTrains.some((train) => train.id === selectedTrainId),
   );
-  // Stable bottom→top draw order by emphasis tier: dim (0) under the selected
-  // date's trains (1) under the selected train (2). When "全部" is showing and
-  // nothing is selected every train is tier 1, so the order is left untouched.
+  // Stable bottom→top draw order by emphasis tier: dim (0) under the current
+  // date's trains (1). The SELECTED train no longer gets its own tier — the
+  // dedicated SEL casing/line layers already draw it above everything, so
+  // reordering (and thus rebuilding the record pipeline) on every pick would
+  // be pure waste.
   const scopeActive = dateActive || focusActive;
   const orderedTrains = scopeActive
-    ? [0, 1, 2].flatMap((tier) =>
-        visibleTrains.filter((train) => trainEmphasisLevel(train) === tier),
+    ? [0, 1].flatMap((tier) =>
+        visibleTrains.filter(
+          (train) => Math.min(1, trainEmphasisLevel(train)) === tier,
+        ),
       )
     : visibleTrains;
   cachedRouteDateActive = dateActive;
   cachedRouteFocusActive = focusActive;
 
-  // (1) Overlap-split caching. The split runs + overlap slots are a function of
-  // the train set / order / route geometry / ride flags / focus only — never of
-  // zoom or pan — so recompute them only when that signature changes. With ~67
-  // trains this skips rebuilding the overlap map and re-splitting every route on
-  // selection changes, style-only edits, and view moves.
+  // (1) Overlap-split caching. The split runs + overlap slots are a function
+  // of the train set / order / route geometry / ride flags / date scope —
+  // never of zoom, pan or SELECTION — so recompute them only when their
+  // signature changes. Picking a train, style-only edits (overlap map) and
+  // view moves all reuse the caches.
   const signature = computeRouteSignature(
     orderedTrains,
     focusActive,
     dateActive,
   );
-  if (!cachedRouteItems || signature !== cachedRouteSignature) {
+  if (!cachedRouteItems || signature.records !== cachedRouteSignature) {
     cachedRouteItems = buildRouteItems(orderedTrains, focusActive);
-    cachedRouteSignature = signature;
+    cachedRouteSignature = signature.records;
+    cachedRouteOverlapSignature = signature.overlap;
   }
 
   // (2) Attach all route segments once (SVG render-once). Pan/zoom need no
@@ -4003,84 +4072,65 @@ function renderTrainLayers() {
   renderTrainMarkers();
 }
 
-// Markers are split out so the zoomend handler can re-render them (with the
-// pass-through gate applied) when the view crosses PASSTHROUGH_MIN_ZOOM, without
-// rebuilding the (far more expensive) route layers. Stops always render;
-// pass-through markers — the numerous ones — are skipped below the zoom
-// threshold so thousands of sub-pixel circles aren't painted when zoomed out.
+// Markers are ZERO-REBUILD on selection and zoom:
+//   - records are selection-independent (focus emphasis = SEL-layer paint,
+//     selection split = layer filters) and cached by the route signature, so
+//     a train pick re-uses them untouched;
+//   - the pass-through LOD lives in the pass layers' `minzoom` (set from
+//     PASSTHROUGH_MIN_ZOOM), so crossing the threshold re-renders nothing —
+//     MapLibre just starts/stops drawing the already-uploaded circles.
+let _cachedMarkerRecords = null;
+let _cachedMarkerSig = null;
 function renderTrainMarkers() {
-  const focusActive = cachedRouteFocusActive;
-  passThroughShown = !map || map.getZoom() >= PASSTHROUGH_MIN_ZOOM;
   updateEndpointLabels();
-
-  // Stop + pass-through markers render as MapLibre circle layers; rebuilding
-  // the record array on a pass-through-gate crossing is a cheap JS pass.
   if (window.RailMap && map) {
-    RailMap.setMarkers(
-      buildDeckMarkerRecords(
-        cachedOrderedTrains,
-        focusActive,
-        passThroughShown,
-      ),
-    );
+    if (!_cachedMarkerRecords || _cachedMarkerSig !== cachedRouteSignature) {
+      _cachedMarkerRecords = buildDeckMarkerRecords(cachedOrderedTrains);
+      _cachedMarkerSig = cachedRouteSignature;
+      RailMap.setMarkers(_cachedMarkerRecords);
+    }
   }
 }
 
-// Signature of everything the overlap split depends on (zoom-independent).
+// Signatures of everything the route records / overlap map depend on
+// (zoom-independent). Returns TWO keys:
+//   records — invalidates the flattened record cache: geometry + ride flags +
+//             per-train style + visibility + date scope. SELECTION IS
+//             DELIBERATELY EXCLUDED: focus emphasis lives entirely in
+//             railmap's SEL layers + paint expressions, so picking a train
+//             costs ZERO pipeline rebuild.
+//   overlap — invalidates the overlap map only: geometry + visibility + date
+//             scope (style-only edits keep the corridor graph).
 function computeRouteSignature(orderedTrains, focusActive, dateActive) {
+  const overlapPart = [];
   const trainPart = orderedTrains
     .map((train) => {
       const base = `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`;
-      // The deck.gl path data bakes color/width/opacity per record, so a
-      // style-only edit must invalidate the cached items to re-emit them.
-      // (The SVG path rebuilds its layers on the same signature change.)
-      if (!USE_DECKGL_ROUTES) return base;
+      const vis = train.visible === false ? 0 : 1;
+      overlapPart.push(`${base}:${vis}`);
       const s = train.style || {};
-      return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${train.visible === false ? 0 : 1}`;
+      return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${vis}`;
     })
     .join("|");
-  return `${trainPart}|sel:${selectedTrainId || ""}|date:${dateActive ? selectedDate : ""}`;
+  const scope = `date:${dateActive ? selectedDate : ""}`;
+  return {
+    records: `${trainPart}|${scope}`,
+    overlap: `${overlapPart.join("|")}|${scope}`,
+  };
 }
 
 // Build the overlap map + split runs once, annotating each run with a cached
 // LatLngBounds so the viewport cull can test it without re-walking geometry.
 function buildRouteItems(orderedTrains, focusActive) {
-  // Parallel-offset display of overlapping routes has been removed: routes now
-  // always draw on their true track and simply stack when trains share a
-  // segment. Keeping splitForOverlap off skips the overlap map / run-splitting
-  // entirely (the related helpers are retained but no longer invoked).
-  // Parallel-offset of overlapping routes is applied in buildDeckRouteRecords
-  // (deck path); the Leaflet split path stays off.
-  // TODO(dead-code): with splitForOverlap pinned false, the Leaflet split-path
-  // overlap helpers (getRouteSegmentRecords, buildRouteOverlapMap,
-  // splitRouteFeatureIntoStyledRuns, getRouteOverlapInfoForKey) are unreachable
-  // in both the deck and ?deck=0 SVG paths. Retained intentionally (see note
-  // above); remove only if the SVG split path is formally dropped.
-  const splitForOverlap = false;
-  const routeFeaturesByTrain = new Map(
-    orderedTrains.map((train) => [train.id, getMatchedRouteFeatures(train)]),
+  // One item per (train, matched route feature), always on its true track.
+  // Overlap detection, run-splitting and the parallel pick/expand lanes all
+  // live in buildDeckOverlapMap / buildDeckRouteRecords (§26); the old
+  // Leaflet-era split path was removed.
+  // Routes are drawn from these items in renderRoutesInView(); the
+  // popup/click data lives on each item via item.train / item.feature.
+  return orderedTrains.flatMap((train) =>
+    getMatchedRouteFeatures(train).map((feature) => ({ train, feature })),
   );
-  const overlapRecords = splitForOverlap
-    ? orderedTrains.flatMap((train) =>
-        getRouteSegmentRecords(train, routeFeaturesByTrain.get(train.id) || []),
-      )
-    : [];
-  const overlapMap = splitForOverlap
-    ? buildRouteOverlapMap(overlapRecords, orderedTrains)
-    : new Map();
-  const items = orderedTrains.flatMap((train) =>
-    getRouteRenderItems(
-      train,
-      splitForOverlap,
-      routeFeaturesByTrain.get(train.id) || [],
-      overlapMap,
-    ),
-  );
-
-  // Routes are drawn from these items as GeoJSON line layers in
-  // renderRoutesInView(); the popup/click data lives on each item via
-  // item.train / item.feature, which the map onClick handler reads.
-  return items;
 }
 
 // Attach only the cached route segments intersecting the current padded view.
@@ -4101,13 +4151,29 @@ function buildRouteItems(orderedTrains, focusActive) {
 // train set / styling actually changes (via renderTrainLayers), never on a
 // pan or zoom. clearLayers() first so any segments added incrementally by
 // appendTrainToLayers during a progressive import are not double-counted.
+let _lastPushedBuilt = null;
+let _lastPushedSpacingDeg = 0;
 function renderRoutesInView() {
   if (!map || !cachedRouteItems || !window.RailMap) return;
   // One GeoJSON source for the whole train set; MapLibre re-tiles it on the
-  // worker, so pan/zoom stay GPU-cheap regardless of point count.
-  RailMap.setData(
-    buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive),
-  );
+  // worker, so pan/zoom stay GPU-cheap regardless of point count. The
+  // full-line expand records + per-group rigid shift vectors feed the
+  // dedicated hover-expand source, so a fanned parallel line is the member
+  // train's complete course translated intact — never broken mid-route.
+  const built = buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive);
+  // Selection changes reuse the cached record object at the same spacing —
+  // pushing the identical FeatureCollections again would only force MapLibre
+  // to re-tile every route for nothing, so skip the push entirely.
+  if (built !== _lastPushedBuilt || built.spacingDeg !== _lastPushedSpacingDeg) {
+    RailMap.setData(
+      built.records,
+      built.expandRecords,
+      built.groupInfo,
+      built.spacingDeg,
+    );
+    _lastPushedBuilt = built;
+    _lastPushedSpacingDeg = built.spacingDeg;
+  }
   // The selected train re-draws in the dedicated selection layers (dark ink
   // casing + full-color line) above all other routes.
   RailMap.setSelected(focusedTrainId || null);
@@ -4125,6 +4191,89 @@ function renderRoutesInView() {
 // per-lane spacing as its hit width so any one of the N lanes can be selected.
 let _deckHasOverlaps = false;
 
+// --- signature-keyed caches -------------------------------------------------
+// The overlap map (segment counts + corridor direction graph) and the split
+// route records depend only on the route signature (train set / order / ride
+// flags / selection / date scope / per-train style) — never on zoom or pan.
+// Zoom/pan only move the LANE OFFSETS (pixel spacing re-expressed in degrees),
+// so view changes refresh pickPath on the cached records instead of re-walking
+// every segment. DISPLAY slider changes bypass the signature (it does not
+// encode DISPLAY), so applyDisplaySettings() clears these explicitly.
+let _cachedOverlap = null;
+let _cachedOverlapSig = null;
+let _cachedDeckRecords = null;
+let _cachedDeckRecordsSig = null;
+let _lastOverlapSpacingDeg = 0;
+
+function invalidateDeckRouteCaches() {
+  _cachedOverlap = null;
+  _cachedOverlapSig = null;
+  _cachedDeckRecords = null;
+  _cachedDeckRecordsSig = null;
+  _lastPushedBuilt = null;
+}
+
+// Selection-free style scope for ROUTE RECORDS: the record cache must not
+// depend on which train is picked (focus emphasis is drawn by railmap's SEL
+// layers + the focus-boost width expression), so `focused` is always false
+// here and `dimmed` derives from the date scope alone.
+function routeRecordScopeFlags(train) {
+  return {
+    focused: false,
+    dimmed: cachedRouteDateActive && getTrainDate(train) !== selectedDate,
+  };
+}
+
+// Lane spacing: generous enough that sliding the mouse between parallel lanes
+// takes a comfortable movement (~12px per lane), independent of how thin the
+// drawn lines are — but never narrower than the widest possible line (custom
+// per-train weights + focus boost). The focus boost is budgeted for EVERY
+// train so the spacing — and with it the whole record cache — never depends
+// on which train is currently selected.
+function currentOverlapSpacingPx(items) {
+  const scale = DISPLAY.routeWidthScale || 1;
+  let maxW = DEFAULT_TRAIN_WEIGHT * scale;
+  const seen = new Set();
+  (items || cachedRouteItems || []).forEach((it) => {
+    const t = it.train;
+    if (!t || seen.has(t.id)) return;
+    seen.add(t.id);
+    const w = Number(t.style?.weight || DEFAULT_TRAIN_WEIGHT) * scale;
+    if (w > maxW) maxW = w;
+  });
+  return Math.max(
+    3 * DEFAULT_TRAIN_WEIGHT * scale,
+    maxW + DISPLAY.focusBoost + 4,
+    12,
+  );
+}
+
+function getDeckOverlapMapCached(items) {
+  // Keyed on the OVERLAP signature (geometry/visibility/date only), so
+  // style-only edits rebuild the records but keep the corridor graph.
+  const sig = cachedRouteOverlapSignature;
+  if (!_cachedOverlap || !sig || _cachedOverlapSig !== sig) {
+    _cachedOverlap = buildDeckOverlapMap(items);
+    _cachedOverlapSig = sig;
+  }
+  return _cachedOverlap;
+}
+
+// zoomend/moveend hook: rebuild lane offsets only when the px→degree factor
+// actually drifted (zoom changed, or the map centre moved far enough north/
+// south that the latitude correction is off by ≥5%). Cheap no-op otherwise.
+function maybeRefreshOverlapOffsets() {
+  if (!map || !_deckHasOverlaps || !cachedRouteItems) return;
+  const deg = overlapOffsetDeg(currentOverlapSpacingPx());
+  if (!deg) return;
+  if (
+    _lastOverlapSpacingDeg &&
+    Math.abs(deg - _lastOverlapSpacingDeg) / _lastOverlapSpacingDeg < 0.05
+  )
+    return;
+  renderRoutesInView();
+}
+
 function overlapOffsetDeg(px) {
   if (!map || !px) return 0;
   // MapLibre zoom convention: z0 = whole world in 512px (one level lower than
@@ -4136,84 +4285,292 @@ function overlapOffsetDeg(px) {
   return (px * metersPerPx) / 111320; // degrees of latitude per `px` pixels
 }
 
-// Offset a polyline perpendicular to its local direction by `offsetDeg`
-// (signed, in degrees of latitude). The normal sign is canonicalised so two
-// trains traversing the SAME segment in OPPOSITE directions still fan to
-// opposite sides instead of stacking on top of each other.
-function offsetPathWorld(line, offsetDeg) {
-  if (!offsetDeg) return line;
-  const m = line.length;
-  const out = new Array(m);
-  for (let i = 0; i < m; i += 1) {
-    const a = line[Math.max(0, i - 1)];
-    const b = line[Math.min(m - 1, i + 1)];
-    const coslat = Math.cos((line[i][1] * Math.PI) / 180) || 1e-6;
-    const dx = (b[0] - a[0]) * coslat;
-    const dy = b[1] - a[1];
-    const len = Math.hypot(dx, dy) || 1;
-    let nx = -dy / len;
-    let ny = dx / len;
-    if (nx < -1e-12 || (Math.abs(nx) <= 1e-12 && ny < 0)) {
-      nx = -nx;
-      ny = -ny;
-    }
-    out[i] = [
-      line[i][0] + (nx / coslat) * offsetDeg,
-      line[i][1] + ny * offsetDeg,
-    ];
-  }
+// --- rigid lane translation ---------------------------------------------------
+// A lane is a RIGID TRANSLATION of the line: every vertex moves by the SAME
+// constant vector, so corners, curve radii and segment lengths are preserved
+// exactly — the fanned copy is the original shape, just shifted sideways.
+// (Per-vertex perpendicular offsetting was abandoned on request: it distorts
+// bends and tapers at corridor ends.)
+//
+// The shift direction is computed ONCE per overlap group: the unit vector
+// perpendicular (right-hand) to the group's dominant canonical direction,
+// expressed in degree space ([sx, sy] with sx pre-divided by cos(latRef) so a
+// shift of `offsetDeg` covers the same number of PIXELS in any direction).
+// The corridor is oriented east-/north-dominant, so a negative multiplier
+// (slot 0 = earliest date) is the LEFT / TOP lane on screen.
+function applyLaneShift(path, sx, sy, offsetDeg) {
+  if (!offsetDeg) return path;
+  const dx = sx * offsetDeg;
+  const dy = sy * offsetDeg;
+  const out = new Array(path.length);
+  for (let i = 0; i < path.length; i += 1)
+    out[i] = [path[i][0] + dx, path[i][1] + dy];
   return out;
 }
 
-// Index every drawn segment by the direction-independent key the route dedupe
-// uses, so shared N02 track (identical coordinates) is detected exactly. Slot
-// order is stable (by train order of appearance) so a train keeps the same lane
-// along the whole shared stretch.
+// Index every ORIGINAL route segment by the direction-independent key the
+// route dedupe uses, so shared N02 track (identical source coordinates) is
+// detected exactly — INDEPENDENT of how each feature's geometry was
+// simplified for display (per-feature simplification keeps different vertex
+// subsets, which used to fragment corridors into confetti). Slot order is by
+// DATE (earliest first, then departure time, then id) so parallel pick lanes
+// read left→right / top→bottom in chronological order, and a train keeps the
+// same lane along the whole shared stretch.
 function buildDeckOverlapMap(items) {
-  const rank = new Map();
+  const uniqueTrains = [];
+  const seenIds = new Set();
   items.forEach((it) => {
-    if (it.train && !rank.has(it.train.id)) rank.set(it.train.id, rank.size);
+    if (it.train && !seenIds.has(it.train.id)) {
+      seenIds.add(it.train.id);
+      uniqueTrains.push(it.train);
+    }
   });
+  uniqueTrains.sort(compareTrainsByDateAndDeparture);
+  const rank = new Map(uniqueTrains.map((t, i) => [t.id, i]));
+  // Count ONLY segments that will actually produce a drawn record — the same
+  // predicate buildDeckRouteRecords uses to drop records (unridden sections
+  // are hidden entirely; dimmed trains vanish when dimOpacity is 0). Anything
+  // invisible must not occupy a lane slot or inflate the ×N count, or the fan
+  // and the pick corridor get phantom gaps.
+  const itemDrawn = (item) => {
+    const train = item.train;
+    if (!train) return false;
+    const ridden =
+      item.feature.properties && item.feature.properties.ride_segment === true;
+    const { opacity } = routeSegmentStyleValues(
+      train,
+      ridden,
+      routeRecordScopeFlags(train),
+    );
+    return opacity > 0;
+  };
   const seg = new Map();
   items.forEach((item) => {
     const tid = item.train && item.train.id;
-    if (!tid) return;
-    getSimplifiedRouteLines(item.feature).forEach((line) => {
-      for (let i = 0; i < line.length - 1; i += 1) {
-        const key = routeCoordinateSegmentKey(line[i], line[i + 1]);
-        let ids = seg.get(key);
+    if (!tid || !itemDrawn(item)) return;
+    getRouteLinePairs(item.feature).forEach(({ segKeys }) => {
+      for (let i = 0; i < segKeys.length; i += 1) {
+        let ids = seg.get(segKeys[i]);
         if (!ids) {
           ids = new Set();
-          seg.set(key, ids);
+          seg.set(segKeys[i], ids);
         }
         ids.add(tid);
       }
     });
   });
+  // Intern the sharing sets: ONE canonical Set instance per distinct train
+  // membership, so the record builder can detect run boundaries by simple
+  // identity comparison — a corridor stays a single run however many
+  // original segments long it is.
+  const canonicalIds = new Map(); // sorted-ids signature -> Set
+  seg.forEach((ids, key) => {
+    const idsSig = [...ids].sort().join(" ");
+    const canon = canonicalIds.get(idsSig);
+    if (!canon) canonicalIds.set(idsSig, ids);
+    else if (canon !== ids) seg.set(key, canon);
+  });
+
+  // --- canonical corridor direction ----------------------------------------
+  // Every train offsets its lane relative to the SAME reference direction, or
+  // lanes would swap sides wherever trains traverse shared track opposite
+  // ways or the bearing crosses an axis. Overlapped segments (≥2 trains) form
+  // chains; walk each connected chain once, orienting every segment away from
+  // the walk start so the direction is CONTINUOUS through every bend and
+  // station. Then flip the whole chain, if needed, so its net direction is
+  // east-dominant (or north-dominant for N-S chains): with lane normals taken
+  // right of this direction, slot 0 (earliest date) is the left/top lane.
+  const adjacency = new Map(); // coordKey -> [segKey...]
+  seg.forEach((ids, key) => {
+    if (ids.size < 2) return;
+    key.split("|").forEach((nodeKey) => {
+      let list = adjacency.get(nodeKey);
+      if (!list) {
+        list = [];
+        adjacency.set(nodeKey, list);
+      }
+      list.push(key);
+    });
+  });
+  const segFrom = new Map(); // segKey -> canonical FROM coordKey
+  const nodeXY = (nodeKey) => nodeKey.split(",").map(Number);
+  const otherEnd = (segKey, nodeKey) => {
+    const [a, b] = segKey.split("|");
+    return a === nodeKey ? b : a;
+  };
+  const visited = new Set();
+  adjacency.forEach((_, startNode) => {
+    if (visited.has(startNode)) return;
+    // Collect the connected component, preferring a degree-1 end as the walk
+    // start so a simple chain gets one continuous direction end-to-end.
+    const compNodes = [];
+    const stack = [startNode];
+    visited.add(startNode);
+    while (stack.length) {
+      const n = stack.pop();
+      compNodes.push(n);
+      (adjacency.get(n) || []).forEach((sk) => {
+        const o = otherEnd(sk, n);
+        if (!visited.has(o)) {
+          visited.add(o);
+          stack.push(o);
+        }
+      });
+    }
+    const start =
+      compNodes.find((n) => (adjacency.get(n) || []).length === 1) ||
+      compNodes[0];
+    // Orient each edge away from the walk.
+    const compSegs = [];
+    const seenNode = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const n = queue.shift();
+      (adjacency.get(n) || []).forEach((sk) => {
+        if (segFrom.has(sk)) return;
+        segFrom.set(sk, n);
+        compSegs.push(sk);
+        const o = otherEnd(sk, n);
+        if (!seenNode.has(o)) {
+          seenNode.add(o);
+          queue.push(o);
+        }
+      });
+    }
+    // Net direction of the chain; flip everything if it points west/south.
+    let dxSum = 0;
+    let dySum = 0;
+    compSegs.forEach((sk) => {
+      const from = segFrom.get(sk);
+      const to = otherEnd(sk, from);
+      const [fx, fy] = nodeXY(from);
+      const [tx, ty] = nodeXY(to);
+      dxSum += (tx - fx) * Math.cos((((fy + ty) / 2) * Math.PI) / 180);
+      dySum += ty - fy;
+    });
+    const flip =
+      Math.abs(dxSum) >= Math.abs(dySum) ? dxSum < 0 : dySum < 0;
+    if (flip)
+      compSegs.forEach((sk) => segFrom.set(sk, otherEnd(sk, segFrom.get(sk))));
+  });
+
+  const orderedCache = new WeakMap(); // ids Set -> date-ordered id array
   return {
-    infoFor(line, i, tid) {
-      const ids = seg.get(routeCoordinateSegmentKey(line[i], line[i + 1]));
-      if (!ids || ids.size < 2) return { count: 1, slot: 0 };
-      const ordered = [...ids].sort(
-        (a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0),
-      );
-      return { count: ids.size, slot: Math.max(0, ordered.indexOf(tid)) };
+    // The sharing-train set of one ORIGINAL segment — the same Set instance
+    // for every train on the segment, so run boundaries computed from its
+    // identity coincide EXACTLY across all sharing trains. null = unshared.
+    idsForKey(key) {
+      const ids = seg.get(key);
+      return ids && ids.size >= 2 ? ids : null;
+    },
+    // Date-ordered lane slot of `tid` inside a sharing set from idsForKey.
+    slotFor(ids, tid) {
+      if (!ids) return 0;
+      let ordered = orderedCache.get(ids);
+      if (!ordered) {
+        ordered = [...ids].sort(
+          (a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0),
+        );
+        orderedCache.set(ids, ordered);
+      }
+      return Math.max(0, ordered.indexOf(tid));
+    },
+    // +1 when traversing the original segment `key` starting from the vertex
+    // whose coordKey is `fromKey` runs WITH the corridor's canonical direction.
+    dirForKey(key, fromKey) {
+      const from = segFrom.get(key);
+      if (from == null) return 1;
+      return from === fromKey ? 1 : -1;
     },
   };
 }
 
-// Flatten cached route items into deck.gl PathLayer records. Each record is a
-// single polyline with color/width/dash/opacity precomputed. Overlapping
-// stretches are split into runs and fanned into parallel offset lanes.
+// Merge the simplified vertex subset with the exact run-boundary vertices
+// (both ascending original indices), so lane transitions bend precisely where
+// the overlap membership changes — never displaced by the simplification.
+function mergeDrawnIndices(keepIdx, runs, nSeg) {
+  if (!keepIdx) {
+    const all = new Array(nSeg + 1);
+    for (let i = 0; i <= nSeg; i += 1) all[i] = i;
+    return all;
+  }
+  const boundarySet = new Set();
+  runs.forEach((r) => {
+    boundarySet.add(r.a);
+    boundarySet.add(r.b);
+  });
+  const extras = [...boundarySet].sort((x, y) => x - y);
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < keepIdx.length || j < extras.length) {
+    const ki = i < keepIdx.length ? keepIdx[i] : Infinity;
+    const ej = j < extras.length ? extras[j] : Infinity;
+    if (ki <= ej) {
+      out.push(ki);
+      i += 1;
+      if (ki === ej) j += 1;
+    } else {
+      out.push(ej);
+      j += 1;
+    }
+  }
+  return out;
+}
+
+// Flatten cached route items into MapLibre route records. Returns
+// { records, expandRecords, groupInfo, spacingDeg }:
+//
+//   records       — base + pick runs. One polyline per maximal stretch of
+//                   constant overlap MEMBERSHIP (same sharing-train set), so
+//                   run boundaries coincide exactly across all sharing
+//                   trains. The visible line stays on its TRUE track; the
+//                   invisible pickPath is the run rigidly translated into
+//                   the train's date-ordered lane.
+//   expandRecords — one polyline per (train, line): the train's complete
+//                   course on its true track. When a group is hovered,
+//                   railmap.js translates every member train's complete
+//                   course RIGIDLY by that group's shift vector — corners,
+//                   radii and lengths unchanged, the whole line moved intact,
+//                   never chopped into little pieces mid-route.
+//   groupInfo     — Map(groupKey → { sx, sy, mults: {tid: laneMultiplier} }):
+//                   the group's unit shift vector (degree space) and every
+//                   member's slot-centered lane multiplier.
+//   spacingDeg    — the current lane spacing (degrees) matching pickPath.
+//
+// Overlap detection and run boundaries use the ORIGINAL geometry (exact
+// shared N02 coordinates); drawn paths use the Douglas-Peucker subset plus
+// the exact boundary vertices.
 function buildDeckRouteRecords(items, focusActive) {
-  const overlap = buildDeckOverlapMap(items);
-  _deckHasOverlaps = false;
-  const spacingPx = Math.max(
-    DEFAULT_TRAIN_WEIGHT * (DISPLAY.routeWidthScale || 1),
-    5,
-  );
+  const sig = cachedRouteSignature;
+  const spacingPx = currentOverlapSpacingPx(items);
   const spacingDeg = overlapOffsetDeg(spacingPx);
+  // Fast path (zoom/pan): geometry, styles, runs, shift vectors and lane
+  // multipliers are unchanged — only re-express the pixel lane spacing in
+  // degrees and re-translate the pick lanes.
+  if (_cachedDeckRecords && sig && _cachedDeckRecordsSig === sig) {
+    if (spacingDeg !== _lastOverlapSpacingDeg) {
+      _cachedDeckRecords.records.forEach((r) => {
+        if (r.overlapCount > 1) {
+          r.pickPath = applyLaneShift(
+            r.path,
+            r.shiftX,
+            r.shiftY,
+            r.laneMult * spacingDeg,
+          );
+          r.pickWidth = Math.max(spacingPx, 6);
+        }
+      });
+      _lastOverlapSpacingDeg = spacingDeg;
+      _cachedDeckRecords.spacingDeg = spacingDeg;
+    }
+    return _cachedDeckRecords;
+  }
+  const overlap = getDeckOverlapMapCached(items);
+  _deckHasOverlaps = false;
   const records = [];
+  const expandRecords = [];
+  const groupInfo = new Map();
   items.forEach((item) => {
     const train = item.train;
     const feature = item.feature;
@@ -4225,52 +4582,147 @@ function buildDeckRouteRecords(items, focusActive) {
         ? train.style.color
         : DEFAULT_TRAIN_COLOR,
     );
-    const { focused, dimmed } = trainScopeFlags(train);
-    const { opacity, width, dashed } = routeSegmentStyleValues(train, ridden, {
-      focused,
-      dimmed,
-    });
+    const { opacity, width, dashed } = routeSegmentStyleValues(
+      train,
+      ridden,
+      routeRecordScopeFlags(train),
+    );
     if (opacity <= 0) return; // hidden trains contribute nothing to the GPU buffer
     const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
     const color = [rgb[0], rgb[1], rgb[2], alpha];
-    getSimplifiedRouteLines(feature).forEach((line) => {
-      if (!line || line.length < 2) return;
-      let runStart = 0;
-      let prev = overlap.infoFor(line, 0, tid);
-      const flush = (endInclusive, info) => {
-        const runLine = line.slice(runStart, endInclusive + 1);
+    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
+      if (!orig || orig.length < 2) return;
+      const nSeg = orig.length - 1;
+      // Per ORIGINAL segment: sharing-train set, this train's lane slot and
+      // the signed lane multiplier (slots centered around the true track).
+      const segIds = new Array(nSeg);
+      const segSlot = new Array(nSeg);
+      const segMult = new Array(nSeg);
+      let lineHasOverlap = false;
+      for (let i = 0; i < nSeg; i += 1) {
+        const ids = overlap.idsForKey(segKeys[i]);
+        segIds[i] = ids;
+        if (ids) {
+          lineHasOverlap = true;
+          segSlot[i] = overlap.slotFor(ids, tid);
+          segMult[i] = segSlot[i] - (ids.size - 1) / 2;
+        } else {
+          segSlot[i] = 0;
+          segMult[i] = 0;
+        }
+      }
+      if (lineHasOverlap) _deckHasOverlaps = true;
+      // Maximal runs of constant overlap membership (Set identity — the same
+      // instance for every sharing train, so run boundaries coincide exactly
+      // across all of them and so do the derived groupKeys).
+      const runs = [];
+      let a = 0;
+      for (let i = 1; i < nSeg; i += 1) {
+        if (segIds[i] !== segIds[a]) {
+          runs.push({ a, b: i });
+          a = i;
+        }
+      }
+      runs.push({ a, b: nSeg }); // each run spans original vertices [a .. b]
+      // Drawn vertices: the simplified subset + the exact run boundaries.
+      const drawnIdx = mergeDrawnIndices(keepIdx, runs, nSeg);
+      const drawn = new Array(drawnIdx.length);
+      const posOf = new Map(); // original index -> position in drawn
+      for (let k = 0; k < drawnIdx.length; k += 1) {
+        drawn[k] = orig[drawnIdx[k]];
+        posOf.set(drawnIdx[k], k);
+      }
+
+      // ── base + pick records, one per run ──
+      // The visible line stays on its TRUE track at full width (no permanent
+      // fan-out). The invisible PICK target is translated into per-train
+      // lanes; hovering an overlapped run temporarily shows every member
+      // train's COMPLETE course rigidly translated into those lanes
+      // (railmap.js + the expand record below). groupKey identifies the
+      // shared run: its smallest ORIGINAL segment key is identical for every
+      // train sharing it, whichever way each train traverses the track and
+      // however each geometry was simplified.
+      runs.forEach(({ a: ra, b: rb }) => {
+        const ka = posOf.get(ra);
+        const kb = posOf.get(rb);
+        const runLine = drawn.slice(ka, kb + 1);
         if (runLine.length < 2) return;
-        const n = info.count;
-        if (n > 1) _deckHasOverlaps = true;
-        // Visible line stays on its TRUE track at full width (no parallel
-        // fan-out). Only the invisible PICK target is offset into per-train
-        // lanes, so moving the mouse across an overlap can select each line.
-        const offDeg = n > 1 ? (info.slot - (n - 1) / 2) * spacingDeg : 0;
+        const ids = segIds[ra];
+        const n = ids ? ids.size : 1;
+        const mult = segMult[ra];
+        let groupKey = "";
+        if (n > 1) {
+          groupKey = segKeys[ra];
+          for (let i = ra + 1; i < rb; i += 1)
+            if (segKeys[i] < groupKey) groupKey = segKeys[i];
+        }
+        // One shift vector + lane multipliers per GROUP, computed from the
+        // run's canonical (train-independent) orientation so every sharing
+        // train derives the identical fan. Right-hand perpendicular to the
+        // dominant direction; sx pre-divided by cos(latRef) so the shift
+        // spans the same PIXEL distance regardless of heading.
+        let gi = null;
+        if (n > 1) {
+          gi = groupInfo.get(groupKey);
+          if (!gi) {
+            let dxSum = 0;
+            let dySum = 0;
+            let latSum = 0;
+            for (let i = ra; i < rb; i += 1) {
+              const d = overlap.dirForKey(segKeys[i], coordKey(orig[i]));
+              const latMid = (orig[i][1] + orig[i + 1][1]) / 2;
+              const coslat = Math.cos((latMid * Math.PI) / 180) || 1e-6;
+              dxSum += (orig[i + 1][0] - orig[i][0]) * coslat * d;
+              dySum += (orig[i + 1][1] - orig[i][1]) * d;
+              latSum += latMid;
+            }
+            const len = Math.hypot(dxSum, dySum) || 1;
+            const latRef = latSum / (rb - ra);
+            const coslatRef = Math.cos((latRef * Math.PI) / 180) || 1e-6;
+            const mults = {};
+            ids.forEach((id) => {
+              mults[id] = overlap.slotFor(ids, id) - (ids.size - 1) / 2;
+            });
+            gi = {
+              sx: dySum / len / coslatRef, // right-hand perpendicular
+              sy: -dxSum / len,
+              mults,
+            };
+            groupInfo.set(groupKey, gi);
+          }
+        }
         records.push({
           path: runLine,
-          pickPath: offDeg ? offsetPathWorld(runLine, offDeg) : runLine,
+          pickPath: gi
+            ? applyLaneShift(runLine, gi.sx, gi.sy, mult * spacingDeg)
+            : runLine,
+          shiftX: gi ? gi.sx : 0,
+          shiftY: gi ? gi.sy : 0,
+          laneMult: mult,
           color,
           width,
           dashed,
           train,
           feature,
           pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 8, 14),
+          overlapCount: n,
+          overlapSlot: segSlot[ra],
+          groupKey,
         });
-      };
-      for (let i = 1; i < line.length - 1; i += 1) {
-        const cur = overlap.infoFor(line, i, tid);
-        if (cur.count !== prev.count || cur.slot !== prev.slot) {
-          flush(i, prev);
-          runStart = i;
-          prev = cur;
-        }
-      }
-      flush(line.length - 1, prev);
+      });
+
+      // ── one expand record for the whole line (true-track geometry) ──
+      // Every line of every train gets one, so a hovered group can translate
+      // each member train's COMPLETE course intact — including sections that
+      // overlap nothing.
+      expandRecords.push({ path: drawn, color, width, train });
     });
   });
-  return records;
+  _cachedDeckRecords = { records, expandRecords, groupInfo, spacingDeg };
+  _cachedDeckRecordsSig = sig;
+  _lastOverlapSpacingDeg = spacingDeg;
+  return _cachedDeckRecords;
 }
-const _simpStats = { before: 0, after: 0 };
 
 
 // Flatten the visible trains' stop + pass-through markers into deck.gl
@@ -4404,147 +4856,8 @@ function handleDeckMarkerClick(info) {
   }
 }
 
-function getRouteRenderItems(train, splitForOverlap, features, overlapMap) {
-  return features.flatMap((feature, featureIndex) => {
-    if (!splitForOverlap) {
-      return [
-        { train, feature, overlapInfo: null, featureIndex, unitIndex: 0 },
-      ];
-    }
-
-    return splitRouteFeatureIntoStyledRuns(train, feature, overlapMap).map(
-      (runFeature, unitIndex) => ({
-        train,
-        feature: runFeature,
-        overlapInfo:
-          runFeature.properties?.overlap_count > 1
-            ? {
-                count: runFeature.properties.overlap_count,
-                slot: runFeature.properties.overlap_slot || 0,
-              }
-            : null,
-        featureIndex,
-        unitIndex,
-      }),
-    );
-  });
-}
-
-function getRouteSegmentRecords(train, features) {
-  const records = [];
-  features.forEach((feature) => {
-    iterateGeometryLines(feature.geometry).forEach((line) => {
-      for (let index = 0; index < line.length - 1; index += 1) {
-        const from = line[index];
-        const to = line[index + 1];
-        if (coordinatesEqual(from, to)) continue;
-        records.push({
-          train,
-          overlapKey: routeCoordinateSegmentKey(from, to),
-        });
-      }
-    });
-  });
-  return records;
-}
-
-function splitRouteFeatureIntoStyledRuns(train, feature, overlapMap) {
-  const runs = [];
-  iterateGeometryLines(feature.geometry).forEach((line, lineIndex) => {
-    let currentCoords = [];
-    let currentStyleKey = "";
-    let currentOverlapInfo = null;
-
-    function flushRun() {
-      if (currentCoords.length < 2) return;
-      runs.push({
-        type: "Feature",
-        properties: {
-          ...(feature.properties || {}),
-          overlap_count: currentOverlapInfo?.count || 1,
-          overlap_slot: currentOverlapInfo?.slot || 0,
-          overlap_line_index: lineIndex,
-        },
-        geometry: { type: "LineString", coordinates: currentCoords },
-      });
-    }
-
-    for (let index = 0; index < line.length - 1; index += 1) {
-      const from = line[index];
-      const to = line[index + 1];
-      if (coordinatesEqual(from, to)) continue;
-      const overlapKey = routeCoordinateSegmentKey(from, to);
-      const overlapInfo = getRouteOverlapInfoForKey(
-        overlapKey,
-        train.id,
-        overlapMap,
-      );
-      const styleKey = overlapInfo
-        ? `overlap:${overlapInfo.count}:${overlapInfo.slot}`
-        : feature.properties?.ride_segment === true
-          ? "ridden"
-          : "unridden";
-
-      if (!currentCoords.length) {
-        currentCoords = [from, to];
-        currentStyleKey = styleKey;
-        currentOverlapInfo = overlapInfo;
-        continue;
-      }
-
-      if (
-        styleKey === currentStyleKey &&
-        coordinatesEqual(currentCoords[currentCoords.length - 1], from)
-      ) {
-        currentCoords.push(to);
-        continue;
-      }
-
-      flushRun();
-      currentCoords = [from, to];
-      currentStyleKey = styleKey;
-      currentOverlapInfo = overlapInfo;
-    }
-
-    flushRun();
-  });
-  return runs;
-}
-
 function routeCoordinateSegmentKey(a, b) {
   return [coordKey(a), coordKey(b)].sort().join("|");
-}
-
-function buildRouteOverlapMap(routeItems, orderedTrains) {
-  const trainOrder = new Map(
-    orderedTrains.map((train, index) => [train.id, index]),
-  );
-  const overlapMap = new Map();
-
-  routeItems.forEach((item) => {
-    if (!item.overlapKey) return;
-    if (!overlapMap.has(item.overlapKey)) {
-      overlapMap.set(item.overlapKey, { trainIds: new Set(), slots: [] });
-    }
-    overlapMap.get(item.overlapKey).trainIds.add(item.train.id);
-  });
-
-  overlapMap.forEach((info) => {
-    info.slots = [...info.trainIds].sort(
-      (a, b) => (trainOrder.get(a) ?? 0) - (trainOrder.get(b) ?? 0),
-    );
-  });
-
-  return overlapMap;
-}
-
-function getRouteOverlapInfoForKey(overlapKey, trainId, overlapMap) {
-  const info = overlapMap.get(overlapKey);
-  if (!info || info.trainIds.size < 2) return null;
-  return {
-    count: info.trainIds.size,
-    slot: Math.max(0, info.slots.indexOf(trainId)),
-  };
 }
 
 function getComputedPassThroughFeatures(train) {

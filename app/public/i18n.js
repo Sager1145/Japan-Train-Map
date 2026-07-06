@@ -165,6 +165,10 @@
     "tag.start": { zh: "起點", en: "Start" },
     "tag.end": { zh: "終點", en: "End" },
     "field.carNo": { zh: "車號", en: "Train No." },
+    "tip.overlap": {
+      zh: "並行 {slot}/{count}（依日期排序）・橫移切換",
+      en: "Parallel {slot}/{count} (date order) · slide to switch",
+    },
 
     // import source labels
     "src.serverStore": { zh: "伺服器保存的 train-store.json", en: "server-saved train-store.json" },

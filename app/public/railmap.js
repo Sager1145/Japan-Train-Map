@@ -368,9 +368,14 @@
   const LOCAL_RASTER_SOURCE = "local-raster";
   const LOCAL_RASTER_LAYER = "local-raster-layer";
   const TRAIN_ROUTES_SOURCE = "train-routes";
+  const TRAIN_PICK_SOURCE = "train-routes-pick";
+  const TRAIN_EXPAND_SOURCE = "train-routes-expand-src";
   const TRAIN_MARKERS_SOURCE = "train-markers-base";
   const TRAIN_MARKERS_SEL_SOURCE = "train-markers-sel";
   const TRAIN_ROUTES_LAYER = "train-routes-line";
+  const TRAIN_PICK_LAYER = "train-routes-pick-line";
+  const TRAIN_EXPAND_LAYER = "train-routes-expand";
+  const TRAIN_EXPAND_HOVER_LAYER = "train-routes-expand-hover";
   const TRAIN_HOVER_LAYER = "train-routes-hover";
   const TRAIN_SEL_CASING_LAYER = "train-routes-sel-casing";
   const TRAIN_SEL_LAYER = "train-routes-sel";
@@ -381,6 +386,13 @@
 
   const EMPTY_FC = { type: "FeatureCollection", features: [] };
   const NO_TRAIN = "__none__";
+  // A filter that can never match (empty tid whitelist).
+  const MATCH_NONE = ["in", ["get", "tid"], ["literal", []]];
+  // HOVER SPOTLIGHT: while a route (or an expanded parallel group) is
+  // hovered, every OTHER train's lines and station dots fade to this opacity
+  // multiplier. Applied purely via paint expressions (no source updates).
+  const HOVER_DIM = 0.15;
+  const HOVER_DIM_TRANSITION = { duration: 150, delay: 0 };
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
   // (precomputed rgba strings) + railprint's zoom-scaled radius (r at z12,
@@ -431,6 +443,8 @@
       data: network ? network.stations : EMPTY_FC,
     };
     sources[TRAIN_ROUTES_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_EXPAND_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_MARKERS_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_MARKERS_SEL_SOURCE] = { type: "geojson", data: EMPTY_FC };
 
@@ -518,6 +532,22 @@
         "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
       },
     });
+    // Invisible PICK layer: when several trains share the same track, each
+    // train's pick geometry is offset sideways into its own parallel lane
+    // (earliest date = left/top lane), so sliding the pointer across an
+    // overlapped stretch hovers/selects each train in date order. Zero
+    // opacity — queryRenderedFeatures still hit-tests against line-width.
+    layers.push({
+      id: TRAIN_PICK_LAYER,
+      type: "line",
+      source: TRAIN_PICK_SOURCE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#000",
+        "line-opacity": 0,
+        "line-width": ["get", "pickWidth"],
+      },
+    });
     // Whole hovered route lights up (full opacity, a touch wider).
     layers.push({
       id: TRAIN_HOVER_LAYER,
@@ -586,6 +616,44 @@
         "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
       },
     });
+    // HOVER-EXPAND: while the pointer is on an overlapped stretch, that
+    // group's trains draw temporarily fanned into date-ordered parallel
+    // lanes. Each expand feature is the member train's COMPLETE course,
+    // RIGIDLY translated by the group's constant shift vector — corners,
+    // radii and lengths untouched, one intact copy of the whole line, never
+    // broken into pieces mid-route. The source is group-scoped (filled on
+    // hover). Opacity is animated 0→1 in JS; per-record alpha is baked into
+    // colorA so the layer-level line-opacity acts as a pure fade multiplier.
+    layers.push({
+      id: TRAIN_EXPAND_LAYER,
+      type: "line",
+      source: TRAIN_EXPAND_SOURCE,
+      filter: MATCH_NONE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "colorA"],
+        "line-opacity": 0,
+        "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+      },
+    });
+    // The hovered train's own lane lights up a touch wider, mirroring the
+    // whole-route hover layer.
+    layers.push({
+      id: TRAIN_EXPAND_HOVER_LAYER,
+      type: "line",
+      source: TRAIN_EXPAND_SOURCE,
+      filter: MATCH_NONE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "colorA"],
+        "line-opacity": 0,
+        "line-width": zoomScaledWidth([
+          "+",
+          ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
+          2,
+        ]),
+      },
+    });
     // The selected train's own dots above its raised route.
     layers.push({
       id: TRAIN_SEL_PASS_LAYER,
@@ -632,6 +700,55 @@
     };
   }
 
+  // Pick geometry: same records, but using the per-lane offset path (pickPath)
+  // and a generous pixel hit width. `idx` maps a picked feature back to the
+  // full record in _records (tooltip lane info, click target, group key).
+  function routePickRecordsToFC(records) {
+    return {
+      type: "FeatureCollection",
+      features: records.map((r, i) => ({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: r.pickPath || r.path },
+        properties: {
+          idx: i,
+          tid: (r.train && r.train.id) || "",
+          pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 8, 14),
+        },
+      })),
+    };
+  }
+
+  // HOVER-EXPAND geometry for ONE hovered group: every member train's
+  // complete course (all its lines), RIGIDLY translated into its lane by the
+  // group's constant shift vector — corners, radii and lengths untouched
+  // (colorA has the record's alpha baked in). `gi` comes from app.js's
+  // buildDeckRouteRecords groupInfo; spacingDeg is the current lane spacing.
+  function routeExpandFC(expandRecords, gi, spacingDeg) {
+    if (!gi) return EMPTY_FC;
+    const features = [];
+    expandRecords.forEach((r, i) => {
+      const tid = (r.train && r.train.id) || "";
+      const mult = gi.mults[tid];
+      if (mult === undefined) return; // not a member of the hovered group
+      const dx = gi.sx * mult * spacingDeg;
+      const dy = gi.sy * mult * spacingDeg;
+      features.push({
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: r.path.map((p) => [p[0] + dx, p[1] + dy]),
+        },
+        properties: {
+          idx: i,
+          tid,
+          colorA: rgbaCss(r.color),
+          width: r.width,
+        },
+      });
+    });
+    return { type: "FeatureCollection", features };
+  }
+
   function markerRecordsToFC(records) {
     return {
       type: "FeatureCollection",
@@ -664,11 +781,21 @@
     _network: null,
     _handlers: {},
     _records: [],
+    _expandRecords: [],
+    _groupInfo: null, // groupKey → { sx, sy, mults } (rigid lane shifts)
+    _laneSpacingDeg: 0,
     _markers: [],
     _visible: true,
     _markerVis: { stop: true, pass: true },
     _selectedTrainId: null,
     _hoverTrainId: null,
+    _expandedGroup: null,
+    _expandedTids: [], // the hovered group's train set (expand target)
+    _engagedTids: [], // trains whose true-track lines are currently hidden
+    _expandFilterTids: [], // trains the expand layers currently show
+    _expandT: 0,
+    _expandAnimId: null,
+    _dimKey: "", // last applied hover-spotlight state (dedup)
     _tooltipEl: null,
     _stationPopup: null,
     _basemapLayerIds: [],
@@ -679,13 +806,41 @@
       this._handlers = handlers || {};
       this._basemapLayerIds = basemapLayerIds || [];
       this._wireInteractions();
+      // Smooth GPU fade for the hover spotlight (dim/undim of the non-hovered
+      // trains): declare the opacity transitions once, up front.
+      [
+        [TRAIN_ROUTES_LAYER, "line-opacity"],
+        [TRAIN_SEL_CASING_LAYER, "line-opacity"],
+        [TRAIN_SEL_LAYER, "line-opacity"],
+      ].forEach(([id, prop]) => {
+        if (map.getLayer(id))
+          map.setPaintProperty(id, prop + "-transition", HOVER_DIM_TRANSITION);
+      });
+      [
+        TRAIN_PASS_LAYER,
+        TRAIN_STOPS_LAYER,
+        TRAIN_SEL_PASS_LAYER,
+        TRAIN_SEL_STOPS_LAYER,
+      ].forEach((id) => {
+        if (map.getLayer(id)) {
+          map.setPaintProperty(id, "circle-opacity-transition", HOVER_DIM_TRANSITION);
+          map.setPaintProperty(id, "circle-stroke-opacity-transition", HOVER_DIM_TRANSITION);
+        }
+      });
       return this;
     },
 
-    // ── data feeds (same contract as the old deck.gl overlay) ──
-    setData(records) {
+    // ── data feeds (same contract as the old deck.gl overlay, plus the
+    // full-line expand records + per-group rigid shift vectors) ──
+    setData(records, expandRecords, groupInfo, laneSpacingDeg) {
       this._records = records || [];
+      this._expandRecords = expandRecords || [];
+      this._groupInfo = groupInfo || new Map();
+      this._laneSpacingDeg = laneSpacingDeg || 0;
       this._pushRoutes();
+      // Zoom/pan rebuilt the data while a fan is open: re-translate the
+      // expanded group's lanes at the fresh spacing (no-op when collapsed).
+      if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
     },
     setMarkers(records) {
       this._markers = records || [];
@@ -697,11 +852,31 @@
       this._applySelectionFilters();
       this._pushMarkers();
     },
+    // Focus emphasis for the selected train: instead of baking the boost into
+    // every record (which would force a full pipeline rebuild on each pick),
+    // the SEL line simply draws `px` wider via its width expression.
+    setFocusBoost(px) {
+      this._focusBoost = Number(px) || 0;
+      const m = this._map;
+      if (m && m.getLayer(TRAIN_SEL_LAYER))
+        m.setPaintProperty(
+          TRAIN_SEL_LAYER,
+          "line-width",
+          zoomScaledWidth([
+            "*",
+            ["+", ["get", "width"], this._focusBoost],
+            RIDDEN_WIDTH_SCALE,
+          ]),
+        );
+    },
     setVisible(v) {
       this._visible = !!v;
       const vis = this._visible ? "visible" : "none";
       [
         TRAIN_ROUTES_LAYER,
+        TRAIN_PICK_LAYER,
+        TRAIN_EXPAND_LAYER,
+        TRAIN_EXPAND_HOVER_LAYER,
         TRAIN_HOVER_LAYER,
         TRAIN_SEL_CASING_LAYER,
         TRAIN_SEL_LAYER,
@@ -748,8 +923,26 @@
       return m ? m.getSource(id) : null;
     },
     _pushRoutes() {
+      const shown = this._visible ? this._records : [];
       const src = this._src(TRAIN_ROUTES_SOURCE);
-      if (src) src.setData(routeRecordsToFC(this._visible ? this._records : []));
+      if (src) src.setData(routeRecordsToFC(shown));
+      const pick = this._src(TRAIN_PICK_SOURCE);
+      if (pick) pick.setData(routePickRecordsToFC(shown));
+    },
+    // The expand source is GROUP-SCOPED: it only ever holds the hovered
+    // group's translated member courses (or nothing when collapsed).
+    _pushExpandFC(group) {
+      const exp = this._src(TRAIN_EXPAND_SOURCE);
+      if (!exp) return;
+      const gi =
+        group && this._visible && this._groupInfo
+          ? this._groupInfo.get(group)
+          : null;
+      exp.setData(
+        gi
+          ? routeExpandFC(this._expandRecords, gi, this._laneSpacingDeg)
+          : EMPTY_FC,
+      );
     },
     _pushMarkers() {
       const sel = this._selectedTrainId;
@@ -765,22 +958,211 @@
       const ss = this._src(TRAIN_MARKERS_SEL_SOURCE);
       if (ss) ss.setData(markerRecordsToFC(selMk));
     },
+    // Expansion selects by TRAIN SET, not by the single hovered run: every
+    // train sharing the hovered stretch shows as its COMPLETE course rigidly
+    // translated into its lane — one intact copy of the whole line, corners /
+    // radii / lengths unchanged, never broken into pieces mid-route.
+    _expandSelector(tids) {
+      return ["in", ["get", "tid"], ["literal", tids || []]];
+    },
+    // While a fan is engaged, the true-track layers (base / hover / sel)
+    // EXCLUDE the engaged trains entirely — their translated copies fully
+    // replace them, so nothing draws down the middle of the fan and nothing
+    // draws twice.
+    _notExpanded() {
+      return ["!", this._expandSelector(this._engagedTids)];
+    },
+    _applyBaseFilters() {
+      const m = this._map;
+      if (!m) return;
+      if (m.getLayer(TRAIN_ROUTES_LAYER))
+        m.setFilter(TRAIN_ROUTES_LAYER, this._notExpanded());
+      this._applySelectionFilters();
+      this._applyHoverFilter();
+    },
     _applySelectionFilters() {
       const m = this._map;
       if (!m) return;
       const id = this._selectedTrainId || NO_TRAIN;
-      const f = ["==", ["get", "tid"], id];
+      const f = ["all", ["==", ["get", "tid"], id], this._notExpanded()];
       if (m.getLayer(TRAIN_SEL_CASING_LAYER)) m.setFilter(TRAIN_SEL_CASING_LAYER, f);
       if (m.getLayer(TRAIN_SEL_LAYER)) m.setFilter(TRAIN_SEL_LAYER, f);
     },
     _applyHoverFilter() {
       const m = this._map;
-      if (!m || !m.getLayer(TRAIN_HOVER_LAYER)) return;
-      m.setFilter(TRAIN_HOVER_LAYER, [
-        "==",
-        ["get", "tid"],
-        this._hoverTrainId || NO_TRAIN,
-      ]);
+      if (!m) return;
+      if (m.getLayer(TRAIN_HOVER_LAYER))
+        m.setFilter(TRAIN_HOVER_LAYER, [
+          "all",
+          ["==", ["get", "tid"], this._hoverTrainId || NO_TRAIN],
+          this._notExpanded(),
+        ]);
+      // The expanded fan mirrors the hover: the hovered train's LANE widens.
+      if (m.getLayer(TRAIN_EXPAND_HOVER_LAYER))
+        m.setFilter(TRAIN_EXPAND_HOVER_LAYER, [
+          "all",
+          this._expandSelector(this._expandFilterTids),
+          ["==", ["get", "tid"], this._hoverTrainId || NO_TRAIN],
+        ]);
+      this._applyHoverDim();
+    },
+
+    // ── hover spotlight: dim every train that is NOT being hovered ──
+    // Active set = the expanded parallel group while a fan is showing (also
+    // during its fade-out), else the single hovered train. Everything else —
+    // route lines AND stop/pass-through dots — fades to HOVER_DIM.
+    //
+    // P0 path: this changes ONLY layer paint expressions (setPaintProperty,
+    // deduped by _dimKey), never touches a GeoJSON source, and the declared
+    // opacity transitions make the fade a GPU interpolation.
+    _activeHoverTids() {
+      if (this._expandFilterTids.length) return this._expandFilterTids;
+      if (this._hoverTrainId) return [this._hoverTrainId];
+      return null;
+    },
+    _applyHoverDim() {
+      const m = this._map;
+      if (!m) return;
+      const tids = this._activeHoverTids();
+      const key = tids ? tids.join(" ") : "";
+      if (key === this._dimKey) return;
+      this._dimKey = key;
+      // multiplier: 1 for the active trains, HOVER_DIM for everyone else
+      const mul = tids
+        ? ["case", ["in", ["get", "tid"], ["literal", tids]], 1, HOVER_DIM]
+        : 1;
+      const set = (id, prop, value) => {
+        if (m.getLayer(id)) m.setPaintProperty(id, prop, value);
+      };
+      set(
+        TRAIN_ROUTES_LAYER,
+        "line-opacity",
+        tids ? ["*", ["get", "alpha"], mul] : ["get", "alpha"],
+      );
+      set(TRAIN_SEL_CASING_LAYER, "line-opacity", tids ? ["*", 0.9, mul] : 0.9);
+      set(TRAIN_SEL_LAYER, "line-opacity", mul);
+      [
+        TRAIN_PASS_LAYER,
+        TRAIN_STOPS_LAYER,
+        TRAIN_SEL_PASS_LAYER,
+        TRAIN_SEL_STOPS_LAYER,
+      ].forEach((id) => {
+        set(id, "circle-opacity", mul);
+        set(id, "circle-stroke-opacity", mul);
+      });
+    },
+
+    // ── hover-expand: fan an overlapped group out into its parallel lanes ──
+    // _expandedGroup / _expandedTids = the hovered run's group and its trains
+    // _engagedTids = trains whose true-track overlap-lines are hidden right
+    //   now (their continuous expand twins replace them)
+    // _expandFilterTids = the trains the expand layers currently SHOW (kept
+    //   during the collapse fade-out so the lanes fade instead of vanishing)
+    //
+    // Both transitions crossfade around ~1/3 opacity: expanding, the lanes
+    // fade IN over the still-visible true track and the track hides once the
+    // lanes are clearly visible; collapsing, the track reappears under the
+    // almost-transparent lanes. The route therefore never blinks out, never
+    // draws twice at full strength, and never shows an empty gap.
+    _setExpandedGroup(g) {
+      const next = g || null;
+      if (next === this._expandedGroup) return;
+      this._expandedGroup = next;
+      const m = this._map;
+      if (!m) return;
+      const engage = () => {
+        const t = this._expandedTids;
+        const same =
+          t.length === this._engagedTids.length &&
+          t.every((x) => this._engagedTids.includes(x));
+        if (same) return;
+        this._engagedTids = t.slice();
+        this._applyBaseFilters();
+      };
+      const release = () => {
+        if (this._expandedGroup) return; // re-expanded meanwhile
+        if (!this._engagedTids.length) return;
+        this._engagedTids = [];
+        this._applyBaseFilters();
+      };
+      if (next) {
+        const gi = this._groupInfo ? this._groupInfo.get(next) : null;
+        const nextTids = gi ? Object.keys(gi.mults) : [];
+        // Fill the group-scoped expand source with the member trains'
+        // translated complete courses (rigid shift, geometry untouched).
+        this._pushExpandFC(next);
+        this._expandedTids = nextTids;
+        this._expandFilterTids = nextTids;
+        if (m.getLayer(TRAIN_EXPAND_LAYER))
+          m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(nextTids));
+        this._applyHoverFilter();
+        if (this._expandT === 1) {
+          // Already fully faded in (pointer slid between groups): swap the
+          // engaged set instantly, no re-animation — but cancel any queued
+          // collapse frame first or it would keep fading the lanes out.
+          if (this._expandAnimId) {
+            cancelAnimationFrame(this._expandAnimId);
+            this._expandAnimId = null;
+          }
+          this._setExpandOpacity(1);
+          engage();
+          return;
+        }
+        this._animateExpand(1, engage, (v) => {
+          if (v >= 0.35) engage();
+        });
+      } else {
+        this._expandedTids = [];
+        this._animateExpand(
+          0,
+          () => {
+            release();
+            this._expandFilterTids = [];
+            this._pushExpandFC(null);
+            if (m.getLayer(TRAIN_EXPAND_LAYER))
+              m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
+            this._applyHoverFilter();
+          },
+          (v) => {
+            if (v <= 0.35) release();
+          },
+        );
+      }
+    },
+    _setExpandOpacity(v) {
+      const m = this._map;
+      if (!m) return;
+      [TRAIN_EXPAND_LAYER, TRAIN_EXPAND_HOVER_LAYER].forEach((id) => {
+        if (m.getLayer(id)) m.setPaintProperty(id, "line-opacity", v);
+      });
+    },
+    _animateExpand(target, done, onProgress) {
+      if (this._expandAnimId) cancelAnimationFrame(this._expandAnimId);
+      this._expandAnimId = null;
+      const from = this._expandT || 0;
+      if (from === target) {
+        this._setExpandOpacity(target);
+        if (onProgress) onProgress(target);
+        if (done) done();
+        return;
+      }
+      const dur = 160;
+      const t0 = performance.now();
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / dur);
+        const e = 1 - Math.pow(1 - k, 2); // ease-out
+        const v = from + (target - from) * e;
+        this._expandT = v;
+        this._setExpandOpacity(v);
+        if (onProgress) onProgress(v);
+        if (k < 1) {
+          this._expandAnimId = requestAnimationFrame(step);
+        } else {
+          this._expandAnimId = null;
+          if (done) done();
+        }
+      };
+      this._expandAnimId = requestAnimationFrame(step);
     },
 
     // ── interactions: route/marker click + hover, station hover popup ──
@@ -789,20 +1171,23 @@
       const self = this;
       const PAD = 6; // px hit slop around the pointer for line picking
 
-      function queryAt(point) {
+      // preferLanes (hover only): while a fan is expanded, the fanned trains'
+      // own station dots must not steal the pointer from the lanes — sliding
+      // along the fan would flicker hover/tooltip at every station. Clicks
+      // keep marker precedence so a station dot still opens its stop popup.
+      function queryAt(point, preferLanes) {
         const markerLayers = [
           TRAIN_SEL_STOPS_LAYER,
           TRAIN_SEL_PASS_LAYER,
           TRAIN_STOPS_LAYER,
           TRAIN_PASS_LAYER,
         ].filter((id) => map.getLayer(id));
-        const routeLayers = [TRAIN_ROUTES_LAYER, TRAIN_SEL_LAYER].filter((id) =>
-          map.getLayer(id),
-        );
+        const pickLayers = [TRAIN_PICK_LAYER].filter((id) => map.getLayer(id));
         const bbox = [
           [point.x - PAD, point.y - PAD],
           [point.x + PAD, point.y + PAD],
         ];
+        let markerHit = null;
         const mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         if (mk.length) {
           const p = mk[0].properties;
@@ -810,14 +1195,30 @@
             mk[0].layer.source === TRAIN_MARKERS_SEL_SOURCE
               ? self._selMarkerRecords && self._selMarkerRecords[p.idx]
               : self._baseMarkerRecords && self._baseMarkerRecords[p.idx];
-          if (rec) return { kind: "marker", record: rec };
+          if (rec) markerHit = { kind: "marker", record: rec };
         }
-        const rt = map.queryRenderedFeatures(bbox, { layers: routeLayers });
+        const markerYieldsToFan =
+          markerHit &&
+          preferLanes &&
+          self._expandedTids.length &&
+          markerHit.record.train &&
+          self._expandedTids.includes(markerHit.record.train.id);
+        if (markerHit && !markerYieldsToFan) return markerHit;
+        // Routes are picked against the invisible PICK lanes. Where trains
+        // overlap, each train owns its own parallel lane (date-ordered
+        // left→right / top→bottom), so query the EXACT cursor point first —
+        // that resolves to the single lane under the pointer and lets a small
+        // sideways mouse move step between the parallel trains. Only if the
+        // exact point misses do we retry with the padded box (thin isolated
+        // lines stay easy to grab).
+        let rt = map.queryRenderedFeatures(point, { layers: pickLayers });
+        if (!rt.length)
+          rt = map.queryRenderedFeatures(bbox, { layers: pickLayers });
         if (rt.length) {
           const rec = self._records[rt[0].properties.idx];
           if (rec) return { kind: "route", record: rec };
         }
-        return null;
+        return markerHit;
       }
 
       map.on("click", (e) => {
@@ -835,8 +1236,21 @@
       });
 
       map.on("mousemove", (e) => {
-        const hit = queryAt(e.point);
+        const hit = queryAt(e.point, true);
         const id = hit && hit.record.train ? hit.record.train.id : null;
+        // Hover-expand: pointer on an overlapped run fans that group's lines
+        // out into their date-ordered lanes; empty ground collapses. Marker
+        // hits (station dots take pick precedence) keep the current state so
+        // sweeping along an expanded fan doesn't flicker at every station.
+        const group =
+          hit && hit.kind === "route"
+            ? hit.record.overlapCount > 1
+              ? hit.record.groupKey || null
+              : null
+            : hit && hit.kind === "marker"
+              ? self._expandedGroup
+              : null;
+        self._setExpandedGroup(group);
         if (id !== self._hoverTrainId) {
           self._hoverTrainId = id;
           self._applyHoverFilter();
@@ -847,6 +1261,7 @@
         self._maybeStationPopup(hit ? null : e.point);
       });
       map.getCanvas().addEventListener("mouseleave", () => {
+        self._setExpandedGroup(null);
         if (self._hoverTrainId !== null) {
           self._hoverTrainId = null;
           self._applyHoverFilter();
