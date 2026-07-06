@@ -121,11 +121,10 @@ const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
 const UNDATED = "undated";
 const DEFAULT_TRAIN_COLOR = "#d9364f";
-// Single source of truth for the default route style numbers. Previously the
-// literals 6 and 0.22 were repeated across the canonical serializer, editor,
-// field save, blank-train factory and renderer.
-const DEFAULT_TRAIN_WEIGHT = 6;
-const DEFAULT_UNRIDDEN_OPACITY = 0.22;
+// Single source of truth for the default route style numbers (railprint's
+// glowing-line spec: ridden lines draw from a 4px base, zoom-scaled).
+const DEFAULT_TRAIN_WEIGHT = 4;
+const DEFAULT_UNRIDDEN_OPACITY = 0.48;
 
 // N02 "institution type" (事業者種別, field N02_002) classifies a line's
 // operator. The default route policy allows all five classes; a train may
@@ -152,18 +151,22 @@ const N02_INSTITUTION_TYPE_CODES = new Set(
 // NOT part of the canonical train store — they live in localStorage only, so
 // the exported JSON schema stays exactly { schema_version, trains:[...] }.
 // ------------------------------------------------------------------------
-const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings";
+// v2: defaults re-seeded for the railprint visual system (positron basemap at
+// full opacity, ridden lines full color, railprint-scale station dots). The
+// versioned key intentionally orphans v1 saved settings, whose numbers were
+// tuned for the old faded-raster look.
+const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v2";
 const DISPLAY_DEFAULTS = {
   routeWidthScale: 1, // multiplies each train's route line width
-  riddenOpacity: 0.9, // opacity of ridden (ride_segment=true) route segments
-  unriddenOpacity: 0.22, // opacity of unridden (dimmed) route segments
+  riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
+  unriddenOpacity: 0.48, // opacity of unridden (dimmed) route segments (railprint UNRIDDEN_OPACITY)
   dimOpacity: 0.18, // opacity of trains not on the selected date
-  terminalRadius: 9, // px radius of origin / destination markers
-  stopRadius: 7, // px radius of passenger / operational stop markers
-  passRadius: 4, // px radius of pass-through markers
+  terminalRadius: 6, // px radius (at z12) of origin / destination markers
+  stopRadius: 5, // px radius (at z12) of stop markers (railprint ridden dot = 5 @ z12)
+  passRadius: 3, // px radius (at z12) of pass-through markers (railprint unridden dot = 3 @ z12)
   markerStrokeScale: 1, // multiplies every marker's stroke width
   focusBoost: 2, // extra line width / marker radius for the selected train
-  mapOpacity: 0.3, // basemap tile opacity; lower fades the map toward pure white
+  mapOpacity: 1, // basemap visibility; lower fades the map toward pure white (railprint: no fade)
   onlyEndpoints: false, // show only the trip's first origin + last destination
 };
 // Live working copy (mutated by the UI; seeded from localStorage on boot).
@@ -306,13 +309,11 @@ function setupDisplaySettingsPanel() {
 // and line-name labels. Kept together so the feature is easy to find.
 // ------------------------------------------------------------------------
 function applyMapOpacity() {
-  if (!map || typeof L === "undefined") return;
+  if (!map || !window.RailMap) return;
   const v = Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity)));
-  map.eachLayer((layer) => {
-    if (layer instanceof L.TileLayer && typeof layer.setOpacity === "function") {
-      layer.setOpacity(v);
-    }
-  });
+  // The slider now drives a white fade layer ABOVE the basemap (railprint's
+  // positron needs no fading, so the default is fully visible = fade 0).
+  RailMap.setFadeOpacity(1 - v);
 }
 
 // Trip order = index in the canonical store (legs are built in travel order).
@@ -423,8 +424,9 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
 }
 
 function updateEndpointLabels() {
-  if (!endpointLabelLayer) return;
-  endpointLabelLayer.clearLayers();
+  if (!map) return;
+  endpointLabelMarkers.forEach((m) => m.remove());
+  endpointLabelMarkers = [];
 
   const specs = [];
   const seen = new Set();
@@ -466,25 +468,26 @@ function updateEndpointLabels() {
 
   if (!specs.length) return;
 
-  // Standalone (source-less) tooltips rather than circleMarkers: in preferCanvas
-  // mode a circleMarker spins up a full-map Leaflet canvas ABOVE the deck.gl
-  // canvas that swallows the mouse events deck needs for route hover/click. A
-  // tooltip lives in the tooltip pane with pointer-events:none, so it never
-  // blocks picking.
+  // Non-interactive DOM markers (pointer-events:none) so they never block
+  // route/marker picking. MapLibre markers track their lng/lat through
+  // pan/zoom automatically; the overlap layout only recomputes on re-render.
   layoutEndpointLabels(specs).forEach((spec) => {
-    const tip = L.tooltip({
-      permanent: true,
-      direction: spec.direction,
-      offset: spec.offset,
-      className: spec.dayEndpoint
+    const el = document.createElement("div");
+    el.className =
+      (spec.dayEndpoint
         ? "station-label station-label--endpoint"
-        : "station-label",
-      opacity: 1,
-      interactive: false,
+        : "station-label") +
+      " station-label--" +
+      spec.direction;
+    el.innerHTML = spec.html;
+    const marker = new maplibregl.Marker({
+      element: el,
+      anchor: spec.direction === "top" ? "bottom" : "top",
+      offset: spec.offset,
     })
-      .setLatLng(spec.latlng)
-      .setContent(spec.html);
-    endpointLabelLayer.addLayer(tip);
+      .setLngLat([spec.latlng[1], spec.latlng[0]])
+      .addTo(map);
+    endpointLabelMarkers.push(marker);
   });
 }
 
@@ -502,7 +505,7 @@ function layoutEndpointLabels(specs) {
     a.x1 < b.x2 + PAD && a.x2 > b.x1 - PAD && a.y1 < b.y2 + PAD && a.y2 > b.y1 - PAD;
   specs.forEach((spec) => {
     const p = map
-      ? map.latLngToContainerPoint(L.latLng(spec.latlng))
+      ? map.project([spec.latlng[1], spec.latlng[0]])
       : { x: 0, y: 0 };
     const halfW = spec.width / 2;
     let picked = null;
@@ -588,19 +591,10 @@ function deckGetTooltip(info) {
   };
 }
 
-// GPU route rendering. Train routes draw in a single deck.gl PathLayer
-// (reprojected on the GPU each frame) instead of live Leaflet SVG paths,
-// which removes the per-zoom reproject/repaint stall on the ~176k route
-// points. Falls back to the SVG path automatically when deck.gl failed to
-// load, or when the URL carries ?deck=0 (kept for A/B comparison).
-const USE_DECKGL_ROUTES = (function () {
-  try {
-    if (/[?&]deck=0\b/.test(location.search)) return false;
-  } catch (e) {
-    /* no location (file:// edge cases) — default on */
-  }
-  return Boolean(window.DeckRoutes && window.DeckRoutes.available);
-})();
+// GPU route rendering. Train routes, markers, the national rail network and
+// the basemap all render in MapLibre GL (see railmap.js — the railprint-style
+// map core). The old Leaflet SVG fallback path is gone with Leaflet itself.
+const USE_DECKGL_ROUTES = true;
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
@@ -948,7 +942,8 @@ async function loadAppData() {
 let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
 let selectedTrainId = null;
 let focusedTrainId = null;
-let endpointLabelLayer = null;
+// Live maplibregl.Marker instances for the on-map origin/destination labels.
+let endpointLabelMarkers = [];
 // Which date the sidebar list is filtered to. ALL_DATES shows the combined
 // "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
 let selectedDate = ALL_DATES;
@@ -964,11 +959,9 @@ let mapFollowsSelectedDate = false;
 // map view stays put on selection (whether the pick came from a card or a
 // route line). Defaults on.
 let focusZoomEnabled = true;
-let map,
-  limitedExpressRouteLayer,
-  stopLayer,
-  passThroughLayer,
-  limitedExpressRouteRenderer;
+// The maplibregl.Map instance (created by initMap once the basemap + rail
+// network package have loaded).
+let map;
 // Cached route render items (overlap-split run features) + viewport-cull state.
 // The split runs / overlap slots depend only on the train data (not zoom/pan),
 // so we memoise them and re-attach only the segments inside the current view.
@@ -981,7 +974,9 @@ let cachedRouteItems = null,
 // chunk of per-frame Paint work (the trace showed Paint, not JS, is the
 // bottleneck). A lightweight zoomend handler re-renders markers only when the
 // view crosses this threshold — never on pan.
-const PASSTHROUGH_MIN_ZOOM = 10;
+// NOTE: MapLibre zoom convention (world in one 512px tile at z0) — one level
+// lower than the old Leaflet number for the same view.
+const PASSTHROUGH_MIN_ZOOM = 9;
 let cachedOrderedTrains = [];
 let passThroughShown = true;
 let importInProgress = false;
@@ -1042,7 +1037,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Restore the saved date filter (selectedDate / manual dates) before the
   // first render so the date bar reflects the user's last choice.
   const restoredSelectedDate = restoreUiDateState();
-  initMap();
+  await initMap();
   applyMapOpacity();
   bindEvents();
   fitJapanMainIslands();
@@ -2110,12 +2105,18 @@ function canonicalStopShape(stop) {
 }
 
 function canonicalStyle(style) {
+  // Legacy default migration: stores written before the railprint restyle
+  // baked the OLD defaults (weight 6 / unridden 0.22) into every train.
+  // Treat exactly those values as "unset" so existing plans pick up the new
+  // railprint-scale defaults; any other explicit value is kept as-is.
+  let weight = Number(style?.weight || DEFAULT_TRAIN_WEIGHT);
+  if (weight === 6) weight = DEFAULT_TRAIN_WEIGHT;
+  let unridden = Number(style?.unridden_opacity ?? DEFAULT_UNRIDDEN_OPACITY);
+  if (unridden === 0.22) unridden = DEFAULT_UNRIDDEN_OPACITY;
   return {
     color: style?.color || DEFAULT_TRAIN_COLOR,
-    weight: Number(style?.weight || DEFAULT_TRAIN_WEIGHT),
-    unridden_opacity: Number(
-      style?.unridden_opacity ?? DEFAULT_UNRIDDEN_OPACITY,
-    ),
+    weight,
+    unridden_opacity: unridden,
   };
 }
 
@@ -2639,312 +2640,195 @@ function persistAndRender() {
 }
 
 // =========================================================================
-//  §21.  Map initialization (Leaflet + deck.gl overlay, tile layers, panes)
+//  §21.  Map initialization (MapLibre GL + railprint-style map core)
 // =========================================================================
+// The map renders with MapLibre GL, styled after yzhouwang/railprint
+// (see railmap.js for the ported style system):
+//   - vendored OpenFreeMap positron vector basemap (offline -> plain
+//     background, with the pre-downloaded raster tiles selectable),
+//   - the full MLIT N02 national network + stations from railprint's
+//     jp-2025 rail package, every line in its official color, revealed
+//     by zoom tier (rank) and station spacing — OFF by default, toggled
+//     via the "All Railway Lines" switch in the layers control,
+//   - train routes/markers as GeoJSON layers with railprint's "ridden"
+//     treatment: full official color, dark ink casing under the selected
+//     route (no glow).
 
-// =========================================================================
-//  Smooth wheel / trackpad zoom (continuous, cursor-anchored)
-// =========================================================================
-// Leaflet's built-in scroll-wheel zoom is stepped: it debounces a wheel burst
-// and jumps by (at least) one zoom level. With zoomSnap:0 that instead produced
-// tiny stuttery increments. This handler replaces it with a smooth zoom: each
-// wheel / trackpad-pinch event nudges a target zoom (`_goalZoom`) and a
-// requestAnimationFrame loop eases the real map zoom toward it via map._move(),
-// anchoring the zoom under the pointer. Because it drives the map with
-// map._move (not Leaflet's CSS zoom animation), it sets map._smoothWheelZooming
-// so the deck.gl overlay bridge knows to reproject the routes on these frames.
-// In Chromium / Edge a trackpad pinch arrives as wheel events with ctrlKey set;
-// preventDefault keeps the browser from page-zooming so the map zooms instead.
-if (typeof L !== "undefined" && L.Map && L.Handler) {
-  L.Map.mergeOptions({ smoothWheelZoom: true, smoothSensitivity: 1 });
-  L.Map.SmoothWheelZoom = L.Handler.extend({
-    addHooks() {
-      // Bind a NON-PASSIVE wheel listener directly so preventDefault()
-      // reliably blocks the browser's ctrl+wheel page-zoom on a trackpad
-      // pinch (Chromium/Edge) — otherwise the page zooms, not the map.
-      this._wheelListener = this._onWheel.bind(this);
-      this._map._container.addEventListener("wheel", this._wheelListener, {
-        passive: false,
-      });
-    },
-    removeHooks() {
-      if (this._wheelListener) {
-        this._map._container.removeEventListener(
-          "wheel",
-          this._wheelListener,
-          { passive: false },
-        );
-        this._wheelListener = null;
-      }
-    },
-    _onWheel(e) {
-      if (!this._isWheeling) this._startWheel(e);
-      this._wheeling(e);
-      // Map owns the wheel: stop the page from scrolling / pinch-zooming.
-      L.DomEvent.preventDefault(e);
-      L.DomEvent.stopPropagation(e);
-    },
-    _startWheel(e) {
-      const map = this._map;
-      map._stop();
-      if (map._panAnim) map._panAnim.stop();
-      this._isWheeling = true;
-      this._moved = false;
-      map._smoothWheelZooming = true; // deck overlay bridge follows this flag
-      this._goalZoom = map.getZoom();
-      this._centerPoint = map.getSize()._divideBy(2);
-      this._startLatLng = map.containerPointToLatLng(this._centerPoint);
-      this._mousePoint = map.mouseEventToContainerPoint(e);
-      this._wheelStartLatLng = map.containerPointToLatLng(this._mousePoint);
-      this._raf = L.Util.requestAnimFrame(this._tick, this);
-    },
-    _wheeling(e) {
-      const map = this._map;
-      // Normalize the wheel/pinch delta to a pixel-ish scale (mice and
-      // trackpads report different deltaMode units), then CLAMP so one big
-      // mouse notch cannot leap across the whole zoom range. A trackpad
-      // pinch (ctrlKey in Chromium/Edge) sends smaller, more frequent
-      // deltas, so it gets a little more gain. NOTE: raw deltaY is used,
-      // not L.DomEvent.getWheelDelta — the latter divides by a browser
-      // wheelPxFactor that shrank pinch deltas almost to nothing.
-      let delta = e.deltaY;
-      if (e.deltaMode === 1)
-        delta *= 20; // DOM_DELTA_LINE -> px
-      else if (e.deltaMode === 2) delta *= 60; // DOM_DELTA_PAGE -> px
-      delta = Math.max(-50, Math.min(50, delta));
-      const gain = (e.ctrlKey ? 0.022 : 0.015) * map.options.smoothSensitivity;
-      // deltaY > 0 is a downward / pinch-in gesture => zoom OUT.
-      this._goalZoom = map._limitZoom(this._goalZoom - delta * gain);
-      this._mousePoint = map.mouseEventToContainerPoint(e);
-      clearTimeout(this._endTimer);
-      this._endTimer = setTimeout(() => this._endWheel(), 220);
-    },
-    _endWheel() {
-      this._isWheeling = false;
-      this._map._smoothWheelZooming = false;
-      L.Util.cancelAnimFrame(this._raf);
-      if (this._moved) this._map._moveEnd(true); // fires zoomend + moveend
-    },
-    _tick() {
-      const map = this._map;
-      const current = map.getZoom();
-      // Ease the live zoom toward the target. Stop emitting moves once settled,
-      // but keep the rAF alive until the gesture ends so further wheel input
-      // resumes smoothly without restarting the loop.
-      if (Math.abs(this._goalZoom - current) > 0.002) {
-        const zoom =
-          Math.round((current + (this._goalZoom - current) * 0.25) * 100) / 100;
-        const offset = this._mousePoint.subtract(this._centerPoint);
-        let center =
-          offset.x === 0 && offset.y === 0
-            ? this._startLatLng
-            : map.unproject(
-                map.project(this._wheelStartLatLng, zoom).subtract(offset),
-                zoom,
-              );
-        // Respect the Japan max-bounds clamp so the cursor-anchored pan can't
-        // drift off-territory and snap back at moveend.
-        if (map.options.maxBounds)
-          center = map._limitCenter(center, zoom, map.options.maxBounds);
-        if (!this._moved) {
-          map._moveStart(true, false);
-          this._moved = true;
-        }
-        map._move(center, zoom);
-      }
-      this._raf = L.Util.requestAnimFrame(this._tick, this);
-    },
+// Custom map-corner control: basemap picker + overlay checkboxes (replaces
+// the old Leaflet layers control).
+function buildMapLayersControl(hasBasemap) {
+  const wrap = document.createElement("div");
+  wrap.className = "map-layers-control";
+  const select = document.createElement("select");
+  const options = [
+    hasBasemap ? ["positron", "Positron (online)"] : null,
+    ["raster", "Local Tiles (offline)"],
+    ["none", "No Basemap"],
+  ].filter(Boolean);
+  options.forEach(([value, label]) => {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = label;
+    select.appendChild(o);
   });
-  L.Map.addInitHook("addHandler", "smoothWheelZoom", L.Map.SmoothWheelZoom);
+  select.value = hasBasemap ? "positron" : "raster";
+  RailMap.setBasemapMode(select.value);
+  select.addEventListener("change", () => RailMap.setBasemapMode(select.value));
+  wrap.appendChild(select);
+  const toggles = [
+    ["Limited Express Routes", (v) => RailMap.setVisible(v), true],
+    ["Stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
+    ["Pass-through Stations", (v) => RailMap.setMarkerVisibility("pass", v), true],
+    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default.
+    [
+      "All Railway Lines",
+      (v) => {
+        RailMap.setNetworkVisible(v);
+        RailMap.setNetworkStationsVisible(v);
+      },
+      false,
+    ],
+  ];
+  toggles.forEach(([label, apply, on]) => {
+    const item = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = on;
+    cb.addEventListener("change", () => apply(cb.checked));
+    item.appendChild(cb);
+    item.appendChild(document.createTextNode(" " + label));
+    wrap.appendChild(item);
+  });
+  map.getContainer().appendChild(wrap);
 }
 
-function initMap() {
-  map = L.map("map", {
-    preferCanvas: true,
-    // Continuous, cursor-anchored smooth zoom. Leaflet's default stepped
-    // scroll-wheel zoom is turned OFF and replaced by the SmoothWheelZoom
-    // handler defined above (eases the zoom toward a pointer-anchored target
-    // each animation frame): smooth for a trackpad pinch (ctrl+wheel in
-    // Chromium/Edge) and semi-smooth for a mouse wheel. smoothSensitivity
-    // scales how far each wheel/pinch delta moves the target (higher = faster).
-    scrollWheelZoom: false,
-    smoothWheelZoom: true,
-    smoothSensitivity: 1,
-    // Fractional zoom levels so the eased zoom (and flyTo / fitBounds) settle
-    // between integer steps instead of snapping. The deck.gl route overlay and
-    // applyJapanMapConstraints() are both fractional-aware.
-    zoomSnap: 0,
-    zoomAnimation: true,
-    // Smooth momentum panning: a released drag glides to a stop.
-    inertia: true,
-    inertiaDeceleration: 2500,
-    easeLinearity: 0.2,
-  }).setView([36.4, 138.2], 5);
-  // SVG (not canvas) for the train routes + stop markers. The canvas renderer
-  // must fully re-stroke its buffer on every moveend and zoom — re-projecting
-  // ~176k route points plus thousands of stop/pass-through markers each gesture
-  // — which is the post-load drag/zoom jank. With SVG, panning is a free GPU
-  // transform of the existing paths (zero redraw) and zoom re-projects once.
-  // The heavy reference layers that once made an SVG DOM huge (the 21.9k-feature
-  // N02 rail network + 10.2k station vectors) are now raster tiles, so only the
-  // ~700 route paths remain in the DOM — well within SVG's comfort zone. This
-  // matches the early commit that rendered the full train set smoothly.
-  limitedExpressRouteRenderer = L.svg({ padding: 0.5 });
-
-  const simpleOsmLayer = L.tileLayer(
-    "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-    {
-      subdomains: "abcd",
-      maxZoom: 20,
-      attribution: "© OpenStreetMap contributors © CARTO",
-    },
-  );
-  const simpleOsmLabelLayer = L.layerGroup([
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
-      {
-        subdomains: "abcd",
-        maxZoom: 20,
-        attribution: "© OpenStreetMap contributors © CARTO",
-      },
-    ),
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
-      {
-        subdomains: "abcd",
-        maxZoom: 20,
-        attribution: "© OpenStreetMap contributors © CARTO",
-        pane: "markerPane",
-      },
-    ),
+async function initMap() {
+  // The vendored positron style + railprint's jp-2025 rail package load in
+  // parallel; either may be null (offline) — the style builder degrades the
+  // same way railprint does (plain background / no network overlay).
+  const [basemap, network] = await Promise.all([
+    RailMap.loadBasemap(),
+    RailMap.loadNetwork(),
   ]);
-  const osmOnlineLayer = L.tileLayer(
-    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap contributors",
-    },
+  const style = RailMap.buildBaseStyle({
+    basemap,
+    network,
+    fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
+  });
+  map = new maplibregl.Map({
+    container: "map",
+    style,
+    // Compact (i) control aggregating the OSM basemap + N02 rail CC BY
+    // credits, matching railprint (both are required to be visible).
+    attributionControl: { compact: true },
+    dragRotate: false,
+    pitchWithRotate: false,
+    center: [138.2, 36.4],
+    zoom: 4,
+    fadeDuration: 200,
+  });
+  if (map.touchZoomRotate && map.touchZoomRotate.disableRotation)
+    map.touchZoomRotate.disableRotation();
+  map.addControl(
+    new maplibregl.NavigationControl({ showCompass: false }),
+    "top-left",
   );
-  // Offline basemap: tiles pre-downloaded into public/tiles (z5–z12 over the
-  // itinerary corridor). maxNativeZoom caps real tiles at 12; Leaflet upscales
-  // them for z13+ so deep zoom shows a (blurrier) map instead of blank. A light
-  // gray errorTileUrl keeps any missing tile from rendering as a broken image.
-  const localTileLayer = L.tileLayer("./tiles/{z}/{x}/{y}.png", {
-    minNativeZoom: 5,
-    maxNativeZoom: 12,
-    maxZoom: 19,
-    errorTileUrl:
-      "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='256'%20height='256'%3E%3Crect%20width='256'%20height='256'%20fill='%23eef0f2'/%3E%3C/svg%3E",
-    attribution: "Offline tiles © OpenStreetMap contributors © CARTO",
-  });
-  const noBasemapLayer = L.layerGroup();
 
-  limitedExpressRouteLayer = L.layerGroup();
-  stopLayer = L.layerGroup();
-  passThroughLayer = L.layerGroup();
-  endpointLabelLayer = L.layerGroup();
-
-  // Default to the offline local tiles so the UI works with no internet.
-  // The online basemaps remain selectable in the layers control.
-  localTileLayer.addTo(map);
-  limitedExpressRouteLayer.addTo(map);
-  stopLayer.addTo(map);
-  passThroughLayer.addTo(map);
-  endpointLabelLayer.addTo(map);
-
-  L.control
-    .layers(
-      {
-        "Local Tiles (Offline)": localTileLayer,
-        "OSM Standard (online)": osmOnlineLayer,
-        "Simple OSM (online)": simpleOsmLayer,
-        "Simple OSM + Labels (online)": simpleOsmLabelLayer,
-        "No Basemap": noBasemapLayer,
-      },
-      {
-        "Limited Express Routes": limitedExpressRouteLayer,
-        Stops: stopLayer,
-        "Pass-through Stations": passThroughLayer,
-      },
-    )
-    .addTo(map);
-
-  // The national rail/station overlays are pre-rendered tile layers, so the
-  // old zoom-gating that detached them below a zoom threshold is no longer
-  // needed — tiles are cheap at every zoom. The layers-control checkbox alone
-  // governs visibility.
-  //
-  // No moveend (pan) handler: route segments are attached once (SVG render-once)
-  // and Leaflet's SVG renderer repositions the existing paths on pan via a CSS
-  // transform. Recomputing an in-view set on every moveend was canvas-era work
-  // that is unnecessary — and was itself a source of post-load gesture jank.
-  //
-  // The only per-gesture work is this zoomend handler (fires on zoom, never on
-  // pan): when the view crosses PASSTHROUGH_MIN_ZOOM it re-renders the cheap
-  // marker layers so the thousands of pass-through circles are absent at low
-  // zoom. Routes need no zoom handler — their fixed screen-space smoothFactor
-  // self-adjusts level-of-detail with zoom.
-  map.on("zoomend", () => {
-    if (!cachedOrderedTrains.length) return;
-    if (map.getZoom() >= PASSTHROUGH_MIN_ZOOM !== passThroughShown)
-      renderTrainMarkers();
-    // Parallel-offset lanes are spaced in screen pixels; rebuild the route
-    // records at the new zoom so overlapping lines stay evenly fanned.
-    if (
-      _deckHasOverlaps &&
-      USE_DECKGL_ROUTES &&
-      window.DeckRoutes &&
-      DeckRoutes.layer
-    )
-      renderRoutesInView();
+  // Bounded readiness wait: a stalled tile origin must not hang boot — the
+  // rail/train sources are same-origin GeoJSON and usable immediately.
+  await new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+    };
+    map.on("load", finish);
+    setTimeout(finish, 9000);
   });
 
-  // Clamp the map over Japan: most zoomed-out view shows all territory
-  // centered in the middle ~50% of the viewport; panning is locked to that
-  // envelope. Recomputed on resize because minZoom depends on pixel size.
-  applyJapanMapConstraints();
-  map.on("resize", applyJapanMapConstraints);
-  map.on("baselayerchange", applyMapOpacity);
-
-  // GPU route overlay. Attached once; fed the whole train set by
-  // renderRoutesInView(). Clicking a route selects its train and opens the
-  // same popup the SVG path used. The "Limited Express Routes" checkbox in
-  // the layers control toggles an empty LayerGroup in this mode, so mirror
-  // its add/remove onto the deck overlay's visibility.
-  if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.available) {
-    DeckRoutes.attach(map, {
+  RailMap.attach(
+    map,
+    network,
+    {
       onClick: handleDeckRouteClick,
       onMarkerClick: handleDeckMarkerClick,
       onHover: handleDeckHover,
       getTooltip: deckGetTooltip,
-    });
-    map.on("overlayadd", (e) => {
-      if (e.layer === limitedExpressRouteLayer) DeckRoutes.setVisible(true);
-      if (e.layer === stopLayer) DeckRoutes.setMarkerVisibility("stop", true);
-      if (e.layer === passThroughLayer)
-        DeckRoutes.setMarkerVisibility("pass", true);
-    });
-    map.on("overlayremove", (e) => {
-      if (e.layer === limitedExpressRouteLayer) DeckRoutes.setVisible(false);
-      if (e.layer === stopLayer) DeckRoutes.setMarkerVisibility("stop", false);
-      if (e.layer === passThroughLayer)
-        DeckRoutes.setMarkerVisibility("pass", false);
-    });
-  }
+    },
+    basemap ? basemap.layers.map((l) => l.id) : [],
+  );
+  buildMapLayersControl(Boolean(basemap));
+
+  // Basemap tile failures are expected degradation (offline) — never fatal.
+  map.on("error", (e) => {
+    const msg = (e && e.error && e.error.message) || "";
+    const url = (e && e.error && e.error.url) || "";
+    if (url.includes("openfreemap") || msg.includes("openfreemap")) return;
+    console.warn("[map]", msg || e);
+  });
+
+  // Marker LOD: re-render markers when the view crosses PASSTHROUGH_MIN_ZOOM
+  // (the numerous white pass-through dots hide at low zoom); otherwise just
+  // re-layout the endpoint labels (their overlap layout is pixel-space).
+  map.on("zoomend", () => {
+    if (!cachedOrderedTrains.length) return;
+    if (map.getZoom() >= PASSTHROUGH_MIN_ZOOM !== passThroughShown)
+      renderTrainMarkers();
+    else updateEndpointLabels();
+  });
+
+  // Clamp the map over Japan; minZoom depends on the pixel viewport.
+  applyJapanMapConstraints();
+  map.on("resize", applyJapanMapConstraints);
+
+  // Trackpad pinch ANYWHERE on the page zooms the MAP, never the browser
+  // page (page zoom stays available via the browser's ±% menu / keyboard
+  // shortcuts). In Chromium/Edge a trackpad pinch arrives as a wheel event
+  // with ctrlKey set; preventDefault blocks the browser's page zoom. Over
+  // the map canvas MapLibre's own scroll-zoom handler already consumes the
+  // gesture, so we only forward pinches that land on the sidebar / other UI,
+  // anchored at the current map center. Plain (non-pinch) two-finger scroll
+  // is untouched so the sidebar still scrolls normally.
+  document.addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.ctrlKey) return; // not a pinch: keep normal scrolling
+      e.preventDefault(); // block the browser page-zoom everywhere
+      if (!map) return;
+      if (map.getContainer().contains(e.target)) return; // MapLibre's gesture
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 20; // DOM_DELTA_LINE -> px
+      else if (e.deltaMode === 2) delta *= 60; // DOM_DELTA_PAGE -> px
+      delta = Math.max(-50, Math.min(50, delta));
+      const target = map.getZoom() - delta * 0.01;
+      map.setZoom(
+        Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target)),
+      );
+    },
+    { passive: false },
+  );
+  // Safari reports a trackpad pinch as gesture* events instead; blocking the
+  // default suppresses its full-page zoom the same way.
+  ["gesturestart", "gesturechange", "gestureend"].forEach((type) =>
+    document.addEventListener(type, (e) => e.preventDefault(), {
+      passive: false,
+    }),
+  );
 }
 
-// deck.gl PathLayer click -> select train + open the segment popup at the
-// clicked coordinate (deck has no per-feature Leaflet popup binding).
+// Route click -> select train + open the segment popup at the clicked spot.
 function handleDeckRouteClick(info) {
   if (!info || !info.object) return;
   const { train, feature } = info.object;
   if (!train) return;
   pickTrain(train.id);
   if (info.coordinate && map) {
-    L.popup({ maxWidth: 320 })
-      .setLatLng([info.coordinate[1], info.coordinate[0]])
-      .setContent(buildTrainSegmentPopup(train, feature))
-      .openOn(map);
+    new maplibregl.Popup({ maxWidth: "320px" })
+      .setLngLat(info.coordinate)
+      .setHTML(buildTrainSegmentPopup(train, feature))
+      .addTo(map);
   }
 }
 
@@ -3488,17 +3372,13 @@ function fitDateBounds(date) {
   const dayTrains = getTrainsForDate(trainStore.trains, date).filter(
     (t) => t.visible !== false,
   );
-  const layers = [];
+  const features = [];
   dayTrains.forEach((train) => {
-    getMatchedRouteFeatures(train).forEach((feature) =>
-      layers.push(L.geoJSON(feature)),
-    );
+    getMatchedRouteFeatures(train).forEach((feature) => features.push(feature));
   });
-  if (layers.length) {
-    smoothFitBounds(L.featureGroup(layers).getBounds(), {
-      padding: [90, 90],
-      maxZoom: 12,
-    });
+  const bounds = featureCollectionBounds(features);
+  if (bounds) {
+    smoothFitBounds(bounds, { padding: 90, maxZoom: 11 });
     return;
   }
   const points = [];
@@ -3508,8 +3388,8 @@ function fitDateBounds(date) {
       if (ll) points.push(toLatLng(ll));
     }),
   );
-  if (points.length)
-    smoothFitBounds(L.latLngBounds(points), { padding: [90, 90], maxZoom: 12 });
+  const ptBounds = latLngPointsBounds(points);
+  if (ptBounds) smoothFitBounds(ptBounds, { padding: 90, maxZoom: 11 });
 }
 
 // Render minutes-from-midnight back to "HH:mm" (wrapping next-day times).
@@ -4043,41 +3923,13 @@ function appendTrainToLayers(train) {
   const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
   if (dateScoped && getTrainDate(train) !== selectedDate) return;
 
-  // In GPU mode the routes are drawn by the deck.gl PathLayer on the
-  // authoritative renderAll() at the end of import; skip allocating SVG
-  // segments here (markers below still give incremental import feedback).
-  if (!USE_DECKGL_ROUTES) {
-    const features = getMatchedRouteFeatures(train);
-    getRouteRenderItems(train, false, features, new Map()).forEach((item) => {
-      renderTrainRouteSegment(train, item.feature, {
-        dimmed: false,
-        focused: false,
-        overlap: null,
-      }).addTo(limitedExpressRouteLayer);
-    });
-  }
-
-  const markerOptions = { dimmed: false, focused: false };
-  (train.stops || []).forEach((stop, idx) => {
-    const stopFeature = getStopFeature(stop, train);
-    if (!stopFeature) return;
-    // Hide (do not draw at all) any stop/pass-through that is not effectively
-    // ridden. Pass-throughs inherit their interval's ride state.
-    const eff = effectiveStopRide(train.stops, idx);
-    if (!eff) return;
-    stopFeature.properties.ride_segment = eff;
-    if (stopFeature.properties.stop_type === "pass_through")
-      renderPassThroughMarker(stopFeature, train, markerOptions).addTo(
-        passThroughLayer,
-      );
-    else renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
-  });
-  getComputedPassThroughFeatures(train).forEach((feature) => {
-    if (feature.properties && feature.properties.ride_segment === false) return;
-    renderPassThroughMarker(feature, train, markerOptions).addTo(
-      passThroughLayer,
-    );
-  });
+  // GL mode: incremental feedback = drop the route-item cache and re-issue
+  // the layers for every train loaded so far (a cheap JS record rebuild +
+  // one GeoJSON setData; no per-train DOM work). The single authoritative
+  // renderAll() at the end of the load still applies the final styling.
+  cachedRouteItems = null;
+  cachedRouteSignature = "";
+  if (typeof renderTrainLayers === "function" && map) renderTrainLayers();
 }
 
 // Three-tier emphasis for the current scope, drawn bottom→top as:
@@ -4101,9 +3953,6 @@ function trainScopeFlags(train) {
 }
 
 function renderTrainLayers() {
-  stopLayer.clearLayers();
-  passThroughLayer.clearLayers();
-
   // A concrete selected date now always scopes the map: that date's trains
   // stay solid and other dates draw half-transparent (dimmed) — they are NOT
   // removed. The optional "地圖僅顯示當前日期" checkbox is a stricter override
@@ -4164,47 +4013,17 @@ function renderTrainMarkers() {
   passThroughShown = !map || map.getZoom() >= PASSTHROUGH_MIN_ZOOM;
   updateEndpointLabels();
 
-  // GPU path: stop + pass-through markers are drawn by a deck.gl
-  // ScatterplotLayer, so zoom no longer reprojects thousands of Leaflet SVG
-  // circles on the main thread (the remaining zoom stall). Rebuilding the
-  // record array on a pass-through-gate crossing is a cheap JS pass with no
-  // DOM work.
-  if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.layer) {
-    DeckRoutes.setMarkers(
+  // Stop + pass-through markers render as MapLibre circle layers; rebuilding
+  // the record array on a pass-through-gate crossing is a cheap JS pass.
+  if (window.RailMap && map) {
+    RailMap.setMarkers(
       buildDeckMarkerRecords(
         cachedOrderedTrains,
         focusActive,
         passThroughShown,
       ),
     );
-    return;
   }
-
-  stopLayer.clearLayers();
-  passThroughLayer.clearLayers();
-  const endpoints = computeScopedEndpoints(cachedOrderedTrains);
-  cachedOrderedTrains.forEach((train) => {
-    const markerOptions = trainScopeFlags(train);
-    (train.stops || []).forEach((stop) => {
-      const stopFeature = getStopFeature(stop, train);
-      if (!stopFeature) return;
-      if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
-      if (stopFeature.properties.stop_type === "pass_through") {
-        if (passThroughShown)
-          renderPassThroughMarker(stopFeature, train, markerOptions).addTo(
-            passThroughLayer,
-          );
-      } else {
-        renderStopMarker(stopFeature, train, markerOptions).addTo(stopLayer);
-      }
-    });
-    if (passThroughShown && !DISPLAY.onlyEndpoints)
-      getComputedPassThroughFeatures(train).forEach((feature) =>
-        renderPassThroughMarker(feature, train, markerOptions).addTo(
-          passThroughLayer,
-        ),
-      );
-  });
 }
 
 // Signature of everything the overlap split depends on (zoom-independent).
@@ -4258,24 +4077,9 @@ function buildRouteItems(orderedTrains, focusActive) {
     ),
   );
 
-  // GPU path: routes are drawn by a single deck.gl PathLayer built from the
-  // items in renderRoutesInView(), so we skip allocating ~700 L.geoJSON SVG
-  // layers entirely (that allocation + its SVG paint was the cost being
-  // eliminated). The popup/click data still lives on each item via item.train
-  // / item.feature, which the deck onClick handler reads.
-  if (!USE_DECKGL_ROUTES) {
-    // Pre-create one Leaflet layer per item so renderRoutesInView can add/remove
-    // existing objects instead of allocating new ones on every moveend/zoom.
-    items.forEach((item) => {
-      const sf = trainScopeFlags(item.train);
-      item.leafletLayer = renderTrainRouteSegment(item.train, item.feature, {
-        dimmed: sf.dimmed,
-        focused: sf.focused,
-        overlap: item.overlapInfo || null,
-      });
-    });
-  }
-
+  // Routes are drawn from these items as GeoJSON line layers in
+  // renderRoutesInView(); the popup/click data lives on each item via
+  // item.train / item.feature, which the map onClick handler reads.
   return items;
 }
 
@@ -4298,23 +4102,15 @@ function buildRouteItems(orderedTrains, focusActive) {
 // pan or zoom. clearLayers() first so any segments added incrementally by
 // appendTrainToLayers during a progressive import are not double-counted.
 function renderRoutesInView() {
-  if (!map || !cachedRouteItems) return;
-  if (USE_DECKGL_ROUTES && window.DeckRoutes && DeckRoutes.layer) {
-    // GPU path — one PathLayer for the whole train set. No per-segment
-    // Leaflet objects, no SVG paint, no per-gesture work.
-    DeckRoutes.setData(
-      buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive),
-    );
-    // Draw the selected train's route in a dedicated layer above all the
-    // others so a click reliably raises it to the top (intra-layer draw
-    // order isn't a guarantee in a single GPU layer).
-    DeckRoutes.setSelected(focusedTrainId || null);
-    return;
-  }
-  limitedExpressRouteLayer.clearLayers();
-  cachedRouteItems.forEach((item) => {
-    if (item.leafletLayer) item.leafletLayer.addTo(limitedExpressRouteLayer);
-  });
+  if (!map || !cachedRouteItems || !window.RailMap) return;
+  // One GeoJSON source for the whole train set; MapLibre re-tiles it on the
+  // worker, so pan/zoom stay GPU-cheap regardless of point count.
+  RailMap.setData(
+    buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive),
+  );
+  // The selected train re-draws in the dedicated selection layers (dark ink
+  // casing + full-color line) above all other routes.
+  RailMap.setSelected(focusedTrainId || null);
 }
 
 // =========================================================================
@@ -4331,7 +4127,9 @@ let _deckHasOverlaps = false;
 
 function overlapOffsetDeg(px) {
   if (!map || !px) return 0;
-  const z = map.getZoom();
+  // MapLibre zoom convention: z0 = whole world in 512px (one level lower than
+  // Leaflet's 256px-tile zoom for the same view), hence z + 1 here.
+  const z = map.getZoom() + 1;
   const lat = map.getCenter().lat;
   const metersPerPx =
     (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z);
@@ -4484,38 +4282,37 @@ function deckMarkerRecord(feature, train, opts, kind) {
   const p = feature.properties || {};
   const coord = getFeatureDisplayCoordinate(feature);
   if (!Array.isArray(coord) || coord.length < 2) return null;
-  const rgb = hexToRgb(
-    train.style && train.style.color ? train.style.color : DEFAULT_TRAIN_COLOR,
-  );
   const focused = opts.focused === true;
   const dimmed = opts.dimmed === true;
+  let s;
+  let category;
   if (kind === "pass") {
-    const active = p.ride_segment !== false;
-    const s = passThroughMarkerStyleValues(active, { focused, dimmed });
-    return {
-      position: [coord[0], coord[1]],
-      radius: s.radius,
-      lineWidth: s.lineWidth,
-      fillColor: [rgb[0], rgb[1], rgb[2], Math.round(s.fillOpacity * 255)],
-      lineColor: [rgb[0], rgb[1], rgb[2], Math.round(s.lineOpacity * 255)],
-      category: "pass",
-      feature,
-      train,
-    };
+    s = passThroughMarkerStyleValues(p.ride_segment !== false, {
+      focused,
+      dimmed,
+    });
+    category = "pass";
+  } else {
+    // BLACK dot only at the actually-ridden boundary (boarding/alighting);
+    // scheduled origin/destination that weren't the real endpoints stay white.
+    s = stopMarkerStyleValues(p.ride_segment === true, p.ride_boundary === true, {
+      focused,
+      dimmed,
+    });
+    category = "stop";
   }
-  const isTerminal = p.stop_type === "origin" || p.stop_type === "destination";
-  const active = p.ride_segment === true;
-  const s = stopMarkerStyleValues(active, isTerminal, { focused, dimmed });
-  const fill = s.fillWhite
-    ? [255, 255, 255, 255]
-    : [rgb[0], rgb[1], rgb[2], Math.round(s.fillOpacity * 255)];
   return {
     position: [coord[0], coord[1]],
     radius: s.radius,
     lineWidth: s.lineWidth,
-    fillColor: fill,
-    lineColor: [rgb[0], rgb[1], rgb[2], Math.round(s.lineOpacity * 255)],
-    category: "stop",
+    fillColor: [s.fill[0], s.fill[1], s.fill[2], Math.round(s.fillOpacity * 255)],
+    lineColor: [
+      s.strokeCol[0],
+      s.strokeCol[1],
+      s.strokeCol[2],
+      Math.round(s.lineOpacity * 255),
+    ],
+    category,
     feature,
     train,
   };
@@ -4537,6 +4334,10 @@ function getComputedPassThroughFeaturesCached(train) {
   return v;
 }
 
+// Every ridden station draws a dot, but ONLY the first and last effectively-
+// ridden stop of each train (the actual boarding / alighting stations) get
+// the BLACK ink dot — every other stop and pass-through station renders as a
+// WHITE dot with an ink ring.
 function buildDeckMarkerRecords(
   orderedTrains,
   focusActive,
@@ -4547,16 +4348,28 @@ function buildDeckMarkerRecords(
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
     const opts = trainScopeFlags(train);
-    (train.stops || []).forEach((stop, idx) => {
+    const stops = train.stops || [];
+    // First + last effectively-ridden stopping station = the black-dot pair.
+    const ridden = [];
+    stops.forEach((stop, idx) => {
+      if (stop.stop_type === "pass_through") return;
+      if (!effectiveStopRide(stops, idx)) return;
+      ridden.push(idx);
+    });
+    const boundarySet = new Set(
+      ridden.length ? [ridden[0], ridden[ridden.length - 1]] : [],
+    );
+    stops.forEach((stop, idx) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
       if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       const isPass = stopFeature.properties.stop_type === "pass_through";
       if (isPass && !includePassThrough) return;
       // Hidden (not effectively ridden) markers are dropped entirely.
-      const eff = effectiveStopRide(train.stops, idx);
+      const eff = effectiveStopRide(stops, idx);
       if (!eff) return;
       stopFeature.properties.ride_segment = eff;
+      stopFeature.properties.ride_boundary = boundarySet.has(idx);
       const rec = deckMarkerRecord(
         stopFeature,
         train,
@@ -4577,17 +4390,17 @@ function buildDeckMarkerRecords(
   return records;
 }
 
-// deck.gl marker click -> select train + open the stop popup at the marker.
+// Marker click -> select train + open the stop popup at the marker.
 function handleDeckMarkerClick(info) {
   if (!info || !info.object) return;
   const { train, feature } = info.object;
   if (!train) return;
   pickTrain(train.id);
   if (info.coordinate && map) {
-    L.popup({ maxWidth: 320 })
-      .setLatLng([info.coordinate[1], info.coordinate[0]])
-      .setContent(buildStopPopup(feature, train))
-      .openOn(map);
+    new maplibregl.Popup({ maxWidth: "320px" })
+      .setLngLat(info.coordinate)
+      .setHTML(buildStopPopup(feature, train))
+      .addTo(map);
   }
 }
 
@@ -6992,21 +6805,30 @@ function routeSegmentStyleValues(
   return { opacity, width, dashed };
 }
 
+// NEUTRAL station dots (railprint C4: hue is reserved for LINES). The
+// actually-ridden boarding/alighting pair (ride boundary) = BLACK ink dot
+// with a white ring; every other stop / pass-through station = WHITE dot
+// with an ink ring. Dimming rides the alpha channel.
+const RP_INK_RGB = [26, 26, 26]; // tokens.ink
+const RP_WHITE_RGB = [255, 255, 255];
+
 function stopMarkerStyleValues(
   active,
-  isTerminal,
+  isBoundary,
   { focused = false, dimmed = false } = {},
 ) {
-  const baseRadius = isTerminal ? DISPLAY.terminalRadius : DISPLAY.stopRadius;
+  const baseRadius = isBoundary ? DISPLAY.terminalRadius : DISPLAY.stopRadius;
+  const alpha = dimmed ? DISPLAY.dimOpacity : 1;
   return {
     radius: focused ? baseRadius + DISPLAY.focusBoost : baseRadius,
     lineWidth: Math.max(
       1,
-      Math.round((focused ? 4 : active ? 3 : 2) * DISPLAY.markerStrokeScale),
+      Math.round((focused ? 2 : 1) * DISPLAY.markerStrokeScale),
     ),
-    fillWhite: active,
-    fillOpacity: active ? 1 : 0.12,
-    lineOpacity: dimmed ? DISPLAY.dimOpacity : active ? 1 : 0.32,
+    fill: isBoundary ? RP_INK_RGB : RP_WHITE_RGB,
+    strokeCol: isBoundary ? RP_WHITE_RGB : RP_INK_RGB,
+    fillOpacity: alpha,
+    lineOpacity: alpha,
   };
 }
 
@@ -7014,126 +6836,21 @@ function passThroughMarkerStyleValues(
   active,
   { focused = false, dimmed = false } = {},
 ) {
+  const alpha = dimmed ? DISPLAY.dimOpacity : active ? 0.9 : 0.4;
   return {
     radius: focused
       ? DISPLAY.passRadius + Math.round(DISPLAY.focusBoost / 2)
       : DISPLAY.passRadius,
-    lineWidth: Math.max(1, Math.round((focused ? 2 : 1) * DISPLAY.markerStrokeScale)),
-    fillOpacity: active ? 0.35 : 0.12,
-    lineOpacity: dimmed ? DISPLAY.dimOpacity : active ? 0.45 : 0.18,
+    lineWidth: Math.max(1, Math.round(DISPLAY.markerStrokeScale)),
+    fill: RP_WHITE_RGB,
+    strokeCol: RP_INK_RGB,
+    fillOpacity: alpha,
+    lineOpacity: alpha,
   };
 }
 
-function renderTrainRouteSegment(train, segmentFeature, renderOptions = {}) {
-  const ridden = segmentFeature.properties?.ride_segment === true;
-  const color = train.style?.color || DEFAULT_TRAIN_COLOR;
-  const focused = renderOptions.focused === true;
-  const dimmed = renderOptions.dimmed === true;
-  const style = routeSegmentStyleValues(train, ridden, { focused, dimmed });
-  // Overlapping routes are drawn directly on their shared track (the old
-  // parallel-offset "transit map" fan-out has been removed); when trains share
-  // a segment the later-drawn route simply stacks on top.
-
-  // smoothFactor's Douglas-Peucker tolerance is measured in SCREEN PIXELS at the
-  // current zoom, so a single fixed value is automatic level-of-detail: at low
-  // zoom the compressed route collapses to far fewer painted segments, and zoomed
-  // in (where the route spreads across many pixels) almost no points are dropped,
-  // so it stays crisp. ~2.5px is visually lossless for a train line yet sharply
-  // cuts the segment count the SVG paint phase has to record at country zoom —
-  // directly attacking the Paint bottleneck the trace identified.
-  // Per-segment label: prefer the branch portion's own \u53f7/name when set.
-  const segSection = routeSectionForSegment(train, segmentFeature.properties || {});
-  const branchNum = segSection && segSection.number;
-  const segNum = branchNum
-    ? branchNum
-    : train.number && train.number !== train.name
-      ? train.number
-      : "";
-  const labelName = (segSection && segSection.name) || train.name || train.number || "";
-  const lineLabel = labelName + (segNum ? `\u3000${segNum}` : "");
-  return L.geoJSON(segmentFeature, {
-    renderer: limitedExpressRouteRenderer,
-    smoothFactor: 2.5,
-    style: {
-      color,
-      weight: style.width,
-      opacity: style.opacity,
-      dashArray: style.dashed ? "4 6" : null,
-      dashOffset: null,
-      lineCap: "round",
-    },
-    onEachFeature: (feature, layer) => {
-      layer.bindPopup(() => buildTrainSegmentPopup(train, feature));
-      if (lineLabel)
-        layer.bindTooltip(lineLabel, {
-          sticky: true,
-          direction: "top",
-          offset: [0, -12],
-          className: "line-label",
-        });
-      layer.on("click", () => pickTrain(train.id));
-      layer.on("mouseover", () => {
-        hoverLabelTrainId = train.id;
-        updateEndpointLabels();
-      });
-      layer.on("mouseout", () => {
-        if (hoverLabelTrainId === train.id) {
-          hoverLabelTrainId = null;
-          updateEndpointLabels();
-        }
-      });
-    },
-  });
-}
-
-function renderStopMarker(stopFeature, train, renderOptions = {}) {
-  const isTerminal =
-    stopFeature.properties.stop_type === "origin" ||
-    stopFeature.properties.stop_type === "destination";
-  const active = stopFeature.properties.ride_segment === true;
-  const color = train.style?.color || DEFAULT_TRAIN_COLOR;
-  const focused = renderOptions.focused === true;
-  const dimmed = renderOptions.dimmed === true;
-  const style = stopMarkerStyleValues(active, isTerminal, { focused, dimmed });
-  return L.circleMarker(toLatLng(stopFeature), {
-    renderer: limitedExpressRouteRenderer,
-    radius: style.radius,
-    color,
-    weight: style.lineWidth,
-    fillColor: style.fillWhite ? "#fff" : color,
-    fillOpacity: style.fillOpacity,
-    opacity: style.lineOpacity,
-  })
-    .bindPopup(buildStopPopup(stopFeature, train))
-    .bindTooltip(stopTooltipHtml(stopFeature.properties), {
-      direction: "top",
-      className: "station-label",
-      opacity: 1,
-    });
-}
-
-function renderPassThroughMarker(stopFeature, train, renderOptions = {}) {
-  const active = stopFeature.properties.ride_segment !== false;
-  const color = train.style?.color || DEFAULT_TRAIN_COLOR;
-  const focused = renderOptions.focused === true;
-  const dimmed = renderOptions.dimmed === true;
-  const style = passThroughMarkerStyleValues(active, { focused, dimmed });
-  return L.circleMarker(toLatLng(stopFeature), {
-    renderer: limitedExpressRouteRenderer,
-    radius: style.radius,
-    color,
-    weight: style.lineWidth,
-    fillColor: color,
-    fillOpacity: style.fillOpacity,
-    opacity: style.lineOpacity,
-  })
-    .bindPopup(buildStopPopup(stopFeature, train))
-    .bindTooltip(stopTooltipHtml(stopFeature.properties), {
-      direction: "top",
-      className: "station-label",
-      opacity: 1,
-    });
-}
+// (The Leaflet SVG render primitives are gone with Leaflet; routes and
+// markers now render as MapLibre GL layers — see railmap.js.)
 
 function toLatLng(feature) {
   const coord = getFeatureDisplayCoordinate(feature);
@@ -7169,36 +6886,83 @@ function coordinatesEqual(a, b) {
 //  §32.  Map fit, bounds clamping & import progress UI
 // =========================================================================
 
-// Smoothly animate the map to a bounds for focus actions. flyToBounds always
-// performs a combined zoom+pan flight (no teleport), so even a long jump glides.
-// fitBounds, by contrast, snaps instantly for any move beyond ~one screen — the
-// source of the focus "jump". Invalid/empty bounds are ignored.
+// Bounds over every coordinate of the given GeoJSON features (LineString /
+// MultiLineString / Point), as MapLibre [[w,s],[e,n]]. null when empty.
+function featureCollectionBounds(features) {
+  let w = Infinity,
+    s = Infinity,
+    e = -Infinity,
+    n = -Infinity,
+    any = false;
+  (features || []).forEach((feature) => {
+    getFeaturePathCoordinates(feature).forEach((c) => {
+      if (!Array.isArray(c) || c.length < 2) return;
+      any = true;
+      if (c[0] < w) w = c[0];
+      if (c[0] > e) e = c[0];
+      if (c[1] < s) s = c[1];
+      if (c[1] > n) n = c[1];
+    });
+  });
+  return any
+    ? [
+        [w, s],
+        [e, n],
+      ]
+    : null;
+}
+
+// Bounds over [lat,lng] point pairs (the app's legacy point order).
+function latLngPointsBounds(points) {
+  let w = Infinity,
+    s = Infinity,
+    e = -Infinity,
+    n = -Infinity,
+    any = false;
+  (points || []).forEach((p) => {
+    if (!Array.isArray(p) || p.length < 2) return;
+    any = true;
+    if (p[1] < w) w = p[1];
+    if (p[1] > e) e = p[1];
+    if (p[0] < s) s = p[0];
+    if (p[0] > n) n = p[0];
+  });
+  return any
+    ? [
+        [w, s],
+        [e, n],
+      ]
+    : null;
+}
+
+// Smoothly animate the map to [[w,s],[e,n]] bounds for focus actions.
+// maxZoom follows the MapLibre zoom convention (one lower than the old
+// Leaflet numbers for the same view).
 function smoothFitBounds(bounds, opts) {
   if (!map || !bounds) return;
-  if (typeof bounds.isValid === "function" && !bounds.isValid()) return;
-  const { maxZoom = 13, padding = [90, 90] } = opts || {};
-  map.flyToBounds(bounds, {
+  const { maxZoom = 12, padding = 90 } = opts || {};
+  map.fitBounds(bounds, {
     padding,
     maxZoom,
-    duration: 0.8,
-    easeLinearity: 0.25,
+    duration: 800,
+    essential: true,
   });
 }
 
 function fitTrainBounds(train) {
   if (!train) return;
   const features = getMatchedRouteFeatures(train);
-  if (features.length) {
-    const group = L.featureGroup(features.map((feature) => L.geoJSON(feature)));
-    smoothFitBounds(group.getBounds(), { padding: [90, 90], maxZoom: 12 });
+  const bounds = featureCollectionBounds(features);
+  if (bounds) {
+    smoothFitBounds(bounds, { padding: 90, maxZoom: 11 });
     return;
   }
   const points = (train.stops || [])
     .map((stop) => resolveStationForTrain(stop, train))
     .filter(Boolean)
     .map(toLatLng);
-  if (points.length)
-    smoothFitBounds(L.latLngBounds(points), { padding: [90, 90], maxZoom: 12 });
+  const ptBounds = latLngPointsBounds(points);
+  if (ptBounds) smoothFitBounds(ptBounds, { padding: 90, maxZoom: 11 });
 }
 
 function setImportProgress(count, total, label = "") {
@@ -7216,28 +6980,40 @@ function resetImportProgress() {
   els.importProgressText.textContent = "";
   els.importProgressWrap.hidden = true;
 }
+// [lat,lng] Leaflet-order bounds constant -> MapLibre [[w,s],[e,n]].
+function toLngLatBounds(latLngBounds) {
+  return [
+    [latLngBounds[0][1], latLngBounds[0][0]],
+    [latLngBounds[1][1], latLngBounds[1][0]],
+  ];
+}
+
 function fitJapanMainIslands() {
   if (!map) return;
-  map.fitBounds(JAPAN_MAIN_ISLANDS_BOUNDS, {
-    padding: [28, 28],
-    animate: false,
+  map.fitBounds(toLngLatBounds(JAPAN_MAIN_ISLANDS_BOUNDS), {
+    padding: 28,
+    duration: 0,
   });
 }
 
-// Force the map to stay over Japan. minZoom is whatever makes the full
-// territory fit inside the central 50% of the viewport (≈25% ocean margin on
-// each side); maxBounds + full viscosity stop panning past that envelope.
-// minZoom is recomputed on resize because it depends on the pixel viewport.
+// Force the map to stay over Japan. minZoom is roughly whatever makes the
+// full territory fit inside the central ~50% of the viewport; maxBounds stops
+// panning past a padded envelope. Recomputed on resize because the fit zoom
+// depends on the pixel viewport.
 function applyJapanMapConstraints() {
   if (!map) return;
-  const territory = L.latLngBounds(JAPAN_FULL_TERRITORY_BOUNDS);
-  map.setMaxBounds(territory.pad(0.5));
-  map.options.maxBoundsViscosity = 1.0;
-  const size = map.getSize();
-  if (!size.x || !size.y) return;
-  const halfPad = L.point(size.x * 0.5, size.y * 0.5);
-  const minZoom = map.getBoundsZoom(territory, false, halfPad);
-  if (!isFinite(minZoom)) return;
+  const [sw, ne] = JAPAN_FULL_TERRITORY_BOUNDS; // [lat,lng] pairs
+  const latPad = (ne[0] - sw[0]) * 0.5;
+  const lngPad = (ne[1] - sw[1]) * 0.5;
+  map.setMaxBounds([
+    [sw[1] - lngPad, Math.max(-85, sw[0] - latPad)],
+    [ne[1] + lngPad, Math.min(85, ne[0] + latPad)],
+  ]);
+  const cam = map.cameraForBounds(toLngLatBounds(JAPAN_FULL_TERRITORY_BOUNDS));
+  if (!cam || !isFinite(cam.zoom)) return;
+  // Fit-zoom fills the viewport; one level lower leaves the ~25% ocean margin
+  // the old Leaflet half-viewport padding produced.
+  const minZoom = Math.max(2, cam.zoom - 1);
   map.setMinZoom(minZoom);
   if (map.getZoom() < minZoom) map.setZoom(minZoom);
 }

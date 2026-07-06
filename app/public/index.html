@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>N02 Limited Express Train Manager</title>
-    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
+    <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -168,32 +168,32 @@
         <section class="section">
           <h2 data-i18n="sec.legend">圖例與資料來源</h2>
           <div class="hint">
-            <span class="legend-dot" style="color: #777"></span><span data-i18n="legend.railway">N02 全鐵路 overlay (N02_002=1/2/3/4/5)</span>
+            <span class="legend-dot" style="color: #7c8a82"></span><span data-i18n="legend.railway">全部線路（開關預設關閉）：各線路官方色（淡）＋灰色車站點</span>
           </div>
           <div class="hint">
-            <span class="legend-dot" style="color: #444"></span><span data-i18n="legend.station">N02 全車站 overlay (N02_002=1/2/3/4/5)</span>
+            <span class="legend-dot" style="color: #1a1a1a"></span><span data-i18n="legend.station">停靠站：墨色圓點（選中列車反白＋墨色圈）</span>
           </div>
           <div class="hint">
-            <span class="legend-dot" style="color: var(--accent)"></span><span data-i18n="legend.express">特急路線、停靠與通過站 overlay</span>
+            <span class="legend-dot" style="color: var(--accent)"></span><span data-i18n="legend.express">特急路線：全色加粗（選中時墨色底襯）</span>
           </div>
           <p class="hint" data-i18n="legend.source1">
-            鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成。
+            鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成（CC BY 4.0）。
           </p>
           <p class="hint" data-i18n="legend.source2">
-            Map data © OpenStreetMap contributors. N02 railway data © Ministry
-            of Land, Infrastructure, Transport and Tourism of Japan, CC BY 4.0.
+            Basemap © OpenStreetMap contributors｜OpenFreeMap (positron).
+            Romanizations © OpenStreetMap contributors, ODbL. Rail package ©
+            railprint (jp-2025).
           </p>
         </section>
       </aside>
       <main id="map"></main>
     </div>
-    <script src="vendor/leaflet/leaflet.js"></script>
-    <!-- deck.gl 9 standalone UMD (Deck, PathLayer, PathStyleExtension) + GPU route overlay.
-     Routes render on the GPU; pass ?deck=0 in the URL to fall back to SVG rendering.
-     Vendored locally so the UI runs fully offline. -->
-    <script src="vendor/deckgl/deck.gl.min.js"></script>
+    <!-- MapLibre GL (vendored, runs offline) + the railprint-style map core:
+     vendored OpenFreeMap positron basemap, the full N02 national network in
+     official line colors, and railprint's ridden-line / station-dot styling. -->
+    <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="i18n.js"></script>
-    <script src="deckgl-routes.js"></script>
+    <script src="railmap.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

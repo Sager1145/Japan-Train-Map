@@ -139,24 +139,24 @@
     // legend & sources
     "sec.legend": { zh: "圖例與資料來源", en: "Legend & Data Sources" },
     "legend.railway": {
-      zh: "N02 全鐵路 overlay (N02_002=1/2/3/4/5)",
-      en: "N02 full railway overlay (N02_002=1/2/3/4/5)",
+      zh: "全部線路（開關預設關閉）：各線路官方色（淡）＋灰色車站點",
+      en: "All railway lines (switch, off by default): official line colors (faded) + grey station dots",
     },
     "legend.station": {
-      zh: "N02 全車站 overlay (N02_002=1/2/3/4/5)",
-      en: "N02 full station overlay (N02_002=1/2/3/4/5)",
+      zh: "停靠站：墨色圓點（選中列車反白＋墨色圈）",
+      en: "Stops: ink dots (selected train inverts to white + ink ring)",
     },
     "legend.express": {
-      zh: "特急路線、停靠與通過站 overlay",
-      en: "Limited express routes, stops & pass-throughs overlay",
+      zh: "特急路線：全色加粗（選中時墨色底襯）",
+      en: "Limited express routes: full color, thicker (ink casing when selected)",
     },
     "legend.source1": {
-      zh: "鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成。",
-      en: 'Railway data: created from "National Land Numerical Information (Railway Data N02)" (Ministry of Land, Infrastructure, Transport and Tourism of Japan).',
+      zh: "鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成（CC BY 4.0）。",
+      en: 'Railway data: created from "National Land Numerical Information (Railway Data N02)" (MLIT Japan), CC BY 4.0.',
     },
     "legend.source2": {
-      zh: "Map data © OpenStreetMap contributors. N02 railway data © Ministry of Land, Infrastructure, Transport and Tourism of Japan, CC BY 4.0.",
-      en: "Map data © OpenStreetMap contributors. N02 railway data © Ministry of Land, Infrastructure, Transport and Tourism of Japan, CC BY 4.0.",
+      zh: "Basemap © OpenStreetMap contributors｜OpenFreeMap (positron)。Romanizations © OpenStreetMap contributors, ODbL。Rail package © railprint (jp-2025)。",
+      en: "Basemap © OpenStreetMap contributors｜OpenFreeMap (positron). Romanizations © OpenStreetMap contributors, ODbL. Rail package © railprint (jp-2025).",
     },
 
     // map tooltips / labels

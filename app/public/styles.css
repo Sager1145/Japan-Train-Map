@@ -50,7 +50,8 @@ body {
 #map {
   width: 100%;
   height: 100%;
-  background: #ffffff;
+  /* railprint / positron muted paper grey — also the offline plain background */
+  background: rgb(242, 243, 240);
 }
 
 header {
@@ -469,8 +470,12 @@ tr.branch-junction td {
   vertical-align: -1px;
 }
 
-.leaflet-popup-content {
+.maplibregl-popup-content {
   min-width: 220px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(26, 26, 26, 0.18);
+  font: inherit;
 }
 .popup-title {
   font-weight: 750;
@@ -560,7 +565,8 @@ details[open] > .submenu-summary::before {
 }
 
 /* ---- Map hover / selection labels ----------------------------------- */
-.leaflet-tooltip.station-label {
+/* Endpoint-label markers (maplibregl.Marker DOM elements). */
+.station-label {
   background: #fff;
   border: 1px solid var(--line);
   color: var(--text);
@@ -570,13 +576,11 @@ details[open] > .submenu-summary::before {
   border-radius: 4px;
   box-shadow: var(--shadow);
   white-space: nowrap;
-}
-.leaflet-tooltip.station-label::before {
-  display: none;
+  pointer-events: none;
 }
 /* Day-endpoint labels (start / end of the selected day) — emphasised so they
    stand out from ordinary hover labels. */
-.leaflet-tooltip.station-label--endpoint {
+.station-label--endpoint {
   border: 1.5px solid var(--accent-2);
   box-shadow: 0 1px 7px rgba(0, 0, 0, 0.3);
   z-index: 650;
@@ -617,9 +621,116 @@ details[open] > .submenu-summary::before {
   margin-left: 2px;
 }
 
-/* Line hover popup: floats above the cursor (deck.gl positions the outer
-   wrapper at the pointer; this inner box lifts the visible content up so it
-   never sits under the mouse or covers the line). */
+/* ---- Custom layers control (basemap picker + overlay toggles) -------- */
+.map-layers-control {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.12);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  max-width: 220px;
+}
+.map-layers-control select {
+  font-size: 12px;
+  padding: 2px 4px;
+  margin-bottom: 4px;
+}
+.map-layers-control label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* ---- railprint C5 station hover popup -------------------------------- */
+.rp-popup {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  padding: 2px 2px;
+  min-width: 140px;
+  max-width: 240px;
+}
+.rp-popup-head {
+  display: flex;
+  flex-direction: column;
+}
+.rp-popup-ja {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+.rp-popup-roma {
+  font-size: 11px;
+  color: #6b756f;
+}
+.rp-line-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 168px; /* ~6 rows then scroll */
+  overflow-y: auto;
+}
+.rp-line-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #1a1a1a;
+  min-height: 18px;
+}
+.rp-line-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-line-co {
+  flex: none;
+  font-size: 0.82em;
+  color: #6b756f;
+  white-space: nowrap;
+  max-width: 7em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rp-line-logo {
+  height: 16px;
+  width: auto;
+  max-width: 48px;
+  object-fit: contain;
+  flex: none;
+  display: block;
+}
+.rp-line-swatch {
+  width: 14px;
+  height: 6px;
+  border-radius: 3px;
+  flex: none;
+  display: inline-block;
+}
+/* The station hover popup should be compact (the stop popup keeps 220px). */
+.maplibregl-popup-content:has(.rp-popup) {
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+/* Line hover popup: floats above the cursor (the tooltip container is
+   positioned at the pointer; this inner box lifts the visible content up so
+   it never sits under the mouse or covers the line). */
 .map-line-tip {
   position: absolute;
   left: 0;
