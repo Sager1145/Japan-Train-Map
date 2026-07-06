@@ -371,7 +371,6 @@
   const TRAIN_PICK_SOURCE = "train-routes-pick";
   const TRAIN_EXPAND_SOURCE = "train-routes-expand-src";
   const TRAIN_MARKERS_SOURCE = "train-markers-base";
-  const TRAIN_MARKERS_SEL_SOURCE = "train-markers-sel";
   const TRAIN_ROUTES_LAYER = "train-routes-line";
   const TRAIN_PICK_LAYER = "train-routes-pick-line";
   const TRAIN_EXPAND_LAYER = "train-routes-expand";
@@ -395,22 +394,28 @@
   const HOVER_DIM_TRANSITION = { duration: 150, delay: 0 };
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
-  // (precomputed rgba strings) + railprint's zoom-scaled radius (r at z12,
-  // ×~0.48 at z5 — matching stationRadiusExpression's 2.4/5 & 1.4/3 ratios).
-  function markerCirclePaint() {
+  // (rgb strings; alpha rides circle-opacity so the SEL layers can override
+  // it) + railprint's zoom-scaled radius (r at z12, ×~0.48 at z5 — matching
+  // stationRadiusExpression's 2.4/5 & 1.4/3 ratios). `radiusBoost` widens the
+  // SEL layers' dots (focus emphasis without any record rebuild); `sel` layers
+  // also force full opacity so a selected off-date train's dots un-dim.
+  function markerRadiusExpr(radiusBoost) {
+    const r = radiusBoost
+      ? ["+", ["get", "radius"], radiusBoost]
+      : ["get", "radius"];
+    return ["interpolate", ["linear"], ["zoom"], 5, ["*", r, 0.48], 12, r];
+  }
+  function markerCirclePaint(opts) {
+    const sel = !!(opts && opts.sel);
     return {
       "circle-color": ["get", "fill"],
-      "circle-radius": [
-        "interpolate",
-        ["linear"],
-        ["zoom"],
-        5,
-        ["*", ["get", "radius"], 0.48],
-        12,
-        ["get", "radius"],
-      ],
+      "circle-opacity": sel ? 1 : ["get", "alpha"],
+      "circle-radius": markerRadiusExpr(0),
       "circle-stroke-color": ["get", "stroke"],
-      "circle-stroke-width": ["get", "lineWidth"],
+      "circle-stroke-opacity": sel ? 1 : ["get", "alpha"],
+      "circle-stroke-width": sel
+        ? ["*", ["get", "lineWidth"], opts.strokeScale || 1]
+        : ["get", "lineWidth"],
       "circle-pitch-alignment": "map",
     };
   }
@@ -446,7 +451,9 @@
     sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_EXPAND_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_MARKERS_SOURCE] = { type: "geojson", data: EMPTY_FC };
-    sources[TRAIN_MARKERS_SEL_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    // Pass-through dot LOD: below this zoom the (numerous) white dots simply
+    // don't draw — a layer property, so crossing it re-renders nothing.
+    const passMinzoom = Math.max(0, Number(opts.passMinzoom || 0));
 
     const layers = [];
     // Plain background — also railprint's offline degradation surface.
@@ -565,19 +572,31 @@
         ]),
       },
     });
-    // Other trains' station dots sit UNDER the selected route.
+    // Other trains' station dots sit UNDER the selected route. ONE marker
+    // source feeds all four dot layers; the selected train's dots move to the
+    // SEL layers purely via tid filters (selection = 4 setFilter calls, zero
+    // setData).
     layers.push({
       id: TRAIN_PASS_LAYER,
       type: "circle",
       source: TRAIN_MARKERS_SOURCE,
-      filter: ["==", ["get", "category"], "pass"],
+      minzoom: passMinzoom,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "pass"],
+        ["!=", ["get", "tid"], NO_TRAIN],
+      ],
       paint: markerCirclePaint(),
     });
     layers.push({
       id: TRAIN_STOPS_LAYER,
       type: "circle",
       source: TRAIN_MARKERS_SOURCE,
-      filter: ["==", ["get", "category"], "stop"],
+      filter: [
+        "all",
+        ["==", ["get", "category"], "stop"],
+        ["!=", ["get", "tid"], NO_TRAIN],
+      ],
       paint: markerCirclePaint(),
     });
     // C3 — DARK selection casing UNDER the selected line, the line's own hue on
@@ -654,20 +673,30 @@
         ]),
       },
     });
-    // The selected train's own dots above its raised route.
+    // The selected train's own dots above its raised route (same source,
+    // tid-filtered; full opacity + focus-boost radius via paint).
     layers.push({
       id: TRAIN_SEL_PASS_LAYER,
       type: "circle",
-      source: TRAIN_MARKERS_SEL_SOURCE,
-      filter: ["==", ["get", "category"], "pass"],
-      paint: markerCirclePaint(),
+      source: TRAIN_MARKERS_SOURCE,
+      minzoom: passMinzoom,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "pass"],
+        ["==", ["get", "tid"], NO_TRAIN],
+      ],
+      paint: markerCirclePaint({ sel: true, strokeScale: 1 }),
     });
     layers.push({
       id: TRAIN_SEL_STOPS_LAYER,
       type: "circle",
-      source: TRAIN_MARKERS_SEL_SOURCE,
-      filter: ["==", ["get", "category"], "stop"],
-      paint: markerCirclePaint(),
+      source: TRAIN_MARKERS_SOURCE,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "stop"],
+        ["==", ["get", "tid"], NO_TRAIN],
+      ],
+      paint: markerCirclePaint({ sel: true, strokeScale: 2 }),
     });
 
     const style = { version: 8, sources, layers };
@@ -749,6 +778,11 @@
     return { type: "FeatureCollection", features };
   }
 
+  function rgbCss(arr) {
+    if (!Array.isArray(arr)) return "rgb(0,0,0)";
+    return "rgb(" + arr[0] + "," + arr[1] + "," + arr[2] + ")";
+  }
+
   function markerRecordsToFC(records) {
     return {
       type: "FeatureCollection",
@@ -761,8 +795,9 @@
           category: m.category,
           radius: m.radius,
           lineWidth: m.lineWidth,
-          fill: rgbaCss(m.fillColor),
-          stroke: rgbaCss(m.lineColor),
+          fill: rgbCss(m.fillColor),
+          stroke: rgbCss(m.lineColor),
+          alpha: m.alpha != null ? m.alpha : 1,
         },
       })),
     };
@@ -850,15 +885,17 @@
       if ((id || null) === this._selectedTrainId) return;
       this._selectedTrainId = id || null;
       this._applySelectionFilters();
-      this._pushMarkers();
+      this._applyMarkerSelectionFilters();
     },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
-    // the SEL line simply draws `px` wider via its width expression.
+    // the SEL line draws `px` wider and the SEL dots `px` (stops) / `px/2`
+    // (pass-through) larger via paint expressions.
     setFocusBoost(px) {
       this._focusBoost = Number(px) || 0;
       const m = this._map;
-      if (m && m.getLayer(TRAIN_SEL_LAYER))
+      if (!m) return;
+      if (m.getLayer(TRAIN_SEL_LAYER))
         m.setPaintProperty(
           TRAIN_SEL_LAYER,
           "line-width",
@@ -868,6 +905,38 @@
             RIDDEN_WIDTH_SCALE,
           ]),
         );
+      if (m.getLayer(TRAIN_SEL_STOPS_LAYER))
+        m.setPaintProperty(
+          TRAIN_SEL_STOPS_LAYER,
+          "circle-radius",
+          markerRadiusExpr(this._focusBoost),
+        );
+      if (m.getLayer(TRAIN_SEL_PASS_LAYER))
+        m.setPaintProperty(
+          TRAIN_SEL_PASS_LAYER,
+          "circle-radius",
+          markerRadiusExpr(Math.round(this._focusBoost / 2)),
+        );
+    },
+    // Selection = pure layer filtering on the single marker source: the
+    // selected train's dots leave the base layers and enter the SEL layers.
+    _applyMarkerSelectionFilters() {
+      const m = this._map;
+      if (!m) return;
+      const id = this._selectedTrainId || NO_TRAIN;
+      const f = (cat, mine) => [
+        "all",
+        ["==", ["get", "category"], cat],
+        [mine ? "==" : "!=", ["get", "tid"], id],
+      ];
+      if (m.getLayer(TRAIN_PASS_LAYER))
+        m.setFilter(TRAIN_PASS_LAYER, f("pass", false));
+      if (m.getLayer(TRAIN_STOPS_LAYER))
+        m.setFilter(TRAIN_STOPS_LAYER, f("stop", false));
+      if (m.getLayer(TRAIN_SEL_PASS_LAYER))
+        m.setFilter(TRAIN_SEL_PASS_LAYER, f("pass", true));
+      if (m.getLayer(TRAIN_SEL_STOPS_LAYER))
+        m.setFilter(TRAIN_SEL_STOPS_LAYER, f("stop", true));
     },
     setVisible(v) {
       this._visible = !!v;
@@ -944,19 +1013,12 @@
           : EMPTY_FC,
       );
     },
+    // ONE source holds every marker; the base/SEL split is pure layer
+    // filtering (see _applyMarkerSelectionFilters) and category visibility is
+    // layer visibility — so this pushes only when the record set changes.
     _pushMarkers() {
-      const sel = this._selectedTrainId;
-      const shown = this._markers.filter(
-        (m) => this._markerVis[m.category] !== false,
-      );
-      const base = sel ? shown.filter((m) => !m.train || m.train.id !== sel) : shown;
-      const selMk = sel ? shown.filter((m) => m.train && m.train.id === sel) : [];
-      this._baseMarkerRecords = base;
-      this._selMarkerRecords = selMk;
-      const bs = this._src(TRAIN_MARKERS_SOURCE);
-      if (bs) bs.setData(markerRecordsToFC(base));
-      const ss = this._src(TRAIN_MARKERS_SEL_SOURCE);
-      if (ss) ss.setData(markerRecordsToFC(selMk));
+      const src = this._src(TRAIN_MARKERS_SOURCE);
+      if (src) src.setData(markerRecordsToFC(this._markers));
     },
     // Expansion selects by TRAIN SET, not by the single hovered run: every
     // train sharing the hovered stretch shows as its COMPLETE course rigidly
@@ -1041,12 +1103,13 @@
       );
       set(TRAIN_SEL_CASING_LAYER, "line-opacity", tids ? ["*", 0.9, mul] : 0.9);
       set(TRAIN_SEL_LAYER, "line-opacity", mul);
-      [
-        TRAIN_PASS_LAYER,
-        TRAIN_STOPS_LAYER,
-        TRAIN_SEL_PASS_LAYER,
-        TRAIN_SEL_STOPS_LAYER,
-      ].forEach((id) => {
+      // Base dots carry their own alpha (date-scope dim); SEL dots force 1.
+      [TRAIN_PASS_LAYER, TRAIN_STOPS_LAYER].forEach((id) => {
+        const v = tids ? ["*", ["get", "alpha"], mul] : ["get", "alpha"];
+        set(id, "circle-opacity", v);
+        set(id, "circle-stroke-opacity", v);
+      });
+      [TRAIN_SEL_PASS_LAYER, TRAIN_SEL_STOPS_LAYER].forEach((id) => {
         set(id, "circle-opacity", mul);
         set(id, "circle-stroke-opacity", mul);
       });
@@ -1190,11 +1253,7 @@
         let markerHit = null;
         const mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         if (mk.length) {
-          const p = mk[0].properties;
-          const rec =
-            mk[0].layer.source === TRAIN_MARKERS_SEL_SOURCE
-              ? self._selMarkerRecords && self._selMarkerRecords[p.idx]
-              : self._baseMarkerRecords && self._baseMarkerRecords[p.idx];
+          const rec = self._markers && self._markers[mk[0].properties.idx];
           if (rec) markerHit = { kind: "marker", record: rec };
         }
         const markerYieldsToFan =

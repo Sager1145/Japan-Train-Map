@@ -1027,7 +1027,6 @@ let cachedRouteItems = null,
 // lower than the old Leaflet number for the same view.
 const PASSTHROUGH_MIN_ZOOM = 9;
 let cachedOrderedTrains = [];
-let passThroughShown = true;
 let importInProgress = false;
 
 // Cached DOM references. app.js is loaded at the END of <body> (no `defer`),
@@ -2763,6 +2762,9 @@ async function initMap() {
     basemap,
     network,
     fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
+    // Pass-through dot LOD: the numerous white dots only draw from this zoom
+    // (layer minzoom — no marker rebuild when the view crosses it).
+    passMinzoom: PASSTHROUGH_MIN_ZOOM,
   });
   map = new maplibregl.Map({
     container: "map",
@@ -4011,10 +4013,9 @@ function trainEmphasisLevel(train) {
   return getTrainDate(train) === selectedDate ? 1 : 0;
 }
 
-function trainScopeFlags(train) {
-  const level = trainEmphasisLevel(train);
-  return { focused: level === 2, dimmed: level === 0 };
-}
+// (trainScopeFlags was removed: route/marker RECORDS use the selection-free
+// routeRecordScopeFlags in §26, and focus emphasis is drawn by railmap's SEL
+// layers + focus-boost paint expressions.)
 
 function renderTrainLayers() {
   // A concrete selected date now always scopes the map: that date's trains
@@ -4211,6 +4212,9 @@ function invalidateDeckRouteCaches() {
   _cachedDeckRecords = null;
   _cachedDeckRecordsSig = null;
   _lastPushedBuilt = null;
+  // Marker records bake DISPLAY radii/strokes, so they drop with the rest.
+  _cachedMarkerRecords = null;
+  _cachedMarkerSig = null;
 }
 
 // Selection-free style scope for ROUTE RECORDS: the record cache must not
@@ -4753,17 +4757,17 @@ function deckMarkerRecord(feature, train, opts, kind) {
     });
     category = "stop";
   }
+  // Alpha is carried as its own value (not premultiplied into the colours):
+  // the base marker layers draw it via circle-opacity while the SEL layers
+  // override it to 1, so a selected off-date train's dots un-dim without any
+  // record rebuild. fillOpacity === lineOpacity in every style helper.
   return {
     position: [coord[0], coord[1]],
     radius: s.radius,
     lineWidth: s.lineWidth,
-    fillColor: [s.fill[0], s.fill[1], s.fill[2], Math.round(s.fillOpacity * 255)],
-    lineColor: [
-      s.strokeCol[0],
-      s.strokeCol[1],
-      s.strokeCol[2],
-      Math.round(s.lineOpacity * 255),
-    ],
+    fillColor: [s.fill[0], s.fill[1], s.fill[2]],
+    lineColor: [s.strokeCol[0], s.strokeCol[1], s.strokeCol[2]],
+    alpha: s.fillOpacity,
     category,
     feature,
     train,
@@ -4790,16 +4794,15 @@ function getComputedPassThroughFeaturesCached(train) {
 // ridden stop of each train (the actual boarding / alighting stations) get
 // the BLACK ink dot — every other stop and pass-through station renders as a
 // WHITE dot with an ink ring.
-function buildDeckMarkerRecords(
-  orderedTrains,
-  focusActive,
-  includePassThrough,
-) {
+// SELECTION-INDEPENDENT: pass-through dots are always emitted (the layer
+// minzoom gates them) and focus flags are never baked, so the record set only
+// changes with the route signature / display settings.
+function buildDeckMarkerRecords(orderedTrains) {
   const records = [];
   const endpoints = computeScopedEndpoints(orderedTrains);
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
-    const opts = trainScopeFlags(train);
+    const opts = routeRecordScopeFlags(train);
     const stops = train.stops || [];
     // First + last effectively-ridden stopping station = the black-dot pair.
     const ridden = [];
@@ -4816,7 +4819,6 @@ function buildDeckMarkerRecords(
       if (!stopFeature) return;
       if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       const isPass = stopFeature.properties.stop_type === "pass_through";
-      if (isPass && !includePassThrough) return;
       // Hidden (not effectively ridden) markers are dropped entirely.
       const eff = effectiveStopRide(stops, idx);
       if (!eff) return;
@@ -4830,7 +4832,7 @@ function buildDeckMarkerRecords(
       );
       if (rec) records.push(rec);
     });
-    if (includePassThrough && !DISPLAY.onlyEndpoints) {
+    if (!DISPLAY.onlyEndpoints) {
       getComputedPassThroughFeaturesCached(train).forEach((feature) => {
         if (feature.properties && feature.properties.ride_segment === false)
           return;

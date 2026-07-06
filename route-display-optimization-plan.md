@@ -31,6 +31,15 @@
 > 完全相同的 setData 推送；overlap 图改用不含样式的独立签名（改颜色/线宽不重建
 > 走廊图）。实测（89 班真实数据）：点选管线成本 ~600ms → **1ms**（缓存命中 +
 > 零 source 重推），仅剩 SEL filter 切换与 marker 源更新。
+>
+> **2026-07-06 P1b：车站圆点零重建**：marker 与选中/缩放彻底解耦——
+> ① records 不再烘焙 focused（选中圆点放大/描边加粗改由 SEL 圆点图层的
+> `circle-radius`/`stroke-width` paint 表达式承担，`setFocusBoost` 联动）；
+> ② alpha 改为 feature 属性走 `circle-opacity`（SEL 图层强制 1，跨日期选中照常
+> 提亮，无需重建）；③ 两个 marker source 合一，选中切换 = 4 次 setFilter、
+> 零 setData；④ 通过站 LOD 改为 pass 图层的 `minzoom`（跨越 z9 零重建）；
+> ⑤ marker records 按路由签名缓存。至此**点选列车与缩放跨阈值在 JS 侧完全
+> 零重建**：点选 = SEL filter ×6 + paint 若干；缩放 = 仅端点标签重排。
 
 ## 冲突清单
 
