@@ -365,48 +365,172 @@ function passesOnlyEndpoints(endpoints, train, stopFeature) {
   return false;
 }
 
-// Which train's origin/destination name labels to show: the hovered train wins,
-// otherwise the selected train (so a selection keeps its labels pinned).
+// On-map origin/destination name labels come from two sources: (1) whenever a
+// concrete date is selected, that day's very first origin ("起點") and very last
+// destination ("終點") are ALWAYS labelled, so picking a date immediately shows
+// where the day begins and ends; (2) the hovered train wins, otherwise the
+// selected train, keeps its own endpoints labelled. Overlapping labels are
+// pushed apart by layoutEndpointLabels() below — most visibly on a round-trip
+// day (e.g. 沼津→沼津 / 札幌→札幌) whose start and end sit on the SAME point.
 let hoverLabelTrainId = null;
+
+// One reusable canvas 2D context to measure label text width without forcing a
+// DOM reflow (used by the overlap-avoidance layout).
+let _labelMeasureCtx = null;
+function measureLabelTextWidth(text) {
+  if (!_labelMeasureCtx) {
+    const cnv = document.createElement("canvas");
+    _labelMeasureCtx = cnv.getContext("2d");
+    _labelMeasureCtx.font =
+      "700 11px system-ui, -apple-system, 'Segoe UI', sans-serif";
+  }
+  return _labelMeasureCtx.measureText(text || "").width;
+}
+
+// Build one label descriptor for a train's origin/destination stop, or null when
+// the stop can't be resolved. `dayEndpoint` adds a 起點/終點 badge + emphasis.
+function buildEndpointLabelSpec(train, kind, opts = {}) {
+  const stop = (train.stops || []).find((x) => x.stop_type === kind);
+  if (!stop) return null;
+  const feature = getStopFeature(stop, train);
+  if (!feature) return null;
+  const name = I18N.placeName(feature.properties.name || stopName(stop));
+  if (!name) return null;
+  const latlng = toLatLng(feature);
+  const time = kind === "origin" ? stop.departure : stop.arrival;
+  const timeTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
+  const badgeText = opts.dayEndpoint
+    ? I18N.t(kind === "origin" ? "tag.start" : "tag.end")
+    : "";
+  const badgeHtml = badgeText
+    ? `<span class="station-label-badge">${escapeHtml(badgeText)}</span>`
+    : "";
+  const timeHtml = time
+    ? ` <span class="station-label-time">${escapeHtml(timeTag)} ${escapeHtml(time)}</span>`
+    : "";
+  const plain =
+    (badgeText ? badgeText + " " : "") +
+    name +
+    (time ? ` ${timeTag} ${time}` : "");
+  return {
+    latlng,
+    html: `${badgeHtml}${escapeHtml(name)}${timeHtml}`,
+    key: `${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}|${kind}`,
+    dayEndpoint: !!opts.dayEndpoint,
+    // Estimated rendered width (px): text + horizontal padding (+ badge chip).
+    width: Math.min(300, measureLabelTextWidth(plain) + (badgeText ? 34 : 16)),
+  };
+}
+
 function updateEndpointLabels() {
   if (!endpointLabelLayer) return;
   endpointLabelLayer.clearLayers();
+
+  const specs = [];
+  const seen = new Set();
+  const add = (spec) => {
+    if (!spec || seen.has(spec.key)) return;
+    seen.add(spec.key);
+    specs.push(spec);
+  };
+
+  // (1) Selected day's first origin + last destination — always labelled.
+  if (selectedDate !== ALL_DATES) {
+    const ep = computeScopedEndpoints(trainStore.trains);
+    const firstTrain =
+      ep.firstId && trainStore.trains.find((t) => t.id === ep.firstId);
+    const lastTrain =
+      ep.lastId && trainStore.trains.find((t) => t.id === ep.lastId);
+    if (firstTrain && firstTrain.visible !== false)
+      add(buildEndpointLabelSpec(firstTrain, "origin", { dayEndpoint: true }));
+    if (lastTrain && lastTrain.visible !== false)
+      add(buildEndpointLabelSpec(lastTrain, "destination", { dayEndpoint: true }));
+  }
+
+  // (2) Hovered / selected train's own endpoints.
   const id = hoverLabelTrainId || selectedTrainId;
-  if (!id) return;
-  const train = trainStore.trains.find((t) => t.id === id);
-  if (!train || train.visible === false) return;
-  const dateActive = selectedDate !== ALL_DATES;
-  if (mapFollowsSelectedDate && dateActive && getTrainDate(train) !== selectedDate)
-    return;
-  ["origin", "destination"].forEach((kind) => {
-    const stop = (train.stops || []).find((x) => x.stop_type === kind);
-    if (!stop) return;
-    const feature = getStopFeature(stop, train);
-    if (!feature) return;
-    const name = I18N.placeName(feature.properties.name || stopName(stop));
-    if (!name) return;
-    const labelTime = kind === "origin" ? stop.departure : stop.arrival;
-    const labelTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
-    const labelHtml = labelTime
-      ? `${escapeHtml(name)} <span class="station-label-time">${labelTag} ${escapeHtml(labelTime)}</span>`
-      : escapeHtml(name);
-    // Standalone (source-less) tooltip rather than a circleMarker: with the map
-    // in preferCanvas mode a circleMarker would spin up a full-map Leaflet canvas
-    // in the overlay pane ABOVE the deck.gl canvas, and that canvas swallows the
-    // mouse events deck needs for route hover/click. A tooltip lives in the
-    // tooltip pane with pointer-events:none, so it never blocks picking.
+  if (id) {
+    const train = trainStore.trains.find((t) => t.id === id);
+    if (train && train.visible !== false) {
+      const dateActive = selectedDate !== ALL_DATES;
+      const offDate =
+        mapFollowsSelectedDate &&
+        dateActive &&
+        getTrainDate(train) !== selectedDate;
+      if (!offDate) {
+        add(buildEndpointLabelSpec(train, "origin"));
+        add(buildEndpointLabelSpec(train, "destination"));
+      }
+    }
+  }
+
+  if (!specs.length) return;
+
+  // Standalone (source-less) tooltips rather than circleMarkers: in preferCanvas
+  // mode a circleMarker spins up a full-map Leaflet canvas ABOVE the deck.gl
+  // canvas that swallows the mouse events deck needs for route hover/click. A
+  // tooltip lives in the tooltip pane with pointer-events:none, so it never
+  // blocks picking.
+  layoutEndpointLabels(specs).forEach((spec) => {
     const tip = L.tooltip({
       permanent: true,
-      direction: "top",
-      offset: [0, -8],
-      className: "station-label",
+      direction: spec.direction,
+      offset: spec.offset,
+      className: spec.dayEndpoint
+        ? "station-label station-label--endpoint"
+        : "station-label",
       opacity: 1,
       interactive: false,
     })
-      .setLatLng(toLatLng(feature))
-      .setContent(labelHtml);
+      .setLatLng(spec.latlng)
+      .setContent(spec.html);
     endpointLabelLayer.addLayer(tip);
   });
+}
+
+// Overlap-avoidance for the endpoint labels: each label is placed just above or
+// just below its station dot, alternating and stacking outward so labels that
+// would collide get pushed apart and all stay readable. Pure pixel-space layout;
+// relative distances only change on zoom and the labels are rebuilt on every
+// marker render (including the zoomend handler), so no per-pan work is needed.
+function layoutEndpointLabels(specs) {
+  const BASE = 10; // gap from the dot to the first label
+  const H = 20; // estimated label box height (single line)
+  const PAD = 4; // gap kept between neighbouring boxes
+  const placed = [];
+  const hits = (a, b) =>
+    a.x1 < b.x2 + PAD && a.x2 > b.x1 - PAD && a.y1 < b.y2 + PAD && a.y2 > b.y1 - PAD;
+  specs.forEach((spec) => {
+    const p = map
+      ? map.latLngToContainerPoint(L.latLng(spec.latlng))
+      : { x: 0, y: 0 };
+    const halfW = spec.width / 2;
+    let picked = null;
+    for (let k = 0; k < 8 && !picked; k++) {
+      const step = BASE + k * (H + PAD);
+      // Try above the dot first, then below, at increasing distance.
+      for (const cand of [
+        { direction: "top", offY: -step },
+        { direction: "bottom", offY: step },
+      ]) {
+        const y1 =
+          cand.direction === "top" ? p.y + cand.offY - H : p.y + cand.offY;
+        const y2 =
+          cand.direction === "top" ? p.y + cand.offY : p.y + cand.offY + H;
+        const box = { x1: p.x - halfW, x2: p.x + halfW, y1, y2 };
+        if (!placed.some((q) => hits(box, q))) {
+          placed.push(box);
+          picked = { direction: cand.direction, offset: [0, cand.offY] };
+          break;
+        }
+      }
+    }
+    if (!picked)
+      picked = { direction: "top", offset: [0, -(BASE + 8 * (H + PAD))] };
+    spec.direction = picked.direction;
+    spec.offset = picked.offset;
+  });
+  return specs;
 }
 
 // deck.gl hover -> mirror the hovered train into the endpoint labels.

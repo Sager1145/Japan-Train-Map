@@ -162,6 +162,8 @@
     // map tooltips / labels
     "tag.arr": { zh: "到", en: "Arr" },
     "tag.dep": { zh: "發", en: "Dep" },
+    "tag.start": { zh: "起點", en: "Start" },
+    "tag.end": { zh: "終點", en: "End" },
     "field.carNo": { zh: "車號", en: "Train No." },
 
     // import source labels
