@@ -2,11 +2,11 @@
   "schema_version": "1.3",
   "trains": [
     {
-      "id": "20260703_01_haruka",
+      "id": "20260703_01_haruka号_落地后可顺延_",
       "date": "2026-07-03",
-      "number": "はるか号（Haruka）",
-      "name": "はるか号（Haruka）",
-      "origin": "関西空港",
+      "number": "Haruka 号（落地后可顺延）",
+      "name": "Haruka 号（落地后可顺延）",
+      "origin": "关西机场",
       "destination": "新大阪",
       "direction": "unknown",
       "visible": true,
@@ -24,7 +24,7 @@
       },
       "route_sections": [
         {
-          "from": "関西空港",
+          "from": "关西机场",
           "to": "新大阪",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -32,7 +32,7 @@
       ],
       "stops": [
         {
-          "name": "関西空港",
+          "name": "关西机场",
           "n02_station_code": null,
           "arrival": null,
           "departure": "16:16",
@@ -50,12 +50,12 @@
       ]
     },
     {
-      "id": "20260703_02_tokaido_shinkansen_hikari_kodama",
+      "id": "20260703_02_东海道新干线hikari_kodama可用班次",
       "date": "2026-07-03",
-      "number": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
-      "name": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
+      "number": "东海道新干线 Hikari/Kodama 可用班次",
+      "name": "东海道新干线 Hikari/Kodama 可用班次",
       "origin": "新大阪",
-      "destination": "三島",
+      "destination": "三岛",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -73,7 +73,7 @@
       "route_sections": [
         {
           "from": "新大阪",
-          "to": "三島",
+          "to": "三岛",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -88,7 +88,7 @@
           "ride_segment": true
         },
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": null,
           "arrival": "20:22",
           "departure": null,
@@ -98,11 +98,11 @@
       ]
     },
     {
-      "id": "20260703_03_tokaido_main_local",
+      "id": "20260703_03_东海道本线普通",
       "date": "2026-07-03",
-      "number": "東海道本線 普通（Tōkaidō Main Line Local）",
-      "name": "東海道本線 普通（Tōkaidō Main Line Local）",
-      "origin": "三島",
+      "number": "东海道本线 普通",
+      "name": "东海道本线 普通",
+      "origin": "三岛",
       "destination": "沼津",
       "direction": "unknown",
       "visible": true,
@@ -120,7 +120,7 @@
       },
       "route_sections": [
         {
-          "from": "三島",
+          "from": "三岛",
           "to": "沼津",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -128,7 +128,7 @@
       ],
       "stops": [
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": null,
           "arrival": null,
           "departure": "20:34",
@@ -146,12 +146,12 @@
       ]
     },
     {
-      "id": "20260704_01_local",
+      "id": "20260704_01_普通列车",
       "date": "2026-07-04",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "沼津",
-      "destination": "三島",
+      "destination": "三岛",
       "direction": "三島・熱海",
       "visible": true,
       "style": {
@@ -178,7 +178,7 @@
       "route_sections": [
         {
           "from": "沼津",
-          "to": "三島",
+          "to": "三岛",
           "from_n02_station_code": "005689",
           "to_n02_station_code": "005601",
           "line_names": [
@@ -199,7 +199,7 @@
           "ride_segment": true
         },
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005601",
           "arrival": "07:39",
           "departure": null,
@@ -209,11 +209,11 @@
       ]
     },
     {
-      "id": "20260704_02_kodama918",
+      "id": "20260704_02_こだま918号",
       "date": "2026-07-04",
-      "number": "こだま918号（Kodama 918）",
-      "name": "こだま918号（Kodama 918）",
-      "origin": "三島",
+      "number": "こだま918号",
+      "name": "こだま918号",
+      "origin": "三岛",
       "destination": "品川",
       "direction": "東京",
       "visible": true,
@@ -238,7 +238,7 @@
       },
       "route_sections": [
         {
-          "from": "三島",
+          "from": "三岛",
           "to": "熱海",
           "from_n02_station_code": "005600",
           "to_n02_station_code": "005684"
@@ -264,7 +264,7 @@
       ],
       "stops": [
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005600",
           "arrival": null,
           "departure": "08:00",
@@ -306,12 +306,12 @@
       ]
     },
     {
-      "id": "20260704_03_keikyu_asakusa_line",
+      "id": "20260704_03_京急・浅草线",
       "date": "2026-07-04",
-      "number": "京急・浅草線（Keikyū / Asakusa Line）",
-      "name": "京急・浅草線（Keikyū / Asakusa Line）",
+      "number": "京急・浅草线",
+      "name": "京急・浅草线",
       "origin": "品川",
-      "destination": "大門",
+      "destination": "大门",
       "direction": "押上・浅草方面",
       "visible": true,
       "style": {
@@ -353,7 +353,7 @@
         },
         {
           "from": "泉岳寺",
-          "to": "大門",
+          "to": "大门",
           "from_n02_station_code": "004042",
           "to_n02_station_code": "003940",
           "line_names": [
@@ -382,7 +382,7 @@
           "ride_segment": true
         },
         {
-          "name": "大門",
+          "name": "大门",
           "n02_station_code": "003940",
           "arrival": "09:09",
           "departure": null,
@@ -392,12 +392,12 @@
       ]
     },
     {
-      "id": "20260704_04_oedo_line",
+      "id": "20260704_04_大江戸线",
       "date": "2026-07-04",
-      "number": "大江戸線（Ōedo Line）",
-      "name": "大江戸線（Ōedo Line）",
-      "origin": "大門",
-      "destination": "赤羽橋",
+      "number": "大江戸线",
+      "name": "大江戸线",
+      "origin": "大门",
+      "destination": "赤羽桥",
       "direction": "六本木・都庁前",
       "visible": true,
       "style": {
@@ -423,8 +423,8 @@
       },
       "route_sections": [
         {
-          "from": "大門",
-          "to": "赤羽橋",
+          "from": "大门",
+          "to": "赤羽桥",
           "from_n02_station_code": "003939",
           "to_n02_station_code": "003954",
           "line_names": [
@@ -437,7 +437,7 @@
       ],
       "stops": [
         {
-          "name": "大門",
+          "name": "大门",
           "n02_station_code": "003939",
           "arrival": null,
           "departure": "09:12",
@@ -445,7 +445,7 @@
           "ride_segment": true
         },
         {
-          "name": "赤羽橋",
+          "name": "赤羽桥",
           "n02_station_code": "003954",
           "arrival": "09:15",
           "departure": null,
@@ -455,11 +455,11 @@
       ]
     },
     {
-      "id": "20260704_05_mita_line",
+      "id": "20260704_05_三田线",
       "date": "2026-07-04",
-      "number": "三田線（Mita Line）",
-      "name": "三田線（Mita Line）",
-      "origin": "芝公園",
+      "number": "三田线",
+      "name": "三田线",
+      "origin": "芝公园",
       "destination": "大手町",
       "direction": "西高島平",
       "visible": true,
@@ -486,7 +486,7 @@
       },
       "route_sections": [
         {
-          "from": "芝公園",
+          "from": "芝公园",
           "to": "大手町",
           "from_n02_station_code": "003962",
           "to_n02_station_code": "003742",
@@ -500,7 +500,7 @@
       ],
       "stops": [
         {
-          "name": "芝公園",
+          "name": "芝公园",
           "n02_station_code": "003962",
           "arrival": null,
           "departure": "11:00",
@@ -518,10 +518,10 @@
       ]
     },
     {
-      "id": "20260704_06_marunouchi_line",
+      "id": "20260704_06_丸ノ内线",
       "date": "2026-07-04",
-      "number": "丸ノ内線（Marunouchi Line）",
-      "name": "丸ノ内線（Marunouchi Line）",
+      "number": "丸ノ内线",
+      "name": "丸ノ内线",
       "origin": "大手町",
       "destination": "池袋",
       "direction": "池袋",
@@ -581,12 +581,12 @@
       ]
     },
     {
-      "id": "20260704_07_saikyo_line",
+      "id": "20260704_07_埼京线",
       "date": "2026-07-04",
-      "number": "埼京線（Saikyō Line）",
-      "name": "埼京線（Saikyō Line）",
+      "number": "埼京线",
+      "name": "埼京线",
       "origin": "池袋",
-      "destination": "大宮",
+      "destination": "大宫",
       "direction": "川越",
       "visible": true,
       "style": {
@@ -626,7 +626,7 @@
         },
         {
           "from": "赤羽",
-          "to": "大宮",
+          "to": "大宫",
           "from_n02_station_code": "003157",
           "to_n02_station_code": "002912",
           "line_names": [
@@ -655,7 +655,7 @@
           "ride_segment": true
         },
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": "002912",
           "arrival": "13:29",
           "departure": null,
@@ -665,11 +665,11 @@
       ]
     },
     {
-      "id": "20260704_08_shonan_shinjuku_line",
+      "id": "20260704_08_湘南新宿ライン",
       "date": "2026-07-04",
-      "number": "湘南新宿ライン（Shōnan-Shinjuku Line）",
-      "name": "湘南新宿ライン（Shōnan-Shinjuku Line）",
-      "origin": "大宮",
+      "number": "湘南新宿ライン",
+      "name": "湘南新宿ライン",
+      "origin": "大宫",
       "destination": "横浜",
       "direction": "小田原",
       "visible": true,
@@ -698,7 +698,7 @@
       },
       "route_sections": [
         {
-          "from": "大宮",
+          "from": "大宫",
           "to": "赤羽",
           "from_n02_station_code": "002912",
           "to_n02_station_code": "003157",
@@ -772,7 +772,7 @@
       ],
       "stops": [
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": "002912",
           "arrival": null,
           "departure": "15:28",
@@ -838,12 +838,12 @@
       ]
     },
     {
-      "id": "20260704_09_negishi_line",
+      "id": "20260704_09_根岸线",
       "date": "2026-07-04",
-      "number": "根岸線（Negishi Line）",
-      "name": "根岸線（Negishi Line）",
+      "number": "根岸线",
+      "name": "根岸线",
       "origin": "横浜",
-      "destination": "桜木町",
+      "destination": "樱木町",
       "direction": "大船・磯子",
       "visible": true,
       "style": {
@@ -870,7 +870,7 @@
       "route_sections": [
         {
           "from": "横浜",
-          "to": "桜木町",
+          "to": "樱木町",
           "from_n02_station_code": "004635",
           "to_n02_station_code": "004675",
           "line_names": [
@@ -891,7 +891,7 @@
           "ride_segment": true
         },
         {
-          "name": "桜木町",
+          "name": "樱木町",
           "n02_station_code": "004675",
           "arrival": "16:36",
           "departure": null,
@@ -901,10 +901,10 @@
       ]
     },
     {
-      "id": "20260704_10_minatomirai_line",
+      "id": "20260704_10_みなとみらい线",
       "date": "2026-07-04",
-      "number": "みなとみらい線（Minatomirai Line）",
-      "name": "みなとみらい線（Minatomirai Line）",
+      "number": "みなとみらい线",
+      "name": "みなとみらい线",
       "origin": "みなとみらい",
       "destination": "横浜",
       "direction": "横浜",
@@ -964,12 +964,12 @@
       ]
     },
     {
-      "id": "20260704_11_keihin_tohoku_line",
+      "id": "20260704_11_京浜东北线",
       "date": "2026-07-04",
-      "number": "京浜東北線（Keihin-Tōhoku Line）",
-      "name": "京浜東北線（Keihin-Tōhoku Line）",
+      "number": "京浜东北线",
+      "name": "京浜东北线",
       "origin": "横浜",
-      "destination": "東神奈川",
+      "destination": "东神奈川",
       "direction": "大宮・南浦和",
       "visible": true,
       "style": {
@@ -996,7 +996,7 @@
       "route_sections": [
         {
           "from": "横浜",
-          "to": "東神奈川",
+          "to": "东神奈川",
           "from_n02_station_code": "004634",
           "to_n02_station_code": "004597",
           "line_names": [
@@ -1017,7 +1017,7 @@
           "ride_segment": true
         },
         {
-          "name": "東神奈川",
+          "name": "东神奈川",
           "n02_station_code": "004597",
           "arrival": "22:15",
           "departure": null,
@@ -1027,11 +1027,11 @@
       ]
     },
     {
-      "id": "20260704_12_yokohama_line",
+      "id": "20260704_12_横浜线",
       "date": "2026-07-04",
-      "number": "横浜線（Yokohama Line）",
-      "name": "横浜線（Yokohama Line）",
-      "origin": "東神奈川",
+      "number": "横浜线",
+      "name": "横浜线",
+      "origin": "东神奈川",
       "destination": "新横浜",
       "direction": "八王子・橋本",
       "visible": true,
@@ -1058,7 +1058,7 @@
       },
       "route_sections": [
         {
-          "from": "東神奈川",
+          "from": "东神奈川",
           "to": "新横浜",
           "from_n02_station_code": "004596",
           "to_n02_station_code": "004504",
@@ -1072,7 +1072,7 @@
       ],
       "stops": [
         {
-          "name": "東神奈川",
+          "name": "东神奈川",
           "n02_station_code": "004596",
           "arrival": null,
           "departure": "22:20",
@@ -1090,12 +1090,12 @@
       ]
     },
     {
-      "id": "20260704_13_kodama915",
+      "id": "20260704_13_こだま915号",
       "date": "2026-07-04",
-      "number": "こだま915号（Kodama 915）",
-      "name": "こだま915号（Kodama 915）",
+      "number": "こだま915号",
+      "name": "こだま915号",
       "origin": "新横浜",
-      "destination": "三島",
+      "destination": "三岛",
       "direction": "三島",
       "visible": true,
       "style": {
@@ -1132,7 +1132,7 @@
         },
         {
           "from": "熱海",
-          "to": "三島",
+          "to": "三岛",
           "from_n02_station_code": "005684",
           "to_n02_station_code": "005600"
         }
@@ -1163,7 +1163,7 @@
           "ride_segment": true
         },
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005600",
           "arrival": "23:39",
           "departure": null,
@@ -1173,11 +1173,11 @@
       ]
     },
     {
-      "id": "20260704_14_local",
+      "id": "20260704_14_普通列车",
       "date": "2026-07-04",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
-      "origin": "三島",
+      "number": "普通列车",
+      "name": "普通列车",
+      "origin": "三岛",
       "destination": "沼津",
       "direction": "沼津・静岡",
       "visible": true,
@@ -1204,7 +1204,7 @@
       },
       "route_sections": [
         {
-          "from": "三島",
+          "from": "三岛",
           "to": "沼津",
           "from_n02_station_code": "005601",
           "to_n02_station_code": "005689",
@@ -1218,7 +1218,7 @@
       ],
       "stops": [
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005601",
           "arrival": null,
           "departure": "23:47",
@@ -1236,12 +1236,12 @@
       ]
     },
     {
-      "id": "20260705_01_local",
+      "id": "20260705_01_普通列车",
       "date": "2026-07-05",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "沼津",
-      "destination": "三島",
+      "destination": "三岛",
       "direction": "三島・熱海",
       "visible": true,
       "style": {
@@ -1268,7 +1268,7 @@
       "route_sections": [
         {
           "from": "沼津",
-          "to": "三島",
+          "to": "三岛",
           "from_n02_station_code": "005689",
           "to_n02_station_code": "005601",
           "line_names": [
@@ -1289,7 +1289,7 @@
           "ride_segment": true
         },
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005601",
           "arrival": "08:52",
           "departure": null,
@@ -1299,12 +1299,12 @@
       ]
     },
     {
-      "id": "20260705_02_kodama802",
+      "id": "20260705_02_こだま802号",
       "date": "2026-07-05",
-      "number": "こだま802号（Kodama 802）",
-      "name": "こだま802号（Kodama 802）",
-      "origin": "三島",
-      "destination": "東京",
+      "number": "こだま802号",
+      "name": "こだま802号",
+      "origin": "三岛",
+      "destination": "东京",
       "direction": "東京",
       "visible": true,
       "style": {
@@ -1328,7 +1328,7 @@
       },
       "route_sections": [
         {
-          "from": "三島",
+          "from": "三岛",
           "to": "熱海",
           "from_n02_station_code": "005600",
           "to_n02_station_code": "005684"
@@ -1353,14 +1353,14 @@
         },
         {
           "from": "品川",
-          "to": "東京",
+          "to": "东京",
           "from_n02_station_code": "004092",
           "to_n02_station_code": "003768"
         }
       ],
       "stops": [
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": "005600",
           "arrival": null,
           "departure": "09:24",
@@ -1400,7 +1400,7 @@
           "ride_segment": true
         },
         {
-          "name": "東京",
+          "name": "东京",
           "n02_station_code": "003768",
           "arrival": "10:18",
           "departure": null,
@@ -1410,11 +1410,11 @@
       ]
     },
     {
-      "id": "20260705_03_chuo_line",
+      "id": "20260705_03_中央线",
       "date": "2026-07-05",
-      "number": "中央線（Chūō Line）",
-      "name": "中央線（Chūō Line）",
-      "origin": "東京",
+      "number": "中央线",
+      "name": "中央线",
+      "origin": "东京",
       "destination": "新宿",
       "direction": "新宿・高尾",
       "visible": true,
@@ -1441,7 +1441,7 @@
       },
       "route_sections": [
         {
-          "from": "東京",
+          "from": "东京",
           "to": "御茶ノ水",
           "from_n02_station_code": "003770",
           "to_n02_station_code": "003616",
@@ -1467,7 +1467,7 @@
       ],
       "stops": [
         {
-          "name": "東京",
+          "name": "东京",
           "n02_station_code": "003770",
           "arrival": null,
           "departure": "10:27",
@@ -1493,12 +1493,12 @@
       ]
     },
     {
-      "id": "20260705_04_chuo_sobu_line",
+      "id": "20260705_04_中央・总武线",
       "date": "2026-07-05",
-      "number": "中央・総武線（Chūō-Sōbu Line）",
-      "name": "中央・総武線（Chūō-Sōbu Line）",
+      "number": "中央・总武线",
+      "name": "中央・总武线",
       "origin": "新宿",
-      "destination": "市ヶ谷",
+      "destination": "市ケ谷",
       "direction": "千葉・津田沼",
       "visible": true,
       "style": {
@@ -1525,7 +1525,7 @@
       "route_sections": [
         {
           "from": "新宿",
-          "to": "市ヶ谷",
+          "to": "市ケ谷",
           "from_n02_station_code": "003693",
           "to_n02_station_code": "003685",
           "line_names": [
@@ -1546,7 +1546,7 @@
           "ride_segment": true
         },
         {
-          "name": "市ヶ谷",
+          "name": "市ケ谷",
           "n02_station_code": "003685",
           "arrival": "10:57",
           "departure": null,
@@ -1556,11 +1556,11 @@
       ]
     },
     {
-      "id": "20260705_05_yurakucho_line",
+      "id": "20260705_05_有楽町线",
       "date": "2026-07-05",
-      "number": "有楽町線（Yūrakuchō Line）",
-      "name": "有楽町線（Yūrakuchō Line）",
-      "origin": "市ヶ谷",
+      "number": "有楽町线",
+      "name": "有楽町线",
+      "origin": "市ケ谷",
       "destination": "江戸川橋",
       "direction": "和光市・池袋",
       "visible": true,
@@ -1587,7 +1587,7 @@
       },
       "route_sections": [
         {
-          "from": "市ヶ谷",
+          "from": "市ケ谷",
           "to": "飯田橋",
           "from_n02_station_code": "003671",
           "to_n02_station_code": "003598",
@@ -1613,7 +1613,7 @@
       ],
       "stops": [
         {
-          "name": "市ヶ谷",
+          "name": "市ケ谷",
           "n02_station_code": "003671",
           "arrival": null,
           "departure": "11:05",
@@ -1639,10 +1639,10 @@
       ]
     },
     {
-      "id": "20260705_06_yurakucho_line",
+      "id": "20260705_06_有楽町线",
       "date": "2026-07-05",
-      "number": "有楽町線（Yūrakuchō Line）",
-      "name": "有楽町線（Yūrakuchō Line）",
+      "number": "有楽町线",
+      "name": "有楽町线",
       "origin": "江戸川橋",
       "destination": "池袋",
       "direction": "和光市・池袋",
@@ -1742,10 +1742,10 @@
       ]
     },
     {
-      "id": "20260705_07_yamanote_line",
+      "id": "20260705_07_山手线",
       "date": "2026-07-05",
-      "number": "山手線（Yamanote Line）",
-      "name": "山手線（Yamanote Line）",
+      "number": "山手线",
+      "name": "山手线",
       "origin": "池袋",
       "destination": "上野",
       "direction": "上野・東京",
@@ -1819,10 +1819,10 @@
       ]
     },
     {
-      "id": "20260705_08_hayabusa59",
+      "id": "20260705_08_はやぶさ59号",
       "date": "2026-07-05",
-      "number": "はやぶさ59号（Hayabusa 59）",
-      "name": "はやぶさ59号（Hayabusa 59）",
+      "number": "はやぶさ59号",
+      "name": "はやぶさ59号",
       "origin": "上野",
       "destination": "仙台",
       "direction": "新青森",
@@ -1902,10 +1902,10 @@
       ]
     },
     {
-      "id": "20260706_01_hayabusa11",
+      "id": "20260706_01_はやぶさ11号",
       "date": "2026-07-06",
-      "number": "はやぶさ11号（Hayabusa 11）",
-      "name": "はやぶさ11号（Hayabusa 11）",
+      "number": "はやぶさ11号",
+      "name": "はやぶさ11号",
       "origin": "仙台",
       "destination": "新青森",
       "direction": "新函館北斗",
@@ -2069,10 +2069,10 @@
       ]
     },
     {
-      "id": "20260706_02_super_tsugaru2",
+      "id": "20260706_02_スーパーつがる2号",
       "date": "2026-07-06",
-      "number": "スーパーつがる2号（Super Tsugaru 2）",
-      "name": "スーパーつがる2号（Super Tsugaru 2）",
+      "number": "スーパーつがる2号",
+      "name": "スーパーつがる2号",
       "origin": "新青森",
       "destination": "秋田",
       "direction": "秋田",
@@ -2418,10 +2418,10 @@
       ]
     },
     {
-      "id": "20260706_03_inaho14",
+      "id": "20260706_03_いなほ14号",
       "date": "2026-07-06",
-      "number": "いなほ14号（Inaho 14）",
-      "name": "いなほ14号（Inaho 14）",
+      "number": "いなほ14号",
+      "name": "いなほ14号",
       "origin": "秋田",
       "destination": "新潟",
       "direction": "新潟",
@@ -2824,10 +2824,10 @@
       ]
     },
     {
-      "id": "20260707_01_toki308",
+      "id": "20260707_01_とき308号",
       "date": "2026-07-07",
-      "number": "とき308号（Toki 308）",
-      "name": "とき308号（Toki 308）",
+      "number": "とき308号",
+      "name": "とき308号",
       "origin": "新潟",
       "destination": "高崎",
       "direction": "unknown",
@@ -2872,10 +2872,10 @@
       ]
     },
     {
-      "id": "20260707_02_hakutaka555",
+      "id": "20260707_02_はくたか555号",
       "date": "2026-07-07",
-      "number": "はくたか555号（Hakutaka 555）",
-      "name": "はくたか555号（Hakutaka 555）",
+      "number": "はくたか555号",
+      "name": "はくたか555号",
       "origin": "高崎",
       "destination": "長野",
       "direction": "unknown",
@@ -2920,10 +2920,10 @@
       ]
     },
     {
-      "id": "20260707_03_local",
+      "id": "20260707_03_普通列车",
       "date": "2026-07-07",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "長野",
       "destination": "篠ノ井",
       "direction": "unknown",
@@ -2968,10 +2968,10 @@
       ]
     },
     {
-      "id": "20260707_04_local",
+      "id": "20260707_04_普通列车",
       "date": "2026-07-07",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "篠ノ井",
       "destination": "長野",
       "direction": "unknown",
@@ -3016,10 +3016,10 @@
       ]
     },
     {
-      "id": "20260707_05_local",
+      "id": "20260707_05_普通列车",
       "date": "2026-07-07",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "長野",
       "destination": "須坂",
       "direction": "unknown",
@@ -3064,10 +3064,10 @@
       ]
     },
     {
-      "id": "20260707_06_a_ltdexp",
+      "id": "20260707_06_a特急",
       "date": "2026-07-07",
-      "number": "A特急（Limited Express (A)）",
-      "name": "A特急（Limited Express (A)）",
+      "number": "A特急",
+      "name": "A特急",
       "origin": "須坂",
       "destination": "長野",
       "direction": "unknown",
@@ -3112,10 +3112,10 @@
       ]
     },
     {
-      "id": "20260707_07_hakutaka565",
+      "id": "20260707_07_はくたか565号",
       "date": "2026-07-07",
-      "number": "はくたか565号（Hakutaka 565）",
-      "name": "はくたか565号（Hakutaka 565）",
+      "number": "はくたか565号",
+      "name": "はくたか565号",
       "origin": "長野",
       "destination": "加賀温泉",
       "direction": "加賀温泉",
@@ -3145,81 +3145,63 @@
           "to": "飯山",
           "from_n02_station_code": "002034",
           "to_n02_station_code": "001770",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "飯山",
           "to": "上越妙高",
           "from_n02_station_code": "001770",
           "to_n02_station_code": "001644",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "上越妙高",
           "to": "糸魚川",
           "from_n02_station_code": "001644",
           "to_n02_station_code": "001668",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "糸魚川",
           "to": "黒部宇奈月温泉",
           "from_n02_station_code": "001668",
           "to_n02_station_code": "001742",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "黒部宇奈月温泉",
           "to": "富山",
           "from_n02_station_code": "001742",
           "to_n02_station_code": "001927",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "富山",
           "to": "新高岡",
           "from_n02_station_code": "001927",
           "to_n02_station_code": "001886",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "新高岡",
           "to": "金沢",
           "from_n02_station_code": "001886",
           "to_n02_station_code": "002094",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "金沢",
           "to": "小松",
           "from_n02_station_code": "002094",
           "to_n02_station_code": "010176",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         },
         {
           "from": "小松",
           "to": "加賀温泉",
           "from_n02_station_code": "010176",
           "to_n02_station_code": "010177",
-          "line_names": [
-            "北陸新幹線"
-          ]
+          "line_names": ["北陸新幹線"]
         }
       ],
       "stops": [
@@ -3242,12 +3224,12 @@
       ]
     },
     {
-      "id": "20260708_01_tsurugi17",
+      "id": "20260708_01_つるぎ17号",
       "date": "2026-07-08",
-      "number": "つるぎ17号（Tsurugi 17）",
-      "name": "つるぎ17号（Tsurugi 17）",
-      "origin": "加賀温泉",
-      "destination": "敦賀",
+      "number": "つるぎ17号",
+      "name": "つるぎ17号",
+      "origin": "加贺温泉",
+      "destination": "敦贺",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -3264,15 +3246,15 @@
       },
       "route_sections": [
         {
-          "from": "加賀温泉",
-          "to": "敦賀",
+          "from": "加贺温泉",
+          "to": "敦贺",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "加賀温泉",
+          "name": "加贺温泉",
           "n02_station_code": null,
           "arrival": null,
           "departure": "10:24",
@@ -3280,7 +3262,7 @@
           "ride_segment": true
         },
         {
-          "name": "敦賀",
+          "name": "敦贺",
           "n02_station_code": null,
           "arrival": "11:01",
           "departure": null,
@@ -3290,11 +3272,11 @@
       ]
     },
     {
-      "id": "20260708_02_shirasagi2",
+      "id": "20260708_02_しらさぎ2号",
       "date": "2026-07-08",
-      "number": "しらさぎ2号（Shirasagi 2）",
-      "name": "しらさぎ2号（Shirasagi 2）",
-      "origin": "敦賀",
+      "number": "しらさぎ2号",
+      "name": "しらさぎ2号",
+      "origin": "敦贺",
       "destination": "米原",
       "direction": "unknown",
       "visible": true,
@@ -3312,7 +3294,7 @@
       },
       "route_sections": [
         {
-          "from": "敦賀",
+          "from": "敦贺",
           "to": "米原",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -3320,7 +3302,7 @@
       ],
       "stops": [
         {
-          "name": "敦賀",
+          "name": "敦贺",
           "n02_station_code": null,
           "arrival": null,
           "departure": "11:10",
@@ -3338,10 +3320,10 @@
       ]
     },
     {
-      "id": "20260708_03_hikari648",
+      "id": "20260708_03_ひかり648号",
       "date": "2026-07-08",
-      "number": "ひかり648号（Hikari 648）",
-      "name": "ひかり648号（Hikari 648）",
+      "number": "ひかり648号",
+      "name": "ひかり648号",
       "origin": "米原",
       "destination": "名古屋",
       "direction": "unknown",
@@ -3386,10 +3368,10 @@
       ]
     },
     {
-      "id": "20260708_04_hikari706",
+      "id": "20260708_04_ひかり706号",
       "date": "2026-07-08",
-      "number": "ひかり706号（Hikari 706）",
-      "name": "ひかり706号（Hikari 706）",
+      "number": "ひかり706号",
+      "name": "ひかり706号",
       "origin": "名古屋",
       "destination": "三島",
       "direction": "unknown",
@@ -3434,10 +3416,10 @@
       ]
     },
     {
-      "id": "20260708_05_local",
+      "id": "20260708_05_普通列车",
       "date": "2026-07-08",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "三島",
       "destination": "沼津",
       "direction": "unknown",
@@ -3482,10 +3464,10 @@
       ]
     },
     {
-      "id": "20260709_01_local",
+      "id": "20260709_01_普通列车",
       "date": "2026-07-09",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "沼津",
       "destination": "三島",
       "direction": "unknown",
@@ -3530,10 +3512,10 @@
       ]
     },
     {
-      "id": "20260709_02_hikari713",
+      "id": "20260709_02_ひかり713号",
       "date": "2026-07-09",
-      "number": "ひかり713号（Hikari 713）",
-      "name": "ひかり713号（Hikari 713）",
+      "number": "ひかり713号",
+      "name": "ひかり713号",
       "origin": "三島",
       "destination": "京都",
       "direction": "unknown",
@@ -3578,10 +3560,10 @@
       ]
     },
     {
-      "id": "20260709_03_miyakoji_rapid",
+      "id": "20260709_03_みやこ路快速",
       "date": "2026-07-09",
-      "number": "みやこ路快速（Miyakoji Rapid）",
-      "name": "みやこ路快速（Miyakoji Rapid）",
+      "number": "みやこ路快速",
+      "name": "みやこ路快速",
       "origin": "京都",
       "destination": "宇治",
       "direction": "unknown",
@@ -3626,10 +3608,10 @@
       ]
     },
     {
-      "id": "20260709_04_d_section_rapid",
+      "id": "20260709_04_D区間快速",
       "date": "2026-07-09",
-      "number": "D区間快速（Section Rapid (D)）",
-      "name": "D区間快速（Section Rapid (D)）",
+      "number": "D区間快速",
+      "name": "D区間快速",
       "origin": "宇治",
       "destination": "京都",
       "direction": "unknown",
@@ -3674,10 +3656,10 @@
       ]
     },
     {
-      "id": "20260710_01_nozomi252",
+      "id": "20260710_01_のぞみ252号",
       "date": "2026-07-10",
-      "number": "のぞみ252号（Nozomi 252）",
-      "name": "のぞみ252号（Nozomi 252）",
+      "number": "のぞみ252号",
+      "name": "のぞみ252号",
       "origin": "京都",
       "destination": "名古屋",
       "direction": "unknown",
@@ -3722,10 +3704,10 @@
       ]
     },
     {
-      "id": "20260710_02_kodama824",
+      "id": "20260710_02_こだま824号",
       "date": "2026-07-10",
-      "number": "こだま824号（Kodama 824）",
-      "name": "こだま824号（Kodama 824）",
+      "number": "こだま824号",
+      "name": "こだま824号",
       "origin": "名古屋",
       "destination": "三島",
       "direction": "unknown",
@@ -3770,10 +3752,10 @@
       ]
     },
     {
-      "id": "20260710_03_local",
+      "id": "20260710_03_普通列车",
       "date": "2026-07-10",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "三島",
       "destination": "沼津",
       "direction": "unknown",
@@ -3818,10 +3800,10 @@
       ]
     },
     {
-      "id": "20260710_04_local",
+      "id": "20260710_04_普通列车",
       "date": "2026-07-10",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "沼津",
       "destination": "三島",
       "direction": "unknown",
@@ -3866,10 +3848,10 @@
       ]
     },
     {
-      "id": "20260710_05_hikari718",
+      "id": "20260710_05_ひかり718号",
       "date": "2026-07-10",
-      "number": "ひかり718号（Hikari 718）",
-      "name": "ひかり718号（Hikari 718）",
+      "number": "ひかり718号",
+      "name": "ひかり718号",
       "origin": "三島",
       "destination": "東京",
       "direction": "unknown",
@@ -3914,10 +3896,10 @@
       ]
     },
     {
-      "id": "20260710_06_yamabiko221",
+      "id": "20260710_06_やまびこ221号",
       "date": "2026-07-10",
-      "number": "やまびこ221号（Yamabiko 221）",
-      "name": "やまびこ221号（Yamabiko 221）",
+      "number": "やまびこ221号",
+      "name": "やまびこ221号",
       "origin": "東京",
       "destination": "大宮",
       "direction": "unknown",
@@ -3962,10 +3944,10 @@
       ]
     },
     {
-      "id": "20260710_07_keihin_tohoku_local",
+      "id": "20260710_07_京浜东北线 普通",
       "date": "2026-07-10",
-      "number": "京浜東北線 普通（Keihin-Tōhoku Line Local）",
-      "name": "京浜東北線 普通（Keihin-Tōhoku Line Local）",
+      "number": "京浜东北线 普通",
+      "name": "京浜东北线 普通",
       "origin": "大宮",
       "destination": "南浦和",
       "direction": "unknown",
@@ -4010,10 +3992,10 @@
       ]
     },
     {
-      "id": "20260711_01_keihin_tohoku_negishi_local",
+      "id": "20260711_01_京浜东北・根岸线 普通",
       "date": "2026-07-11",
-      "number": "京浜東北・根岸線 普通（Keihin-Tōhoku / Negishi Line Local）",
-      "name": "京浜東北・根岸線 普通（Keihin-Tōhoku / Negishi Line Local）",
+      "number": "京浜东北・根岸线 普通",
+      "name": "京浜东北・根岸线 普通",
       "origin": "南浦和",
       "destination": "大宮",
       "direction": "unknown",
@@ -4058,10 +4040,10 @@
       ]
     },
     {
-      "id": "20260711_02_kagayaki501",
+      "id": "20260711_02_かがやき501号",
       "date": "2026-07-11",
-      "number": "かがやき501号（Kagayaki 501）",
-      "name": "かがやき501号（Kagayaki 501）",
+      "number": "かがやき501号",
+      "name": "かがやき501号",
       "origin": "大宮",
       "destination": "金沢",
       "direction": "unknown",
@@ -4082,14 +4064,14 @@
         {
           "from": "大宮",
           "to": "金沢",
-          "from_n02_station_code": "002914",
+          "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
           "name": "大宮",
-          "n02_station_code": "002914",
+          "n02_station_code": null,
           "arrival": null,
           "departure": "06:41",
           "stop_type": "origin",
@@ -4106,10 +4088,10 @@
       ]
     },
     {
-      "id": "20260711_03_hakutaka560",
+      "id": "20260711_03_はくたか560号",
       "date": "2026-07-11",
-      "number": "はくたか560号（Hakutaka 560）",
-      "name": "はくたか560号（Hakutaka 560）",
+      "number": "はくたか560号",
+      "name": "はくたか560号",
       "origin": "金沢",
       "destination": "大宮",
       "direction": "unknown",
@@ -4131,7 +4113,7 @@
           "from": "金沢",
           "to": "大宮",
           "from_n02_station_code": null,
-          "to_n02_station_code": "002914"
+          "to_n02_station_code": null
         }
       ],
       "stops": [
@@ -4145,7 +4127,7 @@
         },
         {
           "name": "大宮",
-          "n02_station_code": "002914",
+          "n02_station_code": null,
           "arrival": "13:27",
           "departure": null,
           "stop_type": "destination",
@@ -4154,10 +4136,10 @@
       ]
     },
     {
-      "id": "20260711_04_saikyo_local",
+      "id": "20260711_04_埼京线 普通",
       "date": "2026-07-11",
-      "number": "埼京線 普通（Saikyō Line Local）",
-      "name": "埼京線 普通（Saikyō Line Local）",
+      "number": "埼京线 普通",
+      "name": "埼京线 普通",
       "origin": "大宮",
       "destination": "池袋",
       "direction": "unknown",
@@ -4202,10 +4184,10 @@
       ]
     },
     {
-      "id": "20260711_05_seibu_ikebukuro_semiexp",
+      "id": "20260711_05_西武池袋线 準急",
       "date": "2026-07-11",
-      "number": "西武池袋線 準急（Seibu Ikebukuro Line Semi-Express）",
-      "name": "西武池袋線 準急（Seibu Ikebukuro Line Semi-Express）",
+      "number": "西武池袋线 準急",
+      "name": "西武池袋线 準急",
       "origin": "池袋",
       "destination": "西所沢",
       "direction": "unknown",
@@ -4250,10 +4232,10 @@
       ]
     },
     {
-      "id": "20260711_06_seibu_sayama_local",
+      "id": "20260711_06_西武狭山线 普通",
       "date": "2026-07-11",
-      "number": "西武狭山線 普通（Seibu Sayama Line Local）",
-      "name": "西武狭山線 普通（Seibu Sayama Line Local）",
+      "number": "西武狭山线 普通",
+      "name": "西武狭山线 普通",
       "origin": "西所沢",
       "destination": "西武球場前",
       "direction": "unknown",
@@ -4298,12 +4280,12 @@
       ]
     },
     {
-      "id": "20260713_01_keihin_tohoku_line",
+      "id": "20260713_01_京滨东北线",
       "date": "2026-07-13",
-      "number": "京浜東北線（Keihin-Tōhoku Line）",
-      "name": "京浜東北線（Keihin-Tōhoku Line）",
+      "number": "京滨东北线",
+      "name": "京滨东北线",
       "origin": "南浦和",
-      "destination": "大宮",
+      "destination": "大宫",
       "direction": "大宮",
       "visible": true,
       "style": {
@@ -4376,7 +4358,7 @@
         },
         {
           "from": "さいたま新都心",
-          "to": "大宮",
+          "to": "大宫",
           "from_n02_station_code": "002934",
           "to_n02_station_code": "002912"
         }
@@ -4455,7 +4437,7 @@
           "ride_segment": true
         },
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": "002912",
           "arrival": "07:29",
           "departure": null,
@@ -4465,11 +4447,11 @@
       ]
     },
     {
-      "id": "20260713_02_hayabusa55",
+      "id": "20260713_02_はやぶさ55号",
       "date": "2026-07-13",
-      "number": "はやぶさ55号（Hayabusa 55）",
-      "name": "はやぶさ55号（Hayabusa 55）",
-      "origin": "大宮",
+      "number": "はやぶさ55号",
+      "name": "はやぶさ55号",
+      "origin": "大宫",
       "destination": "新青森",
       "direction": "新青森",
       "visible": true,
@@ -4494,7 +4476,7 @@
       },
       "route_sections": [
         {
-          "from": "大宮",
+          "from": "大宫",
           "to": "宇都宮",
           "from_n02_station_code": "002915",
           "to_n02_station_code": "002115"
@@ -4574,7 +4556,7 @@
       ],
       "stops": [
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": "002915",
           "arrival": null,
           "departure": "08:15",
@@ -4688,10 +4670,10 @@
       ]
     },
     {
-      "id": "20260713_03_ou_main_line",
+      "id": "20260713_03_奥羽本线",
       "date": "2026-07-13",
-      "number": "奥羽本線（Ōu Main Line）",
-      "name": "奥羽本線（Ōu Main Line）",
+      "number": "奥羽本线",
+      "name": "奥羽本线",
       "origin": "新青森",
       "destination": "青森",
       "direction": "青森",
@@ -4743,10 +4725,10 @@
       ]
     },
     {
-      "id": "20260713_04_ou_main_tsugaru",
+      "id": "20260713_04_奥羽本线_つがる",
       "date": "2026-07-13",
-      "number": "奥羽本線 / つがる（Ōu Main Line / Tsugaru）",
-      "name": "奥羽本線 / つがる（Ōu Main Line / Tsugaru）",
+      "number": "奥羽本线/つがる",
+      "name": "奥羽本线/つがる",
       "origin": "青森",
       "destination": "新青森",
       "direction": "弘前",
@@ -4798,12 +4780,12 @@
       ]
     },
     {
-      "id": "20260713_05_hayabusa25",
+      "id": "20260713_05_はやぶさ25号",
       "date": "2026-07-13",
-      "number": "はやぶさ25号（Hayabusa 25）",
-      "name": "はやぶさ25号（Hayabusa 25）",
+      "number": "はやぶさ25号",
+      "name": "はやぶさ25号",
       "origin": "新青森",
-      "destination": "新函館北斗",
+      "destination": "新函馆北斗",
       "direction": "新函館北斗",
       "visible": true,
       "style": {
@@ -4840,7 +4822,7 @@
         },
         {
           "from": "木古内",
-          "to": "新函館北斗",
+          "to": "新函馆北斗",
           "from_n02_station_code": "000476",
           "to_n02_station_code": "000430"
         }
@@ -4871,7 +4853,7 @@
           "ride_segment": true
         },
         {
-          "name": "新函館北斗",
+          "name": "新函馆北斗",
           "n02_station_code": "000430",
           "arrival": "17:47",
           "departure": null,
@@ -4881,11 +4863,11 @@
       ]
     },
     {
-      "id": "20260713_06_hokuto19",
+      "id": "20260713_06_北斗19号",
       "date": "2026-07-13",
-      "number": "北斗19号（Hokuto 19）",
-      "name": "北斗19号（Hokuto 19）",
-      "origin": "新函館北斗",
+      "number": "北斗19号",
+      "name": "北斗19号",
+      "origin": "新函馆北斗",
       "destination": "札幌",
       "direction": "unknown",
       "visible": true,
@@ -4903,7 +4885,7 @@
       },
       "route_sections": [
         {
-          "from": "新函館北斗",
+          "from": "新函馆北斗",
           "to": "札幌",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -4911,7 +4893,7 @@
       ],
       "stops": [
         {
-          "name": "新函館北斗",
+          "name": "新函馆北斗",
           "n02_station_code": null,
           "arrival": null,
           "departure": "约18:11/18:14",
@@ -4929,10 +4911,10 @@
       ]
     },
     {
-      "id": "20260714_01_ozora1",
+      "id": "20260714_01_おおぞら1号",
       "date": "2026-07-14",
-      "number": "おおぞら1号（Ōzora 1）",
-      "name": "おおぞら1号（Ōzora 1）",
+      "number": "おおぞら1号",
+      "name": "おおぞら1号",
       "origin": "札幌",
       "destination": "釧路",
       "direction": "釧路",
@@ -5210,10 +5192,10 @@
       ]
     },
     {
-      "id": "20260714_02_nosappu",
+      "id": "20260714_02_ノサップ",
       "date": "2026-07-14",
-      "number": "ノサップ（Nosappu）",
-      "name": "ノサップ（Nosappu）",
+      "number": "ノサップ",
+      "name": "ノサップ",
       "origin": "釧路",
       "destination": "根室",
       "direction": "根室",
@@ -5377,10 +5359,10 @@
       ]
     },
     {
-      "id": "20260714_03_hanasaki_line",
+      "id": "20260714_03_花咲线",
       "date": "2026-07-14",
-      "number": "花咲線（Hanasaki Line）",
-      "name": "花咲線（Hanasaki Line）",
+      "number": "花咲线",
+      "name": "花咲线",
       "origin": "根室",
       "destination": "釧路",
       "direction": "釧路",
@@ -5544,10 +5526,10 @@
       ]
     },
     {
-      "id": "20260714_04_ozora12",
+      "id": "20260714_04_おおぞら12号",
       "date": "2026-07-14",
-      "number": "おおぞら12号（Ōzora 12）",
-      "name": "おおぞら12号（Ōzora 12）",
+      "number": "おおぞら12号",
+      "name": "おおぞら12号",
       "origin": "釧路",
       "destination": "札幌",
       "direction": "札幌",
@@ -5825,10 +5807,10 @@
       ]
     },
     {
-      "id": "20260715_01_soya",
+      "id": "20260715_01_宗谷_1往复_",
       "date": "2026-07-15",
-      "number": "宗谷（Sōya）",
-      "name": "宗谷（Sōya）",
+      "number": "宗谷—(1往复)",
+      "name": "宗谷—(1往复)",
       "origin": "札幌",
       "destination": "稚内",
       "direction": "稚内",
@@ -6287,10 +6269,10 @@
       ]
     },
     {
-      "id": "20260715_02_soya",
+      "id": "20260715_02_宗谷_1往复_",
       "date": "2026-07-15",
-      "number": "宗谷（Sōya）",
-      "name": "宗谷（Sōya）",
+      "number": "宗谷—(1往复)",
+      "name": "宗谷—(1往复)",
       "origin": "稚内",
       "destination": "札幌",
       "direction": "札幌",
@@ -6721,12 +6703,12 @@
       ]
     },
     {
-      "id": "20260716_01_hokuto22",
+      "id": "20260716_01_北斗22号",
       "date": "2026-07-16",
-      "number": "北斗22号（Hokuto 22）",
-      "name": "北斗22号（Hokuto 22）",
+      "number": "北斗22号",
+      "name": "北斗22号",
       "origin": "札幌",
-      "destination": "函館",
+      "destination": "函馆",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -6744,7 +6726,7 @@
       "route_sections": [
         {
           "from": "札幌",
-          "to": "函館",
+          "to": "函馆",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -6759,7 +6741,7 @@
           "ride_segment": true
         },
         {
-          "name": "函館",
+          "name": "函馆",
           "n02_station_code": null,
           "arrival": "22:31",
           "departure": null,
@@ -6769,12 +6751,12 @@
       ]
     },
     {
-      "id": "20260718_01_hakodate_liner",
+      "id": "20260718_01_はこだてライナー",
       "date": "2026-07-18",
-      "number": "はこだてライナー（Hakodate Liner）",
-      "name": "はこだてライナー（Hakodate Liner）",
-      "origin": "函館",
-      "destination": "新函館北斗",
+      "number": "はこだてライナー",
+      "name": "はこだてライナー",
+      "origin": "函馆",
+      "destination": "新函馆北斗",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -6791,15 +6773,15 @@
       },
       "route_sections": [
         {
-          "from": "函館",
-          "to": "新函館北斗",
+          "from": "函馆",
+          "to": "新函馆北斗",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "函館",
+          "name": "函馆",
           "n02_station_code": null,
           "arrival": null,
           "departure": "07:02",
@@ -6807,7 +6789,7 @@
           "ride_segment": true
         },
         {
-          "name": "新函館北斗",
+          "name": "新函馆北斗",
           "n02_station_code": null,
           "arrival": "07:21",
           "departure": null,
@@ -6817,11 +6799,11 @@
       ]
     },
     {
-      "id": "20260718_02_hayabusa12",
+      "id": "20260718_02_はやぶさ12号",
       "date": "2026-07-18",
-      "number": "はやぶさ12号（Hayabusa 12）",
-      "name": "はやぶさ12号（Hayabusa 12）",
-      "origin": "新函館北斗",
+      "number": "はやぶさ12号",
+      "name": "はやぶさ12号",
+      "origin": "新函馆北斗",
       "destination": "新青森",
       "direction": "東京",
       "visible": true,
@@ -6846,7 +6828,7 @@
       },
       "route_sections": [
         {
-          "from": "新函館北斗",
+          "from": "新函馆北斗",
           "to": "木古内",
           "from_n02_station_code": "000430",
           "to_n02_station_code": "000476"
@@ -6866,7 +6848,7 @@
       ],
       "stops": [
         {
-          "name": "新函館北斗",
+          "name": "新函馆北斗",
           "n02_station_code": "000430",
           "arrival": null,
           "departure": "07:38",
@@ -6900,10 +6882,10 @@
       ]
     },
     {
-      "id": "20260718_03_tsugaru42",
+      "id": "20260718_03_つがる42号",
       "date": "2026-07-18",
-      "number": "つがる42号（Tsugaru 42）",
-      "name": "つがる42号（Tsugaru 42）",
+      "number": "つがる42号",
+      "name": "つがる42号",
       "origin": "新青森",
       "destination": "秋田",
       "direction": "秋田",
@@ -7249,12 +7231,12 @@
       ]
     },
     {
-      "id": "20260718_04_komachi24",
+      "id": "20260718_04_こまち24号",
       "date": "2026-07-18",
-      "number": "こまち24号（Komachi 24）",
-      "name": "こまち24号（Komachi 24）",
+      "number": "こまち24号",
+      "name": "こまち24号",
       "origin": "秋田",
-      "destination": "田沢湖",
+      "destination": "田泽湖",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7272,7 +7254,7 @@
       "route_sections": [
         {
           "from": "秋田",
-          "to": "田沢湖",
+          "to": "田泽湖",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -7287,7 +7269,7 @@
           "ride_segment": true
         },
         {
-          "name": "田沢湖",
+          "name": "田泽湖",
           "n02_station_code": null,
           "arrival": "14:04",
           "departure": null,
@@ -7297,12 +7279,12 @@
       ]
     },
     {
-      "id": "20260718_05_ugo_nyuto_line",
+      "id": "20260718_05_羽后交通乳头线",
       "date": "2026-07-18",
-      "number": "羽後交通 乳頭線（Ugo Kōtsū Nyūtō Line）",
-      "name": "羽後交通 乳頭線（Ugo Kōtsū Nyūtō Line）",
-      "origin": "田沢湖駅前",
-      "destination": "田沢湖畔",
+      "number": "羽后交通 乳头线",
+      "name": "羽后交通 乳头线",
+      "origin": "田泽湖駅前",
+      "destination": "田泽湖畔",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7319,15 +7301,15 @@
       },
       "route_sections": [
         {
-          "from": "田沢湖駅前",
-          "to": "田沢湖畔",
+          "from": "田泽湖駅前",
+          "to": "田泽湖畔",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "田沢湖駅前",
+          "name": "田泽湖駅前",
           "n02_station_code": null,
           "arrival": null,
           "departure": "14:25",
@@ -7335,7 +7317,7 @@
           "ride_segment": true
         },
         {
-          "name": "田沢湖畔",
+          "name": "田泽湖畔",
           "n02_station_code": null,
           "arrival": "14:37",
           "departure": null,
@@ -7345,11 +7327,11 @@
       ]
     },
     {
-      "id": "20260718_06_ugo_tazawako_loop",
+      "id": "20260718_06_羽后交通田泽湖一周线",
       "date": "2026-07-18",
-      "number": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
-      "name": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
-      "origin": "田沢湖畔",
+      "number": "羽后交通 田泽湖一周线",
+      "name": "羽后交通 田泽湖一周线",
+      "origin": "田泽湖畔",
       "destination": "潟尻",
       "direction": "unknown",
       "visible": true,
@@ -7367,7 +7349,7 @@
       },
       "route_sections": [
         {
-          "from": "田沢湖畔",
+          "from": "田泽湖畔",
           "to": "潟尻",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -7375,7 +7357,7 @@
       ],
       "stops": [
         {
-          "name": "田沢湖畔",
+          "name": "田泽湖畔",
           "n02_station_code": null,
           "arrival": null,
           "departure": "15:37",
@@ -7393,12 +7375,12 @@
       ]
     },
     {
-      "id": "20260718_07_ugo_tazawako_loop",
+      "id": "20260718_07_羽后交通田泽湖一周线",
       "date": "2026-07-18",
-      "number": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
-      "name": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
+      "number": "羽后交通 田泽湖一周线",
+      "name": "羽后交通 田泽湖一周线",
       "origin": "潟尻",
-      "destination": "御座石",
+      "destination": "御座の石",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7416,7 +7398,7 @@
       "route_sections": [
         {
           "from": "潟尻",
-          "to": "御座石",
+          "to": "御座の石",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -7431,7 +7413,7 @@
           "ride_segment": true
         },
         {
-          "name": "御座石",
+          "name": "御座の石",
           "n02_station_code": null,
           "arrival": "16:25",
           "departure": null,
@@ -7441,12 +7423,12 @@
       ]
     },
     {
-      "id": "20260718_08_ugo_tazawako_loop",
+      "id": "20260718_08_羽后交通田泽湖一周线",
       "date": "2026-07-18",
-      "number": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
-      "name": "羽後交通 田沢湖一周線（Ugo Kōtsū Tazawako Loop Line）",
-      "origin": "御座石",
-      "destination": "田沢湖駅前",
+      "number": "羽后交通 田泽湖一周线",
+      "name": "羽后交通 田泽湖一周线",
+      "origin": "御座の石",
+      "destination": "田泽湖駅前",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7463,15 +7445,15 @@
       },
       "route_sections": [
         {
-          "from": "御座石",
-          "to": "田沢湖駅前",
+          "from": "御座の石",
+          "to": "田泽湖駅前",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "御座石",
+          "name": "御座の石",
           "n02_station_code": null,
           "arrival": null,
           "departure": "16:35",
@@ -7479,7 +7461,7 @@
           "ride_segment": true
         },
         {
-          "name": "田沢湖駅前",
+          "name": "田泽湖駅前",
           "n02_station_code": null,
           "arrival": "16:56",
           "departure": null,
@@ -7489,12 +7471,12 @@
       ]
     },
     {
-      "id": "20260718_09_komachi_hayabusa38",
+      "id": "20260718_09_こまち_はやぶさ38号",
       "date": "2026-07-18",
-      "number": "こまち+はやぶさ38号（Komachi + Hayabusa 38）",
-      "name": "こまち+はやぶさ38号（Komachi + Hayabusa 38）",
-      "origin": "田沢湖",
-      "destination": "大宮",
+      "number": "こまち+はやぶさ38号",
+      "name": "こまち+はやぶさ38号",
+      "origin": "田泽湖",
+      "destination": "大宫",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7511,15 +7493,15 @@
       },
       "route_sections": [
         {
-          "from": "田沢湖",
-          "to": "大宮",
+          "from": "田泽湖",
+          "to": "大宫",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "田沢湖",
+          "name": "田泽湖",
           "n02_station_code": null,
           "arrival": null,
           "departure": "18:10",
@@ -7527,7 +7509,7 @@
           "ride_segment": true
         },
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": null,
           "arrival": "20:39",
           "departure": null,
@@ -7537,11 +7519,11 @@
       ]
     },
     {
-      "id": "20260718_10_local",
+      "id": "20260718_10_普通列车",
       "date": "2026-07-18",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
-      "origin": "大宮",
+      "number": "普通列车",
+      "name": "普通列车",
+      "origin": "大宫",
       "destination": "八王子",
       "direction": "八王子",
       "visible": true,
@@ -7567,7 +7549,7 @@
       },
       "route_sections": [
         {
-          "from": "大宮",
+          "from": "大宫",
           "to": "与野本町",
           "from_n02_station_code": "002912",
           "to_n02_station_code": "002951"
@@ -7605,7 +7587,7 @@
       ],
       "stops": [
         {
-          "name": "大宮",
+          "name": "大宫",
           "n02_station_code": "002912",
           "arrival": null,
           "departure": "20:39",
@@ -7663,10 +7645,10 @@
       ]
     },
     {
-      "id": "20260720_01_azusa1",
+      "id": "20260720_01_あずさ1号",
       "date": "2026-07-20",
-      "number": "あずさ1号（Azusa 1）",
-      "name": "あずさ1号（Azusa 1）",
+      "number": "あずさ1号",
+      "name": "あずさ1号",
       "origin": "八王子",
       "destination": "甲府",
       "direction": "松本",
@@ -7760,12 +7742,12 @@
       ]
     },
     {
-      "id": "20260720_02_fujikawa4",
+      "id": "20260720_02_ふじかわ4号",
       "date": "2026-07-20",
-      "number": "ふじかわ4号（Fujikawa 4）",
-      "name": "ふじかわ4号（Fujikawa 4）",
+      "number": "ふじかわ4号",
+      "name": "ふじかわ4号",
       "origin": "甲府",
-      "destination": "静岡",
+      "destination": "静冈",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7783,7 +7765,7 @@
       "route_sections": [
         {
           "from": "甲府",
-          "to": "静岡",
+          "to": "静冈",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -7798,7 +7780,7 @@
           "ride_segment": true
         },
         {
-          "name": "静岡",
+          "name": "静冈",
           "n02_station_code": null,
           "arrival": "11:02",
           "departure": null,
@@ -7808,12 +7790,12 @@
       ]
     },
     {
-      "id": "20260720_03_hikari707",
+      "id": "20260720_03_ひかり707号",
       "date": "2026-07-20",
-      "number": "ひかり707号（Hikari 707）",
-      "name": "ひかり707号（Hikari 707）",
-      "origin": "静岡",
-      "destination": "岡山",
+      "number": "ひかり707号",
+      "name": "ひかり707号",
+      "origin": "静冈",
+      "destination": "冈山",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7830,15 +7812,15 @@
       },
       "route_sections": [
         {
-          "from": "静岡",
-          "to": "岡山",
+          "from": "静冈",
+          "to": "冈山",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "静岡",
+          "name": "静冈",
           "n02_station_code": null,
           "arrival": null,
           "departure": "11:07",
@@ -7846,7 +7828,7 @@
           "ride_segment": true
         },
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": null,
           "arrival": "14:02",
           "departure": null,
@@ -7856,12 +7838,12 @@
       ]
     },
     {
-      "id": "20260720_04_sakura757",
+      "id": "20260720_04_さくら757号",
       "date": "2026-07-20",
-      "number": "さくら757号（Sakura 757）",
-      "name": "さくら757号（Sakura 757）",
-      "origin": "岡山",
-      "destination": "広島",
+      "number": "さくら757号",
+      "name": "さくら757号",
+      "origin": "冈山",
+      "destination": "广岛",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -7878,15 +7860,15 @@
       },
       "route_sections": [
         {
-          "from": "岡山",
-          "to": "広島",
+          "from": "冈山",
+          "to": "广岛",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": null,
           "arrival": null,
           "departure": "14:11",
@@ -7894,7 +7876,7 @@
           "ride_segment": true
         },
         {
-          "name": "広島",
+          "name": "广岛",
           "n02_station_code": null,
           "arrival": "14:51",
           "departure": null,
@@ -7904,11 +7886,11 @@
       ]
     },
     {
-      "id": "20260721_01_sakura401",
+      "id": "20260721_01_さくら401号",
       "date": "2026-07-21",
-      "number": "さくら401号（Sakura 401）",
-      "name": "さくら401号（Sakura 401）",
-      "origin": "広島",
+      "number": "さくら401号",
+      "name": "さくら401号",
+      "origin": "广岛",
       "destination": "博多",
       "direction": "unknown",
       "visible": true,
@@ -7926,7 +7908,7 @@
       },
       "route_sections": [
         {
-          "from": "広島",
+          "from": "广岛",
           "to": "博多",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -7934,7 +7916,7 @@
       ],
       "stops": [
         {
-          "name": "広島",
+          "name": "广岛",
           "n02_station_code": null,
           "arrival": null,
           "departure": "06:43",
@@ -7952,10 +7934,10 @@
       ]
     },
     {
-      "id": "20260721_02_midori11",
+      "id": "20260721_02_みどり11号",
       "date": "2026-07-21",
-      "number": "みどり11号（Midori 11）",
-      "name": "みどり11号（Midori 11）",
+      "number": "みどり11号",
+      "name": "みどり11号",
       "origin": "博多",
       "destination": "佐世保",
       "direction": "佐世保",
@@ -8267,10 +8249,10 @@
       ]
     },
     {
-      "id": "20260721_03_matsuura_nishikyushu_line",
+      "id": "20260721_03_松浦铁道西九州线",
       "date": "2026-07-21",
-      "number": "松浦鉄道 西九州線（Matsuura Railway Nishi-Kyūshū Line）",
-      "name": "松浦鉄道 西九州線（Matsuura Railway Nishi-Kyūshū Line）",
+      "number": "松浦铁道 西九州线",
+      "name": "松浦铁道 西九州线",
       "origin": "佐世保",
       "destination": "たびら平戸口",
       "direction": "伊万里",
@@ -8504,10 +8486,10 @@
       ]
     },
     {
-      "id": "20260721_04_matsuura_nishikyushu_line",
+      "id": "20260721_04_松浦铁道西九州线",
       "date": "2026-07-21",
-      "number": "松浦鉄道 西九州線（Matsuura Railway Nishi-Kyūshū Line）",
-      "name": "松浦鉄道 西九州線（Matsuura Railway Nishi-Kyūshū Line）",
+      "number": "松浦铁道 西九州线",
+      "name": "松浦铁道 西九州线",
       "origin": "たびら平戸口",
       "destination": "佐世保",
       "direction": "佐世保",
@@ -8727,12 +8709,12 @@
       ]
     },
     {
-      "id": "20260721_05_seaside_liner",
+      "id": "20260721_05_シーサイドライナー",
       "date": "2026-07-21",
-      "number": "シーサイドライナー（Seaside Liner）",
-      "name": "シーサイドライナー（Seaside Liner）",
+      "number": "シーサイドライナー",
+      "name": "シーサイドライナー",
       "origin": "佐世保",
-      "destination": "長崎",
+      "destination": "长崎",
       "direction": "長崎",
       "visible": true,
       "style": {
@@ -8903,7 +8885,7 @@
         },
         {
           "from": "浦上",
-          "to": "長崎",
+          "to": "长崎",
           "from_n02_station_code": "009813",
           "to_n02_station_code": "009823",
           "line_names": [
@@ -9049,7 +9031,7 @@
           "ride_segment": true
         },
         {
-          "name": "長崎",
+          "name": "长崎",
           "n02_station_code": "009823",
           "arrival": "16:54",
           "departure": null,
@@ -9059,11 +9041,11 @@
       ]
     },
     {
-      "id": "20260722_01_kamome22",
+      "id": "20260722_01_かもめ22号",
       "date": "2026-07-22",
-      "number": "かもめ22号（Kamome 22）",
-      "name": "かもめ22号（Kamome 22）",
-      "origin": "長崎",
+      "number": "かもめ22号",
+      "name": "かもめ22号",
+      "origin": "长崎",
       "destination": "武雄温泉",
       "direction": "武雄温泉",
       "visible": true,
@@ -9088,7 +9070,7 @@
       },
       "route_sections": [
         {
-          "from": "長崎",
+          "from": "长崎",
           "to": "新大村",
           "from_n02_station_code": "009822",
           "to_n02_station_code": "009648"
@@ -9114,7 +9096,7 @@
       ],
       "stops": [
         {
-          "name": "長崎",
+          "name": "长崎",
           "n02_station_code": "009822",
           "arrival": null,
           "departure": "10:44",
@@ -9156,12 +9138,12 @@
       ]
     },
     {
-      "id": "20260722_02_relay_kamome22",
+      "id": "20260722_02_リレーかもめ22号",
       "date": "2026-07-22",
-      "number": "リレーかもめ22号（Relay Kamome 22）",
-      "name": "リレーかもめ22号（Relay Kamome 22）",
+      "number": "リレーかもめ22号",
+      "name": "リレーかもめ22号",
       "origin": "武雄温泉",
-      "destination": "新鳥栖",
+      "destination": "新鸟栖",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -9179,7 +9161,7 @@
       "route_sections": [
         {
           "from": "武雄温泉",
-          "to": "新鳥栖",
+          "to": "新鸟栖",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -9194,7 +9176,7 @@
           "ride_segment": true
         },
         {
-          "name": "新鳥栖",
+          "name": "新鸟栖",
           "n02_station_code": null,
           "arrival": "11:50",
           "departure": null,
@@ -9204,11 +9186,11 @@
       ]
     },
     {
-      "id": "20260722_03_sakura749",
+      "id": "20260722_03_さくら749号",
       "date": "2026-07-22",
-      "number": "さくら749号（Sakura 749）",
-      "name": "さくら749号（Sakura 749）",
-      "origin": "新鳥栖",
+      "number": "さくら749号",
+      "name": "さくら749号",
+      "origin": "新鸟栖",
       "destination": "熊本",
       "direction": "unknown",
       "visible": true,
@@ -9226,7 +9208,7 @@
       },
       "route_sections": [
         {
-          "from": "新鳥栖",
+          "from": "新鸟栖",
           "to": "熊本",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -9234,7 +9216,7 @@
       ],
       "stops": [
         {
-          "name": "新鳥栖",
+          "name": "新鸟栖",
           "n02_station_code": null,
           "arrival": null,
           "departure": "12:14",
@@ -9252,12 +9234,12 @@
       ]
     },
     {
-      "id": "20260722_04_asoboy3",
+      "id": "20260722_04_あそぼーい_3号",
       "date": "2026-07-22",
-      "number": "あそぼーい！3号（Aso Boy! 3）",
-      "name": "あそぼーい！3号（Aso Boy! 3）",
+      "number": "あそぼーい！3号",
+      "name": "あそぼーい！3号",
       "origin": "熊本",
-      "destination": "宮地",
+      "destination": "宫地",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -9275,7 +9257,7 @@
       "route_sections": [
         {
           "from": "熊本",
-          "to": "宮地",
+          "to": "宫地",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -9290,7 +9272,7 @@
           "ride_segment": true
         },
         {
-          "name": "宮地",
+          "name": "宫地",
           "n02_station_code": null,
           "arrival": "15:11",
           "departure": null,
@@ -9300,11 +9282,11 @@
       ]
     },
     {
-      "id": "20260722_05_asoboy4",
+      "id": "20260722_05_あそぼーい_4号",
       "date": "2026-07-22",
-      "number": "あそぼーい！4号（Aso Boy! 4）",
-      "name": "あそぼーい！4号（Aso Boy! 4）",
-      "origin": "宮地",
+      "number": "あそぼーい！4号",
+      "name": "あそぼーい！4号",
+      "origin": "宫地",
       "destination": "熊本",
       "direction": "unknown",
       "visible": true,
@@ -9322,7 +9304,7 @@
       },
       "route_sections": [
         {
-          "from": "宮地",
+          "from": "宫地",
           "to": "熊本",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -9330,7 +9312,7 @@
       ],
       "stops": [
         {
-          "name": "宮地",
+          "name": "宫地",
           "n02_station_code": null,
           "arrival": null,
           "departure": "15:48",
@@ -9348,12 +9330,12 @@
       ]
     },
     {
-      "id": "20260722_06_sakura765",
+      "id": "20260722_06_さくら765号",
       "date": "2026-07-22",
-      "number": "さくら765号（Sakura 765）",
-      "name": "さくら765号（Sakura 765）",
+      "number": "さくら765号",
+      "name": "さくら765号",
       "origin": "熊本",
-      "destination": "鹿児島中央",
+      "destination": "鹿儿岛中央",
       "direction": "鹿児島中央",
       "visible": true,
       "style": {
@@ -9402,7 +9384,7 @@
         },
         {
           "from": "川内",
-          "to": "鹿児島中央",
+          "to": "鹿儿岛中央",
           "from_n02_station_code": "009986",
           "to_n02_station_code": "010049"
         }
@@ -9449,7 +9431,7 @@
           "ride_segment": true
         },
         {
-          "name": "鹿児島中央",
+          "name": "鹿儿岛中央",
           "n02_station_code": "010049",
           "arrival": "21:39",
           "departure": null,
@@ -9459,11 +9441,11 @@
       ]
     },
     {
-      "id": "20260723_01_ibusuki_makurazaki_line",
+      "id": "20260723_01_指宿枕崎线",
       "date": "2026-07-23",
-      "number": "指宿枕崎線（Ibusuki-Makurazaki Line）",
-      "name": "指宿枕崎線（Ibusuki-Makurazaki Line）",
-      "origin": "鹿児島中央",
+      "number": "指宿枕崎线",
+      "name": "指宿枕崎线",
+      "origin": "鹿儿岛中央",
       "destination": "山川",
       "direction": "山川",
       "visible": true,
@@ -9488,7 +9470,7 @@
       },
       "route_sections": [
         {
-          "from": "鹿児島中央",
+          "from": "鹿儿岛中央",
           "to": "郡元",
           "from_n02_station_code": "010047",
           "to_n02_station_code": "010066"
@@ -9628,7 +9610,7 @@
       ],
       "stops": [
         {
-          "name": "鹿児島中央",
+          "name": "鹿儿岛中央",
           "n02_station_code": "010047",
           "arrival": null,
           "departure": "04:46",
@@ -9822,10 +9804,10 @@
       ]
     },
     {
-      "id": "20260723_02_ibusuki_makurazaki_line",
+      "id": "20260723_02_指宿枕崎线",
       "date": "2026-07-23",
-      "number": "指宿枕崎線（Ibusuki-Makurazaki Line）",
-      "name": "指宿枕崎線（Ibusuki-Makurazaki Line）",
+      "number": "指宿枕崎线",
+      "name": "指宿枕崎线",
       "origin": "山川",
       "destination": "西大山",
       "direction": "枕崎方面",
@@ -9905,12 +9887,12 @@
       ]
     },
     {
-      "id": "20260723_03_ibusuki_makurazaki_line",
+      "id": "20260723_03_指宿枕崎线",
       "date": "2026-07-23",
-      "number": "指宿枕崎線（Ibusuki-Makurazaki Line）",
-      "name": "指宿枕崎線（Ibusuki-Makurazaki Line）",
+      "number": "指宿枕崎线",
+      "name": "指宿枕崎线",
       "origin": "西大山",
-      "destination": "鹿児島中央",
+      "destination": "鹿儿岛中央",
       "direction": "鹿児島中央",
       "visible": true,
       "style": {
@@ -10079,7 +10061,7 @@
         },
         {
           "from": "郡元",
-          "to": "鹿児島中央",
+          "to": "鹿儿岛中央",
           "from_n02_station_code": "010066",
           "to_n02_station_code": "010047"
         }
@@ -10286,7 +10268,7 @@
           "ride_segment": true
         },
         {
-          "name": "鹿児島中央",
+          "name": "鹿儿岛中央",
           "n02_station_code": "010047",
           "arrival": "08:51",
           "departure": null,
@@ -10296,12 +10278,12 @@
       ]
     },
     {
-      "id": "20260723_04_kirishima8",
+      "id": "20260723_04_きりしま8号",
       "date": "2026-07-23",
-      "number": "きりしま8号（Kirishima 8）",
-      "name": "きりしま8号（Kirishima 8）",
-      "origin": "鹿児島中央",
-      "destination": "宮崎",
+      "number": "きりしま8号",
+      "name": "きりしま8号",
+      "origin": "鹿儿岛中央",
+      "destination": "宫崎",
       "direction": "宮崎",
       "visible": true,
       "style": {
@@ -10325,7 +10307,7 @@
       },
       "route_sections": [
         {
-          "from": "鹿児島中央",
+          "from": "鹿儿岛中央",
           "to": "鹿児島",
           "from_n02_station_code": "010047",
           "to_n02_station_code": "010032",
@@ -10488,7 +10470,7 @@
         },
         {
           "from": "南宮崎",
-          "to": "宮崎",
+          "to": "宫崎",
           "from_n02_station_code": "009961",
           "to_n02_station_code": "009957",
           "line_names": [
@@ -10498,7 +10480,7 @@
       ],
       "stops": [
         {
-          "name": "鹿児島中央",
+          "name": "鹿儿岛中央",
           "n02_station_code": "010047",
           "arrival": null,
           "departure": "09:59",
@@ -10650,7 +10632,7 @@
           "ride_segment": true
         },
         {
-          "name": "宮崎",
+          "name": "宫崎",
           "n02_station_code": "009957",
           "arrival": "12:12",
           "departure": null,
@@ -10660,11 +10642,11 @@
       ]
     },
     {
-      "id": "20260723_05_nichirin10",
+      "id": "20260723_05_にちりん10号",
       "date": "2026-07-23",
-      "number": "にちりん10号（Nichirin 10）",
-      "name": "にちりん10号（Nichirin 10）",
-      "origin": "宮崎",
+      "number": "にちりん10号",
+      "name": "にちりん10号",
+      "origin": "宫崎",
       "destination": "大分",
       "direction": "大分",
       "visible": true,
@@ -10689,7 +10671,7 @@
       },
       "route_sections": [
         {
-          "from": "宮崎",
+          "from": "宫崎",
           "to": "宮崎神宮",
           "from_n02_station_code": "009957",
           "to_n02_station_code": "009954"
@@ -10787,7 +10769,7 @@
       ],
       "stops": [
         {
-          "name": "宮崎",
+          "name": "宫崎",
           "n02_station_code": "009957",
           "arrival": null,
           "departure": "12:30",
@@ -10925,10 +10907,10 @@
       ]
     },
     {
-      "id": "20260723_06_sonic44",
+      "id": "20260723_06_ソニック44号",
       "date": "2026-07-23",
-      "number": "ソニック44号（Sonic 44）",
-      "name": "ソニック44号（Sonic 44）",
+      "number": "ソニック44号",
+      "name": "ソニック44号",
       "origin": "大分",
       "destination": "小倉",
       "direction": "博多",
@@ -11106,12 +11088,12 @@
       ]
     },
     {
-      "id": "20260723_07_sakura768",
+      "id": "20260723_07_さくら768号",
       "date": "2026-07-23",
-      "number": "さくら768号（Sakura 768）",
-      "name": "さくら768号（Sakura 768）",
+      "number": "さくら768号",
+      "name": "さくら768号",
       "origin": "小倉",
-      "destination": "岡山",
+      "destination": "冈山",
       "direction": "新大阪",
       "visible": true,
       "style": {
@@ -11184,7 +11166,7 @@
         },
         {
           "from": "新倉敷",
-          "to": "岡山",
+          "to": "冈山",
           "from_n02_station_code": "007697",
           "to_n02_station_code": "007329"
         }
@@ -11263,7 +11245,7 @@
           "ride_segment": true
         },
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": "007329",
           "arrival": "19:32",
           "departure": null,
@@ -11273,11 +11255,11 @@
       ]
     },
     {
-      "id": "20260723_08_shiokaze27",
+      "id": "20260723_08_しおかぜ27号",
       "date": "2026-07-23",
-      "number": "しおかぜ27号（Shiokaze 27）",
-      "name": "しおかぜ27号（Shiokaze 27）",
-      "origin": "岡山",
+      "number": "しおかぜ27号",
+      "name": "しおかぜ27号",
+      "origin": "冈山",
       "destination": "松山",
       "direction": "松山",
       "visible": true,
@@ -11304,7 +11286,7 @@
       },
       "route_sections": [
         {
-          "from": "岡山",
+          "from": "冈山",
           "to": "茶屋町",
           "from_n02_station_code": "007310",
           "to_n02_station_code": "007663",
@@ -11477,7 +11459,7 @@
       ],
       "stops": [
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": "007310",
           "arrival": null,
           "departure": "20:39",
@@ -11639,12 +11621,12 @@
       ]
     },
     {
-      "id": "20260724_01_uwakai3",
+      "id": "20260724_01_宇和海3号",
       "date": "2026-07-24",
-      "number": "宇和海3号（Uwakai 3）",
-      "name": "宇和海3号（Uwakai 3）",
+      "number": "宇和海3号",
+      "name": "宇和海3号",
       "origin": "松山",
-      "destination": "宇和島",
+      "destination": "宇和岛",
       "direction": "宇和島",
       "visible": true,
       "style": {
@@ -11748,7 +11730,7 @@
         },
         {
           "from": "高光",
-          "to": "宇和島",
+          "to": "宇和岛",
           "from_n02_station_code": "009452",
           "to_n02_station_code": "009486"
         }
@@ -11867,7 +11849,7 @@
           "ride_segment": true
         },
         {
-          "name": "宇和島",
+          "name": "宇和岛",
           "n02_station_code": "009486",
           "arrival": "08:14",
           "departure": null,
@@ -11877,11 +11859,11 @@
       ]
     },
     {
-      "id": "20260724_02_local",
+      "id": "20260724_02_普通列车",
       "date": "2026-07-24",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
-      "origin": "宇和島",
+      "number": "普通列车",
+      "name": "普通列车",
+      "origin": "宇和岛",
       "destination": "窪川",
       "direction": "窪川",
       "visible": true,
@@ -11907,7 +11889,7 @@
       },
       "route_sections": [
         {
-          "from": "宇和島",
+          "from": "宇和岛",
           "to": "北宇和島",
           "from_n02_station_code": "009486",
           "to_n02_station_code": "009472"
@@ -11963,7 +11945,7 @@
       ],
       "stops": [
         {
-          "name": "宇和島",
+          "name": "宇和岛",
           "n02_station_code": "009486",
           "arrival": null,
           "departure": "09:34",
@@ -12045,10 +12027,10 @@
       ]
     },
     {
-      "id": "20260724_03_ashizuri10",
+      "id": "20260724_03_あしずり10号",
       "date": "2026-07-24",
-      "number": "あしずり10号（Ashizuri 10）",
-      "name": "あしずり10号（Ashizuri 10）",
+      "number": "あしずり10号",
+      "name": "あしずり10号",
       "origin": "窪川",
       "destination": "高知",
       "direction": "高知",
@@ -12226,10 +12208,10 @@
       ]
     },
     {
-      "id": "20260724_04_nanpu20",
+      "id": "20260724_04_南風20号",
       "date": "2026-07-24",
-      "number": "南風20号（Nanpū 20）",
-      "name": "南風20号（Nanpū 20）",
+      "number": "南風20号",
+      "name": "南風20号",
       "origin": "高知",
       "destination": "阿波池田",
       "direction": "岡山",
@@ -12407,12 +12389,12 @@
       ]
     },
     {
-      "id": "20260724_05_local",
+      "id": "20260724_05_普通列车",
       "date": "2026-07-24",
-      "number": "普通列車（Local）",
-      "name": "普通列車（Local）",
+      "number": "普通列车",
+      "name": "普通列车",
       "origin": "阿波池田",
-      "destination": "徳島",
+      "destination": "徳岛",
       "direction": "牟岐",
       "visible": true,
       "style": {
@@ -12529,7 +12511,7 @@
         },
         {
           "from": "佐古",
-          "to": "徳島",
+          "to": "徳岛",
           "from_n02_station_code": "008484",
           "to_n02_station_code": "008493"
         }
@@ -12664,7 +12646,7 @@
           "ride_segment": true
         },
         {
-          "name": "徳島",
+          "name": "徳岛",
           "n02_station_code": "008493",
           "arrival": "18:52",
           "departure": null,
@@ -12674,11 +12656,11 @@
       ]
     },
     {
-      "id": "20260724_06_uzushio28",
+      "id": "20260724_06_うずしお28号",
       "date": "2026-07-24",
-      "number": "うずしお28号（Uzushio 28）",
-      "name": "うずしお28号（Uzushio 28）",
-      "origin": "徳島",
+      "number": "うずしお28号",
+      "name": "うずしお28号",
+      "origin": "徳岛",
       "destination": "高松",
       "direction": "高松",
       "visible": true,
@@ -12703,7 +12685,7 @@
       },
       "route_sections": [
         {
-          "from": "徳島",
+          "from": "徳岛",
           "to": "吉成",
           "from_n02_station_code": "008493",
           "to_n02_station_code": "008462"
@@ -12801,7 +12783,7 @@
       ],
       "stops": [
         {
-          "name": "徳島",
+          "name": "徳岛",
           "n02_station_code": "008493",
           "arrival": null,
           "departure": "19:24",
@@ -12939,12 +12921,12 @@
       ]
     },
     {
-      "id": "20260724_07_marine_liner64",
+      "id": "20260724_07_マリンライナー64号",
       "date": "2026-07-24",
-      "number": "マリンライナー64号（Marine Liner 64）",
-      "name": "マリンライナー64号（Marine Liner 64）",
+      "number": "マリンライナー64号",
+      "name": "マリンライナー64号",
       "origin": "高松",
-      "destination": "岡山",
+      "destination": "冈山",
       "direction": "岡山",
       "visible": true,
       "style": {
@@ -13017,7 +12999,7 @@
         },
         {
           "from": "妹尾",
-          "to": "岡山",
+          "to": "冈山",
           "from_n02_station_code": "007584",
           "to_n02_station_code": "007310",
           "line_names": [
@@ -13075,7 +13057,7 @@
           "ride_segment": true
         },
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": "007310",
           "arrival": "21:36",
           "departure": null,
@@ -13085,11 +13067,11 @@
       ]
     },
     {
-      "id": "20260724_08_sakura772",
+      "id": "20260724_08_さくら772号",
       "date": "2026-07-24",
-      "number": "さくら772号（Sakura 772）",
-      "name": "さくら772号（Sakura 772）",
-      "origin": "岡山",
+      "number": "さくら772号",
+      "name": "さくら772号",
+      "origin": "冈山",
       "destination": "新大阪",
       "direction": "新大阪",
       "visible": true,
@@ -13114,7 +13096,7 @@
       },
       "route_sections": [
         {
-          "from": "岡山",
+          "from": "冈山",
           "to": "相生",
           "from_n02_station_code": "007329",
           "to_n02_station_code": "006552"
@@ -13146,7 +13128,7 @@
       ],
       "stops": [
         {
-          "name": "岡山",
+          "name": "冈山",
           "n02_station_code": "007329",
           "arrival": null,
           "departure": "22:18",
@@ -13196,12 +13178,12 @@
       ]
     },
     {
-      "id": "20260725_01_tokaido_shinkansen_hikari_kodama",
+      "id": "20260725_01_东海道新干线hikari_kodama",
       "date": "2026-07-25",
-      "number": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
-      "name": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
+      "number": "东海道新干线 Hikari/Kodama",
+      "name": "东海道新干线 Hikari/Kodama",
       "origin": "名古屋",
-      "destination": "三島",
+      "destination": "三岛",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -13219,7 +13201,7 @@
       "route_sections": [
         {
           "from": "名古屋",
-          "to": "三島",
+          "to": "三岛",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
@@ -13234,7 +13216,7 @@
           "ride_segment": true
         },
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": null,
           "arrival": "10:26",
           "departure": null,
@@ -13244,12 +13226,12 @@
       ]
     },
     {
-      "id": "20260726_01_tokaido_shinkansen_hikari_kodama",
+      "id": "20260726_01_东海道新干线hikari_kodama",
       "date": "2026-07-26",
-      "number": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
-      "name": "東海道新幹線 ひかり/こだま（Tōkaidō Shinkansen Hikari/Kodama）",
-      "origin": "三島",
-      "destination": "東京",
+      "number": "东海道新干线 Hikari/Kodama",
+      "name": "东海道新干线 Hikari/Kodama",
+      "origin": "三岛",
+      "destination": "东京",
       "direction": "unknown",
       "visible": true,
       "style": {
@@ -13266,15 +13248,15 @@
       },
       "route_sections": [
         {
-          "from": "三島",
-          "to": "東京",
+          "from": "三岛",
+          "to": "东京",
           "from_n02_station_code": null,
           "to_n02_station_code": null
         }
       ],
       "stops": [
         {
-          "name": "三島",
+          "name": "三岛",
           "n02_station_code": null,
           "arrival": null,
           "departure": "08:30",
@@ -13282,7 +13264,7 @@
           "ride_segment": true
         },
         {
-          "name": "東京",
+          "name": "东京",
           "n02_station_code": null,
           "arrival": "09:24",
           "departure": null,
@@ -13292,11 +13274,11 @@
       ]
     },
     {
-      "id": "20260726_02_chuo_rapid_local",
+      "id": "20260726_02_中央线快速_普通",
       "date": "2026-07-26",
-      "number": "中央線 快速/普通（Chūō Line Rapid/Local）",
-      "name": "中央線 快速/普通（Chūō Line Rapid/Local）",
-      "origin": "東京",
+      "number": "中央线 快速/普通",
+      "name": "中央线 快速/普通",
+      "origin": "东京",
       "destination": "新宿",
       "direction": "unknown",
       "visible": true,
@@ -13314,7 +13296,7 @@
       },
       "route_sections": [
         {
-          "from": "東京",
+          "from": "东京",
           "to": "新宿",
           "from_n02_station_code": null,
           "to_n02_station_code": null
@@ -13322,7 +13304,7 @@
       ],
       "stops": [
         {
-          "name": "東京",
+          "name": "东京",
           "n02_station_code": null,
           "arrival": null,
           "departure": "09:42",
@@ -13340,10 +13322,10 @@
       ]
     },
     {
-      "id": "20260726_03_fuji_excursion15",
+      "id": "20260726_03_fujiexcursion15号_富士回遊15号",
       "date": "2026-07-26",
-      "number": "富士回遊15号（Fuji Excursion 15）",
-      "name": "富士回遊15号（Fuji Excursion 15）",
+      "number": "FUJI EXCURSION 15号 / 富士回遊15号",
+      "name": "FUJI EXCURSION 15号 / 富士回遊15号",
       "origin": "新宿",
       "destination": "河口湖",
       "direction": "unknown",
@@ -13388,10 +13370,10 @@
       ]
     },
     {
-      "id": "20260726_04_fujikyuko_local",
+      "id": "20260726_04_富士急行线普通_接驳",
       "date": "2026-07-26",
-      "number": "富士急行線 普通/接続（Fujikyūkō Line Local/Shuttle）",
-      "name": "富士急行線 普通/接続（Fujikyūkō Line Local/Shuttle）",
+      "number": "富士急行线 普通/接驳",
+      "name": "富士急行线 普通/接驳",
       "origin": "河口湖",
       "destination": "大月",
       "direction": "unknown",
@@ -13436,10 +13418,10 @@
       ]
     },
     {
-      "id": "20260726_05_chuo_main_rapid_local",
+      "id": "20260726_05_中央本线快速_普通",
       "date": "2026-07-26",
-      "number": "中央本線 快速/普通（Chūō Main Line Rapid/Local）",
-      "name": "中央本線 快速/普通（Chūō Main Line Rapid/Local）",
+      "number": "中央本线 快速/普通",
+      "name": "中央本线 快速/普通",
       "origin": "大月",
       "destination": "八王子",
       "direction": "unknown",
