@@ -952,7 +952,11 @@ const CLIENT_ID =
   (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
   `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 const fetchJson = async (path) => {
-  const res = await fetch(`${API_BASE}/${path}`, { cache: "no-store" });
+  // Use the browser's default HTTP cache. The server sends a weak ETag +
+  // Cache-Control: max-age on every dataset, so reloads revalidate to a 304 (or
+  // serve straight from cache within max-age) instead of re-downloading the full
+  // multi-MB payload. The old `cache: "no-store"` defeated all of that.
+  const res = await fetch(`${API_BASE}/${path}`);
   if (!res.ok)
     throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
   return res.json();
@@ -965,16 +969,30 @@ let railSectionsGeoJson,
   matchedRoutesGeoJson,
   matchedStopsGeoJson;
 let stationCandidatesIndex;
+// Tracks the in-flight (or resolved) rail-sections fetch. rail-sections.json is
+// ~12 MB raw / 2.4 MB gzipped and is consumed ONLY by the route solver, which
+// runs after the map is already on screen — so it is fetched in parallel with
+// boot but never blocks first paint. ensureRailSectionsLoaded() awaits it right
+// before the first solve.
+let railSectionsReady = null;
 
 async function loadAppData() {
+  // Kick off the big solver-only dataset immediately, but do NOT block boot on
+  // it — assign it to the module global as soon as it lands.
+  railSectionsReady = fetchJson("rail-sections").then((data) => {
+    railSectionsGeoJson = data;
+    return data;
+  });
+
+  // Block first paint only on the small, render-critical datasets. `stations`
+  // (3.3 MB / 456 KB gz) feeds the marker/station-resolution paths used by the
+  // very first render, so it stays in the blocking set.
   [
-    railSectionsGeoJson,
     stationsGeoJson,
     defaultTrainStore,
     matchedRoutesGeoJson,
     matchedStopsGeoJson,
   ] = await Promise.all([
-    fetchJson("rail-sections"),
     fetchJson("stations"),
     fetchJson("default-trains"),
     fetchJson("matched-routes"),
@@ -982,6 +1000,37 @@ async function loadAppData() {
   ]);
 
   stationCandidatesIndex = buildStationCandidatesIndex(stationsGeoJson);
+
+  // Surface a rail-sections failure instead of leaving an unhandled rejection;
+  // ensureRailSectionsLoaded() will retry on demand before the first solve.
+  railSectionsReady.catch((err) =>
+    console.error(
+      "rail-sections load failed during boot; will retry before first route solve.",
+      err,
+    ),
+  );
+}
+
+// Guarantee the rail-sections dataset is present before any route solve. Awaits
+// the background boot fetch; retries once if that fetch failed. Cheap and
+// idempotent once the data is resident.
+async function ensureRailSectionsLoaded() {
+  if (railSectionsGeoJson) return railSectionsGeoJson;
+  if (railSectionsReady) {
+    try {
+      await railSectionsReady;
+    } catch (err) {
+      /* fall through to a fresh retry below */
+    }
+  }
+  if (!railSectionsGeoJson) {
+    railSectionsReady = fetchJson("rail-sections").then((data) => {
+      railSectionsGeoJson = data;
+      return data;
+    });
+    await railSectionsReady;
+  }
+  return railSectionsGeoJson;
 }
 // =========================================================================
 //  §8.  Core mutable state & cached DOM element references
@@ -1005,8 +1054,13 @@ let mapFollowsSelectedDate = false;
 // Auto-focus: when on, picking a date zooms the map to that day's trains and
 // picking a train zooms to that train. The toggle button turns it off so the
 // map view stays put on selection (whether the pick came from a card or a
-// route line). Defaults on.
-let focusZoomEnabled = true;
+// route line).
+// Defaults OFF: an auto-focus fitBounds animation forces a zoom change, and the
+// zoomend handler then recomputes overlap offsets and re-uploads the full
+// visible-route GeoJSON to the GPU — making a simple selection ~4 s instead of
+// the ~270 ms it takes with focus off. Users who want it can still toggle it on
+// (their choice is persisted in localStorage and restored on boot).
+let focusZoomEnabled = false;
 // The maplibregl.Map instance (created by initMap once the basemap + rail
 // network package have loaded).
 let map;
@@ -1094,6 +1148,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Warm the persistent route-geometry cache (IndexedDB) BEFORE the progressive
   // load runs its solves, so cached trains hit memory and the heavy route graph
   // is never built. Best-effort and namespaced to the current rail network.
+  // The map is now on screen (initMap loaded the visible rail network + basemap
+  // without waiting on the 12 MB rail-sections graph source). Route solving —
+  // and the railHash that namespaces the IndexedDB route cache — both need
+  // rail-sections, so make sure it has finished loading before we warm the cache
+  // or solve. By now it has almost always arrived in parallel with initMap, so
+  // this rarely blocks.
+  await ensureRailSectionsLoaded();
+
   await warmRouteCacheFromIndexedDb();
 
   // Boot from the server-saved store; if nothing has been saved yet, fall
@@ -1701,13 +1763,17 @@ async function warmRouteCacheFromIndexedDb() {
         const cursor = req.result;
         if (!cursor) return;
         const key = String(cursor.key);
-        if (
-          key.startsWith(prefix) &&
-          Array.isArray(cursor.value) &&
-          cursor.value.length
-        ) {
-          runtimeRouteCache.set(key.slice(prefix.length), cursor.value);
-          warmed += 1;
+        if (key.startsWith(prefix)) {
+          const rest = key.slice(prefix.length);
+          if (rest.startsWith(ROUTE_NEG_CACHE_MARKER)) {
+            // Persisted "this route can't be solved" marker for this rail net.
+            runtimeRouteNegativeCache.add(
+              rest.slice(ROUTE_NEG_CACHE_MARKER.length),
+            );
+          } else if (Array.isArray(cursor.value) && cursor.value.length) {
+            runtimeRouteCache.set(rest, cursor.value);
+            warmed += 1;
+          }
         }
         cursor.continue();
       };
@@ -1738,6 +1804,23 @@ function persistRouteCacheEntry(cacheKey, features) {
       tx.onerror = () => db.close();
     })
     .catch((err) => console.warn("Route cache persist skipped.", err));
+}
+
+// Fire-and-forget persist of a "this route can't be solved with the current rail
+// data + policy" marker, so future sessions skip the doomed solve too. Namespaced
+// by rail-content hash like the positive cache, and stored under a distinct
+// marker prefix so warmRouteCacheFromIndexedDb() can tell the two apart.
+function persistRouteNegativeEntry(cacheKey) {
+  if (!window.indexedDB) return;
+  const storeKey = `${getRailContentHash()}::${ROUTE_NEG_CACHE_MARKER}${cacheKey}`;
+  openRouteCacheDb()
+    .then((db) => {
+      const tx = db.transaction(ROUTE_CACHE_STORE_NAME, "readwrite");
+      tx.objectStore(ROUTE_CACHE_STORE_NAME).put(1, storeKey);
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => db.close();
+    })
+    .catch((err) => console.warn("Route negative-cache persist skipped.", err));
 }
 
 // =========================================================================
@@ -1945,6 +2028,9 @@ function finalizeProgressiveLoad(
   validateTrainStore(buildCanonicalTrainStore());
   if (finalPersist) saveTrainStore();
   renderAll();
+  // The load allowed the regional-graph cache to grow to its transient budget to
+  // avoid rebuilding regions mid-pass; settle it back to the steady budget now.
+  trimRegionalGraphCache(REGIONAL_GRAPH_NODE_BUDGET);
 }
 
 async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
@@ -4162,10 +4248,14 @@ function renderRoutesInView() {
   // dedicated hover-expand source, so a fanned parallel line is the member
   // train's complete course translated intact — never broken mid-route.
   const built = buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive);
-  // Selection changes reuse the cached record object at the same spacing —
-  // pushing the identical FeatureCollections again would only force MapLibre
-  // to re-tile every route for nothing, so skip the push entirely.
-  if (built !== _lastPushedBuilt || built.spacingDeg !== _lastPushedSpacingDeg) {
+  // Three cases, cheapest first:
+  //   • same record object AND same spacing (a pure selection/marker change) —
+  //     push nothing; RailMap.setSelected below does the whole job.
+  //   • same record object, spacing drifted (a zoom) — only the invisible pick
+  //     lanes moved; re-upload just the pick source, not the identical base
+  //     route source.
+  //   • new record object (geometry/style/visibility/date changed) — full push.
+  if (built !== _lastPushedBuilt) {
     RailMap.setData(
       built.records,
       built.expandRecords,
@@ -4173,6 +4263,9 @@ function renderRoutesInView() {
       built.spacingDeg,
     );
     _lastPushedBuilt = built;
+    _lastPushedSpacingDeg = built.spacingDeg;
+  } else if (built.spacingDeg !== _lastPushedSpacingDeg) {
+    RailMap.updateLaneSpacing(built.spacingDeg);
     _lastPushedSpacingDeg = built.spacingDeg;
   }
   // The selected train re-draws in the dedicated selection layers (dark ink
@@ -4939,6 +5032,15 @@ function getTrainRouteTemplateKey(train) {
 
 let runtimeRouteGraph = null;
 const runtimeRouteCache = new Map();
+// Negative cache: cacheKeys whose solve produced ZERO usable geometry (all
+// sections failed — bad/mismatched station codes, or no path under the policy).
+// A failure is deterministic for a given (rail data + sections + policy), all of
+// which are encoded in cacheKey, so re-solving can only fail again. Without this
+// the ~25 unsolvable trains rebuilt regional graphs and ran Dijkstra on every
+// prewarm, final render and live refresh — a big chunk of the ~53 s hot reload.
+// Editing a train changes its cacheKey, so a fix is re-solved automatically.
+const runtimeRouteNegativeCache = new Set();
+const ROUTE_NEG_CACHE_MARKER = "__neg__::";
 const STATION_SNAP_MAX_DISTANCE_METERS = 500;
 const STATION_SNAP_COST_FACTOR = 4;
 // N02_002 institution type codes are treated as preferences by default, not
@@ -5017,6 +5119,12 @@ function generateMatchedRouteFeaturesForTrain(train) {
     );
   }
 
+  // Known-unsolvable with this exact data + policy: skip the regional-graph
+  // build + Dijkstra entirely and return empty, exactly as a fresh solve would.
+  if (runtimeRouteNegativeCache.has(cacheKey)) {
+    return [];
+  }
+
   setStatus(
     els.fieldStatus,
     `Generating N02 railway route for ${train.number || train.id}...`,
@@ -5054,6 +5162,12 @@ function generateMatchedRouteFeaturesForTrain(train) {
       `Unable to generate N02 railway route for ${train.number || train.id}. ${warnings.length} segment(s) failed.`,
       "warn",
     );
+    // Remember the failure so re-renders / prewarms / live refreshes in this
+    // session (and future sessions, via IndexedDB) don't re-run the same doomed
+    // graph build + Dijkstra. Cleared implicitly when the train's data changes
+    // (its cacheKey changes).
+    runtimeRouteNegativeCache.add(cacheKey);
+    persistRouteNegativeEntry(cacheKey);
     return [];
   }
 
@@ -5389,9 +5503,32 @@ function bboxDiagonalMeters(bbox) {
 }
 
 const REGION_QUANT_DEG = 0.25;
-const REGIONAL_GRAPH_NODE_BUDGET = 140000;
+// Steady-state cap on total resident regional-graph nodes. Was 140,000 — smaller
+// than a SINGLE cross-Japan region (50k–72k nodes), so a multi-region load
+// evicted a region and then rebuilt the identical one 2–3× within one pass
+// (56–61 builds observed for 117 trains). For reference the full-Japan graph is
+// ~377k nodes and is already a tolerated fallback, so holding ~4–5 regions
+// resident here is well within that envelope while erasing most re-builds.
+const REGIONAL_GRAPH_NODE_BUDGET = 300000;
+// During an active progressive load we suspend eviction so a region built for an
+// early train is still resident when a later train needs it again — but cap the
+// transient so a pathological all-Japan load can't blow up memory. Trimmed back
+// to the steady budget by trimRegionalGraphCache() when the load finishes.
+const REGIONAL_GRAPH_LOAD_NODE_BUDGET = 600000;
 const regionalGraphCache = new Map(); // quantized-bbox key -> graph (insertion order = LRU)
 let regionalGraphNodeCount = 0;
+
+// Evict least-recently-used regional graphs until the resident node count is at
+// or below `target` (always keeping at least one so the in-flight solve has its
+// graph). Shared by the on-demand builder and the post-load trim.
+function trimRegionalGraphCache(target) {
+  while (regionalGraphNodeCount > target && regionalGraphCache.size > 1) {
+    const oldestKey = regionalGraphCache.keys().next().value;
+    const oldest = regionalGraphCache.get(oldestKey);
+    regionalGraphCache.delete(oldestKey);
+    regionalGraphNodeCount -= oldest.nodes.size;
+  }
+}
 
 function quantizeBboxOutward(bbox) {
   return [
@@ -5419,15 +5556,15 @@ function getRegionalRouteGraph(bbox) {
   graph.regionBbox = qbbox;
   regionalGraphCache.set(key, graph);
   regionalGraphNodeCount += graph.nodes.size;
-  while (
-    regionalGraphNodeCount > REGIONAL_GRAPH_NODE_BUDGET &&
-    regionalGraphCache.size > 1
-  ) {
-    const oldestKey = regionalGraphCache.keys().next().value;
-    const oldest = regionalGraphCache.get(oldestKey);
-    regionalGraphCache.delete(oldestKey);
-    regionalGraphNodeCount -= oldest.nodes.size;
-  }
+  // While a load is solving many trains back-to-back, keep regions resident up
+  // to the larger transient budget so an already-built region is reused instead
+  // of evicted-then-rebuilt; finalizeProgressiveLoad() trims back to the steady
+  // budget once the load settles. Interactive (non-load) solves trim immediately.
+  trimRegionalGraphCache(
+    importInProgress
+      ? REGIONAL_GRAPH_LOAD_NODE_BUDGET
+      : REGIONAL_GRAPH_NODE_BUDGET,
+  );
   console.info(
     `Regional route graph built: ${graph.nodes.size} nodes for ${key} (${regionalGraphCache.size} region(s) cached).`,
   );

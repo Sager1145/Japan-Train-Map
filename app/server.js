@@ -90,6 +90,41 @@ async function ensureGzipSidecar(filePath, sourceStat) {
   return gzPath;
 }
 
+// Stream `filePath` with gzip (from a lazily built sidecar) + weak ETag +
+// If-None-Match → 304. Shared by the /api datasets and the large static JSON
+// assets (rail package, basemap) so both get the same compression + revalidation
+// treatment. Returns true once it has taken over the response.
+async function serveGzippable(req, res, filePath, stat, cacheControl, label) {
+  const etag = datasetEtag(stat);
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("ETag", etag);
+  res.setHeader("Vary", "Accept-Encoding");
+  if (req.headers["if-none-match"] === etag) {
+    res.status(304).end();
+    return;
+  }
+  res.type("application/json");
+
+  let streamPath = filePath;
+  if (/\bgzip\b/.test(req.headers["accept-encoding"] || "")) {
+    try {
+      streamPath = await ensureGzipSidecar(filePath, stat);
+      res.setHeader("Content-Encoding", "gzip");
+    } catch (err) {
+      console.warn(`gzip sidecar unavailable for ${label}; serving raw.`, err);
+      streamPath = filePath;
+    }
+  }
+
+  fs.createReadStream(streamPath)
+    .on("error", (err) => {
+      console.error(`Error streaming ${label}:`, err);
+      if (!res.headersSent)
+        res.status(500).json({ error: "Failed to read file" });
+    })
+    .pipe(res);
+}
+
 for (const [route, file] of Object.entries(DATA_FILES)) {
   const filePath = path.join(DATA_DIR, file);
   app.get(`/api/${route}`, async (req, res) => {
@@ -99,34 +134,14 @@ for (const [route, file] of Object.entries(DATA_FILES)) {
     } catch (err) {
       return res.status(404).json({ error: `Dataset not found: ${route}` });
     }
-
-    const etag = datasetEtag(stat);
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    res.setHeader("ETag", etag);
-    res.setHeader("Vary", "Accept-Encoding");
-    if (req.headers["if-none-match"] === etag) {
-      return res.status(304).end();
-    }
-    res.type("application/json");
-
-    let streamPath = filePath;
-    if (/\bgzip\b/.test(req.headers["accept-encoding"] || "")) {
-      try {
-        streamPath = await ensureGzipSidecar(filePath, stat);
-        res.setHeader("Content-Encoding", "gzip");
-      } catch (err) {
-        console.warn(`gzip sidecar unavailable for ${file}; serving raw.`, err);
-        streamPath = filePath;
-      }
-    }
-
-    fs.createReadStream(streamPath)
-      .on("error", (err) => {
-        console.error(`Error streaming ${file}:`, err);
-        if (!res.headersSent)
-          res.status(500).json({ error: "Failed to read dataset" });
-      })
-      .pipe(res);
+    await serveGzippable(
+      req,
+      res,
+      filePath,
+      stat,
+      "public, max-age=3600",
+      file,
+    );
   });
 }
 
@@ -385,6 +400,48 @@ app.delete("/api/train-store", async (req, res) => {
     console.error("Error deleting train-store.json:", err);
     res.status(500).json({ error: "Failed to clear train store." });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Large static JSON assets (the 9.2 MB rail package rail/jp-2025.json, the
+// basemap style, logo credits) are served by the same gzip-sidecar + ETag path
+// as the /api datasets. Previously express.static streamed jp-2025.json raw at
+// 9.2 MB with Cache-Control: max-age=0, so every reload re-downloaded it in
+// full. Now it goes over the wire at ~1.7 MB and revalidates to a 304.
+// ---------------------------------------------------------------------------
+const STATIC_GZIP_EXTS = new Set([".json"]);
+app.get(/.*/, async (req, res, next) => {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(req.path);
+  } catch (err) {
+    return next();
+  }
+  if (!STATIC_GZIP_EXTS.has(path.extname(pathname).toLowerCase())) {
+    return next();
+  }
+  // Resolve within PUBLIC_DIR and guard against path traversal.
+  const filePath = path.normalize(path.join(PUBLIC_DIR, pathname));
+  if (filePath !== PUBLIC_DIR && !filePath.startsWith(PUBLIC_DIR + path.sep)) {
+    return next();
+  }
+  let stat;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch (err) {
+    return next(); // not a real file → let express.static / 404 handle it
+  }
+  if (!stat.isFile()) return next();
+  // The rail package rarely changes and is large, so cache it a day; ETag still
+  // guarantees a fresh copy the moment the file is rebuilt.
+  await serveGzippable(
+    req,
+    res,
+    filePath,
+    stat,
+    "public, max-age=86400",
+    pathname,
+  );
 });
 
 // Serve the static frontend (index.html, styles.css, app.js).

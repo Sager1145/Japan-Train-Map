@@ -877,6 +877,21 @@
       // expanded group's lanes at the fresh spacing (no-op when collapsed).
       if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
     },
+    // Zoom-only lane refresh. When the view zooms, the parallel PICK lanes are
+    // re-translated to keep constant ON-SCREEN spacing, but every train's base
+    // route geometry (`record.path`) is byte-for-byte unchanged. The record
+    // objects are mutated in place by the caller's cache, so `this._records`
+    // already carries the fresh pickPaths — we only need to re-upload the
+    // invisible pick source and skip re-tiling the (identical) visible base
+    // route source. Halves the GPU re-upload on every zoom that has overlaps.
+    updateLaneSpacing(laneSpacingDeg) {
+      this._laneSpacingDeg = laneSpacingDeg || 0;
+      const pick = this._src(TRAIN_PICK_SOURCE);
+      if (pick)
+        pick.setData(routePickRecordsToFC(this._visible ? this._records : []));
+      if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
+      return this;
+    },
     setMarkers(records) {
       this._markers = records || [];
       this._pushMarkers();

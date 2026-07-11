@@ -1,1 +1,10 @@
 app/data/*.json.gz
+
+# Lazily generated gzip sidecars for large static assets (rail package, basemap,
+# logo credits). Regenerated on demand by server.js; never committed.
+app/public/**/*.json.gz
+
+# Perf-work scratch: pre-edit backups + a one-off failure-analysis script.
+# Safe to delete once the optimizations are verified.
+app/.perf-backup/
+app/data/analyze-failures.js
