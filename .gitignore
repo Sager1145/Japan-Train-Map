@@ -8,3 +8,5 @@ app/public/**/*.json.gz
 # Safe to delete once the optimizations are verified.
 app/.perf-backup/
 app/data/analyze-failures.js
+app/public/**/*.js.gz
+app/public/**/*.css.gz

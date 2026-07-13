@@ -159,7 +159,8 @@ const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v2";
 const DISPLAY_DEFAULTS = {
   routeWidthScale: 1, // multiplies each train's route line width
   riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
-  unriddenOpacity: 0.48, // opacity of unridden (dimmed) route segments (railprint UNRIDDEN_OPACITY)
+  // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
+  // so the slider was a do-nothing control lying to the user.)
   dimOpacity: 0.18, // opacity of trains not on the selected date
   terminalRadius: 6, // px radius (at z12) of origin / destination markers
   stopRadius: 5, // px radius (at z12) of stop markers (railprint ridden dot = 5 @ z12)
@@ -176,7 +177,6 @@ const DISPLAY = { ...DISPLAY_DEFAULTS };
 const DISPLAY_CONTROLS = [
   { key: "routeWidthScale", labelKey: "disp.routeWidthScale", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
   { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "unriddenOpacity", labelKey: "disp.unriddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
   { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
   { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
   { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => x + "px" },
@@ -325,21 +325,24 @@ function applyMapOpacity() {
   RailMap.setFadeOpacity(1 - v);
 }
 
-// Trip order = index in the canonical store (legs are built in travel order).
-function trainTripIndex(train) {
-  const i = trainStore.trains.indexOf(train);
-  return i < 0 ? Number.MAX_SAFE_INTEGER : i;
-}
-
 // The very first origin + the very last destination among the given trains.
+// Trip order = index in the canonical store (legs are built in travel order).
+// The id→index map is built once per call instead of an Array.indexOf per
+// train (which made this O(n²) and it runs on every hover change / zoomend).
 function computeGlobalEndpoints(trains) {
   if (!trains || !trains.length) return { firstId: null, lastId: null };
+  const orderById = new Map();
+  trainStore.trains.forEach((t, i) => orderById.set(t.id, i));
+  const tripIndex = (t) => {
+    const i = orderById.get(t.id);
+    return i === undefined ? Number.MAX_SAFE_INTEGER : i;
+  };
   let first = trains[0];
   let last = trains[0];
-  let fi = trainTripIndex(first);
-  let li = trainTripIndex(last);
+  let fi = tripIndex(first);
+  let li = tripIndex(last);
   trains.forEach((t) => {
-    const idx = trainTripIndex(t);
+    const idx = tripIndex(t);
     if (idx < fi) {
       fi = idx;
       first = t;
@@ -617,7 +620,6 @@ function deckGetTooltip(info) {
 // GPU route rendering. Train routes, markers, the national rail network and
 // the basemap all render in MapLibre GL (see railmap.js — the railprint-style
 // map core). The old Leaflet SVG fallback path is gone with Leaflet itself.
-const USE_DECKGL_ROUTES = true;
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
@@ -1070,7 +1072,6 @@ let map;
 let cachedRouteItems = null,
   cachedRouteSignature = "",
   cachedRouteOverlapSignature = "",
-  cachedRouteFocusActive = false,
   cachedRouteDateActive = false;
 // Pass-through markers number in the thousands and are sub-pixel clutter when
 // zoomed out. Below this zoom they are not rendered at all, which removes a large
@@ -1123,6 +1124,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Seed the display-tuning knobs from localStorage before the first render so
   // the user's saved line widths / sizes / opacities apply on load.
   loadDisplaySettings();
+  // Start the map's own downloads (vendored basemap style + the 9.2 MB rail
+  // network package) IMMEDIATELY, in parallel with the /api datasets below.
+  // Previously initMap() kicked these off only after loadAppData() had fully
+  // downloaded AND parsed stations/default-trains/matched-* — serializing the
+  // two multi-MB waterfalls and delaying first map paint by the whole first
+  // phase. Both loaders resolve null on failure (never throw).
+  const mapAssetsReady = Promise.all([
+    RailMap.loadBasemap(),
+    RailMap.loadNetwork(),
+  ]);
   try {
     await loadAppData();
   } catch (err) {
@@ -1139,7 +1150,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Restore the saved date filter (selectedDate / manual dates) before the
   // first render so the date bar reflects the user's last choice.
   const restoredSelectedDate = restoreUiDateState();
-  await initMap();
+  await initMap(mapAssetsReady);
   applyMapOpacity();
   bindEvents();
   fitJapanMainIslands();
@@ -1203,6 +1214,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ---------------------------------------------------------------------------
 let storeEventSource = null;
 let liveReloadPending = false;
+// Detail of the newest deferred SSE event (so the catch-up reconcile acts on
+// the latest state — e.g. a `cleared` event — instead of a stale one).
+let liveReloadPendingDetail = null;
+
+// Re-run the deferred live reload once the blocking work has finished. Called
+// from every `importInProgress = false` site; previously an event deferred
+// during a progressive import was silently dropped (the early return in
+// handleExternalStoreChange skipped its own finally-block retry).
+function drainPendingLiveReload() {
+  if (!liveReloadPending) return;
+  liveReloadPending = false;
+  const next = liveReloadPendingDetail;
+  liveReloadPendingDetail = null;
+  setTimeout(() => handleExternalStoreChange(next || {}), 0);
+}
 
 function subscribeToStoreEvents() {
   if (typeof EventSource === "undefined") return; // very old browser: no live refresh
@@ -1231,9 +1257,11 @@ function subscribeToStoreEvents() {
 }
 
 async function handleExternalStoreChange(detail) {
-  // If a progressive import is mid-flight, defer; we'll catch up right after.
+  // If a progressive import is mid-flight, defer; drainPendingLiveReload()
+  // catches up as soon as the import's finally-block clears importInProgress.
   if (importInProgress) {
     liveReloadPending = true;
+    liveReloadPendingDetail = detail; // newest event wins
     return;
   }
   try {
@@ -1267,11 +1295,9 @@ async function handleExternalStoreChange(detail) {
   } catch (err) {
     console.warn("Live reload after external store change failed.", err);
   } finally {
-    if (liveReloadPending) {
-      liveReloadPending = false;
-      // A change arrived while we were busy; reconcile once more.
-      setTimeout(() => handleExternalStoreChange(detail), 0);
-    }
+    // A change may have arrived while we were busy; reconcile once more
+    // (with the NEWEST deferred detail, not this call's).
+    drainPendingLiveReload();
   }
 }
 
@@ -1392,10 +1418,6 @@ function buildStationCandidatesIndex(collection) {
   return index;
 }
 
-function resolveStation(stopOrName) {
-  return resolveStationCandidates(stopOrName)[0] || null;
-}
-
 // Display coordinates of a train's UNAMBIGUOUS stops (single name candidate or
 // carrying a station code). These anchor the geographic disambiguation of any
 // same-name stop, so e.g. 池田 on a Hokkaido train resolves to 根室線 池田 rather
@@ -1414,11 +1436,10 @@ function trainAnchorCoordinates(train, excludeStop) {
   return coords;
 }
 
-// Train-aware single-station resolution. Unlike resolveStation (which blindly
-// returns the first by-name candidate), this prefers candidates in the train's
+// Train-aware single-station resolution. Prefers candidates in the train's
 // allowed institution class and, when a name is still ambiguous, picks the one
-// nearest the train's anchor stops. With no train context it behaves exactly like
-// resolveStation, so existing callers are unaffected.
+// nearest the train's anchor stops. With no train context it simply returns
+// the first by-name candidate.
 function resolveStationForTrain(stopOrName, train) {
   const candidates = resolveStationCandidates(stopOrName);
   if (candidates.length <= 1) return candidates[0] || null;
@@ -1556,31 +1577,39 @@ function serializePendingStoreIfDirty() {
   storeSaveDirty = false;
 }
 
+// Resolves when the current PUT settles — lets the clear-storage handler wait
+// out an in-flight save so it can't land AFTER the DELETE and resurrect the
+// just-cleared file on the server.
+let serverStoreSavePromise = null;
+
 async function flushServerStoreSave() {
   serializePendingStoreIfDirty();
-  if (serverStoreSaveInFlight) return;
+  if (serverStoreSaveInFlight) return serverStoreSavePromise;
   if (pendingServerStoreText === null) return;
   serverStoreSaveInFlight = true;
   const jsonText = pendingServerStoreText;
   pendingServerStoreText = null;
-  try {
-    const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
-      body: jsonText,
-    });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    setStatus(els.jsonStatus, I18N.t("status.autosaveOk"), "ok");
-  } catch (error) {
-    console.warn("Autosave to server train-store failed.", error);
-    setStatus(els.jsonStatus, I18N.t("status.autosaveFail", { msg: error.message }), "warn");
-  } finally {
-    serverStoreSaveInFlight = false;
-    // A newer change may have arrived while this request was in flight
-    // (either already serialized, or just flagged dirty). Flush it.
-    if (pendingServerStoreText !== null || storeSaveDirty)
-      flushServerStoreSave();
-  }
+  serverStoreSavePromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
+        body: jsonText,
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      setStatus(els.jsonStatus, I18N.t("status.autosaveOk"), "ok");
+    } catch (error) {
+      console.warn("Autosave to server train-store failed.", error);
+      setStatus(els.jsonStatus, I18N.t("status.autosaveFail", { msg: error.message }), "warn");
+    } finally {
+      serverStoreSaveInFlight = false;
+      // A newer change may have arrived while this request was in flight
+      // (either already serialized, or just flagged dirty). Flush it.
+      if (pendingServerStoreText !== null || storeSaveDirty)
+        flushServerStoreSave();
+    }
+  })();
+  return serverStoreSavePromise;
 }
 
 // The read-only export textarea is a display convenience, not part of the
@@ -1643,22 +1672,6 @@ function openFileHandleDb() {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
       reject(request.error || new Error("Could not open IndexedDB."));
-  });
-}
-
-async function idbSetValue(key, value) {
-  const db = await openFileHandleDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(FILE_HANDLE_STORE_NAME, "readwrite");
-    tx.objectStore(FILE_HANDLE_STORE_NAME).put(value, key);
-    tx.oncomplete = () => {
-      db.close();
-      resolve();
-    };
-    tx.onerror = () => {
-      db.close();
-      reject(tx.error || new Error("Could not write IndexedDB."));
-    };
   });
 }
 
@@ -1827,14 +1840,9 @@ function persistRouteNegativeEntry(cacheKey) {
 //  §15.  Local JSON file open / save (File System Access, with download fallback)
 // =========================================================================
 
-async function storeFileHandle(handle) {
-  if (!supportsFileSystemAccess() || !handle) return;
-  try {
-    await idbSetValue(FILE_HANDLE_KEY, handle);
-  } catch (error) {
-    console.warn("Could not persist file handle.", error);
-  }
-}
+// (storeFileHandle was removed: the handle was persisted to IndexedDB but
+// never read back — a write-only path. The user re-picks the file each
+// session either way; deleteStoredFileHandle stays to clean up old entries.)
 
 async function deleteStoredFileHandle() {
   try {
@@ -1879,7 +1887,6 @@ async function writeLocalJsonFile(
         },
       ],
     });
-    await storeFileHandle(localJsonFileHandle);
   }
 
   if (!localJsonFileHandle) return false;
@@ -1906,7 +1913,6 @@ async function openLocalJsonFile() {
     });
     if (!handle) return;
     localJsonFileHandle = handle;
-    await storeFileHandle(handle);
     const file = await handle.getFile();
     // replaceTrainStoreFromJsonText() already finishes with finalizeProgressiveLoad()
     // -> renderAll(), so an extra renderAll() here is a redundant full repaint
@@ -1932,6 +1938,8 @@ function resetTrainStoreForProgressiveLoad() {
   trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
   selectedTrainId = null;
   focusedTrainId = null;
+  // Close any click-opened popup: its train is about to stop existing.
+  closeClickPopup();
   // Drop the cached route render items so a re-import can't briefly draw the
   // previous store's segments (the cache is keyed by train data, which is
   // about to be replaced).
@@ -2021,6 +2029,13 @@ function finalizeProgressiveLoad(
 ) {
   selectedTrainId = appendedIds[0] || null;
   focusedTrainId = null;
+  // Cancel any pending batched append-render: the authoritative renderAll()
+  // below supersedes it (otherwise the timer fires ~120 ms later and runs one
+  // redundant full renderTrainLayers after every import).
+  if (_appendRenderTimer) {
+    clearTimeout(_appendRenderTimer);
+    _appendRenderTimer = null;
+  }
   // A full replace can invalidate the previous date filter. Drop to the
   // earliest available date (or keep a still-valid one); on first boot we
   // explicitly prefer the earliest date even when nothing was selected yet.
@@ -2072,6 +2087,9 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
     setImportProgress(total, total, I18N.t("prog.done", { count: total }));
   } finally {
     importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
   }
 }
 
@@ -2128,6 +2146,9 @@ async function replaceTrainStoreFromStoreProgressive(
     return { count: appendedIds.length, ids: appendedIds };
   } finally {
     importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
   }
 }
 
@@ -2142,19 +2163,6 @@ function addTrain(train) {
   trainStore.trains.push(candidate);
   selectedTrainId = candidate.id;
   focusedTrainId = candidate.id;
-  persistAndRender();
-}
-
-function updateTrain(trainId, patchOrFullTrain) {
-  const index = trainStore.trains.findIndex((t) => t.id === trainId);
-  if (index < 0) return;
-  const current = trainStore.trains[index];
-  trainStore.trains[index] = patchOrFullTrain.id
-    ? patchOrFullTrain
-    : { ...current, ...patchOrFullTrain };
-  selectedTrainId = trainStore.trains[index].id;
-  if (focusedTrainId === trainId || focusedTrainId === current.id)
-    focusedTrainId = selectedTrainId;
   persistAndRender();
 }
 
@@ -2674,6 +2682,9 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
     };
   } finally {
     importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
   }
 }
 
@@ -2794,11 +2805,15 @@ function buildMapLayersControl(hasBasemap) {
   const wrap = document.createElement("div");
   wrap.className = "map-layers-control";
   const select = document.createElement("select");
+  // "Positron (online)" is ALWAYS offered: when boot degraded to offline the
+  // option becomes the online-retry entry point (picking it re-attempts the
+  // basemap via RailMap.retryBasemap and reverts on failure).
+  const POSITRON_LABEL = "Positron (online)";
   const options = [
-    hasBasemap ? ["positron", "Positron (online)"] : null,
+    ["positron", hasBasemap ? POSITRON_LABEL : POSITRON_LABEL + " — offline"],
     ["raster", "Local Tiles (offline)"],
     ["none", "No Basemap"],
-  ].filter(Boolean);
+  ];
   options.forEach(([value, label]) => {
     const o = document.createElement("option");
     o.value = value;
@@ -2807,7 +2822,49 @@ function buildMapLayersControl(hasBasemap) {
   });
   select.value = hasBasemap ? "positron" : "raster";
   RailMap.setBasemapMode(select.value);
-  select.addEventListener("change", () => RailMap.setBasemapMode(select.value));
+  const posOption = select.querySelector('option[value="positron"]');
+  let prevMode = select.value;
+  const ensureBasemap = async () => {
+    if (RailMap.hasBasemap()) return true;
+    posOption.textContent = POSITRON_LABEL + " — connecting…";
+    const ok = await RailMap.retryBasemap();
+    posOption.textContent = ok
+      ? POSITRON_LABEL
+      : POSITRON_LABEL + " — retry failed";
+    if (!ok)
+      setTimeout(() => {
+        if (!RailMap.hasBasemap())
+          posOption.textContent = POSITRON_LABEL + " — offline";
+      }, 2500);
+    return ok;
+  };
+  select.addEventListener("change", async () => {
+    const mode = select.value;
+    if (mode === "positron" && !RailMap.hasBasemap()) {
+      select.disabled = true;
+      const ok = await ensureBasemap();
+      select.disabled = false;
+      if (!ok) {
+        // Stay on the previous (working) basemap; the option label reports
+        // the failure so the user knows to retry later.
+        select.value = prevMode;
+        return;
+      }
+    }
+    prevMode = mode;
+    RailMap.setBasemapMode(mode);
+  });
+  // Auto-recovery: when the browser regains connectivity, pre-warm the vector
+  // basemap in the background. The view only switches if the user has already
+  // picked "Positron (online)" — otherwise the option just becomes available.
+  if (!hasBasemap) {
+    window.addEventListener("online", () => {
+      if (RailMap.hasBasemap()) return;
+      ensureBasemap().then((ok) => {
+        if (ok && select.value === "positron") RailMap.setBasemapMode("positron");
+      });
+    });
+  }
   wrap.appendChild(select);
   const toggles = [
     ["Limited Express Routes", (v) => RailMap.setVisible(v), true],
@@ -2836,14 +2893,13 @@ function buildMapLayersControl(hasBasemap) {
   map.getContainer().appendChild(wrap);
 }
 
-async function initMap() {
+async function initMap(mapAssetsReady) {
   // The vendored positron style + railprint's jp-2025 rail package load in
-  // parallel; either may be null (offline) — the style builder degrades the
-  // same way railprint does (plain background / no network overlay).
-  const [basemap, network] = await Promise.all([
-    RailMap.loadBasemap(),
-    RailMap.loadNetwork(),
-  ]);
+  // parallel (pre-started at boot, before the /api datasets); either may be
+  // null (offline) — the style builder degrades the same way railprint does
+  // (plain background / no network overlay).
+  const [basemap, network] = await (mapAssetsReady ||
+    Promise.all([RailMap.loadBasemap(), RailMap.loadNetwork()]));
   const style = RailMap.buildBaseStyle({
     basemap,
     network,
@@ -2891,6 +2947,7 @@ async function initMap() {
     {
       onClick: handleDeckRouteClick,
       onMarkerClick: handleDeckMarkerClick,
+      onBackgroundClick: handleMapBackgroundClick,
       onHover: handleDeckHover,
       getTooltip: deckGetTooltip,
     },
@@ -2936,21 +2993,63 @@ async function initMap() {
   // gesture, so we only forward pinches that land on the sidebar / other UI,
   // anchored at the current map center. Plain (non-pinch) two-finger scroll
   // is untouched so the sidebar still scrolls normally.
-  document.addEventListener(
+  // Attached to the SIDEBAR, not `document`: a non-passive wheel listener on
+  // document disables the compositor fast path for every scroll on the page
+  // (the browser must wait for JS before starting any scroll, even with the
+  // early return). The map canvas is already covered by MapLibre's own
+  // handler, and #sidebar + #map fill the whole viewport, so scoping the
+  // listener loses nothing.
+  // Shared pinch→map-zoom forwarder. anchorAtCursor keeps the point under
+  // the pointer fixed (matches MapLibre's own scroll-zoom feel over the
+  // canvas); the sidebar path anchors at the map center instead (the cursor
+  // isn't over the map there).
+  const forwardPinchZoom = (e, anchorAtCursor) => {
+    e.preventDefault(); // block the browser page-zoom
+    if (!map) return;
+    let delta = e.deltaY;
+    if (e.deltaMode === 1) delta *= 20; // DOM_DELTA_LINE -> px
+    else if (e.deltaMode === 2) delta *= 60; // DOM_DELTA_PAGE -> px
+    delta = Math.max(-50, Math.min(50, delta));
+    const target = Math.max(
+      map.getMinZoom(),
+      Math.min(map.getMaxZoom(), map.getZoom() - delta * 0.01),
+    );
+    if (anchorAtCursor) {
+      const rect = map.getContainer().getBoundingClientRect();
+      const around = map.unproject([
+        e.clientX - rect.left,
+        e.clientY - rect.top,
+      ]);
+      map.easeTo({ zoom: target, around, duration: 0 });
+    } else {
+      map.setZoom(target);
+    }
+  };
+  const sidebarEl = document.getElementById("sidebar");
+  (sidebarEl || document).addEventListener(
     "wheel",
     (e) => {
       if (!e.ctrlKey) return; // not a pinch: keep normal scrolling
-      e.preventDefault(); // block the browser page-zoom everywhere
-      if (!map) return;
-      if (map.getContainer().contains(e.target)) return; // MapLibre's gesture
-      let delta = e.deltaY;
-      if (e.deltaMode === 1) delta *= 20; // DOM_DELTA_LINE -> px
-      else if (e.deltaMode === 2) delta *= 60; // DOM_DELTA_PAGE -> px
-      delta = Math.max(-50, Math.min(50, delta));
-      const target = map.getZoom() - delta * 0.01;
-      map.setZoom(
-        Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), target)),
-      );
+      if (map && map.getContainer().contains(e.target)) return; // map's own
+      forwardPinchZoom(e, false);
+    },
+    { passive: false },
+  );
+  // MapLibre's scroll-zoom handler is bound to the CANVAS container, but
+  // popups (segment/stop click popup, station hover popup), the layers
+  // control and the nav/attribution controls live in the OUTER map container
+  // — a trackpad pinch over any of them used to fall through to the browser
+  // and zoom the whole page. Catch those here and forward them to the map,
+  // anchored at the cursor. Events whose target is inside the canvas
+  // container are left alone (MapLibre consumes and preventDefaults them),
+  // and plain (non-ctrl) scrolling is untouched so popup content can still
+  // scroll internally.
+  map.getContainer().addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.ctrlKey) return; // not a pinch
+      if (map.getCanvasContainer().contains(e.target)) return; // MapLibre's
+      forwardPinchZoom(e, true);
     },
     { passive: false },
   );
@@ -2963,6 +3062,34 @@ async function initMap() {
   );
 }
 
+// The one click-opened popup (route segment or stop). Tracked so a store
+// replacement (live reload / delete-all) can close it — otherwise a popup
+// left open kept showing data for a train that no longer exists.
+let _clickPopup = null;
+function openClickPopup(coordinate, html) {
+  if (_clickPopup) _clickPopup.remove();
+  _clickPopup = new maplibregl.Popup({ maxWidth: "320px" })
+    .setLngLat(coordinate)
+    .setHTML(html)
+    .addTo(map);
+}
+function closeClickPopup() {
+  if (_clickPopup) {
+    _clickPopup.remove();
+    _clickPopup = null;
+  }
+}
+
+// Blank-map click (no route lane / station dot under the pointer) -> show
+// every date's routes: switch the date filter to "全部" and clear the train
+// selection — identical to pressing the 全部 date button. No-op when already
+// in the all-dates view with nothing selected, so idle clicks re-render
+// nothing.
+function handleMapBackgroundClick() {
+  if (selectedDate === ALL_DATES && !selectedTrainId && !focusedTrainId) return;
+  selectDateBucket(ALL_DATES);
+}
+
 // Route click -> select train + open the segment popup at the clicked spot.
 function handleDeckRouteClick(info) {
   if (!info || !info.object) return;
@@ -2970,10 +3097,7 @@ function handleDeckRouteClick(info) {
   if (!train) return;
   pickTrain(train.id);
   if (info.coordinate && map) {
-    new maplibregl.Popup({ maxWidth: "320px" })
-      .setLngLat(info.coordinate)
-      .setHTML(buildTrainSegmentPopup(train, feature))
-      .addTo(map);
+    openClickPopup(info.coordinate, buildTrainSegmentPopup(train, feature));
   }
 }
 
@@ -3055,16 +3179,19 @@ function bindEvents() {
         setStatus(els.importStatus, error.message, "err");
       }
     });
+  // Shared by the "保存／另存 JSON" and "下載 JSON" buttons — the two handlers
+  // were byte-for-byte identical, so they now literally share one function.
+  const saveLocalJsonHandler = async () => {
+    try {
+      await writeLocalJsonFile(exportTrainStore(), true);
+      setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
+    } catch (error) {
+      setStatus(els.jsonStatus, error.message, "err");
+    }
+  };
   document
     .getElementById("save-local-json")
-    .addEventListener("click", async () => {
-      try {
-        await writeLocalJsonFile(exportTrainStore(), true);
-        setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
-      } catch (error) {
-        setStatus(els.jsonStatus, error.message, "err");
-      }
-    });
+    .addEventListener("click", saveLocalJsonHandler);
   els.localJsonFileInput.addEventListener("change", async () => {
     const file = els.localJsonFileInput.files?.[0];
     if (!file) return;
@@ -3135,14 +3262,7 @@ function bindEvents() {
   });
   document
     .getElementById("download-json")
-    .addEventListener("click", async () => {
-      try {
-        await writeLocalJsonFile(exportTrainStore(), true);
-        setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
-      } catch (error) {
-        setStatus(els.jsonStatus, error.message, "err");
-      }
-    });
+    .addEventListener("click", saveLocalJsonHandler);
   document
     .getElementById("download-html")
     .addEventListener("click", () =>
@@ -3161,6 +3281,12 @@ function bindEvents() {
       try {
         // Cancel any pending autosave so it can't immediately re-create the file.
         clearTimeout(serverStoreSaveTimer);
+        pendingServerStoreText = null;
+        storeSaveDirty = false;
+        // A PUT already in flight could land AFTER our DELETE and resurrect
+        // the file on the server (other tabs would then reload the store this
+        // tab just cleared). Wait for it to settle first.
+        if (serverStoreSaveInFlight) await serverStoreSavePromise;
         pendingServerStoreText = null;
         storeSaveDirty = false;
         const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
@@ -4133,20 +4259,15 @@ function renderTrainLayers() {
       )
     : visibleTrains;
   cachedRouteDateActive = dateActive;
-  cachedRouteFocusActive = focusActive;
 
   // (1) Overlap-split caching. The split runs + overlap slots are a function
   // of the train set / order / route geometry / ride flags / date scope —
   // never of zoom, pan or SELECTION — so recompute them only when their
   // signature changes. Picking a train, style-only edits (overlap map) and
   // view moves all reuse the caches.
-  const signature = computeRouteSignature(
-    orderedTrains,
-    focusActive,
-    dateActive,
-  );
+  const signature = computeRouteSignature(orderedTrains, dateActive);
   if (!cachedRouteItems || signature.records !== cachedRouteSignature) {
-    cachedRouteItems = buildRouteItems(orderedTrains, focusActive);
+    cachedRouteItems = buildRouteItems(orderedTrains);
     cachedRouteSignature = signature.records;
     cachedRouteOverlapSignature = signature.overlap;
   }
@@ -4188,7 +4309,7 @@ function renderTrainMarkers() {
 //             costs ZERO pipeline rebuild.
 //   overlap — invalidates the overlap map only: geometry + visibility + date
 //             scope (style-only edits keep the corridor graph).
-function computeRouteSignature(orderedTrains, focusActive, dateActive) {
+function computeRouteSignature(orderedTrains, dateActive) {
   const overlapPart = [];
   const trainPart = orderedTrains
     .map((train) => {
@@ -4208,7 +4329,7 @@ function computeRouteSignature(orderedTrains, focusActive, dateActive) {
 
 // Build the overlap map + split runs once, annotating each run with a cached
 // LatLngBounds so the viewport cull can test it without re-walking geometry.
-function buildRouteItems(orderedTrains, focusActive) {
+function buildRouteItems(orderedTrains) {
   // One item per (train, matched route feature), always on its true track.
   // Overlap detection, run-splitting and the parallel pick/expand lanes all
   // live in buildDeckOverlapMap / buildDeckRouteRecords (§26); the old
@@ -4247,7 +4368,7 @@ function renderRoutesInView() {
   // full-line expand records + per-group rigid shift vectors feed the
   // dedicated hover-expand source, so a fanned parallel line is the member
   // train's complete course translated intact — never broken mid-route.
-  const built = buildDeckRouteRecords(cachedRouteItems, cachedRouteFocusActive);
+  const built = buildDeckRouteRecords(cachedRouteItems);
   // Three cases, cheapest first:
   //   • same record object AND same spacing (a pure selection/marker change) —
   //     push nothing; RailMap.setSelected below does the whole job.
@@ -4462,7 +4583,7 @@ function buildDeckOverlapMap(items) {
   // original segments long it is.
   const canonicalIds = new Map(); // sorted-ids signature -> Set
   seg.forEach((ids, key) => {
-    const idsSig = [...ids].sort().join(" ");
+    const idsSig = [...ids].sort().join("\u0000");
     const canon = canonicalIds.get(idsSig);
     if (!canon) canonicalIds.set(idsSig, ids);
     else if (canon !== ids) seg.set(key, canon);
@@ -4638,7 +4759,7 @@ function mergeDrawnIndices(keepIdx, runs, nSeg) {
 // Overlap detection and run boundaries use the ORIGINAL geometry (exact
 // shared N02 coordinates); drawn paths use the Douglas-Peucker subset plus
 // the exact boundary vertices.
-function buildDeckRouteRecords(items, focusActive) {
+function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx(items);
   const spacingDeg = overlapOffsetDeg(spacingPx);
@@ -4679,7 +4800,7 @@ function buildDeckRouteRecords(items, focusActive) {
         ? train.style.color
         : DEFAULT_TRAIN_COLOR,
     );
-    const { opacity, width, dashed } = routeSegmentStyleValues(
+    const { opacity, width } = routeSegmentStyleValues(
       train,
       ridden,
       routeRecordScopeFlags(train),
@@ -4798,7 +4919,6 @@ function buildDeckRouteRecords(items, focusActive) {
           laneMult: mult,
           color,
           width,
-          dashed,
           train,
           feature,
           pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 8, 14),
@@ -4873,11 +4993,18 @@ function deckMarkerRecord(feature, train, opts, kind) {
 // route/marker click) doesn't recompute them — this is the main fix for the
 // on-click latency now that markers rebuild on the GPU on every selection.
 const _computedPassThroughCache = new Map();
+// Every stop/section edit mints a new key, so cap the cache (simple FIFO
+// eviction) to keep long editing sessions from growing it without bound.
+const _COMPUTED_PASS_CACHE_MAX = 300;
 function getComputedPassThroughFeaturesCached(train) {
   const key = `${train.id}|${getTrainRouteTemplateKey(train)}|${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`;
   let v = _computedPassThroughCache.get(key);
   if (!v) {
     v = getComputedPassThroughFeatures(train);
+    if (_computedPassThroughCache.size >= _COMPUTED_PASS_CACHE_MAX) {
+      const oldest = _computedPassThroughCache.keys().next().value;
+      _computedPassThroughCache.delete(oldest);
+    }
     _computedPassThroughCache.set(key, v);
   }
   return v;
@@ -4944,10 +5071,7 @@ function handleDeckMarkerClick(info) {
   if (!train) return;
   pickTrain(train.id);
   if (info.coordinate && map) {
-    new maplibregl.Popup({ maxWidth: "320px" })
-      .setLngLat(info.coordinate)
-      .setHTML(buildStopPopup(feature, train))
-      .addTo(map);
+    openClickPopup(info.coordinate, buildStopPopup(feature, train));
   }
 }
 
@@ -5190,6 +5314,12 @@ function generateMatchedRouteFeaturesForTrain(train) {
 
   const concrete = dedupeSameTrainRouteFeatures(
     cloneRouteFeaturesForTrain(templateFeatures, train),
+  );
+  // Replace (not append after) this train's previous features: re-solves for
+  // an edited train used to pile up stale entries forever — a slow memory
+  // leak that also fed stale geometry to the train_id fallback lookup.
+  matchedRoutesGeoJson.features = matchedRoutesGeoJson.features.filter(
+    (f) => (f.properties || {}).train_id !== train.id,
   );
   concrete.forEach((feature) => matchedRoutesGeoJson.features.push(feature));
 
@@ -7172,8 +7302,28 @@ function normalizeSingleRouteGeometry(feature) {
   return null;
 }
 
+// matched-stops features indexed by train_id (built once — the dataset is
+// static after load). getStopFeature used to linear-scan ALL features for
+// every stop of every train on every marker rebuild: O(trains × stops ×
+// matchedStops). Scanning only the train's own few features preserves the
+// exact first-match semantics at a tiny fraction of the cost.
+let _matchedStopsByTrain = null;
+function getMatchedStopsForTrain(trainId) {
+  if (!_matchedStopsByTrain) {
+    _matchedStopsByTrain = new Map();
+    for (const f of matchedStopsGeoJson.features) {
+      const tid = (f.properties || {}).train_id;
+      if (tid == null) continue;
+      let arr = _matchedStopsByTrain.get(tid);
+      if (!arr) _matchedStopsByTrain.set(tid, (arr = []));
+      arr.push(f);
+    }
+  }
+  return _matchedStopsByTrain.get(trainId) || [];
+}
+
 function getStopFeature(stop, train) {
-  const explicit = matchedStopsGeoJson.features.find((f) => {
+  const explicit = getMatchedStopsForTrain(train.id).find((f) => {
     const p = f.properties || {};
     return (
       p.train_id === train.id &&
@@ -7253,8 +7403,7 @@ function routeSegmentStyleValues(
           ? DISPLAY.dimOpacity
           : DISPLAY.riddenOpacity;
   const width = focused ? weight + DISPLAY.focusBoost : weight;
-  const dashed = false;
-  return { opacity, width, dashed };
+  return { opacity, width };
 }
 
 // NEUTRAL station dots (railprint C4: hue is reserved for LINES). The
@@ -7485,12 +7634,18 @@ function validateTextareaJson() {
 
     const nextStore = buildCanonicalTrainStore();
 
+    // Mirror the import path: keep ONE running id set and validate each new
+    // train individually, then validate the whole store once at the end.
+    // The old loop rebuilt the id set AND re-validated every train added so
+    // far per appended train — O(N²) full validations (each with station
+    // resolution inside), freezing the UI for seconds on a large paste.
+    const existingIds = new Set(nextStore.trains.map((t) => t.id));
     trains.forEach((train) => {
-      const existingIds = new Set(nextStore.trains.map((t) => t.id));
       train.id = makeUniqueTrainId(train.id, existingIds);
+      existingIds.add(train.id);
       nextStore.trains.push(train);
-      validateTrainStore(nextStore);
     });
+    validateTrainStore(nextStore);
 
     setStatus(
       els.importStatus,
@@ -7704,15 +7859,6 @@ function validateTrain(train, index, ids) {
 //  §34.  Popups & tooltips (stop / route-segment HTML)
 // =========================================================================
 
-function stopTooltipHtml(props) {
-  const pr = props || {};
-  const name = escapeHtml(pr.name || "");
-  const times = [];
-  if (pr.arrival) times.push(`\u5230 ${escapeHtml(pr.arrival)}`);
-  if (pr.departure) times.push(`\u53d1 ${escapeHtml(pr.departure)}`);
-  return times.length ? `${name}<br>${times.join("\u3000")}` : name;
-}
-
 function buildStopPopup(stopFeature, train) {
   const p = stopFeature.properties || {};
   return popupHtml(`${train.number || ""} ${train.name || ""}`, [
@@ -7806,10 +7952,10 @@ function normalizeColor(value) {
 }
 
 function buildPortableHtml() {
-  const dataNode = document.getElementById("data-default-trains");
-  if (dataNode) {
-    dataNode.textContent = `\n${exportTrainStore()}\n  `;
-  }
+  // Snapshot of the live DOM. (The old embedded-data branch targeted a
+  // #data-default-trains node that no longer exists in index.html; the
+  // snapshot still references relative vendor/app.js//api URLs, so it is a
+  // same-folder snapshot rather than a truly standalone file.)
   return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }
 

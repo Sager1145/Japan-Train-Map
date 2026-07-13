@@ -6,6 +6,9 @@
     <title>N02 Limited Express Train Manager</title>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
     <link rel="stylesheet" href="styles.css" />
+    <!-- Start the two largest downloads during HTML parse, before any JS runs. -->
+    <link rel="preload" href="rail/jp-2025.json" as="fetch" crossorigin />
+    <link rel="preload" href="api/stations" as="fetch" crossorigin />
   </head>
   <body>
     <div id="app">
@@ -35,8 +38,8 @@
             <button class="danger" id="delete-all-trains" data-i18n="btn.deleteAll">全部刪除</button>
             <button id="fit-selected" data-i18n="btn.fit">定位</button>
             <button id="clear-selection" data-i18n="btn.clearSel">取消選擇</button>
-            <button id="toggle-focus-zoom" type="button" aria-pressed="true">
-              自動聚焦：開
+            <button id="toggle-focus-zoom" type="button" aria-pressed="false">
+              自動聚焦：關
             </button>
           </div>
         </section>

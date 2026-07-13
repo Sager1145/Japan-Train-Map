@@ -113,9 +113,12 @@
     return out;
   }
 
-  async function loadBasemap() {
+  async function loadBasemap(force) {
     // Offline ⇒ basemap-less on purpose (the vector tile fetches would all fail).
-    if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
+    // `force` (the explicit online-retry path) skips the cheap navigator.onLine
+    // gate and lets the fetch + origin probe decide.
+    if (!force && typeof navigator !== "undefined" && navigator.onLine === false)
+      return null;
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     const timer = ctl ? setTimeout(() => ctl.abort(), LOAD_TIMEOUT_MS) : null;
     try {
@@ -124,6 +127,33 @@
       return normalizeBasemap(await res.json());
     } catch (e) {
       return null;
+    } finally {
+      if (timer !== null) clearTimeout(timer);
+    }
+  }
+
+  // positron.json is a LOCAL vendored file, so re-loading it "succeeds" even
+  // while offline — before splicing the basemap in, verify the remote tile
+  // origin is actually reachable (sprite JSON is the smallest stable asset).
+  async function probeBasemapOrigin(basemap) {
+    const url = basemap.sprite
+      ? basemap.sprite + ".json"
+      : basemap.glyphs
+        ? basemap.glyphs
+            .replace("{fontstack}", "Noto Sans Regular")
+            .replace("{range}", "0-255")
+        : null;
+    if (!url || !/^https?:/i.test(url)) return true; // nothing remote to probe
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), LOAD_TIMEOUT_MS) : null;
+    try {
+      const res = await fetch(url, {
+        cache: "no-store",
+        signal: ctl ? ctl.signal : undefined,
+      });
+      return res.ok;
+    } catch (e) {
+      return false;
     } finally {
       if (timer !== null) clearTimeout(timer);
     }
@@ -327,7 +357,7 @@
       lines: rows,
     };
   }
-  function popupHtml(model) {
+  function stationPopupHtml(model) {
     const header = model.nameRoma
       ? '<span class="rp-popup-ja">' +
         escHtml(model.name) +
@@ -805,9 +835,6 @@
 
   // ───────────────────────────── the overlay manager ─────────────────────────────
   const RailMap = {
-    available: true,
-    tokens,
-    DEFAULT_LINE_COLOR,
     loadBasemap,
     loadNetwork,
     buildBaseStyle,
@@ -821,7 +848,6 @@
     _laneSpacingDeg: 0,
     _markers: [],
     _visible: true,
-    _markerVis: { stop: true, pass: true },
     _selectedTrainId: null,
     _hoverTrainId: null,
     _expandedGroup: null,
@@ -832,8 +858,13 @@
     _expandAnimId: null,
     _dimKey: "", // last applied hover-spotlight state (dedup)
     _tooltipEl: null,
+    _tooltipRecord: null, // record the tooltip currently shows (dedup)
     _stationPopup: null,
+    _stationPopupKey: null, // station|line the popup currently shows (dedup)
+    _pendingHoverPoint: null, // latest mousemove point awaiting the rAF pass
+    _hoverRafId: null,
     _basemapLayerIds: [],
+    _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
 
     attach(map, network, handlers, basemapLayerIds) {
       this._map = map;
@@ -967,7 +998,6 @@
       ].forEach((id) => this._setVisibility(id, vis));
     },
     setMarkerVisibility(category, v) {
-      this._markerVis[category] = !!v;
       const vis = v ? "visible" : "none";
       if (category === "stop") {
         this._setVisibility(TRAIN_STOPS_LAYER, vis);
@@ -988,6 +1018,57 @@
       const posVis = mode === "positron" ? "visible" : "none";
       this._basemapLayerIds.forEach((id) => this._setVisibility(id, posVis));
       this._setVisibility(LOCAL_RASTER_LAYER, mode === "raster" ? "visible" : "none");
+    },
+    // Whether the vector (online) basemap is present in the live style.
+    hasBasemap() {
+      return this._basemapLayerIds.length > 0;
+    },
+    // Online retry: boot may have degraded to no-basemap (offline start /
+    // fetch timeout). Re-fetches the vendored positron style, probes the
+    // remote tile origin, then splices the basemap's sources + layers into
+    // the LIVE style at the exact positions buildBaseStyle uses (pre-symbol
+    // layers under the national network, symbol/label layers under the fade
+    // layer). Injected layers start hidden — the caller decides visibility
+    // via setBasemapMode, so a background retry never flips the view.
+    // Resolves true when the vector basemap is available afterwards.
+    async retryBasemap() {
+      const m = this._map;
+      if (!m) return false;
+      if (this._basemapLayerIds.length) return true; // already present
+      if (this._basemapRetryInflight) return this._basemapRetryInflight;
+      this._basemapRetryInflight = (async () => {
+        try {
+          const basemap = await loadBasemap(true);
+          if (!basemap) return false;
+          if (!(await probeBasemapOrigin(basemap))) return false;
+          if (basemap.glyphs && typeof m.setGlyphs === "function")
+            m.setGlyphs(basemap.glyphs);
+          if (basemap.sprite && typeof m.setSprite === "function")
+            m.setSprite(basemap.sprite);
+          for (const id of Object.keys(basemap.sources)) {
+            if (!m.getSource(id)) m.addSource(id, basemap.sources[id]);
+          }
+          const bmLayers = basemap.layers;
+          let firstSymbol = bmLayers.findIndex((l) => l && l.type === "symbol");
+          if (firstSymbol < 0) firstSymbol = bmLayers.length;
+          const addHidden = (l, beforeId) => {
+            if (m.getLayer(l.id)) return;
+            const layer = Object.assign({}, l, {
+              layout: Object.assign({}, l.layout, { visibility: "none" }),
+            });
+            m.addLayer(layer, beforeId);
+          };
+          bmLayers.slice(0, firstSymbol).forEach((l) => addHidden(l, SEGMENTS_LAYER));
+          bmLayers.slice(firstSymbol).forEach((l) => addHidden(l, FADE_LAYER));
+          this._basemapLayerIds = bmLayers.map((l) => l.id);
+          return true;
+        } catch (e) {
+          return false;
+        } finally {
+          this._basemapRetryInflight = null;
+        }
+      })();
+      return this._basemapRetryInflight;
     },
     setFadeOpacity(v) {
       if (!this._map || !this._map.getLayer(FADE_LAYER)) return;
@@ -1101,7 +1182,7 @@
       const m = this._map;
       if (!m) return;
       const tids = this._activeHoverTids();
-      const key = tids ? tids.join(" ") : "";
+      const key = tids ? tids.join("\u0000") : "";
       if (key === this._dimKey) return;
       this._dimKey = key;
       // multiplier: 1 for the active trains, HOVER_DIM for everyone else
@@ -1297,7 +1378,16 @@
 
       map.on("click", (e) => {
         const hit = queryAt(e.point);
-        if (!hit) return;
+        if (!hit) {
+          // Blank ground (no route lane, no station dot): let the app react —
+          // it switches the date filter back to "全部" so every date's routes
+          // show. MapLibre suppresses click after a drag, so panning is safe.
+          if (self._handlers.onBackgroundClick)
+            self._handlers.onBackgroundClick({
+              coordinate: [e.lngLat.lng, e.lngLat.lat],
+            });
+          return;
+        }
         const info = {
           object: hit.record,
           coordinate: [e.lngLat.lng, e.lngLat.lat],
@@ -1309,8 +1399,16 @@
         }
       });
 
-      map.on("mousemove", (e) => {
-        const hit = queryAt(e.point, true);
+      // Coalesce hover work to one pass per animation frame. mousemove can
+      // fire at 120+ Hz on high-refresh pointing devices while each pass costs
+      // up to four queryRenderedFeatures + tooltip DOM writes — frame-scale
+      // work. Only the latest pointer position matters, so intermediate events
+      // are dropped instead of queued.
+      const processHover = () => {
+        self._hoverRafId = null;
+        const point = self._pendingHoverPoint;
+        if (!point) return;
+        const hit = queryAt(point, true);
         const id = hit && hit.record.train ? hit.record.train.id : null;
         // Hover-expand: pointer on an overlapped run fans that group's lines
         // out into their date-ordered lanes; empty ground collapses. Marker
@@ -1331,10 +1429,20 @@
           if (self._handlers.onHover) self._handlers.onHover(id);
         }
         map.getCanvas().style.cursor = hit ? "pointer" : "";
-        self._showTooltip(hit, e.point);
-        self._maybeStationPopup(hit ? null : e.point);
+        self._showTooltip(hit, point);
+        self._maybeStationPopup(hit ? null : point);
+      };
+      map.on("mousemove", (e) => {
+        self._pendingHoverPoint = e.point;
+        if (self._hoverRafId === null || self._hoverRafId === undefined)
+          self._hoverRafId = requestAnimationFrame(processHover);
       });
       map.getCanvas().addEventListener("mouseleave", () => {
+        self._pendingHoverPoint = null;
+        if (self._hoverRafId !== null && self._hoverRafId !== undefined) {
+          cancelAnimationFrame(self._hoverRafId);
+          self._hoverRafId = null;
+        }
         self._setExpandedGroup(null);
         if (self._hoverTrainId !== null) {
           self._hoverTrainId = null;
@@ -1359,9 +1467,21 @@
         this._tooltipEl = el;
       }
       const el = this._tooltipEl;
+      const record = hit ? hit.record : null;
+      // Same hovered record as last time: the HTML can't have changed (it is
+      // derived from the record alone), so just follow the pointer instead of
+      // re-running getTooltip + innerHTML on every movement.
+      if (record === this._tooltipRecord) {
+        if (record && point && el.style.display !== "none") {
+          el.style.left = point.x + 12 + "px";
+          el.style.top = point.y + 12 + "px";
+        }
+        return;
+      }
+      this._tooltipRecord = record;
       const tip =
-        hit && this._handlers.getTooltip
-          ? this._handlers.getTooltip({ object: hit.record })
+        record && this._handlers.getTooltip
+          ? this._handlers.getTooltip({ object: record })
           : null;
       if (!tip) {
         el.style.display = "none";
@@ -1383,12 +1503,26 @@
         this._removeStationPopup();
         return;
       }
+      // The network stations layer is OFF by default; getLayer() still finds a
+      // hidden layer, so without this guard every idle mousemove paid a
+      // queryRenderedFeatures against a layer that can never be hovered.
+      if (map.getLayoutProperty(STATIONS_LAYER, "visibility") === "none") {
+        this._removeStationPopup();
+        return;
+      }
       const feats = map.queryRenderedFeatures(point, { layers: [STATIONS_LAYER] });
       if (!feats.length) {
         this._removeStationPopup();
         return;
       }
       const p = feats[0].properties;
+      // Same station as the popup already showing: skip the model rebuild +
+      // setHTML + addTo churn (this used to run on every mousemove pixel).
+      const popupKey = p.stationId + "|" + (p.lineId || "");
+      if (this._stationPopup && this._stationPopupKey === popupKey) {
+        map.getCanvas().style.cursor = "default";
+        return;
+      }
       const model = buildPopupModel(this._network, p.stationId, p.lineId);
       if (!model) return;
       const gl = global.maplibregl;
@@ -1402,12 +1536,14 @@
         });
       }
       map.getCanvas().style.cursor = "default";
+      this._stationPopupKey = popupKey;
       this._stationPopup
         .setLngLat(feats[0].geometry.coordinates)
-        .setHTML(popupHtml(model))
+        .setHTML(stationPopupHtml(model))
         .addTo(map);
     },
     _removeStationPopup() {
+      this._stationPopupKey = null;
       if (this._stationPopup) this._stationPopup.remove();
     },
   };

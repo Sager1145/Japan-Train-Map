@@ -9,7 +9,6 @@
 //   I18N.placeName(jp)    -> in EN mode "東京 (Tōkyō)", in ZH mode just "東京"
 //   I18N.trainName(jp)    -> same dictionary, for limited-express service names
 //   I18N.setLang(lang)    -> switch language, persist, re-apply, notify
-//   I18N.getLang()        -> "zh" | "en"
 //   I18N.onChange(fn)     -> register a callback fired after each switch
 //   I18N.applyStatic(root)-> translate [data-i18n*] attributes under root
 //
@@ -65,7 +64,6 @@
     },
     "disp.routeWidthScale": { zh: "線路粗細", en: "Line width" },
     "disp.riddenOpacity": { zh: "已乘區間透明度", en: "Ridden segment opacity" },
-    "disp.unriddenOpacity": { zh: "未乘區間透明度", en: "Unridden segment opacity" },
     "disp.dimOpacity": { zh: "非當前日期淡化", en: "Off-date dimming" },
     "disp.terminalRadius": { zh: "端點（起／終站）大小", en: "Terminal (origin/dest) size" },
     "disp.stopRadius": { zh: "停靠站大小", en: "Stop marker size" },
@@ -499,10 +497,6 @@
     return fill(raw, params);
   }
 
-  function nameEn(jp) {
-    return NAMES[jp] || null;
-  }
-
   // Bilingual display:
   //   EN -> "東京 (Tōkyō)" (Japanese + romanized gloss)
   //   ZH -> "東京（とうきょう）" (Japanese + kana reading); names already
@@ -517,10 +511,6 @@
     return kana ? jp + "（" + kana + "）" : jp;
   }
   const trainName = placeName; // same dictionary covers service names
-
-  function getLang() {
-    return currentLang;
-  }
 
   // ---- static DOM application --------------------------------------------
   function applyStatic(root) {
@@ -548,9 +538,14 @@
   }
 
   function setLang(lang) {
-    if (!SUPPORTED.includes(lang) || lang === currentLang) {
-      // Still sync the dropdown if it drifted, but skip the heavy re-render.
-      if (!SUPPORTED.includes(lang)) return;
+    if (!SUPPORTED.includes(lang)) return;
+    if (lang === currentLang) {
+      // Re-picking the current language: sync the dropdown if it drifted, but
+      // skip the heavy re-render (applyStatic + every onChange = full
+      // renderAll in app.js). The old guard fell through and re-rendered.
+      const sel = document.getElementById("lang-select");
+      if (sel && sel.value !== lang) sel.value = lang;
+      return;
     }
     currentLang = lang;
     try {
@@ -600,8 +595,6 @@
     t: t,
     placeName: placeName,
     trainName: trainName,
-    nameEn: nameEn,
-    getLang: getLang,
     setLang: setLang,
     onChange: onChange,
     applyStatic: applyStatic,

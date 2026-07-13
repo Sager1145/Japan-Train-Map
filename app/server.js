@@ -103,7 +103,12 @@ async function serveGzippable(req, res, filePath, stat, cacheControl, label) {
     res.status(304).end();
     return;
   }
-  res.type("application/json");
+  const srcExt = path.extname(filePath).toLowerCase();
+  res.type(
+    { ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" }[
+      srcExt
+    ] || "application/json",
+  );
 
   let streamPath = filePath;
   if (/\bgzip\b/.test(req.headers["accept-encoding"] || "")) {
@@ -259,8 +264,10 @@ async function readTrainStore() {
 
 // Read the saved store. 404 (not 500) when nothing has been saved yet, so the
 // frontend can cleanly fall back to its built-in defaults.
-app.get("/api/train-store", (req, res) => {
-  if (!fs.existsSync(TRAIN_STORE_FILE)) {
+app.get("/api/train-store", async (req, res) => {
+  // Async stat (the old fs.existsSync blocked the event loop per request).
+  const stat = await fs.promises.stat(TRAIN_STORE_FILE).catch(() => null);
+  if (!stat) {
     return res.status(404).json({ error: "No saved train store yet." });
   }
   res.type("application/json");
@@ -409,7 +416,15 @@ app.delete("/api/train-store", async (req, res) => {
 // 9.2 MB with Cache-Control: max-age=0, so every reload re-downloaded it in
 // full. Now it goes over the wire at ~1.7 MB and revalidates to a 304.
 // ---------------------------------------------------------------------------
-const STATIC_GZIP_EXTS = new Set([".json"]);
+const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
+// JSON data packages rarely change → cache a day. JS/CSS are app code that
+// changes during development → no-cache (revalidate every load; the ETag turns
+// unchanged reloads into cheap 304s while first loads still ship gzipped).
+const STATIC_CACHE_CONTROL = {
+  ".json": "public, max-age=86400",
+  ".js": "no-cache",
+  ".css": "no-cache",
+};
 app.get(/.*/, async (req, res, next) => {
   let pathname;
   try {
@@ -432,14 +447,12 @@ app.get(/.*/, async (req, res, next) => {
     return next(); // not a real file → let express.static / 404 handle it
   }
   if (!stat.isFile()) return next();
-  // The rail package rarely changes and is large, so cache it a day; ETag still
-  // guarantees a fresh copy the moment the file is rebuilt.
   await serveGzippable(
     req,
     res,
     filePath,
     stat,
-    "public, max-age=86400",
+    STATIC_CACHE_CONTROL[path.extname(pathname).toLowerCase()] || "no-cache",
     pathname,
   );
 });
