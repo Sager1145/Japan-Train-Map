@@ -429,7 +429,7 @@
   // Shared fade for EVERY opacity change (hover spotlight, selection dim and
   // the date-scope dim): declared once on the opacity paint props so each
   // setPaintProperty change interpolates instead of snapping.
-  const HOVER_DIM_TRANSITION = { duration: 250, delay: 0 };
+  const HOVER_DIM_TRANSITION = { duration: 400, delay: 0 };
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
   // (rgb strings; alpha rides circle-opacity so the SEL layers can override
@@ -1358,13 +1358,14 @@
     // _engagedTids = trains whose true-track overlap-lines are hidden right
     //   now (their continuous expand twins replace them)
     // _expandFilterTids = the trains the expand layers currently SHOW (kept
-    //   during the collapse fade-out so the lanes fade instead of vanishing)
+    //   through the collapse slide so the lanes glide home before vanishing)
     //
-    // Both transitions crossfade around ~1/3 opacity: expanding, the lanes
-    // fade IN over the still-visible true track and the track hides once the
-    // lanes are clearly visible; collapsing, the track reappears under the
-    // almost-transparent lanes. The route therefore never blinks out, never
-    // draws twice at full strength, and never shows an empty gap.
+    // PURE SLIDE — no opacity crossfade (a fade made the corridor visibly
+    // flash on hover). At factor 0 every member's expand twin lies EXACTLY on
+    // its true track with identical colour/width/alpha, so the base lines can
+    // be swapped for the twins (and back) with zero visible change; the only
+    // animated quantity is the lane-offset factor, so expanding slides the
+    // lines apart and collapsing slides them home.
     _setExpandedGroup(g) {
       const next = g || null;
       if (next === this._expandedGroup) return;
@@ -1391,8 +1392,8 @@
         const nextTids = gi ? Object.keys(gi.mults) : [];
         // Fill the group-scoped expand source with the member trains'
         // translated complete courses (rigid shift, geometry untouched).
-        // Offsets start at the CURRENT animation progress (0 when fresh) and
-        // slide outward as _animateExpand advances.
+        // Offsets start at the CURRENT slide progress (0 when fresh — i.e.
+        // exactly on the true track) and slide outward from there.
         this._animGroup = next;
         this._pushExpandFC(next, this._expandT || 0);
         this._expandedTids = nextTids;
@@ -1400,38 +1401,34 @@
         if (m.getLayer(TRAIN_EXPAND_LAYER))
           m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(nextTids));
         this._applyHoverFilter();
+        // Twins are pixel-identical to the base lines at their current
+        // factor, so the base->twin swap is invisible — engage at once.
+        this._setExpandOpacity(1);
+        engage();
         if (this._expandT === 1) {
-          // Already fully faded in (pointer slid between groups): swap the
-          // engaged set instantly, no re-animation — but cancel any queued
-          // collapse frame first or it would keep fading the lanes out.
+          // Already fully fanned (pointer slid between groups): nothing to
+          // animate — but cancel any queued collapse frame or it would keep
+          // sliding the lanes home.
           if (this._expandAnimId) {
             cancelAnimationFrame(this._expandAnimId);
             this._expandAnimId = null;
           }
-          this._setExpandOpacity(1);
-          engage();
           return;
         }
-        this._animateExpand(1, engage, (v) => {
-          if (v >= 0.35) engage();
-        });
+        this._animateExpand(1, null);
       } else {
         this._expandedTids = [];
-        this._animateExpand(
-          0,
-          () => {
-            release();
-            this._expandFilterTids = [];
-            this._animGroup = null;
-            this._pushExpandFC(null, 0);
-            if (m.getLayer(TRAIN_EXPAND_LAYER))
-              m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
-            this._applyHoverFilter();
-          },
-          (v) => {
-            if (v <= 0.35) release();
-          },
-        );
+        // Slide the lanes home first; only then swap the twins back for the
+        // (identical) true-track lines and empty the expand source.
+        this._animateExpand(0, () => {
+          release();
+          this._expandFilterTids = [];
+          this._animGroup = null;
+          this._pushExpandFC(null, 0);
+          if (m.getLayer(TRAIN_EXPAND_LAYER))
+            m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
+          this._applyHoverFilter();
+        });
       }
     },
     _setExpandOpacity(v) {
@@ -1441,29 +1438,26 @@
         if (m.getLayer(id)) m.setPaintProperty(id, "line-opacity", v);
       });
     },
-    _animateExpand(target, done, onProgress) {
+    // Animate ONLY the lane-offset factor (the slide); opacity stays put.
+    _animateExpand(target, done) {
       if (this._expandAnimId) cancelAnimationFrame(this._expandAnimId);
       this._expandAnimId = null;
       const from = this._expandT || 0;
       if (from === target) {
-        this._setExpandOpacity(target);
         if (this._animGroup) this._pushExpandFC(this._animGroup, target);
-        if (onProgress) onProgress(target);
         if (done) done();
         return;
       }
-      const dur = 160;
+      const dur = 240;
       const t0 = performance.now();
       const step = (now) => {
         const k = Math.min(1, (now - t0) / dur);
-        const e = 1 - Math.pow(1 - k, 2); // ease-out
+        const e = 1 - Math.pow(1 - k, 3); // ease-out
         const v = from + (target - from) * e;
         this._expandT = v;
-        this._setExpandOpacity(v);
         // Slide the fan: re-translate the group's lanes at this frame's
-        // progress so the lines physically move out/in with the fade.
+        // progress so the lines physically move out/in.
         if (this._animGroup) this._pushExpandFC(this._animGroup, v);
-        if (onProgress) onProgress(v);
         if (k < 1) {
           this._expandAnimId = requestAnimationFrame(step);
         } else {

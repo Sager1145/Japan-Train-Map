@@ -490,7 +490,7 @@ function updateEndpointLabels() {
     entry.fadeTimer = setTimeout(() => {
       entry.marker.remove();
       endpointLabelMarkers.delete(key);
-    }, 260);
+    }, 420);
   });
 
   // Non-interactive DOM markers (pointer-events:none) so they never block

@@ -576,7 +576,7 @@ details[open] > .submenu-summary::before {
   border-radius: 4px;
   box-shadow: var(--shadow);
   /* Fade with the map's hover/selection spotlight instead of snapping. */
-  transition: opacity 0.25s ease;
+  transition: opacity 0.4s ease;
   white-space: nowrap;
   pointer-events: none;
 }
