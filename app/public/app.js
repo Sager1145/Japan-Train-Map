@@ -4270,12 +4270,13 @@ function renderTrainLayers() {
   // stay solid and other dates draw half-transparent (dimmed) — they are NOT
   // removed. The optional "地圖僅顯示當前日期" checkbox is a stricter override
   // that hides other dates entirely instead of dimming them. Selecting a
-  // single train hides other dates entirely too (routes AND station dots):
-  // the selected train stays solid, its same-day siblings fade via railmap's
-  // selection-dim paint pass, and nothing from any other day draws at all.
+  // single train keeps everything drawn: the selected train stays solid and
+  // EVERY other train — same-day siblings AND other dates, routes and
+  // station dots alike — fades to one uniform opacity via railmap's
+  // selection-dim paint pass (constant SELECT_DIM, so both groups look the
+  // same). Off-date trains remain non-interactive and lane-less regardless.
   const dateActive = selectedDate !== ALL_DATES;
-  const hardHide =
-    dateActive && (mapFollowsSelectedDate || Boolean(selectedTrainId));
+  const hardHide = mapFollowsSelectedDate && dateActive;
   const visibleTrains = trainStore.trains.filter(
     (train) =>
       train.visible !== false &&
@@ -4360,13 +4361,11 @@ function computeRouteSignature(orderedTrains, dateActive) {
       return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${vis}`;
     })
     .join("|");
-  // `hide` mirrors renderTrainLayers' hardHide: whether other dates are
-  // removed entirely (checkbox on, or a single train selected). It is a
-  // boolean — WHICH train is selected stays out of the signature, so picking
-  // train A then train B within the same day rebuilds nothing.
-  const hide =
-    dateActive && (mapFollowsSelectedDate || Boolean(selectedTrainId)) ? 1 : 0;
-  const scope = `date:${dateActive ? selectedDate : ""}|hide:${hide}`;
+  // Selection deliberately stays OUT of the signature: picking a train only
+  // changes railmap paint state (SEL layers + selection dim), never the
+  // record set, so clicks rebuild nothing. Which trains are drawn is already
+  // captured per-train in trainPart (visibility + membership).
+  const scope = `date:${dateActive ? selectedDate : ""}`;
   return {
     records: `${trainPart}|${scope}`,
     overlap: `${overlapPart.join("|")}|${scope}`,

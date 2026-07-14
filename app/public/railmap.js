@@ -913,9 +913,59 @@
       this._groupInfo = groupInfo || new Map();
       this._laneSpacingDeg = laneSpacingDeg || 0;
       this._pushRoutes();
-      // Zoom/pan rebuilt the data while a fan is open: re-translate the
-      // expanded group's lanes at the fresh spacing (no-op when collapsed).
-      if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
+      // A fan is open while the record pipeline is REBUILT (e.g. clicking a
+      // lane switches to the single-day scope, which recomputes the overlap
+      // groups). If the expanded group no longer exists in the new data, the
+      // expand source would go empty while _engagedTids kept the member
+      // trains' true-track lines filtered out of the base layer — the
+      // clicked route vanished until a mouseleave collapsed the stale fan.
+      // Force-collapse the stale fan synchronously instead.
+      if (this._expandedGroup && !this._groupInfo.has(this._expandedGroup)) {
+        this._forceCollapseExpand();
+        return;
+      }
+      // Zoom/pan (or an in-place rebuild) with a fan open: re-translate the
+      // expanded group's lanes at the fresh spacing and re-sync the member
+      // tid sets — the group can survive a rebuild with DIFFERENT membership
+      // (e.g. off-date trains dropped when a day becomes active), and stale
+      // engaged tids would hide lines that no longer have expand twins.
+      if (this._expandedGroup) {
+        this._pushExpandFC(this._expandedGroup);
+        const gi = this._groupInfo.get(this._expandedGroup);
+        const tids = gi ? Object.keys(gi.mults) : [];
+        this._expandedTids = tids;
+        this._expandFilterTids = tids;
+        const m = this._map;
+        if (m && m.getLayer(TRAIN_EXPAND_LAYER))
+          m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(tids));
+        if (this._engagedTids.length) {
+          this._engagedTids = tids.slice();
+          this._applyBaseFilters();
+        } else {
+          this._applyHoverFilter();
+        }
+      }
+    },
+    // Immediate (no animation) reset of the hover-expand state: clear the
+    // group, un-hide every engaged train's true-track lines, empty the expand
+    // source and restore the base/hover/selection filters. Used when new data
+    // invalidates the currently expanded group.
+    _forceCollapseExpand() {
+      if (this._expandAnimId) {
+        cancelAnimationFrame(this._expandAnimId);
+        this._expandAnimId = null;
+      }
+      this._expandedGroup = null;
+      this._expandedTids = [];
+      this._expandFilterTids = [];
+      this._engagedTids = [];
+      this._expandT = 0;
+      this._setExpandOpacity(0);
+      this._pushExpandFC(null);
+      const m = this._map;
+      if (m && m.getLayer(TRAIN_EXPAND_LAYER))
+        m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
+      this._applyBaseFilters();
     },
     // Zoom-only lane refresh. When the view zooms, the parallel PICK lanes are
     // re-translated to keep constant ON-SCREEN spacing, but every train's base
@@ -1194,15 +1244,23 @@
       const m = this._map;
       if (!m) return;
       // Two spotlight tiers, hover wins over selection:
-      //   hover active     -> active trains at 1, everyone else HOVER_DIM;
-      //   only a selection -> the selected train at 1, its still-drawn
-      //                       siblings (same-day trains) SELECT_DIM;
+      //   hover active     -> active trains at 1, everyone else alpha×HOVER_DIM;
+      //   only a selection -> the selected train at its own alpha, EVERY other
+      //                       train — same-day siblings and other dates alike —
+      //                       at one uniform constant SELECT_DIM (the baked
+      //                       per-record date-dim alpha is overridden so both
+      //                       groups show the same transparency);
       //   neither          -> plain per-record alpha.
       const hoverTids = this._activeHoverTids();
       const selId =
         !hoverTids && this._selectedTrainId ? this._selectedTrainId : null;
       const tids = hoverTids || (selId ? [selId] : null);
       const dimVal = hoverTids ? HOVER_DIM : SELECT_DIM;
+      // Selection-only state: constant opacity for the non-selected trains
+      // (NOT multiplied into the record alpha, or off-date trains would end
+      // up dimmer than same-day ones).
+      const selCase = (ownAlpha) =>
+        ["case", ["==", ["get", "tid"], selId], ownAlpha, SELECT_DIM];
       const key = tids
         ? (hoverTids ? "h:" : "s:") + tids.join("\u0000")
         : "";
@@ -1218,13 +1276,21 @@
       set(
         TRAIN_ROUTES_LAYER,
         "line-opacity",
-        tids ? ["*", ["get", "alpha"], mul] : ["get", "alpha"],
+        hoverTids
+          ? ["*", ["get", "alpha"], mul]
+          : selId
+            ? selCase(["get", "alpha"])
+            : ["get", "alpha"],
       );
       set(TRAIN_SEL_CASING_LAYER, "line-opacity", tids ? ["*", 0.9, mul] : 0.9);
       set(TRAIN_SEL_LAYER, "line-opacity", mul);
       // Base dots carry their own alpha (date-scope dim); SEL dots force 1.
       [TRAIN_PASS_LAYER, TRAIN_STOPS_LAYER].forEach((id) => {
-        const v = tids ? ["*", ["get", "alpha"], mul] : ["get", "alpha"];
+        const v = hoverTids
+          ? ["*", ["get", "alpha"], mul]
+          : selId
+            ? selCase(["get", "alpha"])
+            : ["get", "alpha"];
         set(id, "circle-opacity", v);
         set(id, "circle-stroke-opacity", v);
       });
