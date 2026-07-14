@@ -1603,7 +1603,15 @@
       // own station dots must not steal the pointer from the lanes — sliding
       // along the fan would flicker hover/tooltip at every station. Clicks
       // keep marker precedence so a station dot still opens its stop popup.
-      function queryAt(point, preferLanes) {
+      //
+      // stickyTids (STICKY HOVER): the currently hovered line — or the open
+      // fan's member set — has absolute pick priority. While the pointer is
+      // still on ANY sticky geometry (its line or its station dots), other
+      // lines crossing beneath it are invisible to picking; only once the
+      // pointer actually LEAVES the sticky geometry does the normal
+      // resolution (foreign lines / ground) apply again.
+      function queryAt(point, preferLanes, stickyTids) {
+        const sticky = stickyTids && stickyTids.length ? stickyTids : null;
         const markerLayers = [
           TRAIN_SEL_STOPS_LAYER,
           TRAIN_SEL_PASS_LAYER,
@@ -1615,13 +1623,67 @@
           [point.x - PAD, point.y - PAD],
           [point.x + PAD, point.y + PAD],
         ];
+        // Markers: prefer a sticky train's dot over foreign dots. nopick dots
+        // (off-date trains while a day is active) are never interactive.
         let markerHit = null;
         const mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         if (mk.length) {
-          const rec = self._markers && self._markers[mk[0].properties.idx];
-          // nopick dots (off-date trains while a day is active) are drawn but
-          // never interactive — ignore the hit instead of returning it.
-          if (rec && !rec.nopick) markerHit = { kind: "marker", record: rec };
+          const recOf = (f) => self._markers && self._markers[f.properties.idx];
+          const usable = (rec) => rec && !rec.nopick;
+          let rec = null;
+          if (sticky) {
+            const f = mk.find((f0) => {
+              const r = recOf(f0);
+              return usable(r) && r.train && sticky.includes(r.train.id);
+            });
+            rec = f ? recOf(f) : null;
+          }
+          if (!rec) {
+            const f = mk.find((f0) => usable(recOf(f0)));
+            rec = f ? recOf(f) : null;
+          }
+          if (rec)
+            markerHit = {
+              kind: "marker",
+              record: rec,
+              sticky: Boolean(
+                sticky && rec.train && sticky.includes(rec.train.id),
+              ),
+            };
+        }
+        // Routes are picked against the invisible PICK lanes (which hug the
+        // visible lines: true track while collapsed, per-lane paths for an
+        // open fan). Query the EXACT cursor point first — that resolves to
+        // the single lane under the pointer — and only fall back to the
+        // padded box when the exact point misses (thin isolated lines stay
+        // easy to grab). Sticky trains win within each candidate set.
+        const routeFrom = (feats) => {
+          if (!feats.length) return null;
+          let f = null;
+          if (sticky)
+            f = feats.find((f0) => sticky.includes(f0.properties.tid));
+          if (!f) f = feats[0];
+          const rec = self._records[f.properties.idx];
+          return rec
+            ? {
+                kind: "route",
+                record: rec,
+                sticky: Boolean(sticky && sticky.includes(f.properties.tid)),
+              }
+            : null;
+        };
+        let routeHit = routeFrom(
+          map.queryRenderedFeatures(point, { layers: pickLayers }),
+        );
+        if (!routeHit)
+          routeHit = routeFrom(
+            map.queryRenderedFeatures(bbox, { layers: pickLayers }),
+          );
+        // STICKY RESOLUTION: while any sticky geometry is under the pointer,
+        // foreign hits are discarded entirely.
+        if (sticky && ((markerHit && markerHit.sticky) || (routeHit && routeHit.sticky))) {
+          if (markerHit && !markerHit.sticky) markerHit = null;
+          if (routeHit && !routeHit.sticky) routeHit = null;
         }
         const markerYieldsToFan =
           markerHit &&
@@ -1630,44 +1692,24 @@
           markerHit.record.train &&
           self._expandedTids.includes(markerHit.record.train.id);
         if (markerHit && !markerYieldsToFan) return markerHit;
-        // Routes are picked against the invisible PICK lanes. Where trains
-        // overlap, each train owns its own parallel lane (date-ordered
-        // left→right / top→bottom), so query the EXACT cursor point first —
-        // that resolves to the single lane under the pointer and lets a small
-        // sideways mouse move step between the parallel trains. Only if the
-        // exact point misses do we retry with the padded box (thin isolated
-        // lines stay easy to grab).
-        let rt = map.queryRenderedFeatures(point, { layers: pickLayers });
-        if (!rt.length)
-          rt = map.queryRenderedFeatures(bbox, { layers: pickLayers });
-        if (rt.length) {
-          const rec = self._records[rt[0].properties.idx];
-          if (rec) return { kind: "route", record: rec };
-        }
+        if (routeHit) return routeHit;
         return markerHit;
       }
 
-      // While a fan is OPEN, everything that is not one of its member trains
-      // is off limits: routes running beneath/between the spread lanes (and
-      // other trains' station dots) must be neither hoverable nor clickable —
-      // until the pointer leaves the fan, only its parallel lanes can be
-      // picked. Empty ground still collapses/steps back as usual.
-      function hitOutsideOpenFan(hit) {
-        return Boolean(
-          self._expandedGroup &&
-            hit &&
-            hit.record &&
-            hit.record.train &&
-            self._expandedTids.length &&
-            !self._expandedTids.includes(hit.record.train.id),
-        );
+      // The sticky set for the CURRENT hover state: the open fan's members,
+      // else the single hovered train.
+      function currentStickyTids() {
+        if (self._expandedGroup && self._expandedTids.length)
+          return self._expandedTids;
+        if (self._hoverTrainId) return [self._hoverTrainId];
+        return null;
       }
 
       map.on("click", (e) => {
-        const hit = queryAt(e.point);
-        // Non-member under an open fan: swallow the click entirely (it is
-        // NOT a background click — the fan stays open).
-        if (hitOutsideOpenFan(hit)) return;
+        // Clicks resolve with the same sticky priority the hover shows: at a
+        // crossing you select the line you are hovering, never the one
+        // beneath it.
+        const hit = queryAt(e.point, false, currentStickyTids());
         if (!hit) {
           // Blank ground (no route lane, no station dot): let the app react —
           // it switches the date filter back to "全部" so every date's routes
@@ -1698,16 +1740,11 @@
         self._hoverRafId = null;
         const point = self._pendingHoverPoint;
         if (!point) return;
-        const hit = queryAt(point, true);
-        // Non-member under an open fan: freeze the whole hover state — the
-        // fan stays open, the current hover keeps its highlight, and the
-        // foreign line gets no tooltip/cursor. Only a member lane (switch
-        // within the fan) or true empty ground (collapse) changes anything.
-        if (hitOutsideOpenFan(hit)) {
-          map.getCanvas().style.cursor = "";
-          self._showTooltip(null);
-          return;
-        }
+        // STICKY HOVER: while the pointer is still on the hovered line (or
+        // an open fan's lanes / their station dots), lines crossing beneath
+        // it are unpickable — queryAt only surfaces them once the pointer
+        // has actually left the sticky geometry.
+        const hit = queryAt(point, true, currentStickyTids());
         const id = hit && hit.record.train ? hit.record.train.id : null;
         // Hover-expand: pointer on an overlapped run fans that group's lines
         // out into their date-ordered lanes; empty ground collapses. Marker
