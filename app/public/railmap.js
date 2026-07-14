@@ -426,10 +426,8 @@
   // fades to this multiplier, station dots included. Softer than the hover
   // dim so a hover can still deepen the spotlight on top of a selection.
   const SELECT_DIM = 0.25;
-  // Shared fade for EVERY opacity change (hover spotlight, selection dim and
-  // the date-scope dim): declared once on the opacity paint props so each
-  // setPaintProperty change interpolates instead of snapping.
-  const HOVER_DIM_TRANSITION = { duration: 400, delay: 0 };
+  // (Opacity fades are rAF-driven — see the animated dim engine
+  // `_applyDimPaint`; per-mode durations live in `_dimSpeedMs`.)
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
   // (rgb strings; alpha rides circle-opacity so the SEL layers can override
@@ -870,7 +868,6 @@
     _expandFilterTids: [], // trains the expand layers currently show
     _expandT: 0,
     _expandAnimId: null,
-    _dimKey: "", // last applied hover-spotlight state (dedup)
     _tooltipEl: null,
     _tooltipRecord: null, // record the tooltip currently shows (dedup)
     _stationPopup: null,
@@ -886,38 +883,28 @@
       this._handlers = handlers || {};
       this._basemapLayerIds = basemapLayerIds || [];
       this._wireInteractions();
-      // Smooth GPU fade for the hover spotlight (dim/undim of the non-hovered
-      // trains): declare the opacity transitions once, up front.
+      // ALL opacity fades on these layers are driven manually by the rAF dim
+      // engine (_applyDimPaint) and the fan slide — MapLibre skips its own
+      // transitions for data-driven paint values anyway, and its implicit
+      // default 300 ms transition on CONSTANT values would trail the rAF
+      // frames. Pin every animated opacity prop to zero so the rAF loop is
+      // the single source of animation truth.
+      const ZERO_T = { duration: 0, delay: 0 };
       [
-        [TRAIN_ROUTES_LAYER, "line-opacity"],
-        [TRAIN_SEL_CASING_LAYER, "line-opacity"],
-        [TRAIN_SEL_LAYER, "line-opacity"],
-      ].forEach(([id, prop]) => {
-        if (map.getLayer(id))
-          map.setPaintProperty(id, prop + "-transition", HOVER_DIM_TRANSITION);
-      });
-      [
-        TRAIN_PASS_LAYER,
-        TRAIN_STOPS_LAYER,
-        TRAIN_SEL_PASS_LAYER,
-        TRAIN_SEL_STOPS_LAYER,
-      ].forEach((id) => {
-        if (map.getLayer(id)) {
-          map.setPaintProperty(id, "circle-opacity-transition", HOVER_DIM_TRANSITION);
-          map.setPaintProperty(id, "circle-stroke-opacity-transition", HOVER_DIM_TRANSITION);
-        }
-      });
-      // The expand-fan layers are animated MANUALLY frame-by-frame
-      // (_animateExpand drives both their opacity and the lane-slide
-      // geometry). MapLibre's implicit default 300 ms paint transition would
-      // trail those per-frame values and desync the fade from the slide —
-      // pin them to zero so the rAF animation is authoritative.
-      [TRAIN_EXPAND_LAYER, TRAIN_EXPAND_HOVER_LAYER].forEach((id) => {
-        if (map.getLayer(id))
-          map.setPaintProperty(id, "line-opacity-transition", {
-            duration: 0,
-            delay: 0,
-          });
+        [TRAIN_ROUTES_LAYER, ["line-opacity"]],
+        [TRAIN_SEL_CASING_LAYER, ["line-opacity"]],
+        [TRAIN_SEL_LAYER, ["line-opacity"]],
+        [TRAIN_EXPAND_LAYER, ["line-opacity"]],
+        [TRAIN_EXPAND_HOVER_LAYER, ["line-opacity"]],
+        [TRAIN_PASS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
+        [TRAIN_STOPS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
+        [TRAIN_SEL_PASS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
+        [TRAIN_SEL_STOPS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
+      ].forEach(([id, props]) => {
+        if (!map.getLayer(id)) return;
+        props.forEach((prop) =>
+          map.setPaintProperty(id, prop + "-transition", ZERO_T),
+        );
       });
       return this;
     },
@@ -1015,16 +1002,15 @@
     },
     // Date-scope dim as PAINT state: records carry their train's date in
     // `tdate`; the active date + dim value live in the opacity expressions.
-    // Changing scope therefore FADES (declared transitions) instead of
-    // waiting for the record rebuild, whose re-uploaded features carry the
-    // same per-train paint inputs and continue the same fade.
+    // Changing scope therefore FADES (the rAF dim engine ramps the `date`
+    // strength) instead of waiting for the record rebuild, whose re-uploaded
+    // features carry the same per-train paint inputs mid-fade.
     setDateScope(activeDate, dimOpacity) {
       const next = activeDate || null;
       const dim = Math.max(0, Math.min(1, Number(dimOpacity ?? 0.18)));
       if (next === this._activeDate && dim === this._dateDim) return this;
       this._activeDate = next;
       this._dateDim = dim;
-      this._dimKey = undefined; // force the expression rebuild below
       this._applyHoverDim();
       return this;
     },
@@ -1272,85 +1258,157 @@
     // during its fade-out), else the single hovered train. Everything else —
     // route lines AND stop/pass-through dots — fades to HOVER_DIM.
     //
-    // P0 path: this changes ONLY layer paint expressions (setPaintProperty,
-    // deduped by _dimKey), never touches a GeoJSON source, and the declared
-    // opacity transitions make the fade a GPU interpolation.
+    // P0 path: this changes ONLY layer paint expressions (setPaintProperty),
+    // never touches a GeoJSON source; the rAF dim engine below animates the
+    // strengths.
     _activeHoverTids() {
       if (this._expandFilterTids.length) return this._expandFilterTids;
       if (this._hoverTrainId) return [this._hoverTrainId];
       return null;
     },
-    _applyHoverDim() {
-      const m = this._map;
-      if (!m) return;
-      // Two spotlight tiers, hover wins over selection:
-      //   hover active     -> active trains at 1, everyone else alpha×HOVER_DIM;
-      //   only a selection -> the selected train at its own alpha, EVERY other
-      //                       train — same-day siblings and other dates alike —
-      //                       at one uniform constant SELECT_DIM (the baked
-      //                       per-record date-dim alpha is overridden so both
-      //                       groups show the same transparency);
-      //   neither          -> plain per-record alpha.
+    // ── animated dim engine ────────────────────────────────────────────
+    // MapLibre does NOT transition DATA-DRIVEN paint properties — every
+    // opacity here is a per-feature expression (keyed on tid / tdate), so
+    // declared *-transition values were silently ignored and every dim
+    // change snapped. Instead, THREE dim modes each get an animated strength
+    // (0..1) driven by ONE rAF loop; each frame rebuilds the opacity
+    // expressions with the current strengths lerped in:
+    //   date  -> off-date features lerp own-alpha -> flat _dateDim
+    //   sel   -> non-selected features lerp own -> flat SELECT_DIM
+    //   hover -> non-hovered features multiply toward HOVER_DIM;
+    //            hovered features lerp their sel-dim away (spotlight wins)
+    // Role-set changes (hover moving between trains, switching days) apply
+    // at the current strength; engage/disengage is what animates.
+    _dimSpeedMs: { hover: 250, sel: 350, date: 400 },
+    _updateDimTargets() {
+      if (!this._dimVals) {
+        this._dimVals = { hover: 0, sel: 0, date: 0 };
+        this._dimTargets = { hover: 0, sel: 0, date: 0 };
+      }
+      // Latch the last-known active sets so a fade-OUT still knows which
+      // features were dimmed while the strength ramps back to 0.
       const hoverTids = this._activeHoverTids();
-      const selId =
-        !hoverTids && this._selectedTrainId ? this._selectedTrainId : null;
-      const tids = hoverTids || (selId ? [selId] : null);
-      const dimVal = hoverTids ? HOVER_DIM : SELECT_DIM;
-      // Date-scope dim (paint-level, see setDateScope): a record on the
-      // active date keeps its own alpha, everything else drops to the flat
-      // _dateDim value. No active date = plain own alpha.
-      const activeDate = this._activeDate || null;
+      if (hoverTids && hoverTids.length) this._dimHoverTids = hoverTids.slice();
+      if (this._selectedTrainId) this._dimSelId = this._selectedTrainId;
+      if (this._activeDate) this._dimDate = this._activeDate;
+      this._dimTargets = {
+        hover: hoverTids && hoverTids.length ? 1 : 0,
+        sel: this._selectedTrainId ? 1 : 0,
+        date: this._activeDate ? 1 : 0,
+      };
+      // Role changes at steady strength (e.g. sweeping the pointer between
+      // trains) must re-apply immediately even when nothing is ramping.
+      this._applyDimPaint();
+      this._ensureDimAnim();
+    },
+    _ensureDimAnim() {
+      if (this._dimRaf) return;
+      const step = (now) => {
+        this._dimRaf = null;
+        const dt = Math.min(50, now - (this._dimLast || now));
+        this._dimLast = now;
+        let moving = false;
+        ["hover", "sel", "date"].forEach((k) => {
+          const target = this._dimTargets[k];
+          const cur = this._dimVals[k];
+          if (cur === target) return;
+          const rate = dt / this._dimSpeedMs[k];
+          const next =
+            cur < target
+              ? Math.min(target, cur + rate)
+              : Math.max(target, cur - rate);
+          this._dimVals[k] = next;
+          if (next !== target) moving = true;
+        });
+        this._applyDimPaint();
+        if (moving) {
+          this._dimRaf = requestAnimationFrame(step);
+        } else {
+          this._dimLast = null;
+        }
+      };
+      this._dimLast = performance.now();
+      this._dimRaf = requestAnimationFrame(step);
+    },
+    _applyDimPaint() {
+      const m = this._map;
+      if (!m || !this._dimVals) return;
+      const v = this._dimVals;
+      const easeS = (s) => 1 - Math.pow(1 - s, 2); // gentle ease-out
+      const sDate = easeS(v.date);
+      const sSel = easeS(v.sel);
+      const sHover = easeS(v.hover);
+      // lerp helpers that collapse to plain values at the endpoints so the
+      // steady-state expressions stay as small as before.
+      const lerpNum = (expr, num, s) =>
+        s >= 1 ? num : s <= 0 ? expr : ["+", ["*", expr, 1 - s], num * s];
+      const lerpExpr = (a, b, s) =>
+        s >= 1 ? b : s <= 0 ? a : ["+", ["*", a, 1 - s], ["*", b, s]];
       const dateDim = this._dateDim ?? 0.18;
-      const dcase = (ownAlpha) =>
-        activeDate
+      const dateWrap = (own) =>
+        sDate > 0 && this._dimDate
           ? [
               "case",
-              ["==", ["get", "tdate"], activeDate],
-              ownAlpha,
-              dateDim,
+              ["==", ["get", "tdate"], this._dimDate],
+              own,
+              lerpNum(own, dateDim, sDate),
             ]
-          : ownAlpha;
-      // Selection-only state: constant opacity for the non-selected trains
-      // (NOT multiplied into the record alpha, or off-date trains would end
-      // up dimmer than same-day ones).
-      const selCase = (ownAlpha) =>
-        ["case", ["==", ["get", "tid"], selId], ownAlpha, SELECT_DIM];
-      const key =
-        (tids ? (hoverTids ? "h:" : "s:") + tids.join("\u0000") : "") +
-        "|d:" +
-        (activeDate || "") +
-        ":" +
-        dateDim;
-      if (key === this._dimKey) return;
-      this._dimKey = key;
-      // multiplier: 1 for the active trains, dimVal for everyone else
-      const mul = tids
-        ? ["case", ["in", ["get", "tid"], ["literal", tids]], 1, dimVal]
-        : 1;
+          : own;
+      // Non-selected features head toward the flat SELECT_DIM (NOT
+      // multiplied into their alpha, or off-date trains would end up dimmer
+      // than same-day ones).
+      const selWrap = (own) =>
+        sSel > 0 && this._dimSelId
+          ? [
+              "case",
+              ["==", ["get", "tid"], this._dimSelId],
+              own,
+              lerpNum(own, SELECT_DIM, sSel),
+            ]
+          : own;
+      const hoverActive = sHover > 0 && (this._dimHoverTids || []).length > 0;
+      const inHover = hoverActive
+        ? ["in", ["get", "tid"], ["literal", this._dimHoverTids]]
+        : null;
+      const hoverMul = 1 - (1 - HOVER_DIM) * sHover;
+      const chain = (own) => {
+        const base = selWrap(dateWrap(own));
+        if (!hoverActive) return base;
+        // Hovered features climb OUT of the selection dim toward their
+        // date-scoped alpha; everyone else multiplies toward HOVER_DIM.
+        return [
+          "case",
+          inHover,
+          lerpExpr(base, dateWrap(own), sHover),
+          ["*", base, hoverMul],
+        ];
+      };
       const set = (id, prop, value) => {
         if (m.getLayer(id)) m.setPaintProperty(id, prop, value);
       };
-      // One shared opacity shape for base lines AND base dots:
-      //   hover     -> dcase(alpha) × hover multiplier;
-      //   selection -> selected at dcase(alpha), everyone else SELECT_DIM;
-      //   idle      -> dcase(alpha) (day view dims other dates, 全部 = alpha).
-      const baseOpacity = hoverTids
-        ? ["*", dcase(["get", "alpha"]), mul]
-        : selId
-          ? selCase(dcase(["get", "alpha"]))
-          : dcase(["get", "alpha"]);
+      const baseOpacity = chain(["get", "alpha"]);
+      // SEL layers only ever contain the selected train (always "active"):
+      // only the hover spotlight can dim them.
+      const selLayerVal = hoverActive ? ["case", inHover, 1, hoverMul] : 1;
       set(TRAIN_ROUTES_LAYER, "line-opacity", baseOpacity);
-      set(TRAIN_SEL_CASING_LAYER, "line-opacity", tids ? ["*", 0.9, mul] : 0.9);
-      set(TRAIN_SEL_LAYER, "line-opacity", mul);
-      // Base dots share the same expression; SEL dots force 1.
+      set(
+        TRAIN_SEL_CASING_LAYER,
+        "line-opacity",
+        hoverActive ? ["*", 0.9, selLayerVal] : 0.9,
+      );
+      set(TRAIN_SEL_LAYER, "line-opacity", selLayerVal);
       [TRAIN_PASS_LAYER, TRAIN_STOPS_LAYER].forEach((id) => {
         set(id, "circle-opacity", baseOpacity);
         set(id, "circle-stroke-opacity", baseOpacity);
       });
       [TRAIN_SEL_PASS_LAYER, TRAIN_SEL_STOPS_LAYER].forEach((id) => {
-        set(id, "circle-opacity", mul);
-        set(id, "circle-stroke-opacity", mul);
+        set(id, "circle-opacity", selLayerVal);
+        set(id, "circle-stroke-opacity", selLayerVal);
       });
+    },
+    // Single entry point every dim-state change funnels through.
+    _applyHoverDim() {
+      this._updateDimTargets();
     },
 
     // ── hover-expand: fan an overlapped group out into its parallel lanes ──

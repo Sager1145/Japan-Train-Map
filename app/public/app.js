@@ -521,7 +521,15 @@ function updateEndpointLabels() {
         clearTimeout(entry.fadeTimer);
         entry.fadeTimer = null;
       }
-      entry.el.className = cls;
+      // Swap only OUR classes. The Marker constructor appended MapLibre's
+      // own classes (maplibregl-marker … — they provide position:absolute);
+      // overwriting className wiped them and the label fell out of the
+      // marker positioning flow, rendering as a full-width bar.
+      if (entry.cls !== cls) {
+        entry.cls.split(" ").forEach((c) => entry.el.classList.remove(c));
+        cls.split(" ").forEach((c) => entry.el.classList.add(c));
+        entry.cls = cls;
+      }
       if (entry.el.innerHTML !== spec.html) entry.el.innerHTML = spec.html;
       entry.marker
         .setLngLat([spec.latlng[1], spec.latlng[0]])
@@ -543,6 +551,7 @@ function updateEndpointLabels() {
         marker,
         el,
         anchor,
+        cls,
         fadeTimer: null,
       });
       // Two frames so the initial opacity:0 is committed before the target
@@ -628,6 +637,11 @@ function deckGetTooltip(info) {
     const times = [];
     if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
     if (pr.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);
+    // The stop's date rides along after its times.
+    if (times.length && o.train) {
+      const d = dateLabel(getTrainDate(o.train));
+      if (d) times.push(`<span style="opacity:0.8">${escapeHtml(d)}</span>`);
+    }
     const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
     return { html: `<b>${escapeHtml(I18N.placeName(name))}</b>${timeHtml}`, style };
   }
@@ -642,6 +656,11 @@ function deckGetTooltip(info) {
   const times = [];
   if (oStop && oStop.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(oStop.departure)}`);
   if (dStop && dStop.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(dStop.arrival)}`);
+  // The train's running date rides along after its times.
+  {
+    const d = dateLabel(getTrainDate(t));
+    if (d) times.push(`<span style="opacity:0.8">${escapeHtml(d)}</span>`);
+  }
   const numHtml = meta
     ? `<br><span style="opacity:0.85">${escapeHtml(meta)}</span>`
     : "";
