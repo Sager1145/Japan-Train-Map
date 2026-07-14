@@ -769,22 +769,38 @@
     };
   }
 
-  // Pick geometry: same records, but using the per-lane offset path (pickPath)
-  // and a generous pixel hit width. `idx` maps a picked feature back to the
-  // full record in _records (tooltip lane info, click target, group key).
-  function routePickRecordsToFC(records) {
+  // Pick geometry — STATE-AWARE. Hover must only trigger directly ON a
+  // visible line, never across the not-yet-expanded fan region:
+  //   collapsed  -> every record's hit geometry sits on the TRUE TRACK
+  //                 (where the line is actually drawn), narrow width;
+  //   fan open   -> ONLY the open group's member records move to their
+  //                 per-lane offset paths (matching the visibly fanned
+  //                 lines; the spacing-wide lanes tile the corridor so the
+  //                 pointer can slide between the parallel lines).
+  // `idx` maps a picked feature back to the full record in _records
+  // (tooltip lane info, click target, group key).
+  function routePickRecordsToFC(records, openGroup) {
     return {
       type: "FeatureCollection",
-      features: records.map((r, i) => ({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: r.pickPath || r.path },
-        properties: {
-          idx: i,
-          tid: (r.train && r.train.id) || "",
-          pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 8, 14),
-          nopick: r.nopick ? 1 : 0,
-        },
-      })),
+      features: records.map((r, i) => {
+        const fanned = Boolean(openGroup && r.groupKey === openGroup);
+        return {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: fanned ? r.pickPath || r.path : r.path,
+          },
+          properties: {
+            idx: i,
+            tid: (r.train && r.train.id) || "",
+            pickWidth:
+              fanned && r.pickWidth != null
+                ? r.pickWidth
+                : Math.max(r.width + 8, 14),
+            nopick: r.nopick ? 1 : 0,
+          },
+        };
+      }),
     };
   }
 
@@ -916,6 +932,11 @@
       this._expandRecords = expandRecords || [];
       this._groupInfo = groupInfo || new Map();
       this._laneSpacingDeg = laneSpacingDeg || 0;
+      // Baseline zoom for the degree-valued spacing: while the map zooms,
+      // _currentLaneSpacingDeg() rescales by 2^(z0 − z) so the fan keeps its
+      // constant ON-SCREEN spacing continuously instead of drifting during
+      // the gesture and snapping at zoomend.
+      this._laneSpacingZoom = this._map ? this._map.getZoom() : null;
       this._pushRoutes();
       // A fan is open while the record pipeline is REBUILT (e.g. clicking a
       // lane switches to the single-day scope, which recomputes the overlap
@@ -967,6 +988,7 @@
       this._animGroup = null;
       this._setExpandOpacity(0);
       this._pushExpandFC(null, 0);
+      this._pushPick();
       const m = this._map;
       if (m && m.getLayer(TRAIN_EXPAND_LAYER))
         m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
@@ -981,11 +1003,21 @@
     // route source. Halves the GPU re-upload on every zoom that has overlaps.
     updateLaneSpacing(laneSpacingDeg) {
       this._laneSpacingDeg = laneSpacingDeg || 0;
-      const pick = this._src(TRAIN_PICK_SOURCE);
-      if (pick)
-        pick.setData(routePickRecordsToFC(this._visible ? this._records : []));
+      this._laneSpacingZoom = this._map ? this._map.getZoom() : null;
+      this._pushPick();
       if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
       return this;
+    },
+    // Effective lane spacing at the CURRENT zoom. The app supplies spacing in
+    // degrees computed for the zoom it was pushed at; degrees-per-pixel halve
+    // with each zoom level, so rescaling by 2^(z0 − z) keeps the fan's pixel
+    // spacing constant throughout the zoom gesture. (The small cos(lat) drift
+    // from panning is corrected by the app's zoomend/moveend re-push.)
+    _currentLaneSpacingDeg() {
+      const base = this._laneSpacingDeg || 0;
+      const m = this._map;
+      if (!m || !base || this._laneSpacingZoom == null) return base;
+      return base * Math.pow(2, this._laneSpacingZoom - m.getZoom());
     },
     setMarkers(records) {
       this._markers = records || [];
@@ -1172,8 +1204,19 @@
       const shown = this._visible ? this._records : [];
       const src = this._src(TRAIN_ROUTES_SOURCE);
       if (src) src.setData(routeRecordsToFC(shown));
+      this._pushPick();
+    },
+    // Re-upload the pick source for the CURRENT fan state: true-track hit
+    // areas while collapsed, per-lane hit areas for the open group's members.
+    _pushPick() {
       const pick = this._src(TRAIN_PICK_SOURCE);
-      if (pick) pick.setData(routePickRecordsToFC(shown));
+      if (pick)
+        pick.setData(
+          routePickRecordsToFC(
+            this._visible ? this._records : [],
+            this._expandedGroup,
+          ),
+        );
     },
     // The expand source is GROUP-SCOPED: it only ever holds the hovered
     // group's translated member courses (or nothing when collapsed).
@@ -1193,7 +1236,11 @@
           : null;
       exp.setData(
         gi
-          ? routeExpandFC(this._expandRecords, gi, this._laneSpacingDeg * f)
+          ? routeExpandFC(
+              this._expandRecords,
+              gi,
+              this._currentLaneSpacingDeg() * f,
+            )
           : EMPTY_FC,
       );
     },
@@ -1456,6 +1503,9 @@
         this._pushExpandFC(next, this._expandT || 0);
         this._expandedTids = nextTids;
         this._expandFilterTids = nextTids;
+        // The open group's hit areas move from the true track out to the
+        // per-lane paths (they only exist there while the fan is open).
+        this._pushPick();
         if (m.getLayer(TRAIN_EXPAND_LAYER))
           m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(nextTids));
         this._applyHoverFilter();
@@ -1476,6 +1526,9 @@
         this._animateExpand(1, null);
       } else {
         this._expandedTids = [];
+        // Hit areas snap back to the true track right away (the fan is
+        // closing; hovering the line itself may legitimately re-open it).
+        this._pushPick();
         // Slide the lanes home first; only then swap the twins back for the
         // (identical) true-track lines and empty the expand source.
         this._animateExpand(0, () => {
@@ -1532,6 +1585,20 @@
       const self = this;
       const PAD = 6; // px hit slop around the pointer for line picking
 
+      // While a fan is open, follow the zoom CONTINUOUSLY: re-translate the
+      // expanded lanes each frame at the effective (zoom-rescaled) spacing so
+      // they hold their on-screen positions through the whole gesture instead
+      // of drifting apart and snapping back at zoomend. One push per frame.
+      map.on("zoom", () => {
+        if (!self._expandedGroup && !self._animGroup) return;
+        if (self._zoomExpandRaf) return;
+        self._zoomExpandRaf = requestAnimationFrame(() => {
+          self._zoomExpandRaf = null;
+          const g = self._expandedGroup || self._animGroup;
+          if (g) self._pushExpandFC(g);
+        });
+      });
+
       // preferLanes (hover only): while a fan is expanded, the fanned trains'
       // own station dots must not steal the pointer from the lanes — sliding
       // along the fan would flicker hover/tooltip at every station. Clicks
@@ -1580,8 +1647,27 @@
         return markerHit;
       }
 
+      // While a fan is OPEN, everything that is not one of its member trains
+      // is off limits: routes running beneath/between the spread lanes (and
+      // other trains' station dots) must be neither hoverable nor clickable —
+      // until the pointer leaves the fan, only its parallel lanes can be
+      // picked. Empty ground still collapses/steps back as usual.
+      function hitOutsideOpenFan(hit) {
+        return Boolean(
+          self._expandedGroup &&
+            hit &&
+            hit.record &&
+            hit.record.train &&
+            self._expandedTids.length &&
+            !self._expandedTids.includes(hit.record.train.id),
+        );
+      }
+
       map.on("click", (e) => {
         const hit = queryAt(e.point);
+        // Non-member under an open fan: swallow the click entirely (it is
+        // NOT a background click — the fan stays open).
+        if (hitOutsideOpenFan(hit)) return;
         if (!hit) {
           // Blank ground (no route lane, no station dot): let the app react —
           // it switches the date filter back to "全部" so every date's routes
@@ -1613,6 +1699,15 @@
         const point = self._pendingHoverPoint;
         if (!point) return;
         const hit = queryAt(point, true);
+        // Non-member under an open fan: freeze the whole hover state — the
+        // fan stays open, the current hover keeps its highlight, and the
+        // foreign line gets no tooltip/cursor. Only a member lane (switch
+        // within the fan) or true empty ground (collapse) changes anything.
+        if (hitOutsideOpenFan(hit)) {
+          map.getCanvas().style.cursor = "";
+          self._showTooltip(null);
+          return;
+        }
         const id = hit && hit.record.train ? hit.record.train.id : null;
         // Hover-expand: pointer on an overlapped run fans that group's lines
         // out into their date-ordered lanes; empty ground collapses. Marker
