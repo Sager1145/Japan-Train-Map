@@ -426,7 +426,10 @@
   // fades to this multiplier, station dots included. Softer than the hover
   // dim so a hover can still deepen the spotlight on top of a selection.
   const SELECT_DIM = 0.25;
-  const HOVER_DIM_TRANSITION = { duration: 150, delay: 0 };
+  // Shared fade for EVERY opacity change (hover spotlight, selection dim and
+  // the date-scope dim): declared once on the opacity paint props so each
+  // setPaintProperty change interpolates instead of snapping.
+  const HOVER_DIM_TRANSITION = { duration: 250, delay: 0 };
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
   // (rgb strings; alpha rides circle-opacity so the SEL layers can override
@@ -759,6 +762,7 @@
         properties: {
           idx: i,
           tid: (r.train && r.train.id) || "",
+          tdate: r.tdate || "",
           color: "rgb(" + r.color[0] + "," + r.color[1] + "," + r.color[2] + ")",
           alpha: r.color.length > 3 ? r.color[3] / 255 : 1,
           width: r.width,
@@ -831,6 +835,7 @@
         properties: {
           idx: i,
           tid: (m.train && m.train.id) || "",
+          tdate: m.tdate || "",
           category: m.category,
           radius: m.radius,
           lineWidth: m.lineWidth,
@@ -902,6 +907,18 @@
           map.setPaintProperty(id, "circle-stroke-opacity-transition", HOVER_DIM_TRANSITION);
         }
       });
+      // The expand-fan layers are animated MANUALLY frame-by-frame
+      // (_animateExpand drives both their opacity and the lane-slide
+      // geometry). MapLibre's implicit default 300 ms paint transition would
+      // trail those per-frame values and desync the fade from the slide —
+      // pin them to zero so the rAF animation is authoritative.
+      [TRAIN_EXPAND_LAYER, TRAIN_EXPAND_HOVER_LAYER].forEach((id) => {
+        if (map.getLayer(id))
+          map.setPaintProperty(id, "line-opacity-transition", {
+            duration: 0,
+            delay: 0,
+          });
+      });
       return this;
     },
 
@@ -960,8 +977,9 @@
       this._expandFilterTids = [];
       this._engagedTids = [];
       this._expandT = 0;
+      this._animGroup = null;
       this._setExpandOpacity(0);
-      this._pushExpandFC(null);
+      this._pushExpandFC(null, 0);
       const m = this._map;
       if (m && m.getLayer(TRAIN_EXPAND_LAYER))
         m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
@@ -994,6 +1012,21 @@
       // Selection spotlight: fade the non-selected trains (lines + dots) to
       // SELECT_DIM — same paint-only mechanism as the hover dim.
       this._applyHoverDim();
+    },
+    // Date-scope dim as PAINT state: records carry their train's date in
+    // `tdate`; the active date + dim value live in the opacity expressions.
+    // Changing scope therefore FADES (declared transitions) instead of
+    // waiting for the record rebuild, whose re-uploaded features carry the
+    // same per-train paint inputs and continue the same fade.
+    setDateScope(activeDate, dimOpacity) {
+      const next = activeDate || null;
+      const dim = Math.max(0, Math.min(1, Number(dimOpacity ?? 0.18)));
+      if (next === this._activeDate && dim === this._dateDim) return this;
+      this._activeDate = next;
+      this._dateDim = dim;
+      this._dimKey = undefined; // force the expression rebuild below
+      this._applyHoverDim();
+      return this;
     },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
@@ -1158,16 +1191,23 @@
     },
     // The expand source is GROUP-SCOPED: it only ever holds the hovered
     // group's translated member courses (or nothing when collapsed).
-    _pushExpandFC(group) {
+    // `factor` scales the lane offsets (0 = on the true track, 1 = fully
+    // fanned): _animateExpand pushes intermediate factors every frame so the
+    // lanes SLIDE out/in instead of appearing at their final position.
+    // Defaults to the current animation progress so settled states (open fan
+    // during zoom / data refresh) keep their full offset.
+    _pushExpandFC(group, factor) {
       const exp = this._src(TRAIN_EXPAND_SOURCE);
       if (!exp) return;
+      const f =
+        factor == null ? (this._expandT == null ? 1 : this._expandT) : factor;
       const gi =
         group && this._visible && this._groupInfo
           ? this._groupInfo.get(group)
           : null;
       exp.setData(
         gi
-          ? routeExpandFC(this._expandRecords, gi, this._laneSpacingDeg)
+          ? routeExpandFC(this._expandRecords, gi, this._laneSpacingDeg * f)
           : EMPTY_FC,
       );
     },
@@ -1256,14 +1296,31 @@
         !hoverTids && this._selectedTrainId ? this._selectedTrainId : null;
       const tids = hoverTids || (selId ? [selId] : null);
       const dimVal = hoverTids ? HOVER_DIM : SELECT_DIM;
+      // Date-scope dim (paint-level, see setDateScope): a record on the
+      // active date keeps its own alpha, everything else drops to the flat
+      // _dateDim value. No active date = plain own alpha.
+      const activeDate = this._activeDate || null;
+      const dateDim = this._dateDim ?? 0.18;
+      const dcase = (ownAlpha) =>
+        activeDate
+          ? [
+              "case",
+              ["==", ["get", "tdate"], activeDate],
+              ownAlpha,
+              dateDim,
+            ]
+          : ownAlpha;
       // Selection-only state: constant opacity for the non-selected trains
       // (NOT multiplied into the record alpha, or off-date trains would end
       // up dimmer than same-day ones).
       const selCase = (ownAlpha) =>
         ["case", ["==", ["get", "tid"], selId], ownAlpha, SELECT_DIM];
-      const key = tids
-        ? (hoverTids ? "h:" : "s:") + tids.join("\u0000")
-        : "";
+      const key =
+        (tids ? (hoverTids ? "h:" : "s:") + tids.join("\u0000") : "") +
+        "|d:" +
+        (activeDate || "") +
+        ":" +
+        dateDim;
       if (key === this._dimKey) return;
       this._dimKey = key;
       // multiplier: 1 for the active trains, dimVal for everyone else
@@ -1273,26 +1330,22 @@
       const set = (id, prop, value) => {
         if (m.getLayer(id)) m.setPaintProperty(id, prop, value);
       };
-      set(
-        TRAIN_ROUTES_LAYER,
-        "line-opacity",
-        hoverTids
-          ? ["*", ["get", "alpha"], mul]
-          : selId
-            ? selCase(["get", "alpha"])
-            : ["get", "alpha"],
-      );
+      // One shared opacity shape for base lines AND base dots:
+      //   hover     -> dcase(alpha) × hover multiplier;
+      //   selection -> selected at dcase(alpha), everyone else SELECT_DIM;
+      //   idle      -> dcase(alpha) (day view dims other dates, 全部 = alpha).
+      const baseOpacity = hoverTids
+        ? ["*", dcase(["get", "alpha"]), mul]
+        : selId
+          ? selCase(dcase(["get", "alpha"]))
+          : dcase(["get", "alpha"]);
+      set(TRAIN_ROUTES_LAYER, "line-opacity", baseOpacity);
       set(TRAIN_SEL_CASING_LAYER, "line-opacity", tids ? ["*", 0.9, mul] : 0.9);
       set(TRAIN_SEL_LAYER, "line-opacity", mul);
-      // Base dots carry their own alpha (date-scope dim); SEL dots force 1.
+      // Base dots share the same expression; SEL dots force 1.
       [TRAIN_PASS_LAYER, TRAIN_STOPS_LAYER].forEach((id) => {
-        const v = hoverTids
-          ? ["*", ["get", "alpha"], mul]
-          : selId
-            ? selCase(["get", "alpha"])
-            : ["get", "alpha"];
-        set(id, "circle-opacity", v);
-        set(id, "circle-stroke-opacity", v);
+        set(id, "circle-opacity", baseOpacity);
+        set(id, "circle-stroke-opacity", baseOpacity);
       });
       [TRAIN_SEL_PASS_LAYER, TRAIN_SEL_STOPS_LAYER].forEach((id) => {
         set(id, "circle-opacity", mul);
@@ -1338,7 +1391,10 @@
         const nextTids = gi ? Object.keys(gi.mults) : [];
         // Fill the group-scoped expand source with the member trains'
         // translated complete courses (rigid shift, geometry untouched).
-        this._pushExpandFC(next);
+        // Offsets start at the CURRENT animation progress (0 when fresh) and
+        // slide outward as _animateExpand advances.
+        this._animGroup = next;
+        this._pushExpandFC(next, this._expandT || 0);
         this._expandedTids = nextTids;
         this._expandFilterTids = nextTids;
         if (m.getLayer(TRAIN_EXPAND_LAYER))
@@ -1366,7 +1422,8 @@
           () => {
             release();
             this._expandFilterTids = [];
-            this._pushExpandFC(null);
+            this._animGroup = null;
+            this._pushExpandFC(null, 0);
             if (m.getLayer(TRAIN_EXPAND_LAYER))
               m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
             this._applyHoverFilter();
@@ -1390,6 +1447,7 @@
       const from = this._expandT || 0;
       if (from === target) {
         this._setExpandOpacity(target);
+        if (this._animGroup) this._pushExpandFC(this._animGroup, target);
         if (onProgress) onProgress(target);
         if (done) done();
         return;
@@ -1402,6 +1460,9 @@
         const v = from + (target - from) * e;
         this._expandT = v;
         this._setExpandOpacity(v);
+        // Slide the fan: re-translate the group's lanes at this frame's
+        // progress so the lines physically move out/in with the fade.
+        if (this._animGroup) this._pushExpandFC(this._animGroup, v);
         if (onProgress) onProgress(v);
         if (k < 1) {
           this._expandAnimId = requestAnimationFrame(step);

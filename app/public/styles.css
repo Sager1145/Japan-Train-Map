@@ -575,6 +575,8 @@ details[open] > .submenu-summary::before {
   padding: 1px 6px;
   border-radius: 4px;
   box-shadow: var(--shadow);
+  /* Fade with the map's hover/selection spotlight instead of snapping. */
+  transition: opacity 0.25s ease;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -597,6 +599,22 @@ details[open] > .submenu-summary::before {
   margin-right: 4px;
   vertical-align: middle;
 }
+/* Fade-in for map popups and the route hover tooltip (opacity only — the
+   position keeps being managed by MapLibre / the tooltip's cursor-follow).
+   The tooltip re-runs the animation whenever it goes display:none -> block. */
+@keyframes map-pop-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.maplibregl-popup,
+.railmap-tooltip {
+  animation: map-pop-fade-in 0.15s ease-out;
+}
+
 .display-toggle {
   margin-top: 2px;
 }

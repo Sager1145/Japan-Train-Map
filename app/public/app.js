@@ -438,8 +438,6 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
 
 function updateEndpointLabels() {
   if (!map) return;
-  endpointLabelMarkers.forEach((m) => m.remove());
-  endpointLabelMarkers = [];
 
   const specs = [];
   const seen = new Set();
@@ -479,32 +477,82 @@ function updateEndpointLabels() {
     }
   }
 
-  if (!specs.length) return;
+  const laid = specs.length ? layoutEndpointLabels(specs) : [];
+  const nextKeys = new Set(laid.map((s) => s.key));
+
+  // Diff/reuse instead of remove-all/recreate-all: an EXISTING label element
+  // survives across updates, so its CSS opacity transition actually fires
+  // (hover spotlight dim/undim fades); vanishing labels fade OUT before
+  // removal and new ones fade IN from 0.
+  endpointLabelMarkers.forEach((entry, key) => {
+    if (nextKeys.has(key) || entry.fadeTimer) return;
+    entry.el.style.opacity = "0";
+    entry.fadeTimer = setTimeout(() => {
+      entry.marker.remove();
+      endpointLabelMarkers.delete(key);
+    }, 260);
+  });
 
   // Non-interactive DOM markers (pointer-events:none) so they never block
   // route/marker picking. MapLibre markers track their lng/lat through
   // pan/zoom automatically; the overlap layout only recomputes on re-render.
-  layoutEndpointLabels(specs).forEach((spec) => {
-    const el = document.createElement("div");
-    el.className =
+  laid.forEach((spec) => {
+    // Hover spotlight: while a train is hovered, other trains' endpoint
+    // labels fade with the rest of the map (mirrors railmap's HOVER_DIM).
+    const target =
+      hoverLabelTrainId && spec.tid !== hoverLabelTrainId ? "0.25" : "1";
+    const cls =
       (spec.dayEndpoint
         ? "station-label station-label--endpoint"
         : "station-label") +
       " station-label--" +
       spec.direction;
-    // Hover spotlight: while a train is hovered, other trains' endpoint
-    // labels fade with the rest of the map (mirrors railmap's HOVER_DIM).
-    if (hoverLabelTrainId && spec.tid !== hoverLabelTrainId)
-      el.style.opacity = "0.25";
-    el.innerHTML = spec.html;
-    const marker = new maplibregl.Marker({
-      element: el,
-      anchor: spec.direction === "top" ? "bottom" : "top",
-      offset: spec.offset,
-    })
-      .setLngLat([spec.latlng[1], spec.latlng[0]])
-      .addTo(map);
-    endpointLabelMarkers.push(marker);
+    const anchor = spec.direction === "top" ? "bottom" : "top";
+    let entry = endpointLabelMarkers.get(spec.key);
+    if (entry && entry.anchor !== anchor) {
+      // Marker anchors are immutable — a top/bottom flip needs a rebuild.
+      clearTimeout(entry.fadeTimer);
+      entry.marker.remove();
+      endpointLabelMarkers.delete(spec.key);
+      entry = null;
+    }
+    if (entry) {
+      if (entry.fadeTimer) {
+        clearTimeout(entry.fadeTimer);
+        entry.fadeTimer = null;
+      }
+      entry.el.className = cls;
+      if (entry.el.innerHTML !== spec.html) entry.el.innerHTML = spec.html;
+      entry.marker
+        .setLngLat([spec.latlng[1], spec.latlng[0]])
+        .setOffset(spec.offset);
+      entry.el.style.opacity = target;
+    } else {
+      const el = document.createElement("div");
+      el.className = cls;
+      el.innerHTML = spec.html;
+      el.style.opacity = "0";
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor,
+        offset: spec.offset,
+      })
+        .setLngLat([spec.latlng[1], spec.latlng[0]])
+        .addTo(map);
+      endpointLabelMarkers.set(spec.key, {
+        marker,
+        el,
+        anchor,
+        fadeTimer: null,
+      });
+      // Two frames so the initial opacity:0 is committed before the target
+      // value lands — otherwise the transition is skipped.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          el.style.opacity = target;
+        }),
+      );
+    }
   });
 }
 
@@ -1042,7 +1090,7 @@ let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
 let selectedTrainId = null;
 let focusedTrainId = null;
 // Live maplibregl.Marker instances for the on-map origin/destination labels.
-let endpointLabelMarkers = [];
+let endpointLabelMarkers = new Map(); // label key -> { marker, el, anchor, fadeTimer }
 // Which date the sidebar list is filtered to. ALL_DATES shows the combined
 // "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
 let selectedDate = ALL_DATES;
@@ -4277,6 +4325,13 @@ function renderTrainLayers() {
   // same). Off-date trains remain non-interactive and lane-less regardless.
   const dateActive = selectedDate !== ALL_DATES;
   const hardHide = mapFollowsSelectedDate && dateActive;
+  // Date-scope dim is a railmap PAINT state keyed on each record's tdate.
+  // Update it FIRST so the opacity fade starts on the currently-drawn data
+  // (the record rebuild below re-uploads features with identical per-train
+  // paint inputs, so the transition continues seamlessly across it).
+  if (window.RailMap && map) {
+    RailMap.setDateScope(dateActive ? selectedDate : null, DISPLAY.dimOpacity);
+  }
   const visibleTrains = trainStore.trains.filter(
     (train) =>
       train.visible !== false &&
@@ -4979,6 +5034,7 @@ function buildDeckRouteRecords(items) {
           overlapSlot: segSlot[ra],
           groupKey,
           nopick: noPick,
+          tdate: getTrainDate(train),
         });
       });
 
@@ -5038,8 +5094,10 @@ function deckMarkerRecord(feature, train, opts, kind) {
     category,
     feature,
     train,
-    // Off-date dots draw dimmed but are not hover/click targets.
+    // Off-date dots draw dimmed (paint-level, via tdate) but are not
+    // hover/click targets.
     nopick: dimmed === true,
+    tdate: getTrainDate(train),
   };
 }
 
@@ -7575,15 +7633,18 @@ function routeSegmentStyleValues(
   // Unridden intervals are now hidden ENTIRELY (opacity 0), not drawn pale.
   // opacity 0 makes the GPU path drop the segment (see buildDeckRouteRecords'
   // `opacity <= 0` guard) and the SVG path render nothing. The whole-train
-  // "dimmed" state (other selected date) still applies to ridden segments.
+  // "dimmed" state (other selected date) is NOT baked here anymore: it is
+  // applied by railmap as a paint expression on the record's `tdate`
+  // (RailMap.setDateScope), so date-scope changes FADE via the declared
+  // opacity transitions instead of snapping with a record rebuild. `dimmed`
+  // still drives interactivity/lane exclusion (nopick) elsewhere.
   const opacity =
     train.visible === false || !ridden
       ? 0
       : focused
         ? 1
-        : dimmed
-          ? DISPLAY.dimOpacity
-          : DISPLAY.riddenOpacity;
+        : DISPLAY.riddenOpacity;
+  void dimmed;
   const width = focused ? weight + DISPLAY.focusBoost : weight;
   return { opacity, width };
 }
@@ -7601,7 +7662,9 @@ function stopMarkerStyleValues(
   { focused = false, dimmed = false } = {},
 ) {
   const baseRadius = isBoundary ? DISPLAY.terminalRadius : DISPLAY.stopRadius;
-  const alpha = dimmed ? DISPLAY.dimOpacity : 1;
+  // Date-scope dim is paint-level now (RailMap.setDateScope), not baked.
+  void dimmed;
+  const alpha = 1;
   return {
     radius: focused ? baseRadius + DISPLAY.focusBoost : baseRadius,
     lineWidth: Math.max(
@@ -7619,7 +7682,9 @@ function passThroughMarkerStyleValues(
   active,
   { focused = false, dimmed = false } = {},
 ) {
-  const alpha = dimmed ? DISPLAY.dimOpacity : active ? 0.9 : 0.4;
+  // Date-scope dim is paint-level now (RailMap.setDateScope), not baked.
+  void dimmed;
+  const alpha = active ? 0.9 : 0.4;
   return {
     radius: focused
       ? DISPLAY.passRadius + Math.round(DISPLAY.focusBoost / 2)
