@@ -17,7 +17,7 @@
 
 1. 基本原则（含 1.1 导出 / 1.2 导入三种形态）
 2. 顶层 Store 结构
-3. Train 对象规范（字段 / ID 规则 / `date`）
+3. Train 对象规范（字段 / ID 规则 / `date` / 3.4 `train_type` + `company` 与直通约定）
 4. Style 对象规范
 5. Route Policy 规范（含 `allowed_institution_type_codes`、`preferred_*`、`institution_filter_mode`）
 6. Route Sections 规范（含 `line_names` / `operator_names`、6.4 支线分支限定）
@@ -103,7 +103,8 @@
       "id": "odr_001",
       "date": "2026-07-03",
       "number": "踊り子9号",
-      "name": "踊り子",
+      "train_type": "特急",
+      "company": "JR東日本",
       "origin": "東京",
       "destination": "熱海",
       "direction": "down",
@@ -163,7 +164,8 @@
 | ---------------- | ------- | -: | ---- | ------------------------------- |
 | `id`             | string  |  是 | —    | 列车唯一 ID（见 3.2）                  |
 | `number`         | string  |  是 | —    | 车次，例如 `踊り子9号`                   |
-| `name`           | string  |  是 | —    | 列车名，例如 `踊り子`                    |
+| `train_type`     | string  |  否 | `""` | 车辆类型，例如 `特急` / `普通` / `快速` / `新幹線`（见 3.4） |
+| `company`        | string  |  否 | `""` | 车辆（运营）公司；直通车用 `/` 分隔多家公司（见 3.4）  |
 | `origin`         | string  |  是 | —    | 列车运行起点                          |
 | `destination`    | string  |  是 | —    | 列车运行终点                          |
 | `stops`          | array   |  是 | —    | 完整停站/通过站数据，至少 2 项（见第 7 节）       |
@@ -174,6 +176,8 @@
 | `route_policy`   | object  |  否 | 见第 5 节 | 路线匹配策略（缺省时用默认策略）                |
 | `route_sections` | array   |  否 | `[]` / 由 stops 推导 | 站间 route section（缺省时按相邻 stops 自动生成，见 6.3） |
 
+> **`name` 字段已移除**：旧版的列车级 `name`（列車名稱）与 `number`（车次）内容重复，已从 schema 中删除。导入时仍然接受携带 `name` 的旧文件（宽松兼容），但该字段会被丢弃、不再导出。注意：route_section 级的支线 `name`（见 6.1b）**不受影响**，仍然保留。
+>
 > 还有一个**可选遗留字段** `route_geometry_cache`：导入时被接受但忽略（不加载、不再导出），详见第 23 节。除此之外，train 对象出现任何其它键都会导致导入失败（严格白名单）。
 
 ### 3.2 Train ID 规则
@@ -242,6 +246,37 @@ id ASC             # 最终 tiebreaker
 
 发车时间支持跨日标记（如 `10:00+1`），排序时按次日时间处理，且不会因此崩溃。
 `全部` 总清单只汇总显示，不改变任何列车的 `date` 归属。
+
+### 3.4 车辆类型 `train_type` 与车辆公司 `company`
+
+两个字段均为**可选 string**（缺省 `""`），在导入时接受、导出时总是写出。
+
+| 字段          | 示例值                                       |
+| ------------ | -------------------------------------------- |
+| `train_type` | `特急`、`普通`、`快速`、`新幹線`、`地下鉄`、`私鉄/準急` 等 |
+| `company`    | `JR西日本`、`JR東海`、`東京メトロ`、`京急電鉄/都営地下鉄` |
+
+**直通车约定**：跨公司直通运行的列车，在 `company` 中以 `/` 分隔写出**所有**参与公司（如 `京急電鉄/都営地下鉄`）。UI 检测到 `/` 即自动在显示处追加「直通」字样（清单、悬浮标签、popup），JSON 中**不需要**额外的直通字段。
+
+**对轨道渲染（寻路）的影响 —— 软偏好**：`train_type` 与 `company` 共同决定路线倾向渲染在哪条轨道上，但均为**软偏置**、不会造成断线；显式的 `route_policy` 永远优先：
+
+1. 当 `route_policy.allowed_institution_type_codes` 为缺省全量 `["1","2","3","4","5"]` 时，求解器按 `train_type` + `company` 推导出更窄的事业者种别偏好：含 `新幹線` → `["1"]`；JR 公司（非新干线）→ `["2"]`；`都営`/公营 → `["3"]`；地下鉄/私铁（メトロ、電鉄、京急、東急 等）→ `["4"]`；第三セクター → `["5"]`。推导出多个信号时取并集；无信号则保持全量。配合默认 `institution_filter_mode: "soft"`，非匹配轨道只是加罚、仍可借道。
+2. `company` 中的每家公司（`/` 拆分后）映射为 N02_004 运营者名并并入 `preferred_operator_names` 软偏好；常用简称自动换算为正式名（`JR西日本`→`西日本旅客鉄道`、`東京メトロ`→`東京地下鉄`、`都営地下鉄`→`東京都` 等），未知名称原样使用。
+3. 若 `route_policy` 已显式给出更窄的 `allowed_institution_type_codes`，或某区段带有 `route_sections[].line_names` / `operator_names` 硬约束，则以显式设置为准，本推导不生效。
+
+```json
+{
+  "train_type": "特急",
+  "company": "JR西日本"
+}
+```
+
+```json
+{
+  "train_type": "普通",
+  "company": "京急電鉄/都営地下鉄"   // UI 显示为「京急電鉄/都営地下鉄（直通）」
+}
+```
 
 ---
 
@@ -1073,12 +1108,15 @@ trains[*].id 不重复
 每趟 train 必须满足（`validateTrain`）：
 
 ```text
-id / number / name / origin / destination  都是非空字符串
+id / number / origin / destination  都是非空字符串
 id 在 store 内唯一（不得重复）
+train_type / company 若出现：必须是字符串（可为空串）
 stops 是 array 且 length >= 2
 首站不应同时有 arrival 和 departure；末站同理
 date 若出现：必须是合法 YYYY-MM-DD 或 "undated"
 ```
+
+> 旧字段 `name`（列車名稱）已移除：导入宽松接受但丢弃，不再校验、不再导出（见 3.1）。
 
 下列字段为**可选**；只有在出现时才按规则校验（缺省时由规范化补默认值，见第 3/4/5/6 节）：
 
@@ -1139,7 +1177,8 @@ origin / destination / passenger_stop 匹配失败
       "id": "odr_001",
       "date": "2026-07-03",
       "number": "踊り子9号",
-      "name": "踊り子",
+      "train_type": "特急",
+      "company": "JR東日本",
       "origin": "東京",
       "destination": "熱海",
       "direction": "down",

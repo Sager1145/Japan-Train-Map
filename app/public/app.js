@@ -585,8 +585,8 @@ function deckGetTooltip(info) {
   }
   const t = o.train;
   if (!t) return null;
-  const line = t.name || t.number || "";
-  const num = t.number && t.number !== t.name ? t.number : "";
+  const line = t.number || "";
+  const meta = trainTypeCompanyLabel(t);
   const origin = t.origin || "";
   const dest = t.destination || "";
   const oStop = (t.stops || []).find((x) => x.stop_type === "origin");
@@ -594,8 +594,8 @@ function deckGetTooltip(info) {
   const times = [];
   if (oStop && oStop.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(oStop.departure)}`);
   if (dStop && dStop.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(dStop.arrival)}`);
-  const numHtml = num
-    ? `<br><span style="opacity:0.85">${I18N.t("field.carNo")} ${escapeHtml(num)}</span>`
+  const numHtml = meta
+    ? `<br><span style="opacity:0.85">${escapeHtml(meta)}</span>`
     : "";
   const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
   // Hovering an overlapped stretch: show which parallel lane this train is
@@ -1106,7 +1106,8 @@ const els = {
   stopsBody: document.getElementById("stops-body"),
   id: document.getElementById("field-id"),
   number: document.getElementById("field-number"),
-  name: document.getElementById("field-name"),
+  trainType: document.getElementById("field-train-type"),
+  company: document.getElementById("field-company"),
   direction: document.getElementById("field-direction"),
   origin: document.getElementById("field-origin"),
   destination: document.getElementById("field-destination"),
@@ -2171,7 +2172,7 @@ function duplicateTrain(trainId) {
   if (!train) return;
   const copy = clone(train);
   copy.id = uniqueId(`${train.id}-copy`);
-  copy.name = `${train.name || "Train"} Copy`;
+  copy.number = `${train.number || "Train"} Copy`;
   trainStore.trains.push(copy);
   selectedTrainId = copy.id;
   focusedTrainId = copy.id;
@@ -2388,7 +2389,8 @@ function normalizeExportTrain(train) {
     id: train.id || "",
     date: normalizeTrainDate(train),
     number: train.number || "",
-    name: train.name || "",
+    train_type: train.train_type || "",
+    company: train.company || "",
     origin: train.origin || "",
     destination: train.destination || "",
     direction: train.direction || "down",
@@ -2540,7 +2542,11 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       "id",
       "date",
       "number",
+      // Legacy field (removed from the schema: it always duplicated
+      // `number`). Still accepted on import, dropped on normalize/export.
       "name",
+      "train_type",
+      "company",
       "origin",
       "destination",
       "direction",
@@ -2556,7 +2562,6 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
 
   if (!train.id) throw new Error("Each train must contain id.");
   if (!train.number) throw new Error(`Train ${train.id} must contain number.`);
-  if (!train.name) throw new Error(`Train ${train.id} must contain name.`);
   if (!train.origin) throw new Error(`Train ${train.id} must contain origin.`);
   if (!train.destination)
     throw new Error(`Train ${train.id} must contain destination.`);
@@ -2568,7 +2573,9 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
     id: train.id,
     date: normalizeTrainDate(train, fallbackDate),
     number: train.number,
-    name: train.name,
+    train_type:
+      typeof train.train_type === "string" ? train.train_type.trim() : "",
+    company: typeof train.company === "string" ? train.company.trim() : "",
     origin: train.origin,
     destination: train.destination,
     direction: train.direction || "down",
@@ -2696,7 +2703,8 @@ function createBlankTrain() {
   return {
     id: "LE",
     number: "",
-    name: "New Limited Express",
+    train_type: "特急",
+    company: "",
     origin: "東京",
     destination: "熱海",
     direction: "down",
@@ -3523,7 +3531,7 @@ function buildTrainListItemElement(train, showingAll) {
   item.innerHTML = `
         <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
         <span style="min-width:0">
-          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(I18N.trainName(train.name || ""))}</span>
+          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(trainTypeCompanyLabel(train))}</span>
           <span class="train-meta">${escapeHtml(I18N.placeName(train.origin || "?"))} → ${escapeHtml(I18N.placeName(train.destination || "?"))} · ${I18N.t("tag.dep")} ${escapeHtml(depText)} · ${train.stops?.length || 0} ${I18N.t("unit.stops")}</span>
         </span>
         <span class="train-meta">${train.visible === false ? I18N.t("state.hidden") : I18N.t("state.shown")}</span>
@@ -3561,7 +3569,8 @@ function trainMatchesQuery(train, query) {
   const parts = [
     train.id,
     train.number,
-    train.name,
+    train.train_type,
+    train.company,
     train.direction,
     train.origin,
     train.destination,
@@ -3733,7 +3742,8 @@ function renderEditor() {
   [
     els.id,
     els.number,
-    els.name,
+    els.trainType,
+    els.company,
     els.direction,
     els.origin,
     els.destination,
@@ -3751,7 +3761,8 @@ function renderEditor() {
   if (!train) {
     els.id.value =
       els.number.value =
-      els.name.value =
+      els.trainType.value =
+      els.company.value =
       els.direction.value =
       els.origin.value =
       els.destination.value =
@@ -3763,7 +3774,8 @@ function renderEditor() {
   }
   els.id.value = train.id || "";
   els.number.value = train.number || "";
-  els.name.value = train.name || "";
+  els.trainType.value = train.train_type || "";
+  els.company.value = train.company || "";
   els.direction.value = train.direction || "";
   els.origin.value = train.origin || "";
   els.destination.value = train.destination || "";
@@ -4016,7 +4028,8 @@ function saveSelectedFields() {
     ...train,
     id: els.id.value.trim(),
     number: els.number.value.trim(),
-    name: els.name.value.trim(),
+    train_type: els.trainType.value.trim(),
+    company: els.company.value.trim(),
     direction: els.direction.value.trim(),
     origin: els.origin.value.trim(),
     destination: els.destination.value.trim(),
@@ -5110,7 +5123,8 @@ function getComputedPassThroughFeatures(train) {
           stop_type: "pass_through",
           pass_through_computed: true,
           train_id: train.id,
-          train_name: train.name,
+          train_type: train.train_type || "",
+          company: train.company || "",
           number: train.number,
           line_name: stationLineName(station),
           operator: stationOperator(station),
@@ -5208,6 +5222,9 @@ function generateMatchedRouteFeaturesForTrain(train) {
       (value) => `line:${value}`,
     ),
     ...(train.route_policy?.preferred_operator_names || []).map(
+      (value) => `operator:${value}`,
+    ),
+    ...derivedPreferredOperatorNames(train).map(
       (value) => `operator:${value}`,
     ),
     `institution_filter:${train.route_policy?.institution_filter_mode || "soft"}`,
@@ -5389,13 +5406,119 @@ function cloneRouteFeaturesForTrain(features, train) {
   }));
 }
 
+// -------------------------------------------------------------------------
+// 車輛類型 (train_type) / 營運公司 (company) helpers.
+// `company` may contain several operators separated by "/" — that marks a
+// 直通 (through-running) service. Type + company together SOFT-bias which
+// tracks the route solver renders on (institution codes + operator names);
+// an explicit route_policy always wins.
+// -------------------------------------------------------------------------
+const COMPANY_OPERATOR_ALIASES = {
+  JR北海道: "北海道旅客鉄道",
+  JR東日本: "東日本旅客鉄道",
+  JR东日本: "東日本旅客鉄道",
+  JR東海: "東海旅客鉄道",
+  JR西日本: "西日本旅客鉄道",
+  JR四国: "四国旅客鉄道",
+  JR四國: "四国旅客鉄道",
+  JR九州: "九州旅客鉄道",
+  東京メトロ: "東京地下鉄",
+  东京地下铁: "東京地下鉄",
+  都営地下鉄: "東京都",
+  都営: "東京都",
+  京急: "京浜急行電鉄",
+  京急電鉄: "京浜急行電鉄",
+  東急: "東急電鉄",
+  小田急: "小田急電鉄",
+  京王: "京王電鉄",
+  京成: "京成電鉄",
+  西武: "西武鉄道",
+  東武: "東武鉄道",
+  相鉄: "相模鉄道",
+  近鉄: "近畿日本鉄道",
+  阪急: "阪急電鉄",
+  阪神: "阪神電気鉄道",
+  名鉄: "名古屋鉄道",
+  西鉄: "西日本鉄道",
+};
+
+function companyParts(train) {
+  return String(train?.company || "")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isThroughService(train) {
+  return companyParts(train).length > 1;
+}
+
+// "特急 · JR西日本" / "普通 · 京急電鉄/都営地下鉄（直通）"
+function trainCompanyLabel(train) {
+  const parts = companyParts(train);
+  if (!parts.length) return "";
+  const joined = parts.join("/");
+  return parts.length > 1 ? `${joined}（${I18N.t("tag.through")}）` : joined;
+}
+
+function trainTypeCompanyLabel(train) {
+  return [String(train?.train_type || "").trim(), trainCompanyLabel(train)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// Map the human company field to N02_004 operator names for the solver's
+// soft operator bias (accepts both marketing names and official names).
+function derivedPreferredOperatorNames(train) {
+  const names = new Set();
+  companyParts(train).forEach((part) => {
+    names.add(COMPANY_OPERATOR_ALIASES[part] || part);
+  });
+  return [...names];
+}
+
+// Derive N02_002 institution-type codes from train_type + company. Empty
+// result = no signal (caller keeps the full default set).
+function derivedInstitutionTypeCodes(train) {
+  const type = String(train?.train_type || "");
+  const text = `${type} ${companyParts(train).join(" ")}`;
+  const codes = new Set();
+  if (/新幹線|新干线|shinkansen/i.test(text)) codes.add("1");
+  if (/JR|旅客鉄道|旅客铁道/i.test(text) && !/新幹線|新干线/.test(type))
+    codes.add("2");
+  if (/都営|東京都交通局|市営|公営|市交通局/.test(text)) codes.add("3");
+  if (
+    /メトロ|地下鉄|地下铁|私鉄|私铁|電鉄|电铁|電気鉄道|京急|京成|東急|小田急|近鉄|阪急|阪神|名鉄|西鉄|西武|東武|モノレール|ゆりかもめ|長野電鉄|富士山麓|富士急/.test(
+      text,
+    )
+  )
+    codes.add("4");
+  if (
+    /第三セクター|三セク|三陸鉄道|しなの鉄道|あいの風|IGR|青い森|肥薩おれんじ|道南いさりび|IRいしかわ|松浦鉄道|横浜高速鉄道/.test(
+      text,
+    )
+  )
+    codes.add("5");
+  return [...codes].sort();
+}
+
 function getAllowedInstitutionTypeCodes(train) {
   const explicit = train.route_policy?.allowed_institution_type_codes;
   const codes =
     Array.isArray(explicit) && explicit.length
       ? explicit.map(String)
       : [...DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES];
-  return [...new Set(codes)].sort();
+  const unique = [...new Set(codes)].sort();
+  // When route_policy does NOT narrow the codes itself (still the full
+  // default set), derive a soft narrowing from 車輛類型/公司. With the
+  // default institution_filter_mode "soft" this only biases the solver —
+  // it never creates gaps.
+  const fullDefault = [...DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES].sort();
+  if (unique.join(",") === fullDefault.join(",")) {
+    const derived = derivedInstitutionTypeCodes(train);
+    if (derived.length) return derived;
+  }
+  return unique;
 }
 
 // Core graph builder shared by the full-network graph and the on-demand
@@ -6354,7 +6477,8 @@ function inferSectionRouteConstraints(section, train) {
   const text = [
     train?.id,
     train?.number,
-    train?.name,
+    train?.train_type,
+    train?.company,
     train?.origin,
     train?.destination,
   ]
@@ -6401,7 +6525,11 @@ function buildSegmentRouteHints(section, fromStations, toStations, train) {
       .filter(Boolean),
   );
   const preferredOperators = new Set(
-    (train.route_policy?.preferred_operator_names || [])
+    [
+      ...(train.route_policy?.preferred_operator_names || []),
+      // 公司 field soft-biases the solver toward that operator's tracks.
+      ...derivedPreferredOperatorNames(train),
+    ]
       .map(String)
       .filter(Boolean),
   );
@@ -7356,7 +7484,8 @@ function getStopFeature(stop, train) {
       n02_station_code: stopStationCode(stop) || stationCode(station),
       n02_group_code: stop.n02_group_code || stationGroupCode(station),
       train_id: train.id,
-      train_name: train.name,
+      train_type: train.train_type || "",
+      company: train.company || "",
       number: train.number,
       line_name: stationLineName(station),
       operator: stationOperator(station),
@@ -7731,9 +7860,14 @@ function warnBranchLeak(train) {
 
 function validateTrain(train, index, ids) {
   const prefix = `Train ${index + 1}`;
-  ["id", "name", "number", "origin", "destination"].forEach((key) => {
+  ["id", "number", "origin", "destination"].forEach((key) => {
     if (!train[key] || typeof train[key] !== "string")
       throw new Error(`${prefix}: ${key} is required.`);
+  });
+  // Optional metadata: 車輛類型 / 營運公司 ("/"-separated = 直通).
+  ["train_type", "company"].forEach((key) => {
+    if (train[key] !== undefined && typeof train[key] !== "string")
+      throw new Error(`${prefix}: ${key} must be a string when present.`);
   });
   if (ids.has(train.id))
     throw new Error(`${prefix}: duplicate id ${train.id}.`);
@@ -7861,8 +7995,9 @@ function validateTrain(train, index, ids) {
 
 function buildStopPopup(stopFeature, train) {
   const p = stopFeature.properties || {};
-  return popupHtml(`${train.number || ""} ${train.name || ""}`, [
+  return popupHtml(`${train.number || ""}`, [
     ["Train ID", train.id],
+    ["Type / Company", trainTypeCompanyLabel(train) || "-"],
     ["Station", p.name || p.station],
     ["Arrival", p.arrival || "-"],
     ["Departure", p.departure || "-"],
@@ -7901,13 +8036,14 @@ function buildTrainSegmentPopup(train, feature) {
   const rows = [
     ["Train ID", train.id],
     ["車號", segNumber],
+    ["Type / Company", trainTypeCompanyLabel(train) || "-"],
   ];
   if (isBranch)
     rows.push([
       "支線車號 / Branch",
       `${section.number}${segName ? "　" + segName : ""}`,
     ]);
-  return popupHtml(`${segNumber} ${segName || train.name || ""}`, [
+  return popupHtml(`${segNumber} ${segName || ""}`, [
     ...rows,
     ["Segment", `${p.from || ""} → ${p.to || ""}`],
     ["Departure", (fromStop && fromStop.departure) || "-"],
