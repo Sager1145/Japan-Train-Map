@@ -1,3 +1,7 @@
+# OS / Python artifacts
+.DS_Store
+__pycache__/
+
 app/data/*.json.gz
 
 # Lazily generated gzip sidecars for large static assets (rail package, basemap,

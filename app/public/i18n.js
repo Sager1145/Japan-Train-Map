@@ -169,7 +169,6 @@
     "tag.dep": { zh: "發", en: "Dep" },
     "tag.start": { zh: "起點", en: "Start" },
     "tag.end": { zh: "終點", en: "End" },
-    "field.carNo": { zh: "車號", en: "Train No." },
     "tip.overlap": {
       zh: "並行 {slot}/{count}（依日期排序）・橫移切換",
       en: "Parallel {slot}/{count} (date order) · slide to switch",

@@ -115,7 +115,9 @@ Minimal valid train (the browser solves the route from these fields):
     {
       "id": "20260703_test_001",
       "date": "2026-07-03",
-      "name": "踊り子1号",
+      "number": "踊り子1号",
+      "train_type": "特急",
+      "company": "JR東日本",
       "origin": "東京",
       "destination": "伊豆急下田",
       "stops": [

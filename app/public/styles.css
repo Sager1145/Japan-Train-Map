@@ -597,20 +597,6 @@ details[open] > .submenu-summary::before {
   margin-right: 4px;
   vertical-align: middle;
 }
-.leaflet-tooltip.line-label {
-  background: rgba(30, 37, 44, 0.92);
-  border: none;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  white-space: nowrap;
-}
-.leaflet-tooltip.line-label::before {
-  display: none;
-}
 .display-toggle {
   margin-top: 2px;
 }

@@ -3088,24 +3088,47 @@ function closeClickPopup() {
   }
 }
 
-// Blank-map click (no route lane / station dot under the pointer) -> show
-// every date's routes: switch the date filter to "全部" and clear the train
-// selection — identical to pressing the 全部 date button. No-op when already
-// in the all-dates view with nothing selected, so idle clicks re-render
-// nothing.
+// Blank-map click (no route lane / station dot under the pointer) steps the
+// view BACK one level instead of jumping straight to "全部":
+//   1. a train is selected      -> clear the selection, stay on its day
+//                                  (the whole day's routes re-appear solid);
+//   2. a concrete day, no train -> back to the all-dates view ("全部");
+//   3. already "全部", nothing selected -> no-op (idle clicks re-render
+//      nothing).
 function handleMapBackgroundClick() {
-  if (selectedDate === ALL_DATES && !selectedTrainId && !focusedTrainId) return;
-  selectDateBucket(ALL_DATES);
+  if (selectedTrainId || focusedTrainId) {
+    const day = selectedDate; // selection always lives on a concrete day
+    selectDateBucket(day);
+    return;
+  }
+  if (selectedDate !== ALL_DATES) selectDateBucket(ALL_DATES);
+}
+
+// Shared click guard for on-map route lines and station dots. Off-date
+// trains are not clickable while a concrete day is active (their pick lanes
+// are filtered out in railmap, this guard is belt-and-braces). `selectsNow`
+// tells the caller whether the click actually SELECTS the train — a stage-1
+// click from "全部" (or another day) just activates the train's day, exactly
+// like pressing that date button, and must not open a popup.
+function interactiveTrainFromClick(info) {
+  if (!info || !info.object) return null;
+  const { train, feature } = info.object;
+  if (!train) return null;
+  const trainDate = getTrainDate(train);
+  if (selectedDate !== ALL_DATES && trainDate !== selectedDate) return null;
+  return { train, feature, selectsNow: trainDate === selectedDate };
 }
 
 // Route click -> select train + open the segment popup at the clicked spot.
 function handleDeckRouteClick(info) {
-  if (!info || !info.object) return;
-  const { train, feature } = info.object;
-  if (!train) return;
-  pickTrain(train.id);
-  if (info.coordinate && map) {
-    openClickPopup(info.coordinate, buildTrainSegmentPopup(train, feature));
+  const hit = interactiveTrainFromClick(info);
+  if (!hit) return;
+  pickTrain(hit.train.id);
+  if (hit.selectsNow && info.coordinate && map) {
+    openClickPopup(
+      info.coordinate,
+      buildTrainSegmentPopup(hit.train, hit.feature),
+    );
   }
 }
 
@@ -4246,9 +4269,13 @@ function renderTrainLayers() {
   // A concrete selected date now always scopes the map: that date's trains
   // stay solid and other dates draw half-transparent (dimmed) — they are NOT
   // removed. The optional "地圖僅顯示當前日期" checkbox is a stricter override
-  // that hides other dates entirely instead of dimming them.
+  // that hides other dates entirely instead of dimming them. Selecting a
+  // single train hides other dates entirely too (routes AND station dots):
+  // the selected train stays solid, its same-day siblings fade via railmap's
+  // selection-dim paint pass, and nothing from any other day draws at all.
   const dateActive = selectedDate !== ALL_DATES;
-  const hardHide = mapFollowsSelectedDate && dateActive;
+  const hardHide =
+    dateActive && (mapFollowsSelectedDate || Boolean(selectedTrainId));
   const visibleTrains = trainStore.trains.filter(
     (train) =>
       train.visible !== false &&
@@ -4333,7 +4360,13 @@ function computeRouteSignature(orderedTrains, dateActive) {
       return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${vis}`;
     })
     .join("|");
-  const scope = `date:${dateActive ? selectedDate : ""}`;
+  // `hide` mirrors renderTrainLayers' hardHide: whether other dates are
+  // removed entirely (checkbox on, or a single train selected). It is a
+  // boolean — WHICH train is selected stays out of the signature, so picking
+  // train A then train B within the same day rebuilds nothing.
+  const hide =
+    dateActive && (mapFollowsSelectedDate || Boolean(selectedTrainId)) ? 1 : 0;
+  const scope = `date:${dateActive ? selectedDate : ""}|hide:${hide}`;
   return {
     records: `${trainPart}|${scope}`,
     overlap: `${overlapPart.join("|")}|${scope}`,
@@ -4566,13 +4599,14 @@ function buildDeckOverlapMap(items) {
   const itemDrawn = (item) => {
     const train = item.train;
     if (!train) return false;
+    const flags = routeRecordScopeFlags(train);
+    // Off-date (dimmed) trains never occupy a parallel lane: while a concrete
+    // day is active, its routes must not shift sideways because of overlaps
+    // with OTHER days' routes, and the dim lines are not hoverable anyway.
+    if (flags.dimmed) return false;
     const ridden =
       item.feature.properties && item.feature.properties.ride_segment === true;
-    const { opacity } = routeSegmentStyleValues(
-      train,
-      ridden,
-      routeRecordScopeFlags(train),
-    );
+    const { opacity } = routeSegmentStyleValues(train, ridden, flags);
     return opacity > 0;
   };
   const seg = new Map();
@@ -4813,12 +4847,16 @@ function buildDeckRouteRecords(items) {
         ? train.style.color
         : DEFAULT_TRAIN_COLOR,
     );
+    const scopeFlags = routeRecordScopeFlags(train);
     const { opacity, width } = routeSegmentStyleValues(
       train,
       ridden,
-      routeRecordScopeFlags(train),
+      scopeFlags,
     );
     if (opacity <= 0) return; // hidden trains contribute nothing to the GPU buffer
+    // Off-date trains still DRAW (dimmed) while a day is active, but they are
+    // not interactive: no hover, no tooltip, no click-select, no fan lanes.
+    const noPick = scopeFlags.dimmed === true;
     const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
     const color = [rgb[0], rgb[1], rgb[2], alpha];
     getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
@@ -4831,7 +4869,10 @@ function buildDeckRouteRecords(items) {
       const segMult = new Array(nSeg);
       let lineHasOverlap = false;
       for (let i = 0; i < nSeg; i += 1) {
-        const ids = overlap.idsForKey(segKeys[i]);
+        // Off-date trains are excluded from the overlap map entirely: even
+        // where their track coincides with a same-day shared corridor they
+        // stay on the true track (no lane slot, no fan membership).
+        const ids = noPick ? null : overlap.idsForKey(segKeys[i]);
         segIds[i] = ids;
         if (ids) {
           lineHasOverlap = true;
@@ -4938,6 +4979,7 @@ function buildDeckRouteRecords(items) {
           overlapCount: n,
           overlapSlot: segSlot[ra],
           groupKey,
+          nopick: noPick,
         });
       });
 
@@ -4997,6 +5039,8 @@ function deckMarkerRecord(feature, train, opts, kind) {
     category,
     feature,
     train,
+    // Off-date dots draw dimmed but are not hover/click targets.
+    nopick: dimmed === true,
   };
 }
 
@@ -5077,14 +5121,14 @@ function buildDeckMarkerRecords(orderedTrains) {
   return records;
 }
 
-// Marker click -> select train + open the stop popup at the marker.
+// Marker click -> select train + open the stop popup at the marker. Same
+// off-date guard + stage-1/stage-2 popup gating as handleDeckRouteClick.
 function handleDeckMarkerClick(info) {
-  if (!info || !info.object) return;
-  const { train, feature } = info.object;
-  if (!train) return;
-  pickTrain(train.id);
-  if (info.coordinate && map) {
-    openClickPopup(info.coordinate, buildStopPopup(feature, train));
+  const hit = interactiveTrainFromClick(info);
+  if (!hit) return;
+  pickTrain(hit.train.id);
+  if (hit.selectsNow && info.coordinate && map) {
+    openClickPopup(info.coordinate, buildStopPopup(hit.feature, hit.train));
   }
 }
 
@@ -5458,7 +5502,9 @@ function trainCompanyLabel(train) {
   const parts = companyParts(train);
   if (!parts.length) return "";
   const joined = parts.join("/");
-  return parts.length > 1 ? `${joined}（${I18N.t("tag.through")}）` : joined;
+  return isThroughService(train)
+    ? `${joined}（${I18N.t("tag.through")}）`
+    : joined;
 }
 
 function trainTypeCompanyLabel(train) {
@@ -5824,15 +5870,28 @@ function getRegionalRouteGraph(bbox) {
   return graph;
 }
 
+// Resolve BOTH endpoint station candidate lists of a route section (shared
+// by the bbox helper and the on-graph solver so the from/to lookup pattern
+// lives in exactly one place).
+function resolveSectionEndpoints(section, train, allowedCodes) {
+  return {
+    fromStations: resolveRouteEndpointStationCandidates(
+      { name: section.from, n02_station_code: section.from_n02_station_code },
+      train,
+      allowedCodes,
+    ),
+    toStations: resolveRouteEndpointStationCandidates(
+      { name: section.to, n02_station_code: section.to_n02_station_code },
+      train,
+      allowedCodes,
+    ),
+  };
+}
+
 // Bounding box of a section's resolved endpoint station candidates.
 function sectionEndpointBbox(section, train, allowedCodes) {
-  const fromStations = resolveRouteEndpointStationCandidates(
-    { name: section.from, n02_station_code: section.from_n02_station_code },
-    train,
-    allowedCodes,
-  );
-  const toStations = resolveRouteEndpointStationCandidates(
-    { name: section.to, n02_station_code: section.to_n02_station_code },
+  const { fromStations, toStations } = resolveSectionEndpoints(
+    section,
     train,
     allowedCodes,
   );
@@ -6236,13 +6295,8 @@ function solveRouteSectionOnN02Graph(
   graph,
   allowedCodes,
 ) {
-  const fromStations = resolveRouteEndpointStationCandidates(
-    { name: section.from, n02_station_code: section.from_n02_station_code },
-    train,
-    allowedCodes,
-  );
-  const toStations = resolveRouteEndpointStationCandidates(
-    { name: section.to, n02_station_code: section.to_n02_station_code },
+  const { fromStations, toStations } = resolveSectionEndpoints(
+    section,
     train,
     allowedCodes,
   );

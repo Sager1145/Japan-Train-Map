@@ -421,6 +421,11 @@
   // hovered, every OTHER train's lines and station dots fade to this opacity
   // multiplier. Applied purely via paint expressions (no source updates).
   const HOVER_DIM = 0.15;
+  // SELECTION SPOTLIGHT: while a single train is SELECTED, every other train
+  // still drawn (its same-day siblings — other dates are removed upstream)
+  // fades to this multiplier, station dots included. Softer than the hover
+  // dim so a hover can still deepen the spotlight on top of a selection.
+  const SELECT_DIM = 0.25;
   const HOVER_DIM_TRANSITION = { duration: 150, delay: 0 };
 
   // Marker circle paint shared by the four dot layers: per-feature fill/stroke
@@ -578,6 +583,9 @@
       id: TRAIN_PICK_LAYER,
       type: "line",
       source: TRAIN_PICK_SOURCE,
+      // nopick records (off-date trains while a concrete day is active) are
+      // excluded from hit-testing entirely: no hover, no tooltip, no click.
+      filter: ["!=", ["get", "nopick"], 1],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": "#000",
@@ -772,6 +780,7 @@
           idx: i,
           tid: (r.train && r.train.id) || "",
           pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 8, 14),
+          nopick: r.nopick ? 1 : 0,
         },
       })),
     };
@@ -932,6 +941,9 @@
       this._selectedTrainId = id || null;
       this._applySelectionFilters();
       this._applyMarkerSelectionFilters();
+      // Selection spotlight: fade the non-selected trains (lines + dots) to
+      // SELECT_DIM — same paint-only mechanism as the hover dim.
+      this._applyHoverDim();
     },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
@@ -1181,13 +1193,24 @@
     _applyHoverDim() {
       const m = this._map;
       if (!m) return;
-      const tids = this._activeHoverTids();
-      const key = tids ? tids.join("\u0000") : "";
+      // Two spotlight tiers, hover wins over selection:
+      //   hover active     -> active trains at 1, everyone else HOVER_DIM;
+      //   only a selection -> the selected train at 1, its still-drawn
+      //                       siblings (same-day trains) SELECT_DIM;
+      //   neither          -> plain per-record alpha.
+      const hoverTids = this._activeHoverTids();
+      const selId =
+        !hoverTids && this._selectedTrainId ? this._selectedTrainId : null;
+      const tids = hoverTids || (selId ? [selId] : null);
+      const dimVal = hoverTids ? HOVER_DIM : SELECT_DIM;
+      const key = tids
+        ? (hoverTids ? "h:" : "s:") + tids.join("\u0000")
+        : "";
       if (key === this._dimKey) return;
       this._dimKey = key;
-      // multiplier: 1 for the active trains, HOVER_DIM for everyone else
+      // multiplier: 1 for the active trains, dimVal for everyone else
       const mul = tids
-        ? ["case", ["in", ["get", "tid"], ["literal", tids]], 1, HOVER_DIM]
+        ? ["case", ["in", ["get", "tid"], ["literal", tids]], 1, dimVal]
         : 1;
       const set = (id, prop, value) => {
         if (m.getLayer(id)) m.setPaintProperty(id, prop, value);
@@ -1350,7 +1373,9 @@
         const mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         if (mk.length) {
           const rec = self._markers && self._markers[mk[0].properties.idx];
-          if (rec) markerHit = { kind: "marker", record: rec };
+          // nopick dots (off-date trains while a day is active) are drawn but
+          // never interactive — ignore the hit instead of returning it.
+          if (rec && !rec.nopick) markerHit = { kind: "marker", record: rec };
         }
         const markerYieldsToFan =
           markerHit &&
