@@ -441,6 +441,27 @@
       : ["get", "radius"];
     return ["interpolate", ["linear"], ["zoom"], 5, ["*", r, 0.48], 12, r];
   }
+
+  // Selected marker growth stays role-aware: a terminal keeps the full focus
+  // boost, while an intermediate stop grows by exactly the same amount as a
+  // pass-through marker. The small black center dot scales proportionally but
+  // never expands to cover its white outer circle.
+  function selectedStopRadiusExpr(focusBoost) {
+    const boost = Math.max(0, Number(focusBoost) || 0);
+    return markerRadiusExpr([
+      "*",
+      boost,
+      ["coalesce", ["get", "focusScale"], 0.5],
+    ]);
+  }
+
+  const SELECTED_STOP_STROKE_SCALE = [
+    "case",
+    ["==", ["get", "role"], "terminal"],
+    2,
+    1,
+  ];
+
   function markerCirclePaint(opts) {
     const sel = !!(opts && opts.sel);
     return {
@@ -636,6 +657,14 @@
         ["==", ["get", "category"], "stop"],
         ["!=", ["get", "tid"], NO_TRAIN],
       ],
+      layout: {
+        "circle-sort-key": [
+          "case",
+          ["==", ["get", "role"], "stop-center"],
+          2,
+          1,
+        ],
+      },
       paint: markerCirclePaint(),
     });
     // C3 — DARK selection casing UNDER the selected line, the line's own hue on
@@ -735,7 +764,18 @@
         ["==", ["get", "category"], "stop"],
         ["==", ["get", "tid"], NO_TRAIN],
       ],
-      paint: markerCirclePaint({ sel: true, strokeScale: 2 }),
+      layout: {
+        "circle-sort-key": [
+          "case",
+          ["==", ["get", "role"], "stop-center"],
+          2,
+          1,
+        ],
+      },
+      paint: markerCirclePaint({
+        sel: true,
+        strokeScale: SELECTED_STOP_STROKE_SCALE,
+      }),
     });
 
     const style = { version: 8, sources, layers };
@@ -851,6 +891,8 @@
           tid: (m.train && m.train.id) || "",
           tdate: m.tdate || "",
           category: m.category,
+          role: m.role || m.category,
+          focusScale: m.focusScale == null ? 0.5 : m.focusScale,
           radius: m.radius,
           lineWidth: m.lineWidth,
           fill: rgbCss(m.fillColor),
@@ -875,6 +917,9 @@
     _groupInfo: null, // groupKey → { sx, sy, mults } (rigid lane shifts)
     _laneSpacingDeg: 0,
     _markers: [],
+    // Intermediate stops and trip terminals share two physical circle layers,
+    // but their role filters remain independently toggleable in the map UI.
+    _markerVisibility: { stop: true, terminal: true, pass: true },
     _visible: true,
     _selectedTrainId: null,
     _hoverTrainId: null,
@@ -1048,8 +1093,7 @@
     },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
-    // the SEL line draws `px` wider and the SEL dots `px` (stops) / `px/2`
-    // (pass-through) larger via paint expressions.
+    // the SEL line and role-aware marker paint expressions add it at draw time.
     setFocusBoost(px) {
       this._focusBoost = Number(px) || 0;
       const m = this._map;
@@ -1068,13 +1112,13 @@
         m.setPaintProperty(
           TRAIN_SEL_STOPS_LAYER,
           "circle-radius",
-          markerRadiusExpr(this._focusBoost),
+          selectedStopRadiusExpr(this._focusBoost),
         );
       if (m.getLayer(TRAIN_SEL_PASS_LAYER))
         m.setPaintProperty(
           TRAIN_SEL_PASS_LAYER,
           "circle-radius",
-          markerRadiusExpr(Math.round(this._focusBoost / 2)),
+          markerRadiusExpr(this._focusBoost / 2),
         );
     },
     // Selection = pure layer filtering on the single marker source: the
@@ -1083,11 +1127,28 @@
       const m = this._map;
       if (!m) return;
       const id = this._selectedTrainId || NO_TRAIN;
-      const f = (cat, mine) => [
-        "all",
-        ["==", ["get", "category"], cat],
-        [mine ? "==" : "!=", ["get", "tid"], id],
-      ];
+      const shown = this._markerVisibility || {
+        stop: true,
+        terminal: true,
+        pass: true,
+      };
+      let stopRoleFilter = null;
+      if (shown.stop === false && shown.terminal === false) {
+        stopRoleFilter = MATCH_NONE;
+      } else if (shown.stop === false) {
+        stopRoleFilter = ["==", ["get", "role"], "terminal"];
+      } else if (shown.terminal === false) {
+        stopRoleFilter = ["!=", ["get", "role"], "terminal"];
+      }
+      const f = (cat, mine) => {
+        const filters = [
+          "all",
+          ["==", ["get", "category"], cat],
+          [mine ? "==" : "!=", ["get", "tid"], id],
+        ];
+        if (cat === "stop" && stopRoleFilter) filters.push(stopRoleFilter);
+        return filters;
+      };
       if (m.getLayer(TRAIN_PASS_LAYER))
         m.setFilter(TRAIN_PASS_LAYER, f("pass", false));
       if (m.getLayer(TRAIN_STOPS_LAYER))
@@ -1111,11 +1172,19 @@
       ].forEach((id) => this._setVisibility(id, vis));
     },
     setMarkerVisibility(category, v) {
-      const vis = v ? "visible" : "none";
-      if (category === "stop") {
+      if (!this._markerVisibility)
+        this._markerVisibility = { stop: true, terminal: true, pass: true };
+      if (!(category in this._markerVisibility)) return;
+      this._markerVisibility[category] = Boolean(v);
+      if (category === "stop" || category === "terminal") {
+        const anyStops =
+          this._markerVisibility.stop || this._markerVisibility.terminal;
+        const vis = anyStops ? "visible" : "none";
         this._setVisibility(TRAIN_STOPS_LAYER, vis);
         this._setVisibility(TRAIN_SEL_STOPS_LAYER, vis);
+        this._applyMarkerSelectionFilters();
       } else if (category === "pass") {
+        const vis = v ? "visible" : "none";
         this._setVisibility(TRAIN_PASS_LAYER, vis);
         this._setVisibility(TRAIN_SEL_PASS_LAYER, vis);
       }

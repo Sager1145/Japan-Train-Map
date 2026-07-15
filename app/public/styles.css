@@ -195,6 +195,22 @@ h1 {
   color: var(--rail-text);
 }
 
+/* Active tab pill: filled, like railprint's selected TabBar item. */
+.workspace-nav a.active {
+  border-color: var(--rail-text);
+  background: var(--rail-text);
+  color: var(--white);
+}
+.workspace-nav a.active > span:first-child {
+  color: var(--white);
+}
+
+/* Tab panels: inactive cards stay in the DOM (all JS bindings keep working)
+   but are hidden entirely. */
+.card.tab-hidden {
+  display: none !important;
+}
+
 /* ---- Folder-tab cards (railprint signature component) ------------------ */
 .card {
   position: relative;
@@ -205,6 +221,13 @@ h1 {
   border: 1px solid var(--rail-dim);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow);
+}
+
+/* Workspace tabs already name these panels in the persistent nav, so plain
+   section cards do not reserve space for a second, protruding title tab. */
+#sidebar > section.card {
+  margin-top: 8px;
+  scroll-margin-top: 66px;
 }
 
 /* The protruding manila-folder tab carrying "■ label". */
@@ -765,6 +788,48 @@ button:disabled {
   font-size: 12px;
 }
 
+/* 當日統計 block: shown above the all-time section while a date is active. */
+.stats-daily:empty {
+  display: none;
+}
+.stats-daily {
+  display: grid;
+  gap: 7px;
+}
+.stats-daily-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-dim);
+  border-radius: var(--radius-button);
+}
+.stats-daily-km {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--rail-lit);
+  font-variant-numeric: tabular-nums;
+}
+.stats-daily-km .unit {
+  font-size: 0.55em;
+  margin-left: 3px;
+}
+.stats-daily-rows {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 14px;
+}
+.stats-daily-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Danger zone --------------------------------------------------------- */
 .danger-zone {
   margin-top: 4px;
@@ -1253,12 +1318,34 @@ tr.branch-junction td {
   background: var(--rail-lit);
 }
 
-.map-info-symbol--stop {
+.map-info-symbol--stop,
+.map-info-symbol--pass {
   width: 13px;
   height: 13px;
   border: 3px solid var(--ink);
   border-radius: 50%;
   background: var(--white);
+}
+
+.map-info-symbol--stop::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink);
+  transform: translate(-50%, -50%);
+}
+
+.map-info-symbol--terminal {
+  width: 17px;
+  height: 17px;
+  border: 3px solid var(--white);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
 }
 
 .map-info-symbol--network {

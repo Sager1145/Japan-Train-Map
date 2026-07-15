@@ -163,7 +163,9 @@ const DISPLAY_DEFAULTS = {
   // so the slider was a do-nothing control lying to the user.)
   dimOpacity: 0.18, // opacity of trains not on the selected date
   terminalRadius: 6, // px radius (at z12) of origin / destination markers
-  stopRadius: 5, // px radius (at z12) of stop markers (railprint ridden dot = 5 @ z12)
+  // Legacy numeric range retained so existing saved display settings remain
+  // valid; it now controls the black center inside intermediate stop markers.
+  stopRadius: 5,
   passRadius: 3, // px radius (at z12) of pass-through markers (railprint unridden dot = 3 @ z12)
   markerStrokeScale: 1, // multiplies every marker's stroke width
   focusBoost: 2, // extra line width / marker radius for the selected train
@@ -179,7 +181,7 @@ const DISPLAY_CONTROLS = [
   { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
   { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
   { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
-  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => x + "px" },
+  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => (x * 0.4).toFixed(1) + "px" },
   { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px" },
   { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
   { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
@@ -2988,6 +2990,7 @@ function buildMapLayersControl(hasBasemap) {
   const toggles = [
     ["map.routes", (v) => RailMap.setVisible(v), true],
     ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
+    ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), true],
     ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
     // 全部線路（全國路網 + 車站點）：opt-in, OFF by default.
     [
@@ -3082,7 +3085,15 @@ function buildMapInfoControl() {
       </div>
       <div class="map-info-legend-row">
         <span class="map-info-symbol map-info-symbol--stop" aria-hidden="true"></span>
-        <div><strong data-i18n="info.stopTitle">停靠站</strong><p data-i18n="info.stopDesc">墨色圓點；選中列車時反白並增加墨色外圈。</p></div>
+        <div><strong data-i18n="info.stopTitle">中途停靠站</strong><p data-i18n="info.stopDesc">與通過站使用相同大小的空心圓，中心增加黑點。</p></div>
+      </div>
+      <div class="map-info-legend-row">
+        <span class="map-info-symbol map-info-symbol--pass" aria-hidden="true"></span>
+        <div><strong data-i18n="info.passTitle">通過站</strong><p data-i18n="info.passDesc">與中途停靠站外圈同尺寸，但中心保持留白。</p></div>
+      </div>
+      <div class="map-info-legend-row">
+        <span class="map-info-symbol map-info-symbol--terminal" aria-hidden="true"></span>
+        <div><strong data-i18n="info.terminalTitle">起點與終點</strong><p data-i18n="info.terminalDesc">使用較大的墨色圓點與白色外圈，保持行程端點醒目。</p></div>
       </div>
       <div class="map-info-legend-row">
         <span class="map-info-symbol map-info-symbol--network" aria-hidden="true"></span>
@@ -3370,8 +3381,69 @@ function handleDeckRouteClick(info) {
 //  §22.  Event binding (all sidebar / editor / map UI event handlers)
 // =========================================================================
 
+// =========================================================================
+//  Workspace tabs — the sidebar nav pills switch EXCLUSIVE panels (railprint
+//  TabBar behavior) instead of scrolling one long column. Every card stays in
+//  the DOM (display:none only), so all JS bindings keep working while hidden.
+// =========================================================================
+const WORKSPACE_TABS = [
+  "train-browser",
+  "train-editor",
+  "mileage-stats",
+  "data-manager",
+  "display-settings",
+];
+
+function setActiveWorkspaceTab(tabId, { updateHash = true } = {}) {
+  if (!WORKSPACE_TABS.includes(tabId)) tabId = WORKSPACE_TABS[0];
+  document
+    .querySelectorAll("#sidebar > .card, #sidebar > details.card")
+    .forEach((card) => {
+      card.classList.toggle("tab-hidden", card.id !== tabId);
+    });
+  document.querySelectorAll(".workspace-nav a").forEach((a) => {
+    const target = (a.getAttribute("href") || "").slice(1);
+    const active = target === tabId;
+    a.classList.toggle("active", active);
+    if (active) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+  // A collapsible card IS its whole tab — open it when its tab is shown.
+  const panel = document.getElementById(tabId);
+  if (panel && panel.tagName === "DETAILS") panel.open = true;
+  if (updateHash && location.hash !== "#" + tabId)
+    history.replaceState(null, "", "#" + tabId);
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) sidebar.scrollTop = 0;
+}
+
+let _workspaceTabsReady = false;
+function setupWorkspaceTabs() {
+  if (_workspaceTabsReady) return; // called eagerly at parse AND from bindEvents
+  const nav = document.querySelector(".workspace-nav");
+  if (!nav) return;
+  _workspaceTabsReady = true;
+  nav.addEventListener("click", (ev) => {
+    const link = ev.target.closest("a");
+    if (!link) return;
+    ev.preventDefault();
+    setActiveWorkspaceTab((link.getAttribute("href") || "").slice(1));
+  });
+  window.addEventListener("hashchange", () =>
+    setActiveWorkspaceTab(location.hash.slice(1), { updateHash: false }),
+  );
+  setActiveWorkspaceTab(location.hash.slice(1) || WORKSPACE_TABS[0], {
+    updateHash: false,
+  });
+}
+// The tab chrome needs only the static DOM — activate it immediately so the
+// panels behave as tabs during the (seconds-long) data load too. bindEvents()
+// calls it again later, which the guard turns into a no-op.
+setupWorkspaceTabs();
+
 function bindEvents() {
   setupDisplaySettingsPanel();
+  setupWorkspaceTabs();
   // Re-render every dynamically-built UI string when the language changes.
   // (Static [data-i18n] DOM is handled by I18N.applyStatic; this covers the
   // JS-generated bits: display-panel labels, the focus button, the date bar,
@@ -3779,7 +3851,7 @@ function pruneStatsTrainCache() {
 function collectTrainStatsEntry(train, idx) {
   const sig = statsTrainSig(train);
   const cached = _statsTrainCache.get(train.id);
-  if (cached && cached.sig === sig) return cached;
+  if (cached && cached.sig === sig && cached.km !== undefined) return cached;
   const edges = [];
   const spans = []; // [spanKey, km, mask]
   const MAX_BRIDGE_KM = 4;
@@ -3830,9 +3902,39 @@ function collectTrainStatsEntry(train, idx) {
     else if (f.geometry.type === "MultiLineString")
       f.geometry.coordinates.forEach(walk);
   }
-  const entry = { sig, edges, spans };
+  // This train's OWN cumulative ridden distance (repeat segments count each
+  // time — it pairs with ride time / ride count in the service-type rows,
+  // unlike the deduped network-coverage sums).
+  let km = 0;
+  for (const e of edges) km += idx.km[e];
+  for (const [, spanKm] of spans) km += spanKm;
+  const entry = { sig, edges, spans, km };
   _statsTrainCache.set(train.id, entry);
   return entry;
+}
+
+// ── Service-type rows (新幹線 / 有料特急 / 其他列車): cumulative km+time+count ──
+function serviceGroupOfTrain(train) {
+  const t = String((train && train.train_type) || "");
+  if (t.includes("新幹線")) return "hsr";
+  if (t.includes("特急")) return "ltd";
+  return "other";
+}
+
+function serviceGroupStats(trains, entries) {
+  const groups = {
+    hsr: { km: 0, minutes: 0, count: 0 },
+    ltd: { km: 0, minutes: 0, count: 0 },
+    other: { km: 0, minutes: 0, count: 0 },
+  };
+  for (let i = 0; i < trains.length; i += 1) {
+    const g = groups[serviceGroupOfTrain(trains[i])];
+    g.km += (entries[i] && entries[i].km) || 0;
+    const m = trainRideMinutes(trains[i]);
+    if (m !== null) g.minutes += m;
+    g.count += 1;
+  }
+  return groups;
 }
 
 function aggregateMileageStats(idx, entries) {
@@ -3868,6 +3970,72 @@ function aggregateMileageStats(idx, entries) {
         riddenByMask.set(c.mask, riddenByMask.get(c.mask) + span.km);
   }
   return { totals: idx.totals, riddenAll, riddenByMask, unmatchedKm };
+}
+
+// Ride TIME of one train: first effectively-ridden stopping station's
+// departure -> last one's arrival (falling back to the other field when one
+// is missing; "+1" day offsets are handled by parseTimeToMinutes, and a plain
+// end-before-start wraps overnight). null = no usable times.
+function trainRideMinutes(train) {
+  const stops = train.stops || [];
+  const ridden = [];
+  stops.forEach((stop, idx) => {
+    if (!stop || stop.stop_type === "pass_through") return;
+    if (!effectiveStopRide(stops, idx)) return;
+    ridden.push(idx);
+  });
+  if (ridden.length < 2) return null;
+  const first = stops[ridden[0]];
+  const last = stops[ridden[ridden.length - 1]];
+  const start =
+    parseTimeToMinutes(first.departure) ?? parseTimeToMinutes(first.arrival);
+  let end =
+    parseTimeToMinutes(last.arrival) ?? parseTimeToMinutes(last.departure);
+  if (start === null || end === null) return null;
+  if (end < start) end += 24 * 60;
+  return end - start;
+}
+
+function sumRideMinutes(trains) {
+  let total = 0;
+  for (const t of trains) {
+    const m = trainRideMinutes(t);
+    if (m !== null) total += m;
+  }
+  return total;
+}
+
+function formatStatDuration(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h > 0
+    ? I18N.t("fmt.duration", { h, m })
+    : I18N.t("fmt.durationM", { m });
+}
+
+// View model shared by the sync path and the time-sliced job: the all-time
+// aggregate plus (when a concrete date bucket is active) that day's own
+// km/time aggregate, computed from the SAME per-train cache entries.
+function buildMileageStatsView(idx, trains, entries) {
+  const overall = aggregateMileageStats(idx, entries);
+  overall.rideMinutes = sumRideMinutes(trains);
+  overall.services = serviceGroupStats(trains, entries);
+  let daily = null;
+  if (selectedDate && selectedDate !== ALL_DATES) {
+    const dayTrains = [];
+    const dayEntries = [];
+    trains.forEach((t, i) => {
+      if (getTrainDate(t) === selectedDate) {
+        dayTrains.push(t);
+        dayEntries.push(entries[i]);
+      }
+    });
+    const stats = aggregateMileageStats(idx, dayEntries);
+    stats.rideMinutes = sumRideMinutes(dayTrains);
+    stats.services = serviceGroupStats(dayTrains, dayEntries);
+    daily = { date: dateLabel(selectedDate), trainCount: dayTrains.length, stats };
+  }
+  return { overall, daily };
 }
 
 // Synchronous compute (manual/testing use; the UI path runs the time-sliced
@@ -3975,7 +4143,21 @@ function formatStatPct(pct) {
 let _statsJobToken = 0;
 const _statsYield = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function buildStatsEdgeIndexSliced(token) {
+// The sliced index build is NEVER cancelled — it runs once, shared by every
+// job via ensureStatsEdgeIndexAsync(). (An earlier version aborted on job
+// supersession, so the constant renderAll stream during a progressive import
+// restarted the build forever and the panel stayed blank until import ended.)
+let _statsIndexBuild = null;
+function ensureStatsEdgeIndexAsync() {
+  if (_statsEdgeIndex) return Promise.resolve();
+  if (!_statsIndexBuild)
+    _statsIndexBuild = buildStatsEdgeIndexSliced().finally(() => {
+      _statsIndexBuild = null; // allow retry if rail-sections weren't ready
+    });
+  return _statsIndexBuild;
+}
+
+async function buildStatsEdgeIndexSliced() {
   if (_statsEdgeIndex || !railSectionsGeoJson) return;
   const feats = railSectionsGeoJson.features;
   const map = new Map();
@@ -4002,7 +4184,6 @@ async function buildStatsEdgeIndexSliced(token) {
     }
     if ((fi & 127) === 127 && performance.now() - t0 > 12) {
       await _statsYield();
-      if (token !== _statsJobToken) return; // superseded
       t0 = performance.now();
     }
   }
@@ -4029,7 +4210,7 @@ async function runMileageStatsJob() {
     return;
   }
   if (!_statsEdgeIndex) {
-    await buildStatsEdgeIndexSliced(token);
+    await ensureStatsEdgeIndexAsync();
     if (token !== _statsJobToken || !_statsEdgeIndex) return;
   }
   const idx = _statsEdgeIndex;
@@ -4045,31 +4226,85 @@ async function runMileageStatsJob() {
       t0 = performance.now();
     }
   }
-  renderMileageStatsDom(aggregateMileageStats(idx, entries));
+  renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
 }
 
 // Synchronous render (manual/testing): computes in one go, then paints.
 function renderMileageStats() {
-  const s = computeMileageStats();
-  if (s) renderMileageStatsDom(s);
+  const idx = buildStatsEdgeIndex();
+  if (!idx) return;
+  pruneStatsTrainCache();
+  const trains = trainStore.trains || [];
+  const entries = trains.map((t) => collectTrainStatsEntry(t, idx));
+  renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
 }
 
-function renderMileageStatsDom(s) {
+function renderMileageStatsDom(view) {
+  const daily = document.getElementById("stats-daily");
   const headline = document.getElementById("stats-headline");
   const rows = document.getElementById("stats-rows");
-  if (!headline || !rows || !s) return;
+  if (!headline || !rows || !view) return;
+  const s = view.overall;
+
+  // ── 當日統計: always rendered ABOVE the all-time block. With a concrete
+  //    date it carries that day's numbers; on 全部 every value reads "--".
+  if (daily) {
+    if (view.daily) {
+      const d = view.daily;
+      const catRows = STAT_CATEGORIES.filter(
+        (c) => (d.stats.riddenByMask.get(c.mask) || 0) >= 0.05,
+      )
+        .map(
+          (c) => `
+        <div class="stats-daily-row">
+          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
+          <span class="stat-km">${formatStatKm(d.stats.riddenByMask.get(c.mask) || 0)} km</span>
+        </div>`,
+        )
+        .join("");
+      daily.innerHTML = `
+        <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: d.date }))}</h3>
+        <div class="stats-daily-hero">
+          <span class="stats-daily-km">${formatStatKm(d.stats.riddenAll)}<span class="unit">km</span></span>
+          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} ${escapeHtml(formatStatDuration(d.stats.rideMinutes || 0))} · ${escapeHtml(I18N.t("stat.trains", { n: d.trainCount }))}</span>
+        </div>
+        ${catRows ? `<div class="stats-daily-rows">${catRows}</div>` : ""}
+        ${serviceRowsHtml(d.stats.services)}
+        <div class="divider"></div>`;
+    } else {
+      daily.innerHTML = `
+        <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: "--" }))}</h3>
+        <div class="stats-daily-hero">
+          <span class="stats-daily-km">--<span class="unit">km</span></span>
+          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} --</span>
+        </div>
+        <div class="divider"></div>`;
+    }
+  }
+
+  // ── Section 1: 路網覆蓋率 — deduped coverage percentages over N02 totals.
   const pctAll = s.totals.all > 0 ? (100 * s.riddenAll) / s.totals.all : 0;
   headline.innerHTML = `
+    <h3 class="subhead">${escapeHtml(I18N.t("stats.coverageTitle"))}</h3>
     <div class="stats-hero">
       <span class="stats-pct">${formatStatPct(pctAll)}<span class="unit">%</span></span>
       <span class="stats-sub">${formatStatKm(s.riddenAll)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.t("stat.all"))}</span>
     </div>
     <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pctAll).toFixed(2)}%"></div></div>`;
-  rows.innerHTML = STAT_CATEGORIES.map((c) => {
-    const tot = s.totals.byMask.get(c.mask) || 0;
-    const rid = s.riddenByMask.get(c.mask) || 0;
-    const pct = tot > 0 ? (100 * rid) / tot : 0;
-    return `
+  const timeRow = `
+      <div class="stat-row">
+        <div class="stat-row-head">
+          <span class="stat-label">${escapeHtml(I18N.t("stat.time"))}</span>
+          <span class="stat-val"><span class="stat-pct">${escapeHtml(formatStatDuration(s.rideMinutes || 0))}</span></span>
+        </div>
+      </div>`;
+  // ── Section 2: 實際乘坐量 — cumulative ride amounts (no percentages).
+  rows.innerHTML =
+    STAT_CATEGORIES.map((c) => {
+      const tot = s.totals.byMask.get(c.mask) || 0;
+      const rid = s.riddenByMask.get(c.mask) || 0;
+      const pct = tot > 0 ? (100 * rid) / tot : 0;
+      return `
       <div class="stat-row">
         <div class="stat-row-head">
           <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
@@ -4077,7 +4312,30 @@ function renderMileageStatsDom(s) {
         </div>
         <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
       </div>`;
-  }).join("");
+    }).join("") +
+    `<div class="divider"></div>
+     <h3 class="subhead">${escapeHtml(I18N.t("stats.actualTitle"))}</h3>` +
+    serviceRowsHtml(s.services) +
+    timeRow;
+}
+
+// 有料特急 / 其他列車 rows: cumulative distance + time + ride count for each
+// service group — deliberately NO percentage / progress bar (repeat rides
+// count each time, so there is no meaningful denominator).
+function serviceRowsHtml(services) {
+  if (!services) return "";
+  const row = (labelKey, g) => `
+      <div class="stat-row">
+        <div class="stat-row-head">
+          <span class="stat-label">${escapeHtml(I18N.t(labelKey))}</span>
+          <span class="stat-val"><span class="stat-km">${formatStatKm(g.km)} km · ${escapeHtml(formatStatDuration(g.minutes))} · ${escapeHtml(I18N.t("stat.trains", { n: g.count }))}</span></span>
+        </div>
+      </div>`;
+  return (
+    row("stat.hsr", services.hsr) +
+    row("stat.ltdexp", services.ltd) +
+    row("stat.othertrains", services.other)
+  );
 }
 
 // Debounced: renderAll fires on every store mutation; the time-sliced job
@@ -4160,6 +4418,8 @@ function setSelectedDate(date) {
   // A concrete date now always re-scopes the map (dim other dates), and
   // returning to "全部" restores full opacity — so always redraw.
   renderTrainLayers();
+  // The 統計 tab's 當日統計 block follows the active date bucket.
+  scheduleMileageStats();
 }
 
 // Clicking a date button (including "全部") clears any train selection so the
@@ -5768,20 +6028,24 @@ function deckMarkerRecord(feature, train, opts, kind) {
   const dimmed = opts.dimmed === true;
   let s;
   let category;
+  let role;
   if (kind === "pass") {
     s = passThroughMarkerStyleValues(p.ride_segment !== false, {
       focused,
       dimmed,
     });
     category = "pass";
+    role = "pass";
   } else {
-    // BLACK dot only at the actually-ridden boundary (boarding/alighting);
-    // scheduled origin/destination that weren't the real endpoints stay white.
+    // The actual boarding/alighting boundary is a large filled terminal.
+    // Intermediate stops use the same white outer circle as pass-throughs;
+    // buildDeckMarkerRecords adds their small black center as a second record.
     s = stopMarkerStyleValues(p.ride_segment === true, p.ride_boundary === true, {
       focused,
       dimmed,
     });
     category = "stop";
+    role = p.ride_boundary === true ? "terminal" : "stop";
   }
   // Alpha is carried as its own value (not premultiplied into the colours):
   // the base marker layers draw it via circle-opacity while the SEL layers
@@ -5795,6 +6059,8 @@ function deckMarkerRecord(feature, train, opts, kind) {
     lineColor: [s.strokeCol[0], s.strokeCol[1], s.strokeCol[2]],
     alpha: s.fillOpacity,
     category,
+    role,
+    focusScale: role === "terminal" ? 1 : 0.5,
     feature,
     train,
     // Off-date dots draw dimmed (paint-level, via tdate) but are not
@@ -5827,10 +6093,10 @@ function getComputedPassThroughFeaturesCached(train) {
   return v;
 }
 
-// Every ridden station draws a dot, but ONLY the first and last effectively-
-// ridden stop of each train (the actual boarding / alighting stations) get
-// the BLACK ink dot — every other stop and pass-through station renders as a
-// WHITE dot with an ink ring.
+// Every ridden station draws a dot. The first and last effectively-ridden
+// stops are large filled terminals; intermediate stops and pass-throughs use
+// the same small white circle with an ink ring, with a black center added only
+// to intermediate stops.
 // SELECTION-INDEPENDENT: pass-through dots are always emitted (the layer
 // minzoom gates them) and focus flags are never baked, so the record set only
 // changes with the route signature / display settings.
@@ -5883,12 +6149,16 @@ function buildDeckMarkerRecords(orderedTrains) {
         !isPass &&
         stopFeature.properties.ride_boundary !== true
       ) {
+        const centerRadius = stopCenterRadius(rec.radius);
         records.push({
           ...rec,
-          radius: Math.max(1.1, rec.radius * 0.45),
+          radius: centerRadius,
           lineWidth: 0,
           fillColor: [26, 26, 26],
           lineColor: [26, 26, 26],
+          role: "stop-center",
+          // Preserve the center/outer ratio when selected focus enlarges both.
+          focusScale: (centerRadius / rec.radius) * 0.5,
           nopick: true,
         });
       }
@@ -8385,12 +8655,19 @@ function routeSegmentStyleValues(
   return { opacity, width };
 }
 
-// NEUTRAL station dots (railprint C4: hue is reserved for LINES). The
-// actually-ridden boarding/alighting pair (ride boundary) = BLACK ink dot
-// with a white ring; every other stop / pass-through station = WHITE dot
-// with an ink ring. Dimming rides the alpha channel.
+// NEUTRAL station dots (railprint C4: hue is reserved for LINES). The actual
+// boarding/alighting pair (ride boundary) = large BLACK dot with a white ring.
+// Intermediate stops and pass-throughs share the same small WHITE outer circle
+// and ink ring; the marker builder overlays a black center on stops only.
 const RP_INK_RGB = [26, 26, 26]; // tokens.ink
 const RP_WHITE_RGB = [255, 255, 255];
+
+function stopCenterRadius(outerRadius) {
+  const requested = Number(DISPLAY.stopRadius || 5) * 0.4;
+  // Keep the stop visibly filled while retaining enough white around the
+  // center to distinguish it from the solid origin/destination marker.
+  return Math.max(0.75, Math.min(Number(outerRadius) * 0.72, requested));
+}
 
 function stopMarkerStyleValues(
   active,
@@ -8426,7 +8703,9 @@ function passThroughMarkerStyleValues(
 ) {
   // Date-scope dim is paint-level now (RailMap.setDateScope), not baked.
   void dimmed;
-  const alpha = active ? 0.9 : 0.4;
+  // An active pass-through uses the same outer-circle opacity as an
+  // intermediate stop; the stop's black center is their sole visual delta.
+  const alpha = active ? 1 : 0.4;
   return {
     radius: focused
       ? DISPLAY.passRadius + Math.round(DISPLAY.focusBoost / 2)

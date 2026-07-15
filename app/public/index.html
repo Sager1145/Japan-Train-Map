@@ -43,7 +43,6 @@
 
         <!-- ============ Card 1: 列車清單 — search, dates, list, actions ============ -->
         <section class="card" id="train-browser">
-          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="sec.list">列車清單</span></h2>
           <div class="card-body">
             <div class="row">
               <input id="search-input" data-i18n-ph="ph.search" placeholder="搜尋車次、列車、車站或 ID" />
@@ -79,7 +78,6 @@
 
         <!-- ============ Card 2: 編輯選中列車 — fields + stops ============ -->
         <section class="card" id="train-editor">
-          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="grp.edit">編輯選中列車</span></h2>
           <div class="card-body">
             <h3 class="subhead" data-i18n="sec.trainData">列車資料</h3>
             <div class="form-grid">
@@ -135,8 +133,8 @@
 
         <!-- ============ Card 3: 里程統計 — railprint-style coverage ============ -->
         <section class="card" id="mileage-stats">
-          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="sec.stats">里程統計</span></h2>
           <div class="card-body">
+            <div class="stats-daily" id="stats-daily"></div>
             <div class="stats-headline" id="stats-headline"></div>
             <div class="stats-rows" id="stats-rows"></div>
             <p class="hint" data-i18n="stats.hint">
@@ -147,7 +145,6 @@
 
         <!-- ============ Card 4: 資料管理 — import / export / danger zone ============ -->
         <section class="card" id="data-manager">
-          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="grp.data">資料管理</span></h2>
           <div class="card-body">
             <h3 class="subhead" data-i18n="sec.import">JSON 匯入／本地資料</h3>
             <textarea
