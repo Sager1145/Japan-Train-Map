@@ -68,6 +68,7 @@ jobs:
           cp app/data/default-trains.json _site/api/default-trains.json
           cp app/data/matched-routes.json _site/api/matched-routes.json
           cp app/data/matched-stops.json  _site/api/matched-stops.json
+          cp app/data/station-readings.json _site/api/station-readings.json
 
           # 3) SEED: publish your saved itinerary as the map's initial data.
           #    Delete this line to ship only the built-in demo trains instead.
