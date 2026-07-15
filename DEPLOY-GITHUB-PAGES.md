@@ -1,0 +1,84 @@
+# 部署到 GitHub Pages（静态版）
+
+本项目原本是一个 Node/Express 服务（`app/server.js`），而 GitHub Pages 只能托管
+静态文件、不能跑 Node。好在前端降级得很干净，可以做成纯静态站部署上去。
+
+已经帮你放好了自动部署工作流：`.github/workflows/deploy-pages.yml`。
+它会在每次 push 到 `main` 时，自动把前端 + 数据装配成静态站并发布。
+
+**最终网址：** `https://sager1145.github.io/Japan-Train-Map/`
+
+---
+
+## 一次性设置（只做一次）
+
+1. 把本次改动提交并推送到 GitHub：
+
+   ```bash
+   git add .github/workflows/deploy-pages.yml DEPLOY-GITHUB-PAGES.md
+   git commit -m "Add GitHub Pages static deploy workflow"
+   git push origin main
+   ```
+
+2. 打开仓库网页 → **Settings** → 左侧 **Pages** →
+   **Build and deployment** → **Source** 选 **GitHub Actions**。
+
+3. 回到仓库 **Actions** 标签，等 “Deploy to GitHub Pages” 这个工作流跑完
+   （约 1–2 分钟）。绿勾之后，上面那个网址就能打开了。
+
+以后每次 `git push origin main` 都会自动重新部署，无需再手动操作。
+
+---
+
+## 工作流做了什么
+
+- 把 `app/public/`（前端）复制为静态站，**排除**约 98 MB 的离线瓦片
+  `tiles/` 和预压缩的 `*.gz`（Pages 会自动 gzip）。
+- 把数据集放到 `api/` 目录，文件名**不带扩展名**，以匹配前端的取数路径
+  （`app.js` 里 `fetchJson("stations")` → `./api/stations`）：
+  `rail-sections` / `stations` / `default-trains` / `matched-routes` / `matched-stops`。
+- 用你的 `app/data/train-store.json` 作为地图的**初始数据**（当前 119 趟列车），
+  这样线上直接显示你的实际路线，而不是内置的演示数据。
+- 加一个 `.nojekyll`，让所有文件（含无扩展名的 `api/*`）原样发布。
+
+部署后的站点体积约 **22 MB**，远在 Pages 的单文件 100 MB / 站点约 1 GB 限制之内。
+
+---
+
+## 静态版：能用什么，不能用什么
+
+**照常可用**
+
+- 完整地图与全国铁道网、你的所有列车路线、里程统计、多语言界面。
+- 在线底图（OpenFreeMap，运行时从 `tiles.openfreemap.org` 加载）。
+- 在本机**保存 / 读取本地 JSON 文件**（浏览器的 File System Access API）——
+  你仍然可以在线上编辑并把结果存成文件。
+
+**会失效（已优雅降级，不会报错）**
+
+- **保存到服务器**：`PUT /api/train-store` 没有后端可写，自动保存会静默失败；
+  改动只能存到本地文件。
+- **多标签实时同步**（SSE `/api/events`）：无后端推送，页面不会自动互相刷新。
+- **Agent 导入**（`POST /api/agent/import`）：无后端接收。
+
+> 想要保留这些功能，需要把后端部署到能跑 Node 的平台（Render / Railway /
+> Fly.io 等），Pages 本身做不到。
+
+---
+
+## 常见自定义
+
+**改初始数据 / 只发演示数据**
+删掉工作流里这一行（第 3 步的 SEED），线上就只显示内置的 `default-trains`：
+
+```
+[ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store || true
+```
+
+**加回离线备用底图**
+把工作流里 `rsync ... --exclude='tiles/'` 中的 `--exclude='tiles/'` 去掉即可，
+但站点会多出约 98 MB（线上默认走在线底图，一般不需要）。
+
+**用自定义域名**
+在仓库 Settings → Pages 填 Custom domain，并在工作流的装配步骤里加一行
+`echo yourdomain.com > _site/CNAME`。

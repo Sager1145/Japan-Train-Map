@@ -1,0 +1,91 @@
+# Deploy the N02 Train Manager frontend to GitHub Pages as a STATIC site.
+#
+# The app normally runs on the Node/Express server in app/server.js, but GitHub
+# Pages only serves static files. It works here anyway because the frontend
+# degrades cleanly: the data APIs are just JSON files, a missing saved store
+# falls back to built-in defaults, and the SSE live-refresh no-ops when absent.
+#
+# What this workflow does on every push to main:
+#   1. copies app/public/ (the frontend) into _site/, minus the 98 MB offline
+#      raster tiles and the precompressed *.gz sidecars (Pages gzips for us);
+#   2. drops the datasets into _site/api/<name> WITHOUT a .json extension, to
+#      match how app.js fetches them (fetchJson("stations") -> ./api/stations);
+#   3. seeds _site/api/train-store with your real itinerary so the live map
+#      shows your trains (see the SEED line below to change this);
+#   4. publishes _site/ to Pages.
+#
+# ONE-TIME SETUP (in the repo on github.com):
+#   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# After that, every push to main redeploys automatically. Live URL:
+#   https://sager1145.github.io/Japan-Train-Map/
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Least-privilege token the Pages deploy needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assemble static site
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site
+
+          # 1) Frontend, excluding the offline-only raster tiles (~98 MB) and
+          #    the *.gz sidecars. -L resolves any symlinks to real files.
+          rsync -rL --exclude='tiles/' --exclude='*.gz' app/public/ _site/
+
+          # 2) Datasets the frontend fetches from ./api/<name> (extensionless).
+          mkdir -p _site/api
+          cp app/data/rail-sections.json  _site/api/rail-sections
+          cp app/data/stations.json       _site/api/stations
+          cp app/data/default-trains.json _site/api/default-trains
+          cp app/data/matched-routes.json _site/api/matched-routes
+          cp app/data/matched-stops.json  _site/api/matched-stops
+
+          # 3) SEED: publish your saved itinerary as the map's initial data.
+          #    Delete this line to ship only the built-in demo trains instead.
+          [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store || true
+
+          # 4) Disable Jekyll so every file (incl. extensionless api/*) ships as-is.
+          touch _site/.nojekyll
+
+          echo "Assembled site:"; du -sh _site; find _site/api -maxdepth 1 -type f -printf '  %f\n'
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
