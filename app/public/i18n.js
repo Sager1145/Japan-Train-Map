@@ -2,11 +2,11 @@
 // Lightweight i18n layer for the N02 Limited Express Manager web UI.
 //
 // Loaded BEFORE app.js so `window.I18N` exists synchronously for every caller.
-// Two languages: Traditional Chinese ("zh", the original/default) and English
-// ("en"). The chosen language is remembered in localStorage.
+// Four languages: Traditional Chinese, Simplified Chinese, Japanese and
+// English. The chosen language is remembered in localStorage.
 //
 //   I18N.t(key, params)   -> translated UI string ("{x}" placeholders filled)
-//   I18N.placeName(jp)    -> in EN mode "東京 (Tōkyō)", in ZH mode just "東京"
+//   I18N.placeName(jp)    -> locale-aware Japanese name / reading / romanization
 //   I18N.trainName(jp)    -> same dictionary, for limited-express service names
 //   I18N.setLang(lang)    -> switch language, persist, re-apply, notify
 //   I18N.onChange(fn)     -> register a callback fired after each switch
@@ -20,8 +20,8 @@
   "use strict";
 
   const LANG_KEY = "n02-ui-lang";
-  const SUPPORTED = ["zh", "en"];
-  let currentLang = "zh";
+  const SUPPORTED = ["zh-Hant", "zh-Hans", "ja", "en"];
+  let currentLang = "zh-Hant";
 
   // ---- UI strings ---------------------------------------------------------
   // Every value is { zh, en }. Use "{name}" style placeholders for params.
@@ -32,9 +32,17 @@
     // header
     "app.title": { zh: "N02 特急列車管理", en: "N02 Limited Express Manager" },
     "app.hint": {
-      zh: "OSM Overlay／伺服器 train-store.json 自動保存載入／逐條匯入",
-      en: "OSM overlay / server train-store.json auto-save & load / per-item import",
+      zh: "在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。",
+      en: "View journeys on the map, edit trains and stops, and manage JSON data.",
     },
+
+    // persistent workspace navigation
+    "nav.label": { zh: "工作區導覽", en: "Workspace navigation" },
+    "nav.trains": { zh: "列車", en: "Trains" },
+    "nav.editor": { zh: "編輯", en: "Edit" },
+    "nav.data": { zh: "資料", en: "Data" },
+    "nav.display": { zh: "顯示", en: "Display" },
+    "nav.about": { zh: "說明", en: "About" },
 
     // search & actions
     "sec.search": { zh: "搜尋與操作", en: "Search & Actions" },
@@ -87,6 +95,34 @@
     "btn.validate": { zh: "驗證匯入 JSON", en: "Validate Import JSON" },
     "btn.apply": { zh: "開始載入／逐條匯入", en: "Start Loading / Import Items" },
 
+    // card / group titles (railprint-style folder-tab cards)
+    "grp.edit": { zh: "編輯選中列車", en: "Edit Selected Train" },
+    "grp.dates": { zh: "日期與篩選", en: "Dates & Filters" },
+    "grp.trainResults": { zh: "當日列車", en: "Trains for This Date" },
+    "grp.listActions": { zh: "列車操作", en: "Train Actions" },
+    "grp.data": { zh: "資料管理", en: "Data Management" },
+    "grp.danger": { zh: "危險區域", en: "Danger Zone" },
+    "hint.danger": {
+      zh: "這些操作會影響全部資料，無法復原，請小心使用。",
+      en: "These actions affect all data and cannot be undone. Use with care.",
+    },
+
+    // mileage statistics (railprint-style coverage)
+    "nav.stats": { zh: "統計", en: "Stats" },
+    "sec.stats": { zh: "里程統計", en: "Mileage Stats" },
+    "stat.all": { zh: "全國", en: "Nationwide" },
+    "stat.hsr": { zh: "新幹線", en: "Shinkansen" },
+    "stat.conv": { zh: "普通鐵道（在來線）", en: "Conventional rail" },
+    "stat.jr": { zh: "JR（含新幹線）", en: "JR (incl. Shinkansen)" },
+    "stat.metro": { zh: "地下鐵", en: "Subway" },
+    "stat.priv": { zh: "私鐵・第三部門", en: "Private & 3rd-sector" },
+    "stats.loading": { zh: "正在載入路網資料…", en: "Loading rail network…" },
+    "stats.empty": { zh: "尚無乘坐記錄。", en: "No rides recorded yet." },
+    "stats.hint": {
+      zh: "依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。",
+      en: "Computed from every train's actually-ridden intervals (ride checkboxes), deduplicated across trains; totals come from the full N02-25 national network.",
+    },
+
     // train list
     "sec.list": { zh: "列車清單", en: "Train List" },
     "btn.addDate": { zh: "新增日期", en: "Add Date" },
@@ -127,6 +163,7 @@
     "th.actions": { zh: "操作", en: "Actions" },
     "btn.addStop": { zh: "新增停站", en: "Add Stop" },
     "btn.rebuildRoute": { zh: "依停站重建路線", en: "Rebuild Route from Stops" },
+    "table.stopsLabel": { zh: "停靠站表格", en: "Stops table" },
     // branch (支線) grouping in the stops table
     "branch.tag": { zh: "支線／Branch", en: "Branch" },
     "branch.junction": { zh: "分歧站／Junction", en: "Junction" },
@@ -148,8 +185,8 @@
       en: "All railway lines (switch, off by default): official line colors (faded) + grey station dots",
     },
     "legend.station": {
-      zh: "停靠站：墨色圓點（選中列車反白＋墨色圈）",
-      en: "Stops: ink dots (selected train inverts to white + ink ring)",
+      zh: "中途停靠站：小圓圈＋中央黑點；上下車站：黑色大圓點；通過站：小圓圈",
+      en: "Intermediate stops: small circle with a black center dot; boarding/alighting: large ink dot; pass-throughs: small circle",
     },
     "legend.express": {
       zh: "特急路線：全色加粗（選中時墨色底襯）",
@@ -164,6 +201,68 @@
       en: "Basemap © OpenStreetMap contributors｜OpenFreeMap (positron). Romanizations © OpenStreetMap contributors, ODbL. Rail package © railprint (jp-2025).",
     },
 
+    // unified map information panel (bottom-right i button)
+    "info.button": { zh: "開啟圖例與資料來源", en: "Open legend and data sources" },
+    "info.title": { zh: "圖例與資料來源", en: "Legend & Data Sources" },
+    "info.intro": {
+      zh: "快速理解地圖符號，以及本地圖使用的資料與授權。",
+      en: "A quick guide to map symbols, data providers, and licenses.",
+    },
+    "info.legendHeading": { zh: "地圖圖例", en: "Map Legend" },
+    "info.routeTitle": { zh: "列車路線", en: "Train routes" },
+    "info.routeDesc": {
+      zh: "使用列車指定色顯示；選中時增加墨色底襯。",
+      en: "Shown in each train's assigned color, with an ink casing when selected.",
+    },
+    "info.stopTitle": { zh: "停靠站", en: "Stops" },
+    "info.stopDesc": {
+      zh: "墨色圓點；選中列車時反白並增加墨色外圈。",
+      en: "Ink dots; the selected train uses white fill with an ink ring.",
+    },
+    "info.networkTitle": { zh: "全部鐵路線", en: "All railway lines" },
+    "info.networkDesc": {
+      zh: "可在地圖圖層中開啟，顯示官方路線色與灰色車站點。",
+      en: "Optional in Map Layers, using official line colors and grey station dots.",
+    },
+    "info.sourcesHeading": { zh: "資料與授權", en: "Data & Licenses" },
+    "info.n02Title": { zh: "日本鐵路網", en: "Japan railway network" },
+    "info.n02Body": {
+      zh: "國土交通省「國土數值情報（鐵道資料 N02）」經加工製作。",
+      en: "Processed from MLIT National Land Numerical Information (Railway Data N02).",
+    },
+    "info.basemapTitle": { zh: "地圖底圖", en: "Basemap" },
+    "info.basemapBody": {
+      zh: "線上使用 OpenFreeMap Positron；離線圖磚使用 CARTO Positron。",
+      en: "OpenFreeMap Positron online, with CARTO Positron tiles for offline use.",
+    },
+    "info.namesTitle": { zh: "站名羅馬字", en: "Station romanization" },
+    "info.namesBody": {
+      zh: "OpenStreetMap contributors，依 ODbL 授權。",
+      en: "OpenStreetMap contributors, licensed under ODbL.",
+    },
+    "info.packageTitle": { zh: "鐵路資料包", en: "Rail package" },
+    "info.packageBody": {
+      zh: "使用 railprint 的 jp-2025 日本鐵路資料包。",
+      en: "Uses railprint's jp-2025 Japan rail package.",
+    },
+
+    // map corner control
+    "map.layers": { zh: "地圖圖層", en: "Map Layers" },
+    "map.basemap": { zh: "底圖", en: "Basemap" },
+    "map.positron": { zh: "Positron（線上）", en: "Positron (online)" },
+    "map.localTiles": { zh: "本地圖磚（離線）", en: "Local Tiles (offline)" },
+    "map.noBasemap": { zh: "無底圖", en: "No Basemap" },
+    "map.routes": { zh: "列車路線", en: "Train Routes" },
+    "map.stops": { zh: "停靠站", en: "Stops" },
+    "map.passThrough": { zh: "通過站", en: "Pass-through Stations" },
+    "map.allRailways": { zh: "全部鐵路線", en: "All Railway Lines" },
+    "map.riddenGroup": { zh: "已乘路線顯示", en: "Ridden Lines" },
+    "map.riddenJr": { zh: "JR在來線", en: "JR Conventional" },
+    "map.riddenPriv": { zh: "私鐵・其他", en: "Private / Other" },
+    "map.offline": { zh: "離線", en: "offline" },
+    "map.connecting": { zh: "連線中…", en: "connecting…" },
+    "map.retryFailed": { zh: "重試失敗", en: "retry failed" },
+
     // map tooltips / labels
     "tag.arr": { zh: "到", en: "Arr" },
     "tag.dep": { zh: "發", en: "Dep" },
@@ -172,6 +271,10 @@
     "tip.overlap": {
       zh: "並行 {slot}/{count}（依日期排序）・橫移切換",
       en: "Parallel {slot}/{count} (date order) · slide to switch",
+    },
+    "tip.passRideFollows": {
+      zh: "通過站會跟隨其所在停靠區間顯示或隱藏，無法單獨切換。",
+      en: "Pass-through stations follow their stop interval and cannot be toggled individually.",
     },
 
     // import source labels
@@ -313,6 +416,291 @@
     "stoptype.operational_stop": { zh: "運轉停車", en: "Operational stop" },
     "stoptype.destination": { zh: "終站", en: "Destination" },
   };
+
+  // Complete Japanese UI copy. Keeping this as a locale overlay avoids
+  // duplicating the large romanization/kana dictionaries below.
+  const JA_STRINGS = {
+    "lang.label": "言語",
+    "app.title": "N02 特急列車管理",
+    "app.hint": "地図上で行程を確認し、列車・停車駅・JSON データを管理します。",
+    "nav.label": "ワークスペースナビゲーション",
+    "nav.trains": "列車",
+    "nav.editor": "編集",
+    "nav.data": "データ",
+    "nav.display": "表示",
+    "nav.about": "情報",
+    "sec.search": "検索と操作",
+    "ph.search": "列車番号・列車名・駅名・ID で検索",
+    "btn.addTrain": "列車を追加",
+    "btn.duplicate": "複製",
+    "btn.delete": "削除",
+    "btn.deleteAll": "すべて削除",
+    "btn.fit": "位置を表示",
+    "btn.clearSel": "選択を解除",
+    "btn.autoFocus": "自動フォーカス：",
+    "state.on": "オン",
+    "state.off": "オフ",
+    "disp.summary": "表示設定（線幅／マーカーサイズ／透明度）",
+    "disp.reset": "初期設定に戻す",
+    "disp.hint": "全列車の線幅、始終点・停車駅・通過駅のサイズ、透明度などを調整します。変更は即時反映され、このブラウザーに自動保存されます。",
+    "disp.routeWidthScale": "路線の太さ",
+    "disp.riddenOpacity": "乗車区間の透明度",
+    "disp.dimOpacity": "選択日以外の淡色表示",
+    "disp.terminalRadius": "端点（始発／終着駅）のサイズ",
+    "disp.stopRadius": "停車駅マーカーのサイズ",
+    "disp.passRadius": "通過駅マーカーのサイズ",
+    "disp.markerStrokeScale": "マーカー枠線の太さ",
+    "disp.focusBoost": "選択時の拡大量",
+    "disp.mapOpacity": "背景地図の透明度",
+    "disp.onlyEndpoints": "始終点のみ表示（途中停車駅を隠す）",
+    "sec.import": "JSON 読み込み／ローカルデータ",
+    "ph.importJson": "完全な store、列車配列、または単一の列車オブジェクトを貼り付け",
+    "btn.openLocal": "ローカル JSON を開く",
+    "btn.saveLocal": "JSON を保存／別名保存",
+    "btn.validate": "読み込み JSON を検証",
+    "btn.apply": "読み込み／順次インポートを開始",
+    "grp.edit": "選択中の列車を編集",
+    "grp.dates": "日付と絞り込み",
+    "grp.trainResults": "この日の列車",
+    "grp.listActions": "列車操作",
+    "grp.data": "データ管理",
+    "grp.danger": "危険な操作",
+    "hint.danger": "これらの操作はすべてのデータに影響し、元に戻せません。慎重に操作してください。",
+    "nav.stats": "統計",
+    "sec.stats": "走行距離統計",
+    "stat.all": "全国",
+    "stat.hsr": "新幹線",
+    "stat.conv": "普通鉄道（在来線）",
+    "stat.jr": "JR（新幹線を含む）",
+    "stat.metro": "地下鉄",
+    "stat.priv": "私鉄・第三セクター",
+    "stats.loading": "鉄道路線データを読み込み中…",
+    "stats.empty": "乗車記録がありません。",
+    "stats.hint": "全列車で実際に乗車した区間を重複を除いて集計します。総延長は国土数値情報 N02-25 の全国鉄道網に基づきます。",
+    "sec.list": "列車一覧",
+    "btn.addDate": "日付を追加",
+    "btn.removeEmpty": "空の日付を削除",
+    "chk.mapDateFilter": "地図には選択日のみ表示",
+    "sec.trainData": "列車データ",
+    "field.id": "列車 ID",
+    "field.number": "列車番号",
+    "field.trainType": "列車種別",
+    "ph.trainType": "特急／普通／新幹線",
+    "field.company": "運行会社",
+    "ph.company": "JR西日本。直通運転は複数社を / で区切る",
+    "tag.through": "直通",
+    "field.direction": "方向",
+    "ph.direction": "下り／上り",
+    "field.origin": "始発駅",
+    "field.destination": "終着駅",
+    "field.color": "色",
+    "field.weight": "線幅",
+    "btn.saveFields": "項目を適用",
+    "btn.toggleVisible": "表示／非表示",
+    "btn.moveUp": "上へ",
+    "btn.moveDown": "下へ",
+    "sec.stops": "停車駅と通過駅",
+    "th.seq": "順",
+    "th.station": "駅",
+    "th.arr": "着",
+    "th.dep": "発",
+    "th.type": "種別",
+    "th.ride": "乗車",
+    "th.actions": "操作",
+    "btn.addStop": "停車駅を追加",
+    "btn.rebuildRoute": "停車駅から経路を再構築",
+    "table.stopsLabel": "停車駅一覧表",
+    "branch.tag": "支線",
+    "branch.junction": "分岐駅",
+    "branch.rideAll": "支線全体を乗車／非表示",
+    "branch.noline": "（路線未指定）",
+    "sec.export": "JSON 書き出し",
+    "btn.exportJson": "JSON を書き出す",
+    "btn.downloadJson": "JSON をダウンロード",
+    "btn.resetDefaults": "サンプルを初期化",
+    "btn.downloadHtml": "現在の HTML をダウンロード",
+    "btn.clearStorage": "保存データを消去",
+    "sec.legend": "凡例とデータ出典",
+    "legend.railway": "全路線（初期状態はオフ）：路線ごとの公式色（淡色）＋灰色の駅マーカー",
+    "legend.station": "途中停車駅：小円＋中央の黒点；乗降駅：黒の大きな円；通過駅：小円",
+    "legend.express": "列車経路：指定色の太線（選択中は墨色の下線）",
+    "legend.source1": "鉄道路線データ：国土交通省『国土数値情報（鉄道データ N02）』を加工して作成（CC BY 4.0）。",
+    "legend.source2": "背景地図 © OpenStreetMap contributors｜OpenFreeMap。ローマ字表記 © OpenStreetMap contributors, ODbL。鉄道データパッケージ © railprint (jp-2025)。",
+    "info.button": "凡例とデータ出典を開く",
+    "info.title": "凡例とデータ出典",
+    "info.intro": "地図記号、使用データ、ライセンスをまとめて確認できます。",
+    "info.legendHeading": "地図の凡例",
+    "info.routeTitle": "列車経路",
+    "info.routeDesc": "列車ごとの指定色で表示し、選択中は墨色の下線を加えます。",
+    "info.stopTitle": "停車駅",
+    "info.stopDesc": "墨色の点で表示し、選択中の列車では白地と墨色の輪郭に変わります。",
+    "info.networkTitle": "全鉄道路線",
+    "info.networkDesc": "地図レイヤーから有効にすると、公式路線色と灰色の駅マーカーを表示します。",
+    "info.sourcesHeading": "データとライセンス",
+    "info.n02Title": "日本の鉄道網",
+    "info.n02Body": "国土交通省『国土数値情報（鉄道データ N02）』を加工して作成しています。",
+    "info.basemapTitle": "背景地図",
+    "info.basemapBody": "オンラインでは OpenFreeMap Positron、オフラインでは CARTO Positron タイルを使用します。",
+    "info.namesTitle": "駅名のローマ字表記",
+    "info.namesBody": "OpenStreetMap contributors、ODbL ライセンス。",
+    "info.packageTitle": "鉄道データパッケージ",
+    "info.packageBody": "railprint の日本鉄道データパッケージ jp-2025 を使用しています。",
+    "map.layers": "地図レイヤー",
+    "map.basemap": "背景地図",
+    "map.positron": "Positron（オンライン）",
+    "map.localTiles": "ローカルタイル（オフライン）",
+    "map.noBasemap": "背景地図なし",
+    "map.routes": "列車経路",
+    "map.stops": "停車駅",
+    "map.passThrough": "通過駅",
+    "map.allRailways": "全鉄道路線",
+    "map.riddenGroup": "乗車済み路線の表示",
+    "map.riddenJr": "JR在来線",
+    "map.riddenPriv": "私鉄・その他",
+    "map.offline": "オフライン",
+    "map.connecting": "接続中…",
+    "map.retryFailed": "再試行に失敗",
+    "tag.arr": "着",
+    "tag.dep": "発",
+    "tag.start": "始点",
+    "tag.end": "終点",
+    "tip.overlap": "並行 {slot}/{count}（日付順）・横移動で切り替え",
+    "tip.passRideFollows": "通過駅は所属する停車区間の表示状態に従うため、個別には切り替えられません。",
+    "src.serverStore": "サーバー保存済み train-store.json",
+    "src.builtinDefault": "内蔵の初期 JSON",
+    "src.serverCleared": "サーバー消去済み（内蔵初期データ）",
+    "src.agentImport": "AI エージェントからの読み込み",
+    "src.otherUpdate": "別のソースからの更新",
+    "src.localJson": "ローカル JSON：{name}",
+    "status.loadFailed": "データの読み込みに失敗しました：{msg}",
+    "status.noSavedStore": "保存済みの train-store.json がないため、内蔵初期データを読み込みました。編集内容はサーバーへ自動保存されます。",
+    "status.serverClearedFallback": "サーバー上のデータが消去されたため、内蔵初期データに戻しました。",
+    "status.autoLoaded": "{label} を自動読み込みしました：{count} 本。",
+    "status.autosaveOk": "サーバーの train-store.json に自動保存しました。",
+    "status.autosaveFail": "サーバーへの自動保存に失敗しました：{msg}",
+    "status.noFsApi": "このブラウザーはローカルファイルへの直接書き込みに対応していないため、JSON をダウンロードしました。",
+    "err.noWritePerm": "ローカル JSON ファイルへの書き込み権限がありません。",
+    "prog.prepare": "{label} の順次読み込みを準備中：0/{total}",
+    "prog.loading": "{label} を順次読み込み中：{count}/{total}：{id}",
+    "prog.loadingShort": "順次読み込み中：{count}/{total}：{id}",
+    "prog.done": "完了：{count} 本",
+    "prog.openingLocal": "ローカル JSON を開いています…",
+    "prog.preparingId": "準備中",
+    "status.loadedAll": "{label} から {total} 本を順次読み込みました。",
+    "status.restoredAll": "{label} から {total} 本を順次復元しました。",
+    "status.savedTo": "{name} に保存しました。",
+    "status.imported": "{count} 本をインポートしました：{ids}",
+    "status.exported": "現在の列車データをテキスト欄へ書き出しました。",
+    "status.resetDefaults": "内蔵サンプルデータに戻しました。",
+    "status.clearedAll": "サーバー保存済みの train-store.json とローカルファイル権限を消去しました。再読み込み時は内蔵初期データを使用します。",
+    "status.clearFail": "保存データの消去に失敗しました：{msg}",
+    "confirm.deleteTrain": "選択中の列車を削除しますか？",
+    "confirm.deleteAll": "すべての列車を削除しますか？",
+    "status.allDeleted": "すべての列車を削除しました。",
+    "status.fieldsSaved": "項目を適用しました。",
+    "date.all": "すべて",
+    "date.undated": "日付未設定",
+    "list.allTitle": "すべての列車（{count}）",
+    "list.dateTitle": "{date} の列車",
+    "empty.allSearch": "検索条件に一致する列車はありません。",
+    "empty.allNone": "列車がありません。JSON を読み込んでください。",
+    "empty.dateSearch": "この日には検索条件に一致する列車がありません。",
+    "empty.dateNone": "この日には列車がありません。この日付へ JSON を読み込んでください。",
+    "unit.stops": "駅",
+    "state.shown": "表示中",
+    "state.hidden": "非表示",
+    "import.targetDate": "現在の読み込み先：<strong>{date}</strong>（date のない列車はこの日に追加）",
+    "import.targetAuto": "現在の読み込み先：<strong>JSON の date 項目／ID から自動判定</strong>（日付を選ぶと読み込み先を変更できます）",
+    "prompt.addDate": "追加する日付を入力してください（YYYY-MM-DD）：",
+    "status.invalidDate": "日付形式が正しくありません：『{input}』。YYYY-MM-DD を使用してください。",
+    "status.dateAdded": "{date} を追加し、現在の読み込み先に設定しました。",
+    "status.emptyDatesRemoved": "空の日付を {count} 件削除しました。",
+    "status.noEmptyDates": "削除できる空の日付はありません。",
+    "tip.rideSegment": "実際の乗車区間として通常表示するかを設定します。オフにすると駅と隣接区間を淡色表示します",
+    "stoptype.origin": "始発駅",
+    "stoptype.passenger_stop": "停車駅",
+    "stoptype.pass_through": "通過駅",
+    "stoptype.operational_stop": "運転停車",
+    "stoptype.destination": "終着駅",
+  };
+
+  // The Simplified Chinese UI is derived from the maintained Traditional
+  // Chinese source copy. These are the characters used by the UI strings;
+  // Japanese proper nouns and JSON content are intentionally untouched.
+  const HANS_CHAR_MAP = {
+    "語": "语", "圖": "图", "檢": "检", "視": "视", "輯": "辑",
+    "車": "车", "與": "与", "並": "并", "資": "资", "區": "区",
+    "導": "导", "覽": "览", "說": "说", "尋": "寻", "複": "复",
+    "刪": "删", "選": "选", "擇": "择", "動": "动", "關": "关",
+    "顯": "显", "節": "节", "線": "线", "寬": "宽", "點": "点",
+    "調": "调", "終": "终", "過": "过", "設": "设", "時": "时",
+    "瀏": "浏", "僅": "仅", "隱": "隐", "載": "载", "匯": "汇",
+    "陣": "阵", "個": "个", "欄": "栏", "篩": "筛", "當": "当",
+    "響": "响", "無": "无", "復": "复", "鐵": "铁", "門": "门",
+    "錄": "录", "總": "总", "來": "来", "網": "网", "單": "单",
+    "輛": "辆", "顏": "颜", "發": "发", "類": "类", "運": "运",
+    "轉": "转", "邊": "边", "標": "标", "記": "记", "檔": "档",
+    "驗": "验", "開": "开", "這": "这", "會": "会", "權": "权",
+    "確": "确", "準": "准", "條": "条", "從": "从", "將": "将",
+    "內": "内", "數": "数", "據": "据", "製": "制", "離": "离",
+    "羅": "罗", "啟": "启", "鄰": "邻", "實": "实", "際": "际",
+    "國": "国", "處": "处", "還": "还", "應": "应", "層": "层",
+    "寫": "写", "讀": "读", "識": "识", "別": "别", "歸": "归",
+    "則": "则", "為": "为", "較": "较", "敗": "败", "錯": "错",
+    "碼": "码", "儲": "储", "併": "并", "頁": "页", "鈕": "钮",
+    "編": "编", "預": "预", "細": "细", "間": "间", "貼": "贴",
+    "證": "证", "險": "险", "請": "请", "統": "统", "計": "计",
+    "幹": "干", "閉": "闭", "圓": "圆", "襯": "衬", "號": "号",
+    "經": "经", "磚": "砖", "馬": "马", "連": "连", "試": "试",
+    "橫": "横", "換": "换", "隨": "随", "獨": "独", "後": "后",
+    "沒": "没", "備": "备", "該": "该", "輸": "输", "報": "报",
+    "達": "达", "讓": "让", "屬": "属", "於": "于",
+  };
+
+  const HANS_PHRASE_MAP = {
+    "「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成":
+      "根据日本国土交通省“国土数值信息（铁路数据 N02）”加工制作",
+    "國土數值情報": "国土数值信息",
+    "国土数値情報": "国土数值信息",
+    "車輛公司": "运营公司",
+    "資料來源": "数据来源",
+    "資料": "数据",
+    "匯入": "导入",
+    "匯出": "导出",
+    "載入": "加载",
+    "內建": "内置",
+    "伺服器": "服务器",
+    "檔案": "文件",
+    "欄位": "字段",
+    "套用": "应用",
+    "開啟": "打开",
+    "起站": "始发站",
+    "終站": "终到站",
+    "運轉停車": "技术停车",
+    "檢視": "查看",
+    "導覽": "导航",
+    "搜尋": "搜索",
+    "設定": "设置",
+    "支援": "支持",
+    "目前": "当前",
+    "貼上": "粘贴",
+    "物件": "对象",
+    "預設": "默认",
+    "即時": "立即",
+    "依全部": "根据全部",
+    "依停站": "根据停靠站",
+    "依日期": "按日期",
+    "依 ODbL": "遵循 ODbL",
+    "個停站": "个停靠站",
+  };
+
+  function toSimplifiedChinese(text) {
+    let result = String(text);
+    Object.entries(HANS_PHRASE_MAP).forEach(([from, to]) => {
+      result = result.split(from).join(to);
+    });
+    return result.replace(/[\u3400-\u9fff]/g, (ch) => HANS_CHAR_MAP[ch] || ch);
+  }
 
   // ---- Japanese -> English (romaji / gloss) for stations & services -------
   const NAMES = {
@@ -499,20 +887,30 @@
 
   function t(key, params) {
     const entry = STRINGS[key];
-    const raw = entry ? (entry[currentLang] ?? entry.zh ?? key) : key;
+    let raw = key;
+    if (entry) {
+      if (currentLang === "ja")
+        raw = JA_STRINGS[key] ?? entry.en ?? entry.zh ?? key;
+      else if (currentLang === "zh-Hans")
+        raw = toSimplifiedChinese(entry.zh ?? entry.en ?? key);
+      else if (currentLang === "zh-Hant") raw = entry.zh ?? entry.en ?? key;
+      else raw = entry[currentLang] ?? entry.en ?? entry.zh ?? key;
+    }
     return fill(raw, params);
   }
 
-  // Bilingual display:
-  //   EN -> "東京 (Tōkyō)" (Japanese + romanized gloss)
-  //   ZH -> "東京（とうきょう）" (Japanese + kana reading); names already
-  //         written entirely in kana get no parenthetical.
+  // Proper-name display:
+  //   EN       -> "東京 (Tōkyō)" (Japanese + romanized gloss)
+  //   ZH-Hant  -> "東京（とうきょう）" (Japanese + kana reading)
+  //   ZH-Hans  -> same presentation; source proper nouns stay unchanged
+  //   JA       -> original Japanese only
   function placeName(jp) {
     if (!jp) return jp || "";
     if (currentLang === "en") {
       const en = NAMES[jp];
       return en ? jp + " (" + en + ")" : jp;
     }
+    if (currentLang === "ja") return jp;
     const kana = KANA[jp];
     return kana ? jp + "（" + kana + "）" : jp;
   }
@@ -533,7 +931,10 @@
     scope.querySelectorAll("[data-i18n-title]").forEach((el) => {
       el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
     });
-    document.documentElement.lang = currentLang === "en" ? "en" : "zh-Hant";
+    scope.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria-label")));
+    });
+    document.documentElement.lang = currentLang;
     document.title = t("app.title");
   }
 
@@ -544,6 +945,8 @@
   }
 
   function setLang(lang) {
+    // Migrate calls from the former two-language API.
+    if (lang === "zh") lang = "zh-Hant";
     if (!SUPPORTED.includes(lang)) return;
     if (lang === currentLang) {
       // Re-picking the current language: sync the dropdown if it drifted, but
@@ -574,11 +977,12 @@
   function detectInitialLang() {
     try {
       const saved = localStorage.getItem(LANG_KEY);
+      if (saved === "zh") return "zh-Hant";
       if (SUPPORTED.includes(saved)) return saved;
     } catch (e) {
       /* ignore */
     }
-    return "zh"; // default: Traditional Chinese
+    return "zh-Hant"; // default: Traditional Chinese
   }
 
   currentLang = detectInitialLang();

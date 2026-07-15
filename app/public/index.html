@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <meta content="#ff5522" name="theme-color" />
     <title>N02 Limited Express Train Manager</title>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
     <link rel="stylesheet" href="styles.css" />
@@ -13,186 +14,212 @@
   <body>
     <div id="app">
       <aside id="sidebar">
+        <!-- ============ App header ============ -->
         <header>
-          <div class="lang-switch">
-            <label for="lang-select" data-i18n="lang.label">語言</label>
-            <select id="lang-select" aria-label="Language">
-              <option value="zh">中文（繁體）</option>
-              <option value="en">English</option>
-            </select>
+          <div class="header-row">
+            <h1><span class="brand-mark" aria-hidden="true">■</span><span data-i18n="app.title">N02 特急列車管理</span></h1>
+            <div class="lang-switch">
+              <label for="lang-select" data-i18n="lang.label">語言</label>
+              <select id="lang-select" data-i18n-aria-label="lang.label" aria-label="語言">
+                <option value="zh-Hant">中文（繁體）</option>
+                <option value="zh-Hans">中文（简体）</option>
+                <option value="ja">日本語</option>
+                <option value="en">English</option>
+              </select>
+            </div>
           </div>
-          <h1 data-i18n="app.title">N02 特急列車管理</h1>
           <div class="hint" data-i18n="app.hint">
-            OSM Overlay／伺服器 train-store.json 自動保存載入／逐條匯入
+            在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。
           </div>
         </header>
-        <section class="section">
-          <h2 data-i18n="sec.search">搜尋與操作</h2>
-          <div class="row">
-            <input id="search-input" data-i18n-ph="ph.search" placeholder="搜尋車次、列車、車站或 ID" />
-          </div>
-          <div class="toolbar" style="margin-top: 8px">
-            <button class="primary" id="add-train" data-i18n="btn.addTrain">新增列車</button>
-            <button id="duplicate-train" data-i18n="btn.duplicate">複製</button>
-            <button class="danger" id="delete-train" data-i18n="btn.delete">刪除</button>
-            <button class="danger" id="delete-all-trains" data-i18n="btn.deleteAll">全部刪除</button>
-            <button id="fit-selected" data-i18n="btn.fit">定位</button>
-            <button id="clear-selection" data-i18n="btn.clearSel">取消選擇</button>
-            <button id="toggle-focus-zoom" type="button" aria-pressed="false">
-              自動聚焦：關
-            </button>
+
+        <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
+          <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
+          <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
+          <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
+          <a href="#data-manager"><span aria-hidden="true">⇄</span><span data-i18n="nav.data">資料</span></a>
+          <a href="#display-settings"><span aria-hidden="true">◐</span><span data-i18n="nav.display">顯示</span></a>
+        </nav>
+
+        <!-- ============ Card 1: 列車清單 — search, dates, list, actions ============ -->
+        <section class="card" id="train-browser">
+          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="sec.list">列車清單</span></h2>
+          <div class="card-body">
+            <div class="row">
+              <input id="search-input" data-i18n-ph="ph.search" placeholder="搜尋車次、列車、車站或 ID" />
+            </div>
+            <h3 class="subhead" data-i18n="grp.dates">日期與篩選</h3>
+            <div class="date-bar" id="date-bar"></div>
+            <div class="toolbar">
+              <button id="add-date" data-i18n="btn.addDate">新增日期</button>
+              <button id="remove-empty-dates" data-i18n="btn.removeEmpty">刪除空日期</button>
+              <label class="inline-check"
+                ><input id="map-date-filter" type="checkbox" />
+                <span data-i18n="chk.mapDateFilter">地圖僅顯示當前日期</span></label
+              >
+            </div>
+            <h3 class="subhead" data-i18n="grp.trainResults">當日列車</h3>
+            <div class="train-list-title" id="train-list-title"></div>
+            <div class="train-list" id="train-list"></div>
+            <h3 class="subhead" data-i18n="grp.listActions">列車操作</h3>
+            <div class="toolbar">
+              <button class="primary" id="add-train" data-i18n="btn.addTrain">新增列車</button>
+              <button id="duplicate-train" data-i18n="btn.duplicate">複製</button>
+              <button class="danger" id="delete-train" data-i18n="btn.delete">刪除</button>
+            </div>
+            <div class="toolbar">
+              <button id="fit-selected" data-i18n="btn.fit">定位</button>
+              <button id="clear-selection" data-i18n="btn.clearSel">取消選擇</button>
+              <button id="toggle-focus-zoom" type="button" aria-pressed="false">
+                自動聚焦：關
+              </button>
+            </div>
           </div>
         </section>
-        <section class="section">
-          <details id="display-settings">
-            <summary class="submenu-summary" data-i18n="disp.summary">顯示調節（線寬／站點大小／透明度）</summary>
+
+        <!-- ============ Card 2: 編輯選中列車 — fields + stops ============ -->
+        <section class="card" id="train-editor">
+          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="grp.edit">編輯選中列車</span></h2>
+          <div class="card-body">
+            <h3 class="subhead" data-i18n="sec.trainData">列車資料</h3>
+            <div class="form-grid">
+              <label><span data-i18n="field.id">列車 ID</span> <input id="field-id" /></label>
+              <label><span data-i18n="field.number">車次</span> <input id="field-number" /></label>
+              <label
+                ><span data-i18n="field.trainType">車輛類型</span> <input id="field-train-type" data-i18n-ph="ph.trainType" placeholder="特急／普通／新幹線"
+              /></label>
+              <label
+                ><span data-i18n="field.company">車輛公司</span> <input id="field-company" data-i18n-ph="ph.company" placeholder="JR西日本；直通用／分隔多家公司"
+              /></label>
+              <label
+                ><span data-i18n="field.direction">方向</span> <input id="field-direction" data-i18n-ph="ph.direction" placeholder="下行／上行"
+              /></label>
+              <label><span data-i18n="field.origin">起站</span> <input id="field-origin" /></label>
+              <label><span data-i18n="field.destination">終站</span> <input id="field-destination" /></label>
+              <label><span data-i18n="field.color">顏色</span> <input id="field-color" type="color" /></label>
+              <label
+                ><span data-i18n="field.weight">線寬</span> <input id="field-weight" max="14" min="1" type="number"
+              /></label>
+            </div>
+            <div class="toolbar">
+              <button class="primary" id="save-fields" data-i18n="btn.saveFields">套用欄位</button>
+              <button id="toggle-visible" data-i18n="btn.toggleVisible">顯示／隱藏</button>
+              <button id="move-up" data-i18n="btn.moveUp">上移</button>
+              <button id="move-down" data-i18n="btn.moveDown">下移</button>
+            </div>
+            <div class="status" id="field-status"></div>
+            <div class="divider"></div>
+            <h3 class="subhead" data-i18n="sec.stops">停靠站與通過站</h3>
+            <div class="table-scroll" role="region" tabindex="0" data-i18n-aria-label="table.stopsLabel" aria-label="停靠站表格">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 22px" data-i18n="th.seq">序</th>
+                    <th style="width: 86px" data-i18n="th.station">車站</th>
+                    <th style="width: 54px" data-i18n="th.arr">到</th>
+                    <th style="width: 54px" data-i18n="th.dep">發</th>
+                    <th style="width: 76px" data-i18n="th.type">類型</th>
+                    <th style="width: 40px" data-i18n="th.ride">乘坐</th>
+                    <th style="width: 86px" data-i18n="th.actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="stops-body"></tbody>
+              </table>
+            </div>
+            <div class="toolbar">
+              <button id="add-stop" data-i18n="btn.addStop">新增停站</button>
+              <button id="rebuild-route" data-i18n="btn.rebuildRoute">依停站重建路線</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Card 3: 里程統計 — railprint-style coverage ============ -->
+        <section class="card" id="mileage-stats">
+          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="sec.stats">里程統計</span></h2>
+          <div class="card-body">
+            <div class="stats-headline" id="stats-headline"></div>
+            <div class="stats-rows" id="stats-rows"></div>
+            <p class="hint" data-i18n="stats.hint">
+              依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。
+            </p>
+          </div>
+        </section>
+
+        <!-- ============ Card 4: 資料管理 — import / export / danger zone ============ -->
+        <section class="card" id="data-manager">
+          <h2 class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="grp.data">資料管理</span></h2>
+          <div class="card-body">
+            <h3 class="subhead" data-i18n="sec.import">JSON 匯入／本地資料</h3>
+            <textarea
+              class="import-json-area"
+              id="import-json-input"
+              data-i18n-ph="ph.importJson"
+              placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件'
+              spellcheck="false"
+            ></textarea>
+            <div class="toolbar">
+              <button class="primary" id="apply-import-json" data-i18n="btn.apply">
+                開始載入／逐條匯入
+              </button>
+              <button id="validate-import-json" data-i18n="btn.validate">驗證匯入 JSON</button>
+            </div>
+            <div class="toolbar">
+              <button id="open-local-json" data-i18n="btn.openLocal">打開本地 JSON</button>
+              <button id="save-local-json" data-i18n="btn.saveLocal">保存／另存 JSON</button>
+              <input
+                class="file-input-hidden"
+                id="local-json-file-input"
+                type="file"
+                accept="application/json,.json"
+              />
+            </div>
+            <div class="import-target" id="import-target"></div>
+            <div class="progress-wrap" id="import-progress-wrap" hidden>
+              <div class="progress-track">
+                <div class="progress-fill" id="import-progress-fill"></div>
+              </div>
+              <div class="progress-text" id="import-progress-text"></div>
+            </div>
+            <div class="status" id="import-status"></div>
+            <div class="divider"></div>
+            <h3 class="subhead" data-i18n="sec.export">JSON 匯出</h3>
+            <textarea
+              id="train-json-input"
+              readonly
+              spellcheck="false"
+            ></textarea>
+            <div class="toolbar">
+              <button id="export-json" data-i18n="btn.exportJson">匯出 JSON</button>
+              <button id="download-json" data-i18n="btn.downloadJson">下載 JSON</button>
+              <button id="download-html" data-i18n="btn.downloadHtml">下載目前 HTML</button>
+            </div>
+            <div class="status" id="json-status"></div>
+            <details class="danger-zone">
+              <summary class="subhead danger-head" data-i18n="grp.danger">危險區域</summary>
+              <p class="hint" data-i18n="hint.danger">這些操作會影響全部資料，無法復原，請小心使用。</p>
+              <div class="toolbar">
+                <button class="danger" id="delete-all-trains" data-i18n="btn.deleteAll">全部刪除</button>
+                <button class="danger" id="reset-defaults" data-i18n="btn.resetDefaults">重置示例</button>
+                <button class="danger" id="clear-storage" data-i18n="btn.clearStorage">清除保存資料</button>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- ============ Card 4: 顯示調節 (collapsible) ============ -->
+        <details class="card card-details" id="display-settings">
+          <summary class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="disp.summary">顯示調節（線寬／站點大小／透明度）</span><span class="chev" aria-hidden="true">▾</span></summary>
+          <div class="card-body">
             <div class="display-settings-body" id="display-settings-body"></div>
-            <div class="toolbar" style="margin-top: 8px">
+            <div class="toolbar">
               <button id="display-settings-reset" data-i18n="disp.reset">重置為預設</button>
             </div>
-            <p class="hint" style="margin-top: 6px" data-i18n="disp.hint">
+            <p class="hint" data-i18n="disp.hint">
               調整全部列車的線路粗細、起終點／停靠站／通過站大小與透明度等。設定即時生效，並自動保存到此瀏覽器。
             </p>
-          </details>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.import">JSON 匯入／本地資料</h2>
-          <textarea
-            class="import-json-area"
-            id="import-json-input"
-            data-i18n-ph="ph.importJson"
-            placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件'
-            spellcheck="false"
-          ></textarea>
-          <div class="toolbar" style="margin-top: 8px">
-            <button id="open-local-json" data-i18n="btn.openLocal">打開本地 JSON</button>
-            <button id="save-local-json" data-i18n="btn.saveLocal">保存／另存 JSON</button>
-            <input
-              class="file-input-hidden"
-              id="local-json-file-input"
-              type="file"
-              accept="application/json,.json"
-            />
           </div>
-          <div class="toolbar" style="margin-top: 8px">
-            <button id="validate-import-json" data-i18n="btn.validate">驗證匯入 JSON</button>
-            <button class="primary" id="apply-import-json" data-i18n="btn.apply">
-              開始載入／逐條匯入
-            </button>
-          </div>
-          <div class="import-target" id="import-target"></div>
-          <div class="progress-wrap" id="import-progress-wrap" hidden>
-            <div class="progress-track">
-              <div class="progress-fill" id="import-progress-fill"></div>
-            </div>
-            <div class="progress-text" id="import-progress-text"></div>
-          </div>
-          <div class="status" id="import-status"></div>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.list">列車清單</h2>
-          <div class="date-bar" id="date-bar"></div>
-          <div class="toolbar" style="margin-top: 6px">
-            <button id="add-date" data-i18n="btn.addDate">新增日期</button>
-            <button id="remove-empty-dates" data-i18n="btn.removeEmpty">刪除空日期</button>
-            <label class="inline-check"
-              ><input id="map-date-filter" type="checkbox" />
-              <span data-i18n="chk.mapDateFilter">地圖僅顯示當前日期</span></label
-            >
-          </div>
-          <div class="train-list-title" id="train-list-title"></div>
-          <div class="train-list" id="train-list"></div>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.trainData">列車資料</h2>
-          <div class="form-grid">
-            <label><span data-i18n="field.id">列車 ID</span> <input id="field-id" /></label>
-            <label><span data-i18n="field.number">車次</span> <input id="field-number" /></label>
-            <label
-              ><span data-i18n="field.trainType">車輛類型</span> <input id="field-train-type" data-i18n-ph="ph.trainType" placeholder="特急／普通／新幹線"
-            /></label>
-            <label
-              ><span data-i18n="field.company">車輛公司</span> <input id="field-company" data-i18n-ph="ph.company" placeholder="JR西日本；直通用／分隔多家公司"
-            /></label>
-            <label
-              ><span data-i18n="field.direction">方向</span> <input id="field-direction" data-i18n-ph="ph.direction" placeholder="下行／上行"
-            /></label>
-            <label><span data-i18n="field.origin">起站</span> <input id="field-origin" /></label>
-            <label><span data-i18n="field.destination">終站</span> <input id="field-destination" /></label>
-            <label><span data-i18n="field.color">顏色</span> <input id="field-color" type="color" /></label>
-            <label
-              ><span data-i18n="field.weight">線寬</span> <input id="field-weight" max="14" min="1" type="number"
-            /></label>
-          </div>
-          <div class="toolbar" style="margin-top: 8px">
-            <button class="primary" id="save-fields" data-i18n="btn.saveFields">套用欄位</button>
-            <button id="toggle-visible" data-i18n="btn.toggleVisible">顯示／隱藏</button>
-            <button id="move-up" data-i18n="btn.moveUp">上移</button>
-            <button id="move-down" data-i18n="btn.moveDown">下移</button>
-          </div>
-          <div class="status" id="field-status"></div>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.stops">停靠站與通過站</h2>
-          <div style="overflow: auto">
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 34px" data-i18n="th.seq">序</th>
-                  <th style="width: 96px" data-i18n="th.station">車站</th>
-                  <th style="width: 62px" data-i18n="th.arr">到</th>
-                  <th style="width: 62px" data-i18n="th.dep">發</th>
-                  <th style="width: 104px" data-i18n="th.type">類型</th>
-                  <th style="width: 72px" data-i18n="th.ride">乘坐</th>
-                  <th style="width: 86px" data-i18n="th.actions">操作</th>
-                </tr>
-              </thead>
-              <tbody id="stops-body"></tbody>
-            </table>
-          </div>
-          <div class="toolbar" style="margin-top: 8px">
-            <button id="add-stop" data-i18n="btn.addStop">新增停站</button>
-            <button id="rebuild-route" data-i18n="btn.rebuildRoute">依停站重建路線</button>
-          </div>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.export">JSON 匯出</h2>
-          <textarea
-            id="train-json-input"
-            readonly
-            spellcheck="false"
-          ></textarea>
-          <div class="toolbar" style="margin-top: 8px">
-            <button id="export-json" data-i18n="btn.exportJson">匯出 JSON</button>
-            <button id="download-json" data-i18n="btn.downloadJson">下載 JSON</button>
-            <button id="reset-defaults" data-i18n="btn.resetDefaults">重置示例</button>
-          </div>
-          <div class="toolbar" style="margin-top: 8px">
-            <button id="download-html" data-i18n="btn.downloadHtml">下載目前 HTML</button>
-            <button class="danger" id="clear-storage" data-i18n="btn.clearStorage">清除保存資料</button>
-          </div>
-          <div class="status" id="json-status"></div>
-        </section>
-        <section class="section">
-          <h2 data-i18n="sec.legend">圖例與資料來源</h2>
-          <div class="hint">
-            <span class="legend-dot" style="color: #7c8a82"></span><span data-i18n="legend.railway">全部線路（開關預設關閉）：各線路官方色（淡）＋灰色車站點</span>
-          </div>
-          <div class="hint">
-            <span class="legend-dot" style="color: #1a1a1a"></span><span data-i18n="legend.station">停靠站：墨色圓點（選中列車反白＋墨色圈）</span>
-          </div>
-          <div class="hint">
-            <span class="legend-dot" style="color: var(--accent)"></span><span data-i18n="legend.express">特急路線：全色加粗（選中時墨色底襯）</span>
-          </div>
-          <p class="hint" data-i18n="legend.source1">
-            鐵路線資料：「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成（CC BY 4.0）。
-          </p>
-          <p class="hint" data-i18n="legend.source2">
-            Basemap © OpenStreetMap contributors｜OpenFreeMap (positron).
-            Romanizations © OpenStreetMap contributors, ODbL. Rail package ©
-            railprint (jp-2025).
-          </p>
-        </section>
+        </details>
+
       </aside>
       <main id="map"></main>
     </div>

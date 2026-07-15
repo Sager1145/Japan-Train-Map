@@ -1249,6 +1249,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       persistEachStep: false,
       finalPersist: false,
       selectEarliestDate: !restoredSelectedDate,
+      // A freshly opened page starts as an overview. The user can choose a
+      // train deliberately instead of the progressive loader selecting one.
+      selectFirstTrain: false,
     },
   );
   if (!savedStore) {
@@ -2089,13 +2092,17 @@ function warmRouteCacheForTrain(train) {
   }
 }
 
-// Re-select the first imported train, re-validate the canonical store and
-// (optionally) persist. Shared tail of the two "replace" import paths.
+// Apply the caller's post-load selection policy, re-validate the canonical
+// store and (optionally) persist. Shared tail of the two "replace" paths.
 function finalizeProgressiveLoad(
   appendedIds,
-  { finalPersist = true, selectEarliestDate = false } = {},
+  {
+    finalPersist = true,
+    selectEarliestDate = false,
+    selectFirstTrain = true,
+  } = {},
 ) {
-  selectedTrainId = appendedIds[0] || null;
+  selectedTrainId = selectFirstTrain ? appendedIds[0] || null : null;
   focusedTrainId = null;
   // Cancel any pending batched append-render: the authoritative renderAll()
   // below supersedes it (otherwise the timer fires ~120 ms later and runs one
@@ -2186,6 +2193,7 @@ async function replaceTrainStoreFromStoreProgressive(
     const persistEachStep = Boolean(options.persistEachStep);
     const finalPersist = options.finalPersist !== false;
     const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const selectFirstTrain = options.selectFirstTrain !== false;
 
     resetTrainStoreForProgressiveLoad();
     setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
@@ -2204,7 +2212,11 @@ async function replaceTrainStoreFromStoreProgressive(
       },
     });
 
-    finalizeProgressiveLoad(appendedIds, { finalPersist, selectEarliestDate });
+    finalizeProgressiveLoad(appendedIds, {
+      finalPersist,
+      selectEarliestDate,
+      selectFirstTrain,
+    });
     setImportProgress(total, total, I18N.t("prog.done", { count: total }));
     setStatus(
       els.importStatus,
@@ -2702,7 +2714,6 @@ function appendImportedTrain(
   );
 
   trainStore.trains.push(train);
-  selectedTrainId = train.id;
 
   return train.id;
 }
@@ -2877,39 +2888,72 @@ function persistAndRender() {
 // Custom map-corner control: basemap picker + overlay checkboxes (replaces
 // the old Leaflet layers control).
 function buildMapLayersControl(hasBasemap) {
-  const wrap = document.createElement("div");
+  const wrap = document.createElement("details");
   wrap.className = "map-layers-control";
+  wrap.open = window.matchMedia("(min-width: 901px)").matches;
+
+  const summary = document.createElement("summary");
+  summary.className = "map-layers-summary";
+  const summaryText = document.createElement("span");
+  summary.appendChild(summaryText);
+  wrap.appendChild(summary);
+
+  const body = document.createElement("div");
+  body.className = "map-layers-body";
+
+  const selectLabel = document.createElement("label");
+  selectLabel.className = "map-basemap-field";
+  const selectLabelText = document.createElement("span");
+  selectLabel.appendChild(selectLabelText);
   const select = document.createElement("select");
   // "Positron (online)" is ALWAYS offered: when boot degraded to offline the
   // option becomes the online-retry entry point (picking it re-attempts the
   // basemap via RailMap.retryBasemap and reverts on failure).
-  const POSITRON_LABEL = "Positron (online)";
   const options = [
-    ["positron", hasBasemap ? POSITRON_LABEL : POSITRON_LABEL + " — offline"],
-    ["raster", "Local Tiles (offline)"],
-    ["none", "No Basemap"],
+    ["positron", "map.positron"],
+    ["raster", "map.localTiles"],
+    ["none", "map.noBasemap"],
   ];
-  options.forEach(([value, label]) => {
+  const optionNodes = new Map();
+  options.forEach(([value, labelKey]) => {
     const o = document.createElement("option");
     o.value = value;
-    o.textContent = label;
+    o.textContent = I18N.t(labelKey);
     select.appendChild(o);
+    optionNodes.set(value, { node: o, labelKey });
   });
+  selectLabel.appendChild(select);
+  body.appendChild(selectLabel);
   select.value = hasBasemap ? "positron" : "raster";
   RailMap.setBasemapMode(select.value);
-  const posOption = select.querySelector('option[value="positron"]');
   let prevMode = select.value;
+  let positronState = hasBasemap ? "" : "offline";
+
+  const updateControlTranslations = () => {
+    summaryText.textContent = I18N.t("map.layers");
+    selectLabelText.textContent = I18N.t("map.basemap");
+    select.setAttribute("aria-label", I18N.t("map.basemap"));
+    optionNodes.forEach(({ node, labelKey }, value) => {
+      node.textContent = I18N.t(labelKey);
+      if (value === "positron" && positronState)
+        node.textContent += ` — ${I18N.t("map." + positronState)}`;
+    });
+  };
+  updateControlTranslations();
+
   const ensureBasemap = async () => {
     if (RailMap.hasBasemap()) return true;
-    posOption.textContent = POSITRON_LABEL + " — connecting…";
+    positronState = "connecting";
+    updateControlTranslations();
     const ok = await RailMap.retryBasemap();
-    posOption.textContent = ok
-      ? POSITRON_LABEL
-      : POSITRON_LABEL + " — retry failed";
+    positronState = ok ? "" : "retryFailed";
+    updateControlTranslations();
     if (!ok)
       setTimeout(() => {
-        if (!RailMap.hasBasemap())
-          posOption.textContent = POSITRON_LABEL + " — offline";
+        if (!RailMap.hasBasemap()) {
+          positronState = "offline";
+          updateControlTranslations();
+        }
       }, 2500);
     return ok;
   };
@@ -2940,14 +2984,14 @@ function buildMapLayersControl(hasBasemap) {
       });
     });
   }
-  wrap.appendChild(select);
+
   const toggles = [
-    ["Limited Express Routes", (v) => RailMap.setVisible(v), true],
-    ["Stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
-    ["Pass-through Stations", (v) => RailMap.setMarkerVisibility("pass", v), true],
+    ["map.routes", (v) => RailMap.setVisible(v), true],
+    ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
+    ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
     // 全部線路（全國路網 + 車站點）：opt-in, OFF by default.
     [
-      "All Railway Lines",
+      "map.allRailways",
       (v) => {
         RailMap.setNetworkVisible(v);
         RailMap.setNetworkStationsVisible(v);
@@ -2955,17 +2999,139 @@ function buildMapLayersControl(hasBasemap) {
       false,
     ],
   ];
-  toggles.forEach(([label, apply, on]) => {
+  const toggleLabels = [];
+  toggles.forEach(([labelKey, apply, on]) => {
     const item = document.createElement("label");
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = on;
     cb.addEventListener("change", () => apply(cb.checked));
+    const labelText = document.createElement("span");
+    labelText.textContent = I18N.t(labelKey);
     item.appendChild(cb);
-    item.appendChild(document.createTextNode(" " + label));
-    wrap.appendChild(item);
+    item.appendChild(labelText);
+    toggleLabels.push({ labelText, labelKey });
+    body.appendChild(item);
   });
+
+  // 已乘路線 category toggles: hide/show RIDDEN route lines per category
+  // (新幹線 / JR在來線 / 地下鐵 / 私鐵). 全部鐵路線 above stays independent.
+  const riddenHead = document.createElement("div");
+  riddenHead.className = "map-layers-subhead";
+  const riddenHeadText = document.createElement("span");
+  riddenHeadText.textContent = I18N.t("map.riddenGroup");
+  riddenHead.appendChild(riddenHeadText);
+  toggleLabels.push({ labelText: riddenHeadText, labelKey: "map.riddenGroup" });
+  body.appendChild(riddenHead);
+  [
+    ["stat.hsr", "hsr"],
+    ["map.riddenJr", "jr"],
+    ["stat.metro", "metro"],
+    ["map.riddenPriv", "priv"],
+  ].forEach(([labelKey, cat]) => {
+    const item = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = RIDDEN_CATEGORY_FILTER[cat] !== false;
+    cb.addEventListener("change", () => setRiddenCategoryFilter(cat, cb.checked));
+    const labelText = document.createElement("span");
+    labelText.textContent = I18N.t(labelKey);
+    item.appendChild(cb);
+    item.appendChild(labelText);
+    toggleLabels.push({ labelText, labelKey });
+    body.appendChild(item);
+  });
+  const translateAll = () => {
+    updateControlTranslations();
+    toggleLabels.forEach(({ labelText, labelKey }) => {
+      labelText.textContent = I18N.t(labelKey);
+    });
+  };
+  I18N.onChange(translateAll);
+
+  wrap.appendChild(body);
   map.getContainer().appendChild(wrap);
+}
+
+// One compact, human-readable home for every map symbol explanation and data
+// credit. This replaces MapLibre's fragmented attribution strip so the map has
+// exactly one bottom-right information button on desktop and mobile.
+function buildMapInfoControl() {
+  const control = document.createElement("details");
+  control.className = "map-info-control";
+
+  const summary = document.createElement("summary");
+  summary.className = "map-info-summary";
+  summary.setAttribute("data-i18n-aria-label", "info.button");
+  summary.setAttribute("aria-expanded", "false");
+  summary.innerHTML = '<span aria-hidden="true">i</span>';
+
+  const panel = document.createElement("div");
+  panel.className = "map-info-panel";
+  panel.innerHTML = `
+    <header class="map-info-header">
+      <h2 data-i18n="info.title">圖例與資料來源</h2>
+      <p data-i18n="info.intro">快速理解地圖符號，以及本地圖使用的資料與授權。</p>
+    </header>
+
+    <section class="map-info-section" aria-labelledby="map-info-legend-heading">
+      <h3 id="map-info-legend-heading" data-i18n="info.legendHeading">地圖圖例</h3>
+      <div class="map-info-legend-row">
+        <span class="map-info-symbol map-info-symbol--route" aria-hidden="true"></span>
+        <div><strong data-i18n="info.routeTitle">列車路線</strong><p data-i18n="info.routeDesc">使用列車指定色顯示；選中時增加墨色底襯。</p></div>
+      </div>
+      <div class="map-info-legend-row">
+        <span class="map-info-symbol map-info-symbol--stop" aria-hidden="true"></span>
+        <div><strong data-i18n="info.stopTitle">停靠站</strong><p data-i18n="info.stopDesc">墨色圓點；選中列車時反白並增加墨色外圈。</p></div>
+      </div>
+      <div class="map-info-legend-row">
+        <span class="map-info-symbol map-info-symbol--network" aria-hidden="true"></span>
+        <div><strong data-i18n="info.networkTitle">全部鐵路線</strong><p data-i18n="info.networkDesc">可在地圖圖層中開啟，顯示官方路線色與灰色車站點。</p></div>
+      </div>
+    </section>
+
+    <section class="map-info-section" aria-labelledby="map-info-sources-heading">
+      <h3 id="map-info-sources-heading" data-i18n="info.sourcesHeading">資料與授權</h3>
+      <div class="map-info-sources">
+        <article class="map-info-source">
+          <strong data-i18n="info.n02Title">日本鐵路網</strong>
+          <p data-i18n="info.n02Body">國土交通省「國土數值情報（鐵道資料 N02）」經加工製作。</p>
+          <div class="map-info-links"><a href="https://nlftp.mlit.go.jp/ksj/" target="_blank" rel="noopener noreferrer">MLIT N02</a><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></div>
+        </article>
+        <article class="map-info-source">
+          <strong data-i18n="info.basemapTitle">地圖底圖</strong>
+          <p data-i18n="info.basemapBody">線上使用 OpenFreeMap Positron；離線圖磚使用 CARTO Positron。</p>
+          <div class="map-info-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a><a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a><a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a></div>
+        </article>
+        <article class="map-info-source">
+          <strong data-i18n="info.namesTitle">站名羅馬字</strong>
+          <p data-i18n="info.namesBody">OpenStreetMap contributors，依 ODbL 授權。</p>
+        </article>
+        <article class="map-info-source">
+          <strong data-i18n="info.packageTitle">鐵路資料包</strong>
+          <p data-i18n="info.packageBody">使用 railprint 的 jp-2025 日本鐵路資料包。</p>
+          <div class="map-info-links"><a href="https://github.com/yzhouwang/railprint" target="_blank" rel="noopener noreferrer">railprint</a></div>
+        </article>
+      </div>
+    </section>
+  `;
+
+  control.append(summary, panel);
+  map.getContainer().appendChild(control);
+  I18N.applyStatic(control);
+
+  control.addEventListener("toggle", () => {
+    summary.setAttribute("aria-expanded", control.open ? "true" : "false");
+  });
+  control.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && control.open) {
+      control.open = false;
+      summary.focus();
+    }
+  });
+  map.getContainer().addEventListener("pointerdown", (event) => {
+    if (control.open && !control.contains(event.target)) control.open = false;
+  });
 }
 
 async function initMap(mapAssetsReady) {
@@ -2986,9 +3152,9 @@ async function initMap(mapAssetsReady) {
   map = new maplibregl.Map({
     container: "map",
     style,
-    // Compact (i) control aggregating the OSM basemap + N02 rail CC BY
-    // credits, matching railprint (both are required to be visible).
-    attributionControl: { compact: true },
+    // A custom bottom-right i control presents attribution together with the
+    // map legend in one structured, readable panel.
+    attributionControl: false,
     dragRotate: false,
     pitchWithRotate: false,
     center: [138.2, 36.4],
@@ -3032,6 +3198,7 @@ async function initMap(mapAssetsReady) {
   // (records stay selection-independent — picking a train rebuilds nothing).
   RailMap.setFocusBoost(DISPLAY.focusBoost);
   buildMapLayersControl(Boolean(basemap));
+  buildMapInfoControl();
 
   // Basemap tile failures are expected degradation (offline) — never fatal.
   map.on("error", (e) => {
@@ -3368,7 +3535,7 @@ function bindEvents() {
     );
   document.getElementById("reset-defaults").addEventListener("click", () => {
     trainStore = getDefaultTrainStore();
-    selectedTrainId = trainStore.trains[0]?.id || null;
+    selectedTrainId = null;
     focusedTrainId = null;
     persistAndRender();
     setStatus(els.jsonStatus, I18N.t("status.resetDefaults"), "ok");
@@ -3453,12 +3620,487 @@ function updateFocusZoomButton() {
   btn.classList.toggle("active", focusZoomEnabled);
 }
 
+// =========================================================================
+//  Mileage statistics (railprint-style coverage, classified from N02-25)
+// =========================================================================
+// Every train's actually-ridden route geometry is mapped onto the N02
+// RailroadSection edge set (route coordinates lie exactly on N02 vertices —
+// both the prebuilt matched-routes and the in-browser solver run on the same
+// rail-sections graph), so repeat rides across trains/dates dedupe naturally.
+// Categories follow N02_002 事業者種別 (1=新幹線, 2=JR在来線, 3=公営, 4=民営,
+// 5=第三セクター):
+//   新幹線   = code 1
+//   普通鐵道 = everything except code 1 (在来線)
+//   JR       = codes 1+2 (JR全線)
+//   地下鐵   = recorded BY OPERATOR: every line run by the metro companies /
+//              municipal subway operators below (軌道 classes 21/22 — 都電・
+//              市電 trams — excluded even for these operators)
+//   私鐵     = codes 4+5 minus the metro operators above
+const STAT_MASK_HSR = 1;
+const STAT_MASK_CONV = 2;
+const STAT_MASK_JR = 4;
+const STAT_MASK_METRO = 8;
+const STAT_MASK_PRIV = 16;
+const STAT_CATEGORIES = [
+  { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+  { mask: STAT_MASK_CONV, i18n: "stat.conv" },
+  { mask: STAT_MASK_JR, i18n: "stat.jr" },
+  { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+  { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+];
+// 地下鐵 operators (N02_004 names): the two metro companies + every municipal
+// subway operator in Japan.
+const METRO_OPERATOR_NAMES = new Set([
+  "東京地下鉄", // 東京メトロ
+  "大阪市高速電気軌道", // Osaka Metro
+  "東京都", // 都営地下鉄 (都電 excluded via tram class below)
+  "札幌市",
+  "仙台市",
+  "横浜市",
+  "名古屋市",
+  "京都市",
+  "神戸市",
+  "福岡市",
+]);
+// 都電荒川線 is the ONLY street tram run by a metro-list operator (東京都).
+// NOTE: Osaka Metro's subway lines are legally 軌道 (class 21) too, so the
+// tram exclusion must be scoped to 東京都 — never applied operator-wide.
+const TRAM_RAILWAY_CLASSES = new Set(["21", "22"]);
+
+function classifyN02SectionMask(props) {
+  const code = String(props.N02_002 || "");
+  const cls = String(props.N02_001 || "");
+  const op = props.N02_004 || "";
+  let mask = 0;
+  if (code === "1") mask |= STAT_MASK_HSR;
+  else mask |= STAT_MASK_CONV;
+  if (code === "1" || code === "2") mask |= STAT_MASK_JR;
+  const isMetro =
+    METRO_OPERATOR_NAMES.has(op) &&
+    !(op === "東京都" && TRAM_RAILWAY_CLASSES.has(cls));
+  if (isMetro) mask |= STAT_MASK_METRO;
+  if ((code === "4" || code === "5") && !isMetro) mask |= STAT_MASK_PRIV;
+  return mask;
+}
+
+function statsEdgeKm(ax, ay, bx, by) {
+  const kx = 111.32 * Math.cos((((ay + by) / 2) * Math.PI) / 180);
+  const dx = (ax - bx) * kx;
+  const dy = (ay - by) * 110.574;
+  return Math.hypot(dx, dy);
+}
+
+// N02 coordinates mix 5-decimal (most lines) and full-precision 8-decimal
+// vertices (e.g. 北陸新幹線), while the route solver's graph normalizes all
+// nodes to 5 decimals — so edge keys MUST quantize to the same 5-decimal grid
+// on both sides or full-precision lines never match their ridden routes.
+function statsQuant(v) {
+  return Math.round(v * 1e5) / 1e5;
+}
+function statsEdgeKey(a, b) {
+  const ax = statsQuant(a[0]);
+  const ay = statsQuant(a[1]);
+  const bx = statsQuant(b[0]);
+  const by = statsQuant(b[1]);
+  return ax < bx || (ax === bx && ay < by)
+    ? ax + "," + ay + "|" + bx + "," + by
+    : bx + "," + by + "|" + ax + "," + ay;
+}
+
+// Built once from rail-sections (the untouched N02-25 data) and reused for
+// every stats refresh: edge key -> index into parallel km/mask arrays.
+let _statsEdgeIndex = null;
+function buildStatsEdgeIndex() {
+  if (_statsEdgeIndex || !railSectionsGeoJson) return _statsEdgeIndex;
+  const map = new Map();
+  const kmArr = [];
+  const maskArr = [];
+  for (const f of railSectionsGeoJson.features) {
+    const coords = f.geometry && f.geometry.coordinates;
+    if (!Array.isArray(coords)) continue;
+    const mask = classifyN02SectionMask(f.properties || {});
+    for (let i = 1; i < coords.length; i += 1) {
+      const a = coords[i - 1];
+      const b = coords[i];
+      const key = statsEdgeKey(a, b);
+      const idx = map.get(key);
+      if (idx === undefined) {
+        map.set(key, kmArr.length);
+        kmArr.push(statsEdgeKm(a[0], a[1], b[0], b[1]));
+        maskArr.push(mask);
+      } else {
+        maskArr[idx] |= mask; // shared track: union the categories
+      }
+    }
+  }
+  const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
+  for (let i = 0; i < kmArr.length; i += 1) {
+    totals.all += kmArr[i];
+    for (const c of STAT_CATEGORIES)
+      if (maskArr[i] & c.mask)
+        totals.byMask.set(c.mask, totals.byMask.get(c.mask) + kmArr[i]);
+  }
+  _statsEdgeIndex = { map, km: kmArr, mask: maskArr, totals };
+  return _statsEdgeIndex;
+}
+
+// ── Per-train ridden-edge cache ─────────────────────────────────────────────
+// Walking every train's route geometry cost ~430 ms with a full store — far
+// too heavy to re-run after every renderAll (the debounced recompute landed
+// mid-interaction and froze hover/lane-slide). Each train's walk result is
+// cached under a signature covering its route identity + ride flags, so a
+// recompute only walks trains that materially changed; the cross-train union
+// is a cheap Set merge (a few ms).
+const _statsTrainCache = new Map(); // train.id -> { sig, edges: [], spans: [] }
+
+function statsTrainSig(train) {
+  let rides = "";
+  const stops = train.stops || [];
+  for (let i = 0; i < stops.length; i += 1)
+    rides += stops[i].ride_segment ? "1" : "0";
+  return `${getTrainRouteTemplateKey(train)}:${rides}`;
+}
+
+function pruneStatsTrainCache() {
+  const trains = trainStore.trains || [];
+  if (_statsTrainCache.size <= trains.length + 32) return;
+  const live = new Set(trains.map((t) => t.id));
+  for (const id of [..._statsTrainCache.keys()])
+    if (!live.has(id)) _statsTrainCache.delete(id);
+}
+
+// Walk ONE train's ridden geometry onto the edge index. Anchor-merge walk:
+// the route solver densifies some N02 edges with interpolated points (station
+// snaps / long-edge subdivision), so a naive pair-by-pair lookup misses them.
+// Keep the last on-network anchor and try (anchor -> current) at every vertex
+// — a subdivided N02 edge re-matches as soon as the walk reaches its far
+// endpoint. Off-network connector spans are recorded with the category mask
+// of the edge they reconnect to (mask 0 = truly unattributable).
+function collectTrainStatsEntry(train, idx) {
+  const sig = statsTrainSig(train);
+  const cached = _statsTrainCache.get(train.id);
+  if (cached && cached.sig === sig) return cached;
+  const edges = [];
+  const spans = []; // [spanKey, km, mask]
+  const MAX_BRIDGE_KM = 4;
+  const recordSpan = (from, to, km, mask) => {
+    if (km > 0) spans.push([statsEdgeKey(from, to), km, mask]);
+  };
+  const walk = (coords) => {
+    if (!coords || coords.length < 2) return;
+    let anchor = coords[0];
+    let pendingKm = 0;
+    for (let i = 1; i < coords.length; i += 1) {
+      const prev = coords[i - 1];
+      const v = coords[i];
+      if (anchor[0] === v[0] && anchor[1] === v[1]) continue;
+      const e = idx.map.get(statsEdgeKey(anchor, v));
+      if (e !== undefined) {
+        edges.push(e);
+        anchor = v;
+        pendingKm = 0; // pending hops were interior to this matched edge
+        continue;
+      }
+      const e2 = idx.map.get(statsEdgeKey(prev, v));
+      if (e2 !== undefined) {
+        recordSpan(anchor, prev, pendingKm, idx.mask[e2]);
+        edges.push(e2);
+        anchor = v;
+        pendingKm = 0;
+        continue;
+      }
+      pendingKm += statsEdgeKm(prev[0], prev[1], v[0], v[1]);
+      if (pendingKm > MAX_BRIDGE_KM || i === coords.length - 1) {
+        recordSpan(anchor, v, pendingKm, 0);
+        anchor = v;
+        pendingKm = 0;
+      }
+    }
+  };
+  let features = [];
+  try {
+    features = getMatchedRouteFeatures(train) || [];
+  } catch (err) {
+    features = []; // a single unsolvable train must not sink the whole panel
+  }
+  for (const f of features) {
+    if (!f || !f.geometry) continue;
+    if (!f.properties || f.properties.ride_segment !== true) continue;
+    if (f.geometry.type === "LineString") walk(f.geometry.coordinates);
+    else if (f.geometry.type === "MultiLineString")
+      f.geometry.coordinates.forEach(walk);
+  }
+  const entry = { sig, edges, spans };
+  _statsTrainCache.set(train.id, entry);
+  return entry;
+}
+
+function aggregateMileageStats(idx, entries) {
+  const ridden = new Set();
+  const extraSpans = new Map(); // spanKey -> { km, mask } (dedupe repeat rides)
+  for (const en of entries) {
+    for (const e of en.edges) ridden.add(e);
+    for (const [key, km, mask] of en.spans) {
+      const cur = extraSpans.get(key);
+      if (cur === undefined) extraSpans.set(key, { km, mask });
+      else cur.mask |= mask;
+    }
+  }
+  let riddenAll = 0;
+  let unmatchedKm = 0;
+  const riddenByMask = new Map(STAT_CATEGORIES.map((c) => [c.mask, 0]));
+  for (const e of ridden) {
+    riddenAll += idx.km[e];
+    for (const c of STAT_CATEGORIES)
+      if (idx.mask[e] & c.mask)
+        riddenByMask.set(c.mask, riddenByMask.get(c.mask) + idx.km[e]);
+  }
+  // Connector spans: counted nationally, attributed to their reconnect
+  // category when known; mask-0 remainder is reported as unmatchedKm.
+  for (const span of extraSpans.values()) {
+    riddenAll += span.km;
+    if (span.mask === 0) {
+      unmatchedKm += span.km;
+      continue;
+    }
+    for (const c of STAT_CATEGORIES)
+      if (span.mask & c.mask)
+        riddenByMask.set(c.mask, riddenByMask.get(c.mask) + span.km);
+  }
+  return { totals: idx.totals, riddenAll, riddenByMask, unmatchedKm };
+}
+
+// Synchronous compute (manual/testing use; the UI path runs the time-sliced
+// job below instead so it never blocks an interaction).
+function computeMileageStats() {
+  const idx = buildStatsEdgeIndex();
+  if (!idx) return null;
+  pruneStatsTrainCache();
+  const entries = (trainStore.trains || []).map((t) =>
+    collectTrainStatsEntry(t, idx),
+  );
+  return aggregateMileageStats(idx, entries);
+}
+
+// ── Ridden-line category display filter (map layers control) ────────────────
+// Four checkboxes (新幹線 / JR在來線 / 地下鐵 / 私鐵) hide/show RIDDEN route
+// lines by category. Unridden intervals and the 全部鐵路線 network overlay are
+// untouched. Each route feature is classified once by dominant km over the
+// same N02 edge index the mileage stats use.
+const RIDDEN_CATEGORY_FILTER = { hsr: true, jr: true, metro: true, priv: true };
+const _featureCategoryCache = new WeakMap();
+
+function riddenFeatureCategory(feature) {
+  if (_featureCategoryCache.has(feature))
+    return _featureCategoryCache.get(feature);
+  // Read-only: NEVER build the (expensive) edge index from the render path —
+  // the stats job builds it off-thread-budget; until then stay visible.
+  const idx = _statsEdgeIndex;
+  if (!idx) return null; // network still loading -> undetermined, stays visible
+  const km = { hsr: 0, jr: 0, metro: 0, priv: 0 };
+  const lines =
+    feature.geometry.type === "LineString"
+      ? [feature.geometry.coordinates]
+      : feature.geometry.type === "MultiLineString"
+        ? feature.geometry.coordinates
+        : [];
+  for (const cs of lines) {
+    for (let i = 1; i < cs.length; i += 1) {
+      const e = idx.map.get(statsEdgeKey(cs[i - 1], cs[i]));
+      if (e === undefined) continue;
+      const m = idx.mask[e];
+      const k = idx.km[e];
+      if (m & STAT_MASK_HSR) km.hsr += k;
+      else if (m & STAT_MASK_METRO) km.metro += k;
+      else if (m & STAT_MASK_JR) km.jr += k;
+      else km.priv += k;
+    }
+  }
+  let best = null;
+  let bestKm = 0;
+  for (const c of ["hsr", "metro", "jr", "priv"]) {
+    if (km[c] > bestKm) {
+      bestKm = km[c];
+      best = c;
+    }
+  }
+  _featureCategoryCache.set(feature, best);
+  return best;
+}
+
+function riddenFeatureVisible(feature) {
+  const c = riddenFeatureCategory(feature);
+  return c === null || RIDDEN_CATEGORY_FILTER[c] !== false;
+}
+
+function setRiddenCategoryFilter(cat, on) {
+  RIDDEN_CATEGORY_FILTER[cat] = Boolean(on);
+  if (typeof invalidateDeckRouteCaches === "function")
+    invalidateDeckRouteCaches();
+  if (typeof renderTrainLayers === "function") renderTrainLayers();
+}
+
+function anyRiddenCategoryHidden() {
+  return (
+    RIDDEN_CATEGORY_FILTER.hsr === false ||
+    RIDDEN_CATEGORY_FILTER.jr === false ||
+    RIDDEN_CATEGORY_FILTER.metro === false ||
+    RIDDEN_CATEGORY_FILTER.priv === false
+  );
+}
+
+// Category of ONE station, classified from its own N02 line attributes
+// (stations.json carries N02_001/N02_002/N02_004). Used to hide a hidden
+// category's STATION DOTS along with its lines.
+function markerCategoryForStation(stationFeature) {
+  const p = stationFeature && stationFeature.properties;
+  if (!p || (!p.N02_002 && !p.N02_001)) return null;
+  const mask = classifyN02SectionMask(p);
+  if (mask & STAT_MASK_HSR) return "hsr";
+  if (mask & STAT_MASK_METRO) return "metro";
+  if (mask & STAT_MASK_JR) return "jr";
+  return "priv";
+}
+
+function formatStatKm(km) {
+  return Math.round(km).toLocaleString();
+}
+function formatStatPct(pct) {
+  return pct > 0 && pct < 10 ? pct.toFixed(1) : String(Math.round(pct));
+}
+
+// ── Time-sliced stats job ───────────────────────────────────────────────────
+// The UI recompute path: never blocks more than ~12 ms at a time. A newer
+// schedule cancels an in-flight job via the token.
+let _statsJobToken = 0;
+const _statsYield = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+async function buildStatsEdgeIndexSliced(token) {
+  if (_statsEdgeIndex || !railSectionsGeoJson) return;
+  const feats = railSectionsGeoJson.features;
+  const map = new Map();
+  const kmArr = [];
+  const maskArr = [];
+  let t0 = performance.now();
+  for (let fi = 0; fi < feats.length; fi += 1) {
+    const f = feats[fi];
+    const coords = f.geometry && f.geometry.coordinates;
+    if (!Array.isArray(coords)) continue;
+    const mask = classifyN02SectionMask(f.properties || {});
+    for (let i = 1; i < coords.length; i += 1) {
+      const a = coords[i - 1];
+      const b = coords[i];
+      const key = statsEdgeKey(a, b);
+      const idx = map.get(key);
+      if (idx === undefined) {
+        map.set(key, kmArr.length);
+        kmArr.push(statsEdgeKm(a[0], a[1], b[0], b[1]));
+        maskArr.push(mask);
+      } else {
+        maskArr[idx] |= mask;
+      }
+    }
+    if ((fi & 127) === 127 && performance.now() - t0 > 12) {
+      await _statsYield();
+      if (token !== _statsJobToken) return; // superseded
+      t0 = performance.now();
+    }
+  }
+  const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
+  for (let i = 0; i < kmArr.length; i += 1) {
+    totals.all += kmArr[i];
+    for (const c of STAT_CATEGORIES)
+      if (maskArr[i] & c.mask)
+        totals.byMask.set(c.mask, totals.byMask.get(c.mask) + kmArr[i]);
+  }
+  _statsEdgeIndex = { map, km: kmArr, mask: maskArr, totals };
+}
+
+async function runMileageStatsJob() {
+  const token = ++_statsJobToken;
+  const headline = document.getElementById("stats-headline");
+  const rows = document.getElementById("stats-rows");
+  if (!headline || !rows) return;
+  if (!railSectionsGeoJson) {
+    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.loading"))}</div>`;
+    rows.innerHTML = "";
+    if (railSectionsReady)
+      railSectionsReady.then(() => scheduleMileageStats()).catch(() => {});
+    return;
+  }
+  if (!_statsEdgeIndex) {
+    await buildStatsEdgeIndexSliced(token);
+    if (token !== _statsJobToken || !_statsEdgeIndex) return;
+  }
+  const idx = _statsEdgeIndex;
+  pruneStatsTrainCache();
+  const trains = trainStore.trains || [];
+  const entries = [];
+  let t0 = performance.now();
+  for (const train of trains) {
+    entries.push(collectTrainStatsEntry(train, idx));
+    if (performance.now() - t0 > 12) {
+      await _statsYield();
+      if (token !== _statsJobToken) return; // superseded by a newer schedule
+      t0 = performance.now();
+    }
+  }
+  renderMileageStatsDom(aggregateMileageStats(idx, entries));
+}
+
+// Synchronous render (manual/testing): computes in one go, then paints.
+function renderMileageStats() {
+  const s = computeMileageStats();
+  if (s) renderMileageStatsDom(s);
+}
+
+function renderMileageStatsDom(s) {
+  const headline = document.getElementById("stats-headline");
+  const rows = document.getElementById("stats-rows");
+  if (!headline || !rows || !s) return;
+  const pctAll = s.totals.all > 0 ? (100 * s.riddenAll) / s.totals.all : 0;
+  headline.innerHTML = `
+    <div class="stats-hero">
+      <span class="stats-pct">${formatStatPct(pctAll)}<span class="unit">%</span></span>
+      <span class="stats-sub">${formatStatKm(s.riddenAll)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.t("stat.all"))}</span>
+    </div>
+    <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pctAll).toFixed(2)}%"></div></div>`;
+  rows.innerHTML = STAT_CATEGORIES.map((c) => {
+    const tot = s.totals.byMask.get(c.mask) || 0;
+    const rid = s.riddenByMask.get(c.mask) || 0;
+    const pct = tot > 0 ? (100 * rid) / tot : 0;
+    return `
+      <div class="stat-row">
+        <div class="stat-row-head">
+          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
+          <span class="stat-val"><span class="stat-pct">${formatStatPct(pct)}%</span><span class="stat-km">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
+        </div>
+        <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
+      </div>`;
+  }).join("");
+}
+
+// Debounced: renderAll fires on every store mutation; the time-sliced job
+// re-runs once things settle. Per-train caching means an unchanged train
+// costs one signature check, so a full refresh is a few ms of merged Sets.
+let _statsRenderTimer = null;
+function scheduleMileageStats() {
+  if (_statsRenderTimer) clearTimeout(_statsRenderTimer);
+  _statsRenderTimer = setTimeout(() => {
+    _statsRenderTimer = null;
+    runMileageStatsJob().catch((err) =>
+      console.warn("mileage stats job failed", err),
+    );
+  }, 400);
+}
+
 function renderAll({ updateJsonTextarea = true } = {}) {
   perfMeasure("renderDateButtons", renderDateButtons);
   perfMeasure("renderTrainList", renderTrainList);
   updateImportTarget();
   perfMeasure("renderEditor", renderEditor);
   perfMeasure("renderTrainLayers", renderTrainLayers);
+  scheduleMileageStats();
   // Serializing the whole store to fill the export textarea is O(store size).
   // Callers in hot loops (progressive import) skip it; everyone else gets a
   // debounced refresh so the serialization never blocks the interaction.
@@ -3606,6 +4248,42 @@ function renderTrainList() {
 // Build ONE sidebar card. Shared by the full renderTrainList() and the
 // incremental per-train append used during progressive import, so both render
 // identically.
+// List cards intentionally show only the primary Japanese name. Parenthetical
+// English glosses and kana readings remain in the source data/editor/export,
+// but are visual noise in this dense overview and made wrapping much worse.
+function listPrimaryName(value) {
+  const source = String(value || "");
+  const isSecondary = /[\p{Script=Latin}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+  let result = "";
+  let group = "";
+  let depth = 0;
+
+  for (const char of source) {
+    if (char === "(" || char === "（") {
+      if (depth === 0) group = "";
+      group += char;
+      depth += 1;
+    } else if ((char === ")" || char === "）") && depth > 0) {
+      group += char;
+      depth -= 1;
+      if (depth === 0) {
+        if (!isSecondary.test(group.slice(1, -1))) result += group;
+        group = "";
+      }
+    } else if (depth > 0) {
+      group += char;
+    } else {
+      result += char;
+    }
+  }
+
+  // Preserve malformed/unclosed source text instead of silently deleting it.
+  if (group) result += group;
+  return result
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function buildTrainListItemElement(train, showingAll) {
   const item = document.createElement("button");
   item.type = "button";
@@ -3614,17 +4292,21 @@ function buildTrainListItemElement(train, showingAll) {
   // In the combined "全部" view each card shows its date badge; per-date views
   // omit it (the whole list is one date already).
   const dateBadge = showingAll
-    ? `<span class="train-date-badge">${escapeHtml(dateLabel(getTrainDate(train)))}</span>`
+    ? `<span class="train-date-badge">${escapeHtml(dateLabel(getTrainDate(train)))}</span> `
     : "";
   const depMinutes = getTrainDepartureMinutes(train);
   const depText = depMinutes === Infinity ? "—:—" : formatMinutes(depMinutes);
+  const primaryNumber = listPrimaryName(train.number || train.id);
+  const primaryTypeCompany = listPrimaryName(trainTypeCompanyLabel(train));
+  const primaryOrigin = listPrimaryName(train.origin || "?");
+  const primaryDestination = listPrimaryName(train.destination || "?");
+  const visibility = train.visible === false ? I18N.t("state.hidden") : I18N.t("state.shown");
   item.innerHTML = `
         <span class="swatch" style="background:${escapeAttr(train.style?.color || DEFAULT_TRAIN_COLOR)}"></span>
-        <span style="min-width:0">
-          <span class="train-title">${dateBadge}${escapeHtml(train.number || train.id)} ${escapeHtml(trainTypeCompanyLabel(train))}</span>
-          <span class="train-meta">${escapeHtml(I18N.placeName(train.origin || "?"))} → ${escapeHtml(I18N.placeName(train.destination || "?"))} · ${I18N.t("tag.dep")} ${escapeHtml(depText)} · ${train.stops?.length || 0} ${I18N.t("unit.stops")}</span>
+        <span class="train-item-main">
+          <span class="train-title">${dateBadge}${escapeHtml(primaryNumber)} ${escapeHtml(primaryTypeCompany)}</span>
+          <span class="train-meta">${escapeHtml(primaryOrigin)} → ${escapeHtml(primaryDestination)} · ${I18N.t("tag.dep")} ${escapeHtml(depText)} · ${train.stops?.length || 0} ${I18N.t("unit.stops")} <span class="train-state">${escapeHtml(visibility)}</span></span>
         </span>
-        <span class="train-meta">${train.visible === false ? I18N.t("state.hidden") : I18N.t("state.shown")}</span>
       `;
   item.addEventListener("click", () => pickTrain(train.id));
   return item;
@@ -3973,13 +4655,13 @@ function renderStopsTable(train) {
               data-stop-index="${index}"
               ${(isPassThroughStop(stop) ? effectiveStopRide(train.stops, index) : stop.ride_segment) ? "checked" : ""}
               ${isPassThroughStop(stop) ? "disabled" : ""}
-              title="${escapeAttr(isPassThroughStop(stop) ? "通過站不可單獨切換：隨其所在停靠站區間自動顯示／隱藏 (pass-through follows its stop interval)" : I18N.t("tip.rideSegment"))}"
+              title="${escapeAttr(isPassThroughStop(stop) ? I18N.t("tip.passRideFollows") : I18N.t("tip.rideSegment"))}"
             >
           </td>
           <td class="stop-actions">
-            <button class="icon" title="Move up" data-stop-action="up" data-stop-index="${index}">↑</button>
-            <button class="icon" title="Move down" data-stop-action="down" data-stop-index="${index}">↓</button>
-            <button class="icon danger" title="Delete" data-stop-action="delete" data-stop-index="${index}">×</button>
+            <button class="icon" title="${escapeAttr(I18N.t("btn.moveUp"))}" aria-label="${escapeAttr(I18N.t("btn.moveUp"))}" data-stop-action="up" data-stop-index="${index}">↑</button>
+            <button class="icon" title="${escapeAttr(I18N.t("btn.moveDown"))}" aria-label="${escapeAttr(I18N.t("btn.moveDown"))}" data-stop-action="down" data-stop-index="${index}">↓</button>
+            <button class="icon danger" title="${escapeAttr(I18N.t("btn.delete"))}" aria-label="${escapeAttr(I18N.t("btn.delete"))}" data-stop-action="delete" data-stop-index="${index}">×</button>
           </td>
         `;
     return tr;
@@ -4679,6 +5361,7 @@ function buildDeckOverlapMap(items) {
     if (flags.dimmed) return false;
     const ridden =
       item.feature.properties && item.feature.properties.ride_segment === true;
+    if (ridden && !riddenFeatureVisible(item.feature)) return false;
     const { opacity } = routeSegmentStyleValues(train, ridden, flags);
     return opacity > 0;
   };
@@ -4915,6 +5598,7 @@ function buildDeckRouteRecords(items) {
     const tid = train && train.id;
     const ridden =
       feature.properties && feature.properties.ride_segment === true;
+    if (ridden && !riddenFeatureVisible(feature)) return; // category toggled off
     const rgb = hexToRgb(
       train.style && train.style.color
         ? train.style.color
@@ -5167,6 +5851,9 @@ function buildDeckMarkerRecords(orderedTrains) {
     const boundarySet = new Set(
       ridden.length ? [ridden[0], ridden[ridden.length - 1]] : [],
     );
+    // Category filter (新幹線/JR在來線/地下鐵/私鐵): only resolved when at
+    // least one toggle is off, so the default path pays nothing extra.
+    const catFilterOn = anyRiddenCategoryHidden();
     stops.forEach((stop, idx) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
@@ -5175,6 +5862,11 @@ function buildDeckMarkerRecords(orderedTrains) {
       // Hidden (not effectively ridden) markers are dropped entirely.
       const eff = effectiveStopRide(stops, idx);
       if (!eff) return;
+      if (catFilterOn) {
+        const st = resolveStationForTrain(stop, train);
+        const cat = st ? markerCategoryForStation(st) : null;
+        if (cat && RIDDEN_CATEGORY_FILTER[cat] === false) return;
+      }
       stopFeature.properties.ride_segment = eff;
       stopFeature.properties.ride_boundary = boundarySet.has(idx);
       const rec = deckMarkerRecord(
@@ -5184,11 +5876,31 @@ function buildDeckMarkerRecords(orderedTrains) {
         isPass ? "pass" : "stop",
       );
       if (rec) records.push(rec);
+      // 中途停靠站: pass-through-sized circle + BLACK center dot (the black
+      // core is a second record on the same layer, drawn on top).
+      if (
+        rec &&
+        !isPass &&
+        stopFeature.properties.ride_boundary !== true
+      ) {
+        records.push({
+          ...rec,
+          radius: Math.max(1.1, rec.radius * 0.45),
+          lineWidth: 0,
+          fillColor: [26, 26, 26],
+          lineColor: [26, 26, 26],
+          nopick: true,
+        });
+      }
     });
     if (!DISPLAY.onlyEndpoints) {
       getComputedPassThroughFeaturesCached(train).forEach((feature) => {
         if (feature.properties && feature.properties.ride_segment === false)
           return;
+        if (catFilterOn) {
+          const cat = markerCategoryForStation(feature);
+          if (cat && RIDDEN_CATEGORY_FILTER[cat] === false) return;
+        }
         const rec = deckMarkerRecord(feature, train, opts, "pass");
         if (rec) records.push(rec);
       });
@@ -5240,6 +5952,11 @@ function getComputedPassThroughFeatures(train) {
           name: stationName(station),
           n02_station_code: stationCode(station),
           n02_group_code: stationGroupCode(station),
+          // station's own N02 line attributes — the ridden-category marker
+          // filter classifies computed pass-throughs from these
+          N02_001: station.properties?.N02_001 || "",
+          N02_002: station.properties?.N02_002 || "",
+          N02_004: station.properties?.N02_004 || "",
           stop_type: "pass_through",
           pass_through_computed: true,
           train_id: train.id,
@@ -7680,12 +8397,18 @@ function stopMarkerStyleValues(
   isBoundary,
   { focused = false, dimmed = false } = {},
 ) {
-  const baseRadius = isBoundary ? DISPLAY.terminalRadius : DISPLAY.stopRadius;
+  // Intermediate stops render at PASS-THROUGH size (a black center dot on
+  // top distinguishes them — added as a second record by the marker builder);
+  // only the true boarding/alighting boundary keeps the large terminal dot.
+  const baseRadius = isBoundary ? DISPLAY.terminalRadius : DISPLAY.passRadius;
+  const boost = isBoundary
+    ? DISPLAY.focusBoost
+    : Math.round(DISPLAY.focusBoost / 2);
   // Date-scope dim is paint-level now (RailMap.setDateScope), not baked.
   void dimmed;
   const alpha = 1;
   return {
-    radius: focused ? baseRadius + DISPLAY.focusBoost : baseRadius,
+    radius: focused ? baseRadius + boost : baseRadius,
     lineWidth: Math.max(
       1,
       Math.round((focused ? 2 : 1) * DISPLAY.markerStrokeScale),
