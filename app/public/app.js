@@ -879,6 +879,90 @@ const OVERLAP_SNAP_METERS = (function () {
   return 2.5;
 })();
 
+// Visually adjacent railway alignments can form one interaction corridor even
+// when they are different N02 tracks (for example the conventional JR line and
+// the Hokuriku Shinkansen south of Nagano). Keep this tolerance physical and
+// zoom-independent: it describes track-to-track separation, not screen pixels.
+// Direction + longitudinal-overlap checks below prevent crossings and nearby
+// but unrelated end-to-end segments from being merged.
+const OVERLAP_NEAR_PARALLEL_METERS = (function () {
+  try {
+    const m = /[?&]nearoverlap=(\d+(?:\.\d+)?)/.exec(location.search);
+    if (m) return Number(m[1]);
+  } catch (e) {
+    /* no location — use default */
+  }
+  return 120;
+})();
+
+const OVERLAP_NEAR_PARALLEL_COS = Math.cos((20 * Math.PI) / 180);
+
+function pointSegmentDistanceXY(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+// Return the separation of two genuinely side-by-side segments, or null when
+// they merely cross, point towards one another, or have no longitudinal
+// overlap. Coordinates are projected into a local metre plane for the test.
+function nearParallelSegmentSeparation(a0, a1, b0, b1, maxMeters) {
+  const lat = (a0[1] + a1[1] + b0[1] + b1[1]) / 4;
+  const sx = 111320 * (Math.cos((lat * Math.PI) / 180) || 1e-6);
+  const sy = 111320;
+  const ax = a0[0] * sx;
+  const ay = a0[1] * sy;
+  const bx = a1[0] * sx;
+  const by = a1[1] * sy;
+  const cx = b0[0] * sx;
+  const cy = b0[1] * sy;
+  const dx = b1[0] * sx;
+  const dy = b1[1] * sy;
+  const avx = bx - ax;
+  const avy = by - ay;
+  const bvx = dx - cx;
+  const bvy = dy - cy;
+  const al = Math.hypot(avx, avy);
+  const bl = Math.hypot(bvx, bvy);
+  if (al < 1 || bl < 1) return null;
+  const aux = avx / al;
+  const auy = avy / al;
+  const bux = bvx / bl;
+  const buy = bvy / bl;
+  if (Math.abs(aux * bux + auy * buy) < OVERLAP_NEAR_PARALLEL_COS)
+    return null;
+
+  // Both projection tests are required. They reject two collinear segments
+  // whose endpoints are close but whose actual intervals do not run beside
+  // one another.
+  const bProj0 = (cx - ax) * aux + (cy - ay) * auy;
+  const bProj1 = (dx - ax) * aux + (dy - ay) * auy;
+  const overlapA =
+    Math.min(al, Math.max(bProj0, bProj1)) -
+    Math.max(0, Math.min(bProj0, bProj1));
+  const aProj0 = (ax - cx) * bux + (ay - cy) * buy;
+  const aProj1 = (bx - cx) * bux + (by - cy) * buy;
+  const overlapB =
+    Math.min(bl, Math.max(aProj0, aProj1)) -
+    Math.max(0, Math.min(aProj0, aProj1));
+  const requiredOverlap = Math.max(
+    0.75,
+    Math.min(6, Math.min(al, bl) * 0.15),
+  );
+  if (overlapA < requiredOverlap || overlapB < requiredOverlap) return null;
+
+  const separation = Math.min(
+    pointSegmentDistanceXY(ax, ay, cx, cy, dx, dy),
+    pointSegmentDistanceXY(bx, by, cx, cy, dx, dy),
+    pointSegmentDistanceXY(cx, cy, ax, ay, bx, by),
+    pointSegmentDistanceXY(dx, dy, ax, ay, bx, by),
+  );
+  return separation <= maxMeters ? separation : null;
+}
+
 // Shared vertex canonicaliser, rebuilt per overlap pass (refreshRouteVertexSnap
 // from buildDeckOverlapMap). `_routeVertexSnap(coord)` returns the canonical
 // representative [lon,lat] for coord's ~OVERLAP_SNAP_METERS neighbourhood; the
@@ -5864,13 +5948,17 @@ function smoothCorridorCurve(line) {
     0.5,
     Math.min(2, Number(APPLIED_FIT_CURVE_SETTINGS.fitCurvePrecision) || 1),
   );
-  const minRadius = Math.max(
+  const requestedMinRadius = Math.max(
     100,
     Math.min(
       40000,
       Number(APPLIED_FIT_CURVE_SETTINGS.fitCurveMinRadius) || 3100,
     ),
   );
+  // Solve with a small safety margin so discrete output sampling, latitude
+  // scaling and endpoint correction can never pull the measured result below
+  // the user-facing minimum radius.
+  const minRadius = requestedMinRadius * 1.03;
   const minDetail = Math.max(
     20,
     Math.min(
@@ -6065,6 +6153,27 @@ function smoothCorridorCurve(line) {
       a[1] + (b[1] - a[1]) * t,
     ]);
   }
+  // Open B-splines are C2 only at interior knots. Make the first/last three
+  // controls collinear as well, which forces zero endpoint curvature instead
+  // of allowing a tight hook beside a station or overlap-run endpoint.
+  if (controls.length <= 4) {
+    const a = controls[0];
+    const b = controls[controls.length - 1];
+    controls = [0, 1 / 3, 2 / 3, 1].map((t) => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+    ]);
+  } else {
+    controls[1] = [
+      (controls[0][0] + controls[2][0]) / 2,
+      (controls[0][1] + controls[2][1]) / 2,
+    ];
+    const n = controls.length;
+    controls[n - 2] = [
+      (controls[n - 1][0] + controls[n - 3][0]) / 2,
+      (controls[n - 1][1] + controls[n - 3][1]) / 2,
+    ];
+  }
 
   // Open/clamped cubic B-spline evaluated with de Boor. Unlike a polyline or
   // Catmull-Rom chain this is C2 continuous at every interior knot, so both
@@ -6123,7 +6232,10 @@ function smoothCorridorCurve(line) {
     const step = length / Math.max(1, points.length - 1);
     const half = Math.max(
       1,
-      Math.round(Math.max(60, minDetail * 0.2) / Math.max(1, step)),
+      Math.round(
+        Math.max(45, Math.min(180, minDetail * 0.04)) /
+          Math.max(1, step),
+      ),
     );
     let radius = Infinity;
     for (let i = half; i < points.length - half; i += 1)
@@ -6142,13 +6254,13 @@ function smoothCorridorCurve(line) {
   // the radius never silently violates the maximum-deviation option. This
   // global fallback is what lets the fit leave a jagged source instead of
   // merely rounding each of its individual corners.
-  if (achievedMinRadius < minRadius * 0.98) {
+  if (achievedMinRadius < minRadius * 0.999) {
     const originalControls = controls.map((p) => p.slice());
     let bestControls = originalControls;
     let bestSpline = splineMetric;
     let bestRadius = achievedMinRadius;
-    for (let pass = 1; pass <= 16; pass += 1) {
-      const f = pass / 16;
+    for (let pass = 1; pass <= 32; pass += 1) {
+      const f = pass / 32;
       controls = originalControls.map((p, i) => {
         const t = i / Math.max(1, originalControls.length - 1);
         const ai = Math.round(t * (anchorMetric.length - 1));
@@ -6171,21 +6283,125 @@ function smoothCorridorCurve(line) {
         bestControls = controls.map((p) => p.slice());
         bestSpline = candidate;
       }
-      if (candidateRadius >= minRadius * 0.98) break;
+      if (candidateRadius >= minRadius * 0.999) break;
     }
     controls = bestControls;
     splineMetric = bestSpline;
     achievedMinRadius = bestRadius;
   }
-  const cur = splineMetric.map((p) => [
+
+  // Hairpin/loop corridors can have endpoints that are close together even
+  // though the shared track between them is long. Pulling such a curve toward
+  // its chord collapses it into a hook. Try constant-curvature circular arcs
+  // instead; every point on an accepted candidate has one explicit radius.
+  let usedCircularArc = false;
+  if (achievedMinRadius < minRadius * 0.999) {
+    const start = splineMetric[0];
+    const end = splineMetric[splineMetric.length - 1];
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    const chord = Math.hypot(dx, dy);
+    const minimumArcRadius = Math.max(minRadius * 1.03, chord * 0.5001);
+    const radii = Array.from(
+      new Set(
+        [
+          minimumArcRadius,
+          Math.max(minimumArcRadius, total / (2 * Math.PI)),
+          Math.max(minimumArcRadius, total / Math.PI),
+          minimumArcRadius * 1.5,
+        ].map((v) => Math.round(v * 1000) / 1000),
+      ),
+    );
+    let bestArc = null;
+    let bestArcScore = Infinity;
+    radii.forEach((radius) => {
+      const half = chord / 2;
+      const height = Math.sqrt(Math.max(0, radius * radius - half * half));
+      const mx0 = (start[0] + end[0]) / 2;
+      const my0 = (start[1] + end[1]) / 2;
+      const nx = chord > 1e-9 ? -dy / chord : 0;
+      const ny = chord > 1e-9 ? dx / chord : 1;
+      [-1, 1].forEach((side) => {
+        const center = [mx0 + nx * height * side, my0 + ny * height * side];
+        const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
+        const endAngle = Math.atan2(end[1] - center[1], end[0] - center[0]);
+        let shortSweep = endAngle - startAngle;
+        while (shortSweep > Math.PI) shortSweep -= 2 * Math.PI;
+        while (shortSweep < -Math.PI) shortSweep += 2 * Math.PI;
+        [shortSweep, shortSweep > 0 ? shortSweep - 2 * Math.PI : shortSweep + 2 * Math.PI]
+          .forEach((sweep) => {
+            if (Math.abs(sweep) < 1e-6) return;
+            const candidate = new Array(outputN);
+            for (let i = 0; i < outputN; i += 1) {
+              const t = i / (outputN - 1);
+              const a = startAngle + sweep * t;
+              candidate[i] = [
+                center[0] + Math.cos(a) * radius,
+                center[1] + Math.sin(a) * radius,
+              ];
+            }
+            let sampledDeviation = 0;
+            let maxNearestDeviation = 0;
+            let sampledCount = 0;
+            const stride = Math.max(1, Math.floor(outputN / 96));
+            for (let i = 0; i < outputN; i += stride) {
+              const p = candidate[i];
+              let nearest = Infinity;
+              for (let j = 0; j < anchorMetric.length - 1; j += 1) {
+                const a0 = anchorMetric[j];
+                const b0 = anchorMetric[j + 1];
+                const vx = b0[0] - a0[0];
+                const vy = b0[1] - a0[1];
+                const den = vx * vx + vy * vy;
+                const u = den
+                  ? Math.max(
+                      0,
+                      Math.min(
+                        1,
+                        ((p[0] - a0[0]) * vx + (p[1] - a0[1]) * vy) /
+                          den,
+                      ),
+                    )
+                  : 0;
+                nearest = Math.min(
+                  nearest,
+                  Math.hypot(
+                    p[0] - (a0[0] + vx * u),
+                    p[1] - (a0[1] + vy * u),
+                  ),
+                );
+              }
+              sampledDeviation += nearest;
+              maxNearestDeviation = Math.max(maxNearestDeviation, nearest);
+              sampledCount += 1;
+            }
+            if (maxNearestDeviation > maxDeviation * 1.02) return;
+            const arcLength = radius * Math.abs(sweep);
+            const score =
+              sampledDeviation / Math.max(1, sampledCount) +
+              Math.abs(arcLength - total) * 0.08;
+            if (score < bestArcScore) {
+              bestArcScore = score;
+              bestArc = candidate;
+            }
+          });
+      });
+    });
+    if (bestArc) {
+      splineMetric = bestArc;
+      achievedMinRadius = measuredSplineRadius(splineMetric);
+      usedCircularArc = true;
+    }
+  }
+  let cur = splineMetric.map((p) => [
     origin[0] + p[0] / mx,
     origin[1] + p[1] / my,
   ]);
-  const smoothCum = [0];
+  let smoothCum = [0];
   for (let i = 1; i < cur.length; i += 1)
     smoothCum.push(smoothCum[i - 1] + distanceMeters(cur[i - 1], cur[i]));
-  const smoothTotal = smoothCum[smoothCum.length - 1];
-  const outputStep = smoothTotal / Math.max(1, cur.length - 1);
+  let smoothTotal = smoothCum[smoothCum.length - 1];
+  let outputStep = smoothTotal / Math.max(1, cur.length - 1);
   const directionRadiusM = Math.max(minRadius, minDetail * 2);
   const baseHalf = Math.max(
     1,
@@ -6242,7 +6458,7 @@ function smoothCorridorCurve(line) {
   angles = smoothAngles(angles, directionSigmaM * 0.65);
   const maxTurn = Math.min(
     0.045,
-    Math.max(0.002, outputStep / Math.max(100, minRadius)),
+    Math.max(1e-5, outputStep / Math.max(100, minRadius)),
   );
   for (let pass = 0; pass < 2; pass += 1) {
     for (let i = 1; i < angles.length; i += 1)
@@ -6256,7 +6472,65 @@ function smoothCorridorCurve(line) {
         Math.min(angles[i + 1] + maxTurn, angles[i]),
       );
   }
+
+  // Reconstruct the displayed geometry from the radius-limited direction
+  // field. A linear endpoint correction is distributed over the whole arc,
+  // so both physical corridor ends remain exact without concentrating the
+  // correction into a station-side hook. This makes the debug curve and the
+  // hover direction use the same rounded path instead of merely smoothing
+  // the direction sampled from a tighter geometric bend.
+  const segmentLengths = new Array(splineMetric.length - 1);
+  for (let i = 0; i < segmentLengths.length; i += 1)
+    segmentLengths[i] = Math.hypot(
+      splineMetric[i + 1][0] - splineMetric[i][0],
+      splineMetric[i + 1][1] - splineMetric[i][1],
+    );
+  const integrated = new Array(splineMetric.length);
+  integrated[0] = splineMetric[0].slice();
+  for (let i = 1; i < integrated.length; i += 1) {
+    const a = (angles[i - 1] + angles[i]) / 2;
+    integrated[i] = [
+      integrated[i - 1][0] + Math.cos(a) * segmentLengths[i - 1],
+      integrated[i - 1][1] + Math.sin(a) * segmentLengths[i - 1],
+    ];
+  }
+  const endDrift = [
+    splineMetric[splineMetric.length - 1][0] -
+      integrated[integrated.length - 1][0],
+    splineMetric[splineMetric.length - 1][1] -
+      integrated[integrated.length - 1][1],
+  ];
+  for (let i = 1; i < integrated.length; i += 1) {
+    const t = i / (integrated.length - 1);
+    integrated[i][0] += endDrift[0] * t;
+    integrated[i][1] += endDrift[1] * t;
+  }
+  const integratedRadius = measuredSplineRadius(integrated);
+  if (integratedRadius >= achievedMinRadius) {
+    splineMetric = integrated;
+    achievedMinRadius = integratedRadius;
+    cur = splineMetric.map((p) => [
+      origin[0] + p[0] / mx,
+      origin[1] + p[1] / my,
+    ]);
+    smoothCum = [0];
+    for (let i = 1; i < cur.length; i += 1)
+      smoothCum.push(
+        smoothCum[i - 1] + distanceMeters(cur[i - 1], cur[i]),
+      );
+    smoothTotal = smoothCum[smoothCum.length - 1];
+    outputStep = smoothTotal / Math.max(1, cur.length - 1);
+  }
   const dirs = angles.map((a) => [Math.cos(a), Math.sin(a)]);
+  let maxDirectionTurn = 0;
+  for (let i = 1; i < angles.length; i += 1)
+    maxDirectionTurn = Math.max(
+      maxDirectionTurn,
+      Math.abs(angles[i] - angles[i - 1]),
+    );
+  const achievedDirectionRadius = maxDirectionTurn > 1e-9
+    ? outputStep / maxDirectionTurn
+    : Infinity;
 
   let actualMaxDeviation = 0;
   const pointSegmentDistance = (p, a, b) => {
@@ -6280,8 +6554,10 @@ function smoothCorridorCurve(line) {
   );
   for (let i = 0; i < splineMetric.length; i += 1) {
     const ai = Math.round(((anchorMetric.length - 1) * i) / (splineMetric.length - 1));
-    const from = Math.max(0, ai - deviationSearch);
-    const to = Math.min(anchorMetric.length - 2, ai + deviationSearch);
+    const from = usedCircularArc ? 0 : Math.max(0, ai - deviationSearch);
+    const to = usedCircularArc
+      ? anchorMetric.length - 2
+      : Math.min(anchorMetric.length - 2, ai + deviationSearch);
     let nearest = Infinity;
     for (let j = from; j <= to; j += 1)
       nearest = Math.min(
@@ -6299,19 +6575,404 @@ function smoothCorridorCurve(line) {
     cum: smoothCum,
     dirs,
     totalMeters: smoothTotal,
+    sourceTotalMeters: total,
+    endpointChordMeters: Math.hypot(
+      anchorMetric[anchorMetric.length - 1][0] - anchorMetric[0][0],
+      anchorMetric[anchorMetric.length - 1][1] - anchorMetric[0][1],
+    ),
     radiusMeters: directionRadiusM,
     smoothingSigmaMeters: sigmaM,
     directionSigmaMeters: directionSigmaM,
-    requestedMinRadiusMeters: minRadius,
+    requestedMinRadiusMeters: requestedMinRadius,
     achievedMinRadiusMeters: isFinite(achievedMinRadius)
       ? achievedMinRadius
+      : null,
+    achievedDirectionRadiusMeters: isFinite(achievedDirectionRadius)
+      ? achievedDirectionRadius
       : null,
     minDetailMeters: minDetail,
     maxDeviationMeters: maxDeviation,
     actualMaxDeviationMeters: actualMaxDeviation,
+    samplingPrecision: precision,
     fitType: "cubic-bspline-c2",
     coslat,
   };
+}
+
+function fittedCurvePointAt(curve, metres) {
+  const pts = curve && curve.pts;
+  const cum = curve && curve.cum;
+  if (!pts || pts.length < 2 || !cum || cum.length !== pts.length) return null;
+  const target = Math.max(0, Math.min(curve.totalMeters || 0, metres));
+  let lo = 0;
+  let hi = cum.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] <= target) lo = mid;
+    else hi = mid;
+  }
+  const span = cum[lo + 1] - cum[lo] || 1;
+  const t = Math.max(0, Math.min(1, (target - cum[lo]) / span));
+  return [
+    pts[lo][0] + (pts[lo + 1][0] - pts[lo][0]) * t,
+    pts[lo][1] + (pts[lo + 1][1] - pts[lo][1]) * t,
+  ];
+}
+
+// Recalculate the arc-length and tangent fields after a station fillet has
+// replaced one end of a fitted curve.  The endpoint tangent is overwritten by
+// smoothCurveStationJoins with the exact shared Bezier derivative afterwards.
+function refreshFittedCurveGeometry(curve) {
+  const pts = curve.pts;
+  const cum = [0];
+  for (let i = 1; i < pts.length; i += 1)
+    cum.push(cum[i - 1] + distanceMeters(pts[i - 1], pts[i]));
+  curve.cum = cum;
+  curve.totalMeters = cum[cum.length - 1];
+  const step = curve.totalMeters / Math.max(1, pts.length - 1);
+  const tangentHalf = Math.max(
+    1,
+    Math.min(
+      Math.floor((pts.length - 1) / 5),
+      Math.round(
+        Math.max(80, (curve.minDetailMeters || 3300) * 0.18) /
+          Math.max(1, step),
+      ),
+    ),
+  );
+  const cs = curve.coslat || 1;
+  curve.dirs = pts.map((_, i) => {
+    const a = pts[Math.max(0, i - tangentHalf)];
+    const b = pts[Math.min(pts.length - 1, i + tangentHalf)];
+    const dx = (b[0] - a[0]) * cs;
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [dx / len, dy / len];
+  });
+
+  // Keep the global diagnostics honest after changing the displayed curve.
+  const radiusHalf = Math.max(
+    1,
+    Math.min(
+      Math.floor((pts.length - 1) / 5),
+      Math.round(
+        Math.max(50, Math.min(180, (curve.minDetailMeters || 3300) * 0.04)) /
+          Math.max(1, step),
+      ),
+    ),
+  );
+  let minRadius = Infinity;
+  for (let i = radiusHalf; i < pts.length - radiusHalf; i += 1) {
+    const a = pts[i - radiusHalf];
+    const b = pts[i];
+    const c = pts[i + radiusHalf];
+    const ax = a[0] * cs * 111320;
+    const ay = a[1] * 110540;
+    const bx = b[0] * cs * 111320;
+    const by = b[1] * 110540;
+    const cx = c[0] * cs * 111320;
+    const cy = c[1] * 110540;
+    const ab = Math.hypot(bx - ax, by - ay);
+    const bc = Math.hypot(cx - bx, cy - by);
+    const ca = Math.hypot(ax - cx, ay - cy);
+    const cross = Math.abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
+    const radius = cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross);
+    minRadius = Math.min(minRadius, radius);
+  }
+  curve.achievedMinRadiusMeters = isFinite(minRadius) ? minRadius : null;
+  let maxTurn = 0;
+  let previous = null;
+  curve.dirs.forEach((d) => {
+    let angle = Math.atan2(d[1], d[0]);
+    if (previous != null) {
+      while (angle - previous > Math.PI) angle -= 2 * Math.PI;
+      while (angle - previous < -Math.PI) angle += 2 * Math.PI;
+      maxTurn = Math.max(maxTurn, Math.abs(angle - previous));
+    }
+    previous = angle;
+  });
+  curve.achievedDirectionRadiusMeters = maxTurn > 1e-9 ? step / maxTurn : null;
+}
+
+// Different overlap memberships often end at the same station as separate
+// fitted curves.  Even though each curve is C2 internally, pinning both ends
+// to that station leaves a hard change of tangent between them.  Pair the
+// straightest compatible ends at every station and replace several kilometres
+// on both sides with ONE cubic Bezier fillet.  The Bezier is split between the
+// two curves at its closest point to the station, so the direction is exactly
+// continuous while the fitted path may cut gently inside the source corner.
+// The member curves are already densely sampled, radius-limited splines.  A
+// physical Gaussian pass over their concatenated points is enough to remove
+// only the new station seams, and is much cheaper than running the complete
+// source-fitting solver again over a corridor hundreds of kilometres long.
+function smoothJoinedStationCurve(source, template) {
+  if (!source || source.length < 4) return null;
+  const lat0 = source.reduce((sum, p) => sum + p[1], 0) / source.length;
+  const coslat = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
+  const mx = 111320 * coslat;
+  const my = 110540;
+  const origin = source[0];
+  const metricSource = source.map((p) => [
+    (p[0] - origin[0]) * mx,
+    (p[1] - origin[1]) * my,
+  ]);
+  let total = 0;
+  for (let i = 1; i < metricSource.length; i += 1)
+    total += Math.hypot(
+      metricSource[i][0] - metricSource[i - 1][0],
+      metricSource[i][1] - metricSource[i - 1][1],
+    );
+  const step = total / Math.max(1, metricSource.length - 1);
+  const minRadius = template.requestedMinRadiusMeters || 3100;
+  const minDetail = template.minDetailMeters || 3300;
+  const sigma = Math.max(500, minDetail * 0.9, minRadius * 0.65);
+  const boxPass = (input, radius) => {
+    radius = Math.max(1, Math.min(input.length - 1, radius));
+    const n = input.length;
+    const extended = new Array(n + radius * 2);
+    const edgeSpan = Math.min(n - 1, Math.max(3, radius));
+    const startDx = (input[edgeSpan][0] - input[0][0]) / edgeSpan;
+    const startDy = (input[edgeSpan][1] - input[0][1]) / edgeSpan;
+    const last = n - 1;
+    const endDx = (input[last][0] - input[last - edgeSpan][0]) / edgeSpan;
+    const endDy = (input[last][1] - input[last - edgeSpan][1]) / edgeSpan;
+    for (let i = -radius; i < n + radius; i += 1) {
+      if (i < 0)
+        extended[i + radius] = [
+          input[0][0] + startDx * i,
+          input[0][1] + startDy * i,
+        ];
+      else if (i > last) {
+        const d = i - last;
+        extended[i + radius] = [
+          input[last][0] + endDx * d,
+          input[last][1] + endDy * d,
+        ];
+      } else extended[i + radius] = input[i];
+    }
+    const prefixX = new Float64Array(extended.length + 1);
+    const prefixY = new Float64Array(extended.length + 1);
+    for (let i = 0; i < extended.length; i += 1) {
+      prefixX[i + 1] = prefixX[i] + extended[i][0];
+      prefixY[i + 1] = prefixY[i] + extended[i][1];
+    }
+    const width = radius * 2 + 1;
+    return input.map((_, i) => [
+      (prefixX[i + width] - prefixX[i]) / width,
+      (prefixY[i + width] - prefixY[i]) / width,
+    ]);
+  };
+  // Three equal box passes approximate a Gaussian with sigma ~= radius.  The
+  // prefix-sum implementation is O(n), so a nationwide joined corridor no
+  // longer performs tens of millions of per-sample weight operations.
+  const boxRadius = Math.max(
+    2,
+    Math.min(metricSource.length - 1, 260, Math.ceil(sigma / Math.max(1, step))),
+  );
+  let metric = boxPass(metricSource, boxRadius);
+  metric = boxPass(metric, boxRadius);
+  metric = boxPass(metric, boxRadius);
+  const curve = {
+    ...template,
+    coslat,
+    smoothingSigmaMeters: sigma,
+    fitType: "cubic-bspline-c2-station-continuous",
+  };
+  curve.sourceTotalMeters = total;
+  curve.endpointChordMeters = Math.hypot(
+    metricSource[metricSource.length - 1][0] - metricSource[0][0],
+    metricSource[metricSource.length - 1][1] - metricSource[0][1],
+  );
+  // Some newly joined near-parallel corridors contain a sharper station
+  // throat than either source curve had alone. Continue the same physical
+  // low-pass until the displayed centreline also satisfies the requested
+  // minimum radius; this preserves the no-sudden-turn guarantee after adding
+  // the new overlap membership.
+  let passCount = 3;
+  while (true) {
+    curve.pts = metric.map((p) => [
+      origin[0] + p[0] / mx,
+      origin[1] + p[1] / my,
+    ]);
+    let maxDeviation = 0;
+    metric.forEach((p, i) => {
+      maxDeviation = Math.max(
+        maxDeviation,
+        Math.hypot(p[0] - metricSource[i][0], p[1] - metricSource[i][1]),
+      );
+    });
+    curve.actualMaxDeviationMeters = maxDeviation;
+    refreshFittedCurveGeometry(curve);
+    if (
+      curve.achievedMinRadiusMeters == null ||
+      curve.achievedMinRadiusMeters >= minRadius * 0.999 ||
+      passCount >= 12
+    )
+      break;
+    metric = boxPass(metric, boxRadius);
+    passCount += 1;
+  }
+  curve.stationSmoothingPasses = passCount;
+  return curve;
+}
+
+// Build the direction field across station boundaries as one continuous
+// corridor.  A membership change still remains a separate hover group, but it
+// no longer forces the fitted direction curve to stop at the station.  The
+// straightest compatible continuation wins at junctions; then the complete
+// multi-group chain is fitted once, making every former station boundary an
+// interior C2 point instead of two independently pinned endpoints.
+function smoothCurveStationJoins(groupInfo) {
+  if (!groupInfo || groupInfo.size < 2) return 0;
+  const owners = new Map();
+  groupInfo.forEach((gi, groupKey) => {
+    const curve = gi && gi.curve;
+    if (!curve || !curve.pts || curve.pts.length < 4) return;
+    let list = owners.get(curve);
+    if (!list) owners.set(curve, (list = []));
+    list.push({ gi, groupKey });
+  });
+  const curves = [...owners.keys()];
+  const ends = [];
+  curves.forEach((curve, curveIndex) => {
+    [0, 1].forEach((side) => {
+      const p = side === 0 ? curve.pts[0] : curve.pts[curve.pts.length - 1];
+      const probeM = Math.min(450, Math.max(100, curve.totalMeters * 0.03));
+      const q = fittedCurvePointAt(
+        curve,
+        side === 0 ? probeM : curve.totalMeters - probeM,
+      );
+      if (!q) return;
+      const cs = Math.cos((p[1] * Math.PI) / 180) || 1e-6;
+      const dx = (q[0] - p[0]) * cs;
+      const dy = q[1] - p[1];
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-12) return;
+      ends.push({
+        id: curveIndex + "::" + side,
+        curve,
+        curveIndex,
+        side,
+        p,
+        outward: [dx / len, dy / len],
+      });
+    });
+  });
+
+  const candidates = [];
+  for (let i = 0; i < ends.length; i += 1)
+    for (let j = i + 1; j < ends.length; j += 1) {
+      const a = ends[i];
+      const b = ends[j];
+      if (a.curve === b.curve) continue;
+      const metres = distanceMeters(a.p, b.p);
+      if (metres > 220) continue;
+      const continuationDot = Math.max(
+        -1,
+        Math.min(1, -(a.outward[0] * b.outward[0] + a.outward[1] * b.outward[1])),
+      );
+      const turn = Math.acos(continuationDot);
+      if (turn > (145 * Math.PI) / 180) continue;
+      candidates.push({ a, b, metres, turn, score: turn * 1200 + metres });
+    }
+  candidates.sort((a, b) => a.score - b.score);
+  const usedEnds = new Set();
+  const connections = new Map();
+  const connect = (end, other, meta) => {
+    let sides = connections.get(end.curve);
+    if (!sides) connections.set(end.curve, (sides = new Map()));
+    sides.set(end.side, { end: other, meta });
+  };
+  candidates.forEach((candidate) => {
+    if (usedEnds.has(candidate.a.id) || usedEnds.has(candidate.b.id)) return;
+    usedEnds.add(candidate.a.id);
+    usedEnds.add(candidate.b.id);
+    connect(candidate.a, candidate.b, candidate);
+    connect(candidate.b, candidate.a, candidate);
+  });
+
+  const visited = new Set();
+  let roundedJoins = 0;
+  const components = [];
+  const walk = (start, reverseStart) => {
+    const component = [];
+    let curve = start;
+    let reverse = reverseStart;
+    while (curve && !visited.has(curve)) {
+      visited.add(curve);
+      component.push({ curve, reverse });
+      const exitSide = reverse ? 0 : 1;
+      const edge = (connections.get(curve) || new Map()).get(exitSide);
+      if (!edge || visited.has(edge.end.curve)) break;
+      curve = edge.end.curve;
+      // Entering native side 1 means the next curve must be reversed so that
+      // this connected endpoint becomes the start of its oriented points.
+      reverse = edge.end.side === 1;
+    }
+    if (component.length > 1) components.push(component);
+  };
+  curves.forEach((curve) => {
+    if (visited.has(curve)) return;
+    const sides = connections.get(curve);
+    if (!sides || sides.size !== 1) return;
+    const connectedSide = [...sides.keys()][0];
+    walk(curve, connectedSide === 0);
+  });
+  // Closed chains have no degree-1 start.
+  curves.forEach((curve) => {
+    if (!visited.has(curve) && connections.has(curve)) walk(curve, false);
+  });
+
+  components.forEach((component) => {
+    const source = [];
+    let worstOriginalTurn = 0;
+    let worstGap = 0;
+    component.forEach(({ curve, reverse }, index) => {
+      const pts = reverse ? curve.pts.slice().reverse() : curve.pts;
+      pts.forEach((p) => {
+        if (!source.length || distanceMeters(source[source.length - 1], p) > 0.05)
+          source.push(p);
+      });
+      if (index < component.length - 1) {
+        const exitSide = reverse ? 0 : 1;
+        const edge = (connections.get(curve) || new Map()).get(exitSide);
+        if (edge) {
+          worstOriginalTurn = Math.max(worstOriginalTurn, edge.meta.turn);
+          worstGap = Math.max(worstGap, edge.meta.metres);
+        }
+      }
+    });
+    if (source.length < 4) return;
+    const fitted = smoothJoinedStationCurve(source, component[0].curve);
+    if (!fitted) return;
+    // A folded/looping component can be geometrically unable to satisfy both
+    // the requested radius and deviation budget as one station-continuous
+    // curve. Keep its already-valid member splines separate instead of
+    // replacing them with a tighter or far-away curve; the hover transition
+    // animator still interpolates their endpoint directions.
+    if (
+      (fitted.achievedMinRadiusMeters != null &&
+        fitted.achievedMinRadiusMeters <
+          fitted.requestedMinRadiusMeters * 0.999) ||
+      (fitted.maxDeviationMeters > 0 &&
+        fitted.actualMaxDeviationMeters > fitted.maxDeviationMeters * 1.02)
+    )
+      return;
+    fitted.stationJoinCount = component.length - 1;
+    fitted.stationJoinOriginalMaxDeg = +(
+      (worstOriginalTurn * 180) /
+      Math.PI
+    ).toFixed(2);
+    fitted.stationJoinMaxGapMeters = +worstGap.toFixed(1);
+    fitted.fitType = "cubic-bspline-c2-station-continuous";
+    component.forEach(({ curve }) => {
+      (owners.get(curve) || []).forEach(({ gi }) => {
+        gi.curve = fitted;
+      });
+    });
+    roundedJoins += component.length - 1;
+  });
+  return roundedJoins;
 }
 
 // Index every ORIGINAL route segment by the direction-independent key the
@@ -6359,10 +7020,11 @@ function buildDeckOverlapMap(items) {
     return opacity > 0;
   };
   const seg = new Map();
+  const segmentGeometry = new Map();
   items.forEach((item) => {
     const tid = item.train && item.train.id;
     if (!tid || !itemDrawn(item)) return;
-    getRouteLinePairs(item.feature).forEach(({ segKeys }) => {
+    getRouteLinePairs(item.feature).forEach(({ orig, segKeys }) => {
       for (let i = 0; i < segKeys.length; i += 1) {
         let ids = seg.get(segKeys[i]);
         if (!ids) {
@@ -6370,9 +7032,164 @@ function buildDeckOverlapMap(items) {
           seg.set(segKeys[i], ids);
         }
         ids.add(tid);
+        if (!segmentGeometry.has(segKeys[i]))
+          segmentGeometry.set(segKeys[i], {
+            key: segKeys[i],
+            a: orig[i],
+            b: orig[i + 1],
+          });
       }
     });
   });
+
+  // Add different-but-parallel tracks to the overlap graph. A metre-grid
+  // keeps this near O(n): each segment is compared only with geometries whose
+  // bounding boxes enter the same neighbourhood. Matched segment keys share
+  // both membership and a stable interaction key, so JR and Shinkansen routes
+  // fan together even though their raw coordinates differ.
+  const nearGroupByKey = new Map();
+  const nearMaxByGroup = new Map();
+  let nearPairCount = 0;
+  if (OVERLAP_NEAR_PARALLEL_METERS > 0 && segmentGeometry.size > 1) {
+    const cellM = Math.max(20, OVERLAP_NEAR_PARALLEL_METERS);
+    const gridX = (lng) => lng * 80000;
+    const gridY = (lat) => lat * 110540;
+    const buckets = new Map();
+    const pairs = [];
+    const descriptors = [...segmentGeometry.values()];
+    descriptors.forEach((d) => {
+      const ax = gridX(d.a[0]);
+      const ay = gridY(d.a[1]);
+      const bx = gridX(d.b[0]);
+      const by = gridY(d.b[1]);
+      d.minX = Math.min(ax, bx);
+      d.maxX = Math.max(ax, bx);
+      d.minY = Math.min(ay, by);
+      d.maxY = Math.max(ay, by);
+      const qx0 = Math.floor(
+        (d.minX - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+      );
+      const qx1 = Math.floor(
+        (d.maxX + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+      );
+      const qy0 = Math.floor(
+        (d.minY - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+      );
+      const qy1 = Math.floor(
+        (d.maxY + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+      );
+      const checked = new Set();
+      for (let gx = qx0; gx <= qx1; gx += 1)
+        for (let gy = qy0; gy <= qy1; gy += 1) {
+          const list = buckets.get(gx + "," + gy);
+          if (!list) continue;
+          list.forEach((other) => {
+            if (checked.has(other.key)) return;
+            checked.add(other.key);
+            const aIds = seg.get(d.key);
+            const bIds = seg.get(other.key);
+            // A route must never overlap itself at a loop, siding, or tight
+            // station throat.
+            if ([...aIds].some((id) => bIds.has(id))) return;
+            const separation = nearParallelSegmentSeparation(
+              d.a,
+              d.b,
+              other.a,
+              other.b,
+              OVERLAP_NEAR_PARALLEL_METERS,
+            );
+            if (separation == null) return;
+            pairs.push({ a: d.key, b: other.key, separation });
+          });
+        }
+      const ix0 = Math.floor(d.minX / cellM);
+      const ix1 = Math.floor(d.maxX / cellM);
+      const iy0 = Math.floor(d.minY / cellM);
+      const iy1 = Math.floor(d.maxY / cellM);
+      for (let gx = ix0; gx <= ix1; gx += 1)
+        for (let gy = iy0; gy <= iy1; gy += 1) {
+          const key = gx + "," + gy;
+          let list = buckets.get(key);
+          if (!list) buckets.set(key, (list = []));
+          list.push(d);
+        }
+    });
+
+    if (pairs.length) {
+      // Expand membership only through DIRECT geometric neighbours. Do not
+      // flood train ids through an entire spatial component: A beside B and B
+      // later beside C must not make C appear on A's earlier section.
+      const expandedIds = new Map();
+      const expandedFor = (key) => {
+        let ids = expandedIds.get(key);
+        if (!ids) {
+          ids = new Set(seg.get(key) || []);
+          expandedIds.set(key, ids);
+        }
+        return ids;
+      };
+      pairs.forEach((pair) => {
+        const aIds = expandedFor(pair.a);
+        const bIds = expandedFor(pair.b);
+        (seg.get(pair.b) || []).forEach((id) => aIds.add(id));
+        (seg.get(pair.a) || []).forEach((id) => bIds.add(id));
+      });
+      const expandedSig = new Map();
+      expandedIds.forEach((ids, key) =>
+        expandedSig.set(key, [...ids].sort().join("\u0000")),
+      );
+      // A shared interaction group is valid only when both physical tracks
+      // resolve to the same direct membership. This keeps a three-way station
+      // throat from transitively merging unrelated lines.
+      const validPairs = pairs.filter(
+        (pair) => expandedSig.get(pair.a) === expandedSig.get(pair.b),
+      );
+      const parent = new Map();
+      const find = (key) => {
+        let root = key;
+        while (parent.get(root) !== root) root = parent.get(root);
+        let cur = key;
+        while (parent.get(cur) !== cur) {
+          const next = parent.get(cur);
+          parent.set(cur, root);
+          cur = next;
+        }
+        return root;
+      };
+      const union = (a, b) => {
+        if (!parent.has(a)) parent.set(a, a);
+        if (!parent.has(b)) parent.set(b, b);
+        const ar = find(a);
+        const br = find(b);
+        if (ar !== br) parent.set(br, ar);
+      };
+      validPairs.forEach((pair) => union(pair.a, pair.b));
+      const components = new Map();
+      parent.forEach((_, key) => {
+        const root = find(key);
+        let keys = components.get(root);
+        if (!keys) components.set(root, (keys = []));
+        keys.push(key);
+      });
+      components.forEach((keys) => {
+        const canonical = "near:" + keys.slice().sort()[0];
+        keys.forEach((key) => {
+          seg.set(key, new Set(expandedIds.get(key) || seg.get(key) || []));
+          nearGroupByKey.set(key, canonical);
+        });
+      });
+      validPairs.forEach((pair) => {
+        const group = nearGroupByKey.get(pair.a);
+        if (!group) return;
+        nearMaxByGroup.set(
+          group,
+          Math.max(nearMaxByGroup.get(group) || 0, pair.separation),
+        );
+      });
+      nearPairCount = validPairs.length;
+    }
+  }
+
   // Intern the sharing sets: ONE canonical Set instance per distinct train
   // membership, so the record builder can detect run boundaries by simple
   // identity comparison — a corridor stays a single run however many
@@ -6476,6 +7293,17 @@ function buildDeckOverlapMap(items) {
     idsForKey(key) {
       const ids = seg.get(key);
       return ids && ids.size >= 2 ? ids : null;
+    },
+    groupKeyForKey(key) {
+      return nearGroupByKey.get(key) || key;
+    },
+    nearGroupInfo(groupKey) {
+      if (!String(groupKey || "").startsWith("near:")) return null;
+      return {
+        pairCount: nearPairCount,
+        maxSeparationMeters: nearMaxByGroup.get(groupKey) || 0,
+        thresholdMeters: OVERLAP_NEAR_PARALLEL_METERS,
+      };
     },
     // Date-ordered lane slot of `tid` inside a sharing set from idsForKey.
     slotFor(ids, tid) {
@@ -6722,12 +7550,16 @@ function buildDeckRouteRecords(items) {
           // key is always found.
           for (let i = ra; i < rb; i += 1) {
             if (segBridged[i]) continue;
-            if (groupKey === "" || segKeys[i] < groupKey) groupKey = segKeys[i];
+            const interactionKey = overlap.groupKeyForKey(segKeys[i]);
+            if (groupKey === "" || interactionKey < groupKey)
+              groupKey = interactionKey;
           }
           if (groupKey === "") {
-            groupKey = segKeys[ra];
-            for (let i = ra + 1; i < rb; i += 1)
-              if (segKeys[i] < groupKey) groupKey = segKeys[i];
+            groupKey = overlap.groupKeyForKey(segKeys[ra]);
+            for (let i = ra + 1; i < rb; i += 1) {
+              const interactionKey = overlap.groupKeyForKey(segKeys[i]);
+              if (interactionKey < groupKey) groupKey = interactionKey;
+            }
           }
         }
         // One shift vector + lane multipliers per GROUP. The shift direction
@@ -6788,6 +7620,7 @@ function buildDeckRouteRecords(items) {
               _pb: orig[rb],
               _line: runLine,
               _latRef: latRef,
+              _nearParallel: overlap.nearGroupInfo(groupKey),
             };
             groupInfo.set(groupKey, gi);
           }
@@ -6804,7 +7637,7 @@ function buildDeckRouteRecords(items) {
           width,
           train,
           feature,
-          pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 8, 14),
+          pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 4, 10),
           overlapCount: n,
           overlapSlot: segSlot[ra],
           groupKey,
@@ -6858,7 +7691,15 @@ function buildDeckRouteRecords(items) {
       [gi._pa, gi._pb].forEach((p, side) => {
         const out = corridorEndpointOutward(gi, side);
         if (out)
-          endpoints.push({ id: key + "::" + side, key, side, p, out, sig: gi._sig });
+          endpoints.push({
+            id: key + "::" + side,
+            key,
+            side,
+            p,
+            out,
+            sig: gi._sig,
+            nearParallel: Boolean(gi._nearParallel),
+          });
       });
     });
     const cellDeg = Math.max(1e-6, OVERLAP_CORRIDOR_JOIN_METERS / 80000);
@@ -6924,6 +7765,41 @@ function buildDeckRouteRecords(items) {
       const curve = chain ? smoothCorridorCurve(chain) : null;
       const canonicalKey = c.keys.slice().sort()[0];
       const master = groupInfo.get(canonicalKey);
+      const nearInfos = c.keys
+        .map((k) => groupInfo.get(k)._nearParallel)
+        .filter(Boolean);
+      if (curve) curve.nearParallel = nearInfos.length > 0;
+      if (nearInfos.length) {
+        master._nearParallel = {
+          pairCount: Math.max(...nearInfos.map((info) => info.pairCount || 0)),
+          maxSeparationMeters: Math.max(
+            ...nearInfos.map((info) => info.maxSeparationMeters || 0),
+          ),
+          thresholdMeters: Math.max(
+            ...nearInfos.map((info) => info.thresholdMeters || 0),
+          ),
+        };
+      }
+      const curveCannotMeetRadius =
+        curve &&
+        curve.requestedMinRadiusMeters > 0 &&
+        curve.achievedMinRadiusMeters != null &&
+        curve.achievedMinRadiusMeters <
+          curve.requestedMinRadiusMeters * 0.999;
+      if (curveCannotMeetRadius && c.keys.length > 1) {
+        // A proximity graph can occasionally close a very long folded loop.
+        // Such a component has no single centreline that can satisfy both the
+        // radius and deviation limits. Keep its locally valid interaction runs
+        // instead of collapsing them onto one impossible fitted curve.
+        c.keys.forEach((k) => {
+          const g = groupInfo.get(k);
+          corridorAliases.set(k, k);
+          corridorMasters.add(k);
+          g._corridorJoins = [];
+          g.curve = smoothCorridorCurve(g._line);
+        });
+        return;
+      }
       corridorMasters.add(canonicalKey);
       c.keys.forEach((k) => corridorAliases.set(k, canonicalKey));
       master._corridorJoins = joins.filter(
@@ -7014,6 +7890,10 @@ function buildDeckRouteRecords(items) {
       const canonicalKey = corridorAliases.get(key);
       if (canonicalKey && canonicalKey !== key) groupInfo.delete(key);
     });
+    // Membership changes at stations create separate corridor curves. Round
+    // their shared endpoints only after aliases collapse, so each physical
+    // curve is edited once and both sides receive the exact same tangent.
+    smoothCurveStationJoins(groupInfo);
   }
 
   _cachedDeckRecords = { records, expandRecords, groupInfo, spacingDeg };

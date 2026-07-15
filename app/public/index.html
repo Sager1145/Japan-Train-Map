@@ -6,7 +6,7 @@
     <meta content="#ff5522" name="theme-color" />
     <title>N02 Limited Express Train Manager</title>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260716-manual-fit2" />
     <!-- Start the two largest downloads during HTML parse, before any JS runs. -->
     <link rel="preload" href="rail/jp-2025.json" as="fetch" crossorigin />
     <link rel="preload" href="api/stations" as="fetch" crossorigin />
@@ -211,7 +211,7 @@
               <button id="display-settings-reset" data-i18n="disp.reset">重置為預設</button>
             </div>
             <p class="hint" data-i18n="disp.hint">
-              調整線路、站點與 C2 擬合曲線。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。限制衝突時，以偏離上限為準。
+              擬合參數拖動後，須按「重建擬合曲線」才會套用。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。
             </p>
           </div>
         </section>
@@ -224,7 +224,7 @@
      official line colors, and railprint's ridden-line / station-dot styling. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="i18n.js"></script>
-    <script src="railmap.js?v=20260716-hover-debug3"></script>
-    <script src="app.js?v=20260716-hover-debug3"></script>
+    <script src="railmap.js?v=20260716-near-parallel-overlap"></script>
+    <script src="app.js?v=20260716-near-parallel-overlap"></script>
   </body>
 </html>

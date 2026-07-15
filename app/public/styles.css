@@ -1102,6 +1102,19 @@ tr.branch-junction td {
   margin-top: 2px;
 }
 
+.fit-curve-rebuild-toolbar {
+  margin: 2px 0;
+}
+
+#rebuild-fit-curves {
+  width: 100%;
+}
+
+#rebuild-fit-curves.pending {
+  border-color: var(--rail-lit);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rail-lit) 22%, transparent);
+}
+
 /* ---- Map hover / selection labels ----------------------------------- */
 /* Endpoint-label markers (maplibregl.Marker DOM elements). */
 .station-label {

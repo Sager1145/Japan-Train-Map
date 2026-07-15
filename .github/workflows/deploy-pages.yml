@@ -54,19 +54,43 @@ jobs:
           #    the *.gz sidecars. -L resolves any symlinks to real files.
           rsync -rL --exclude='tiles/' --exclude='*.gz' app/public/ _site/
 
-          # 2) Datasets the frontend fetches from ./api/<name> (extensionless).
+          # 2) Datasets — served WITH a .json extension on purpose.
+          #    GitHub Pages sets Content-Type from the file extension and only
+          #    gzips a known type allow-list (text/*, application/json, ...).
+          #    Extensionless files are sent as application/octet-stream, which
+          #    Pages NEVER compresses — so rail-sections went over the wire as
+          #    12 MB raw and stations as 3.3 MB raw, and parsing that much JSON
+          #    at once is what made the browser report the tab as crashed.
+          #    With a .json extension Pages gzips them (~2.4 MB / ~0.46 MB).
           mkdir -p _site/api
-          cp app/data/rail-sections.json  _site/api/rail-sections
-          cp app/data/stations.json       _site/api/stations
-          cp app/data/default-trains.json _site/api/default-trains
-          cp app/data/matched-routes.json _site/api/matched-routes
-          cp app/data/matched-stops.json  _site/api/matched-stops
+          cp app/data/rail-sections.json  _site/api/rail-sections.json
+          cp app/data/stations.json       _site/api/stations.json
+          cp app/data/default-trains.json _site/api/default-trains.json
+          cp app/data/matched-routes.json _site/api/matched-routes.json
+          cp app/data/matched-stops.json  _site/api/matched-stops.json
 
           # 3) SEED: publish your saved itinerary as the map's initial data.
           #    Delete this line to ship only the built-in demo trains instead.
-          [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store || true
+          [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store.json || true
 
-          # 4) Disable Jekyll so every file (incl. extensionless api/*) ships as-is.
+          # 4) Point the STATIC frontend copy at the .json dataset URLs. Local
+          #    dev is untouched — app/server.js keeps serving the extensionless
+          #    /api/<name> routes (it gzips them itself). Only this deployed
+          #    _site/ copy is rewritten, by literal string replacement, so the
+          #    source app.js/index.html you edit locally never changes.
+          node -e '
+            const fs = require("fs");
+            let s = fs.readFileSync("_site/app.js", "utf8");
+            s = s.split("`${API_BASE}/${path}`").join("`${API_BASE}/${path}.json`");
+            s = s.split("`${API_BASE}/${TRAIN_STORE_API}`").join("`${API_BASE}/${TRAIN_STORE_API}.json`");
+            fs.writeFileSync("_site/app.js", s);
+            let h = fs.readFileSync("_site/index.html", "utf8");
+            h = h.split("href=\"api/stations\"").join("href=\"api/stations.json\"");
+            fs.writeFileSync("_site/index.html", h);
+            console.log("Rewrote static frontend to fetch .json datasets");
+          '
+
+          # 5) Disable Jekyll so every file ships as-is.
           touch _site/.nojekyll
 
           echo "Assembled site:"; du -sh _site; find _site/api -maxdepth 1 -type f -printf '  %f\n'

@@ -459,12 +459,12 @@
   // multiplier. Applied purely via paint expressions (no source updates).
   const HOVER_DIM = 0.15;
   // Hover hit geometry in SCREEN pixels. Fresh entry stays forgiving at 6px,
-  // but an active hover now releases after only 10–14px instead of the old
+  // but an active hover now releases after roughly 8–9px instead of the old
   // 16–30px magnetic zone that forced a long mouse excursion to cancel.
   const HOVER_PICK_PAD_PX = 6;
-  const HOVER_STICKY_PAD_PX = 10;
-  const HOVER_FAN_HOLD_PX = 14;
-  const HOVER_GROUP_SWITCH_PX = 8;
+  const HOVER_STICKY_PAD_PX = 4;
+  const HOVER_FAN_HOLD_PX = 8;
+  const HOVER_GROUP_SWITCH_PX = 6;
   // SELECTION SPOTLIGHT: while a single train is SELECTED, every other train
   // still drawn (its same-day siblings — other dates are removed upstream)
   // fades to this multiplier, station dots included. Softer than the hover
@@ -1271,6 +1271,10 @@
               curve.achievedMinRadiusMeters == null
                 ? null
                 : Math.round(curve.achievedMinRadiusMeters),
+            achievedDirectionRadiusM:
+              curve.achievedDirectionRadiusMeters == null
+                ? null
+                : Math.round(curve.achievedDirectionRadiusMeters),
             minDetailM: Math.round(curve.minDetailMeters || 0),
             maxDeviationM: Math.round(curve.maxDeviationMeters || 0),
             actualMaxDeviationM: Math.round(
@@ -1296,8 +1300,29 @@
   function diagnoseFitCurves(groupInfo) {
     const curves = [];
     const seen = new Set();
+    let nearParallelGroups = 0;
+    let nearParallelMaxSeparationMeters = 0;
+    const nearParallelSamples = [];
     if (groupInfo)
       groupInfo.forEach((gi, groupKey) => {
+        if (gi && gi._nearParallel) {
+          nearParallelGroups += 1;
+          nearParallelMaxSeparationMeters = Math.max(
+            nearParallelMaxSeparationMeters,
+            Number(gi._nearParallel.maxSeparationMeters) || 0,
+          );
+          const line = gi._line || [];
+          const middle = line.length ? line[Math.floor(line.length / 2)] : null;
+          nearParallelSamples.push({
+            groupKey,
+            lng: middle ? +middle[0].toFixed(5) : null,
+            lat: middle ? +middle[1].toFixed(5) : null,
+            trains: Object.keys(gi.mults || {}).sort(),
+            maxSeparationMeters: +(
+              Number(gi._nearParallel.maxSeparationMeters) || 0
+            ).toFixed(1),
+          });
+        }
         const curve = gi && gi.curve;
         if (!curve || seen.has(curve) || !curve.pts || curve.pts.length < 2)
           return;
@@ -1311,14 +1336,23 @@
     let radiusMeasurements = 0;
     let radiusShortfalls = 0;
     let minRadiusRatio = Infinity;
+    let directionRadiusMeasurements = 0;
+    let directionRadiusShortfalls = 0;
+    let minDirectionRadiusRatio = Infinity;
     let deviationMeasurements = 0;
     let deviationOverruns = 0;
     let maxDeviationRatio = 0;
+    let stationContinuousCurves = 0;
+    let stationJoinsRounded = 0;
     const fitTypes = new Set();
     const radiusFlaggedGroups = [];
     const flaggedGroups = [];
     curves.forEach(({ groupKey, curve }) => {
       if (curve.fitType) fitTypes.add(curve.fitType);
+      if (curve.stationJoinCount > 0) {
+        stationContinuousCurves += 1;
+        stationJoinsRounded += curve.stationJoinCount;
+      }
       if (
         curve.requestedMinRadiusMeters > 0 &&
         curve.achievedMinRadiusMeters != null
@@ -1327,15 +1361,31 @@
           curve.achievedMinRadiusMeters / curve.requestedMinRadiusMeters;
         radiusMeasurements += 1;
         minRadiusRatio = Math.min(minRadiusRatio, ratio);
-        if (ratio < 0.98) {
+        if (ratio < 0.999) {
           radiusShortfalls += 1;
           radiusFlaggedGroups.push({
             groupKey,
             requestedM: Math.round(curve.requestedMinRadiusMeters),
             achievedM: Math.round(curve.achievedMinRadiusMeters),
+            sourceLengthM: Math.round(curve.sourceTotalMeters || 0),
+            chordM: Math.round(curve.endpointChordMeters || 0),
             ratio: +ratio.toFixed(3),
+            fitType: curve.fitType || null,
+            stationJoinCount: curve.stationJoinCount || 0,
+            stationSmoothingPasses: curve.stationSmoothingPasses || 0,
           });
         }
+      }
+      if (
+        curve.requestedMinRadiusMeters > 0 &&
+        curve.achievedDirectionRadiusMeters != null
+      ) {
+        const ratio =
+          curve.achievedDirectionRadiusMeters /
+          curve.requestedMinRadiusMeters;
+        directionRadiusMeasurements += 1;
+        minDirectionRadiusRatio = Math.min(minDirectionRadiusRatio, ratio);
+        if (ratio < 0.999) directionRadiusShortfalls += 1;
       }
       if (
         curve.maxDeviationMeters > 0 &&
@@ -1349,8 +1399,15 @@
       }
       let hintS = null;
       let previous = null;
+      let previousSampleIndex = null;
       let groupMax = 0;
-      curve.pts.forEach((p) => {
+      // fanPerpAt projects against the complete curve, so checking every one
+      // of thousands of 30 m display samples becomes quadratic after station
+      // corridors are joined. Uniformly cover every curve with at most 320
+      // pointer-equivalent samples; all overlap intervals remain represented.
+      const sampleStride = Math.max(1, Math.ceil(curve.pts.length / 320));
+      const sampleAt = (sampleIndex) => {
+        const p = curve.pts[sampleIndex];
         const current = fanPerpAt(
           curve,
           { lng: p[0], lat: p[1] },
@@ -1358,13 +1415,24 @@
         );
         samples += 1;
         if (hintS != null && current.s + 1 < hintS) backtracks += 1;
-        const stepDeg = angleDelta(previous, current);
+        const skippedSteps =
+          previousSampleIndex == null
+            ? 1
+            : Math.max(1, sampleIndex - previousSampleIndex);
+        const stepDeg = angleDelta(previous, current) / skippedSteps;
         if (stepDeg > groupMax) groupMax = stepDeg;
         if (stepDeg > maxStepDeg) maxStepDeg = stepDeg;
         if (stepDeg > 4) directionJumps += 1;
         hintS = current.s;
         previous = current;
-      });
+        previousSampleIndex = sampleIndex;
+      };
+      let lastSample = -1;
+      for (let i = 0; i < curve.pts.length; i += sampleStride) {
+        sampleAt(i);
+        lastSample = i;
+      }
+      if (lastSample !== curve.pts.length - 1) sampleAt(curve.pts.length - 1);
       if (groupMax > 4)
         flaggedGroups.push({ groupKey, maxStepDeg: +groupMax.toFixed(2) });
     });
@@ -1391,6 +1459,7 @@
     let boundaries = 0;
     let maxBoundaryDeg = 0;
     let rawMaxBoundaryDeg = 0;
+    const boundaryFlaggedGroups = [];
     for (let i = 0; i < ends.length; i += 1)
       for (let j = i + 1; j < ends.length; j += 1) {
         if (ends[i].groupKey === ends[j].groupKey) continue;
@@ -1409,10 +1478,28 @@
           maxBoundaryDeg,
           Math.min(rawDelta, 180 - rawDelta),
         );
+        const axisDelta = Math.min(rawDelta, 180 - rawDelta);
+        if (axisDelta > 1)
+          boundaryFlaggedGroups.push({
+            a: ends[i].groupKey,
+            b: ends[j].groupKey,
+            lng: +((ends[i].p[0] + ends[j].p[0]) / 2).toFixed(5),
+            lat: +((ends[i].p[1] + ends[j].p[1]) / 2).toFixed(5),
+            metres: +metres.toFixed(1),
+            deltaDeg: +axisDelta.toFixed(2),
+          });
       }
     return {
       curves: curves.length,
       samples,
+      appliedFitSettings: curves.length
+        ? {
+            precision: curves[0].curve.samplingPrecision,
+            minRadiusM: curves[0].curve.requestedMinRadiusMeters,
+            minDetailM: curves[0].curve.minDetailMeters,
+            maxDeviationM: curves[0].curve.maxDeviationMeters,
+          }
+        : null,
       backtracks,
       directionJumps,
       maxStepDeg: +maxStepDeg.toFixed(2),
@@ -1425,12 +1512,26 @@
       radiusFlaggedGroups: radiusFlaggedGroups
         .sort((a, b) => a.ratio - b.ratio)
         .slice(0, 20),
+      directionRadiusMeasurements,
+      directionRadiusShortfalls,
+      minDirectionRadiusRatio: isFinite(minDirectionRadiusRatio)
+        ? +minDirectionRadiusRatio.toFixed(3)
+        : null,
       deviationMeasurements,
       deviationOverruns,
       maxDeviationRatio: +maxDeviationRatio.toFixed(3),
+      nearParallelGroups,
+      nearParallelMaxSeparationMeters:
+        +nearParallelMaxSeparationMeters.toFixed(1),
+      nearParallelSamples: nearParallelSamples.slice(0, 100),
+      stationContinuousCurves,
+      stationJoinsRounded,
       boundaries,
       maxBoundaryDeg: +maxBoundaryDeg.toFixed(2),
       rawMaxBoundaryDeg: +rawMaxBoundaryDeg.toFixed(2),
+      boundaryFlaggedGroups: boundaryFlaggedGroups
+        .sort((a, b) => b.deltaDeg - a.deltaDeg)
+        .slice(0, 20),
       flaggedGroups: flaggedGroups.slice(0, 20),
     };
   }
@@ -1960,6 +2061,18 @@
           stickyPadPx: HOVER_STICKY_PAD_PX,
           holdRadiusPx: HOVER_FAN_HOLD_PX,
           switchRadiusPx: HOVER_GROUP_SWITCH_PX,
+          zoom: this._map ? +this._map.getZoom().toFixed(2) : null,
+          stickyRadiusApproxMeters:
+            this._map && state && state.point
+              ? +(
+                  (156543.03392 *
+                    Math.cos(
+                      (this._map.unproject(state.point).lat * Math.PI) / 180,
+                    ) *
+                    HOVER_FAN_HOLD_PX) /
+                  Math.pow(2, this._map.getZoom())
+                ).toFixed(1)
+              : null,
           hasHold: Boolean(state && state.holdPoint),
           hasSwitch: Boolean(state && state.switchPoint),
           hovered: Boolean(this._hoverTrainId),

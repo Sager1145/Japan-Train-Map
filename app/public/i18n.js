@@ -63,8 +63,8 @@
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
     "disp.hint": {
-      zh: "調整線路、站點與 C2 擬合曲線。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。限制衝突時，以偏離上限為準。",
-      en: "Adjust routes, markers and the C2 fitted curve. A large detail scale can turn dense bends into a straight span or smooth arc. Cyan shows the pick box, orange the temporary hold radius, and magenta the interval-switch zone. The deviation limit wins when constraints conflict.",
+      zh: "擬合參數拖動後，須按「重建擬合曲線」才會套用。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。",
+      en: "After changing a fit slider, press Rebuild Fitted Curves to apply it. A large detail scale can turn dense bends into a straight span or smooth arc. Cyan shows the pick box, orange the hold radius, and magenta the interval-switch zone.",
     },
     "disp.routeWidthScale": { zh: "線路粗細", en: "Line width" },
     "disp.riddenOpacity": { zh: "已乘區間透明度", en: "Ridden segment opacity" },
@@ -86,6 +86,7 @@
     "disp.fitCurveMinDetail": { zh: "最小細節尺度", en: "Minimum detail scale" },
     "disp.fitCurveMaxDeviation": { zh: "最大允許偏離原線", en: "Maximum source deviation" },
     "disp.fitCurves": { zh: "顯示擬合曲線（除錯）", en: "Show Fitted Curves (Debug)" },
+    "disp.rebuildFitCurves": { zh: "重建擬合曲線", en: "Rebuild Fitted Curves" },
     "disp.hoverRegions": { zh: "顯示 Hover 監測範圍（除錯）", en: "Show Hover Regions (Debug)" },
 
     // JSON import / local data
@@ -466,7 +467,7 @@
     "state.on": "オン",
     "state.off": "オフ",
     "disp.reset": "初期設定に戻す",
-    "disp.hint": "路線、駅マーカー、C2 フィッティング曲線を調整します。ディテール尺度を大きくすると密集した折れを直線または滑らかな弧にできます。シアンはヒット領域、オレンジは一時保持範囲、マゼンタは区間切替範囲です。条件が競合する場合は最大許容偏差を優先します。",
+    "disp.hint": "フィッティング設定はスライダー変更後に「フィッティング曲線を再構築」を押すと適用されます。ディテール尺度を大きくすると密集した折れを直線または滑らかな弧にできます。シアンはヒット領域、オレンジは一時保持範囲、マゼンタは区間切替範囲です。",
     "disp.routeWidthScale": "路線の太さ",
     "disp.riddenOpacity": "乗車区間の透明度",
     "disp.dimOpacity": "選択日以外の淡色表示",
@@ -481,6 +482,7 @@
     "disp.fitCurveMinDetail": "最小ディテール尺度",
     "disp.fitCurveMaxDeviation": "元線からの最大許容偏差",
     "disp.fitCurves": "フィッティング曲線を表示（デバッグ）",
+    "disp.rebuildFitCurves": "フィッティング曲線を再構築",
     "disp.hoverRegions": "Hover 監視範囲を表示（デバッグ）",
     "sec.import": "JSON 読み込み／ローカルデータ",
     "ph.importJson": "完全な store、列車配列、または単一の列車オブジェクトを貼り付け",
