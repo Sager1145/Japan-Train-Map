@@ -2463,16 +2463,33 @@ async function runProgressiveAppend(
   const FRAME_BUDGET_MS = 12;
   const now = () =>
     typeof performance !== "undefined" ? performance.now() : Date.now();
-  // One initial yield so the progress UI paints before the (possibly heavy)
-  // first solve / route-graph build blocks the thread.
-  await waitForImportPaint();
   let frameStart = now();
+  // Shared frame-budget yielder. Returns control to the browser (paint + input)
+  // once the current slice has run FRAME_BUDGET_MS, and trims the transient
+  // regional-graph cache on the way out so peak memory stays bounded no matter
+  // how large the import is (GC also gets to run between slices). It is passed
+  // down into the per-section streaming solve, so the yield granularity is a
+  // single route section — even one 60-section itinerary can't freeze the tab.
+  const yieldIfNeeded = async () => {
+    if (now() - frameStart < FRAME_BUDGET_MS) return false;
+    trimRegionalGraphCache(REGIONAL_GRAPH_LOAD_NODE_BUDGET);
+    await waitForImportPaint();
+    frameStart = now();
+    return true;
+  };
+  // One initial yield so the progress UI paints before the first solve runs.
+  await waitForImportPaint();
+  frameStart = now();
   for (let index = 0; index < total; index += 1) {
     const id = appendImportedTrain(trains[index], fallbackDate);
     appendedIds.push(id);
 
     const appendedTrain = getTrain(id);
-    warmRouteCacheForTrain(appendedTrain);
+    // Solve this train's route ONE section at a time, yielding within the train
+    // whenever the frame budget is spent. This is the crash fix: the cold solve
+    // of a large store no longer blocks the main thread ("page unresponsive")
+    // and can't pile the whole graph up in one synchronous burst (OOM).
+    await warmRouteCacheForTrain(appendedTrain, { yieldIfNeeded });
 
     // Draw just this one train incrementally: one more line on the map, one
     // more card in the list (O(1)). No full-list rebuild, no full-map clear.
@@ -2482,10 +2499,7 @@ async function runProgressiveAppend(
     appendTrainListItemIncremental(appendedTrain);
     if (onProgress) onProgress({ count: appendedIds.length, total, id });
 
-    if (now() - frameStart >= FRAME_BUDGET_MS) {
-      await waitForImportPaint();
-      frameStart = now();
-    }
+    await yieldIfNeeded();
   }
   // Single authoritative repaint: full sorted list + date bar + cross-train
   // overlap offsets, all once at the end.
@@ -2495,13 +2509,14 @@ async function runProgressiveAppend(
 }
 
 // Pre-compute (and cache) one train's route geometry without touching the DOM,
-// so the heavy solve happens between animation frames rather than as a single
-// blocking burst during rendering (fix #2). Failures are swallowed — the
-// normal render path will surface any genuine routing problem.
-function warmRouteCacheForTrain(train) {
+// streaming the solve ONE section at a time and yielding a frame between
+// sections (via the caller's shared frame-budget `yieldIfNeeded`) so the heavy
+// solve is spread across animation frames instead of a single blocking burst.
+// Failures are swallowed — the normal render path surfaces any genuine problem.
+async function warmRouteCacheForTrain(train, { yieldIfNeeded } = {}) {
   if (!train) return;
   try {
-    generateMatchedRouteFeaturesForTrain(train);
+    await warmRouteCacheForTrainStreaming(train, { yieldIfNeeded });
   } catch (err) {
     console.warn(
       `Route warm-up failed for ${train?.id}; will retry on render.`,
@@ -8511,9 +8526,14 @@ const STATION_TRANSFER_MAX_NODE_GAP_METERS = 900;
 const STATION_TRANSFER_EDGE_PENALTY = 180;
 const STATION_TRANSFER_MAX_NODES_PER_GROUP = 24;
 
-function generateMatchedRouteFeaturesForTrain(train) {
+// Shared setup for both the synchronous and the streaming route solvers:
+// resolve the ride sections, the policy/cache key, and short-circuit on a cache
+// hit or a known-unsolvable (negative-cached) train. Returns { done:true, result }
+// when the caller should return immediately, otherwise the fields the section
+// solve needs. Side-effect-free apart from the "Generating…" status line.
+function prepareTrainRouteSolve(train) {
   const routeSections = getRideRouteSectionsForTrain(train);
-  if (!routeSections.length) return [];
+  if (!routeSections.length) return { done: true, result: [] };
 
   const templateKey = getTrainRouteTemplateKey({
     ...train,
@@ -8537,15 +8557,18 @@ function generateMatchedRouteFeaturesForTrain(train) {
   const cacheKey = `${allowedCodes.join(",")}|${policyKey}|${templateKey}`;
   if (runtimeRouteCache.has(cacheKey)) {
     const cached = runtimeRouteCache.get(cacheKey);
-    return dedupeSameTrainRouteFeatures(
-      cloneRouteFeaturesForTrain(cached, train),
-    );
+    return {
+      done: true,
+      result: dedupeSameTrainRouteFeatures(
+        cloneRouteFeaturesForTrain(cached, train),
+      ),
+    };
   }
 
   // Known-unsolvable with this exact data + policy: skip the regional-graph
   // build + Dijkstra entirely and return empty, exactly as a fresh solve would.
   if (runtimeRouteNegativeCache.has(cacheKey)) {
-    return [];
+    return { done: true, result: [] };
   }
 
   setStatus(
@@ -8553,28 +8576,40 @@ function generateMatchedRouteFeaturesForTrain(train) {
     `Generating N02 railway route for ${train.number || train.id}...`,
     "warn",
   );
-  const generated = [];
-  const warnings = [];
+  return { done: false, routeSections, templateKey, allowedCodes, cacheKey };
+}
 
-  routeSections.forEach((section, segmentIndex) => {
-    // Solve on a small on-demand regional subgraph instead of the resident
-    // all-Japan graph; falls back to the full graph only if a region proves
-    // too small (see solveRouteSectionOnDemand), so results are unchanged.
-    const result = solveRouteSectionOnDemand(
-      section,
-      segmentIndex,
-      train,
-      allowedCodes,
+// Solve ONE ride section on its on-demand regional subgraph (falling back to the
+// full graph only if a region proves too small — see solveRouteSectionOnDemand,
+// so results are identical to a full-graph solve). Pushes a "from→to" note into
+// `warnings` when a section can't route. Shared by the sync + streaming solvers.
+function solveTrainRouteSection(
+  train,
+  section,
+  segmentIndex,
+  allowedCodes,
+  generated,
+  warnings,
+) {
+  const result = solveRouteSectionOnDemand(
+    section,
+    segmentIndex,
+    train,
+    allowedCodes,
+  );
+  if (!result) {
+    warnings.push(
+      `${section.from || section.from_n02_station_code}→${section.to || section.to_n02_station_code}`,
     );
-    if (!result) {
-      warnings.push(
-        `${section.from || section.from_n02_station_code}→${section.to || section.to_n02_station_code}`,
-      );
-      return;
-    }
-    generated.push(result);
-  });
+    return;
+  }
+  generated.push(result);
+}
 
+// Shared tail for both solvers: cache the solved template geometry, persist it,
+// refresh this train's entries in the matched-routes collection, and return the
+// train-concrete deduped features. Identical to the original function's tail.
+function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings) {
   if (!generated.length) {
     console.warn(
       `Unable to generate N02 railway route for train ${train.id}.`,
@@ -8628,6 +8663,64 @@ function generateMatchedRouteFeaturesForTrain(train) {
     warnings.length ? "warn" : "ok",
   );
   return concrete;
+}
+
+// Synchronous solve — used by the render path (getMatchedRouteFeatures), where
+// the train has almost always been pre-warmed so prepareTrainRouteSolve returns
+// a cache hit. During a progressive load (importInProgress) the streaming
+// warm-up owns solving, so a render-time cache MISS deliberately returns []
+// here instead of kicking off a multi-section blocking solve on the render
+// thread — the train draws a frame later, once the warm-up has cached it.
+function generateMatchedRouteFeaturesForTrain(train) {
+  const prep = prepareTrainRouteSolve(train);
+  if (prep.done) return prep.result;
+  if (importInProgress) return [];
+
+  const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
+  const generated = [];
+  const warnings = [];
+  routeSections.forEach((section, segmentIndex) => {
+    solveTrainRouteSection(
+      train,
+      section,
+      segmentIndex,
+      allowedCodes,
+      generated,
+      warnings,
+    );
+  });
+  return commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings);
+}
+
+// Streaming solve — used by the progressive load/import warm-up. Solves the
+// train ONE section at a time and calls the caller's shared `yieldIfNeeded()`
+// after each, so a long itinerary hands the main thread back mid-train (paint +
+// input stay live, and GC can reclaim transient graph memory between slices).
+// Writes the exact same runtime/negative caches + matched-routes features as the
+// synchronous solver, so the later render-time lookup is an untouched cache hit.
+async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
+  const prep = prepareTrainRouteSolve(train);
+  if (prep.done) return prep.result;
+
+  const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
+  const generated = [];
+  const warnings = [];
+  for (
+    let segmentIndex = 0;
+    segmentIndex < routeSections.length;
+    segmentIndex += 1
+  ) {
+    solveTrainRouteSection(
+      train,
+      routeSections[segmentIndex],
+      segmentIndex,
+      allowedCodes,
+      generated,
+      warnings,
+    );
+    if (yieldIfNeeded) await yieldIfNeeded();
+  }
+  return commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings);
 }
 
 function dedupeSameTrainRouteFeatures(features) {
@@ -10662,14 +10755,21 @@ function getMatchedRouteFeatures(train) {
   }
 
   if (!candidates.length) {
-    console.warn(
-      `No N02 railway route could be generated for train ${train.id}. Route will not be drawn.`,
-    );
-    setStatus(
-      els.fieldStatus,
-      "No N02 railway path could be generated from embedded N02 data. Check station codes / route_policy. No fake straight line was drawn.",
-      "warn",
-    );
+    // During a progressive load the streaming warm-up solves trains one at a
+    // time, so a repaint that lands before THIS train has been warmed legitimately
+    // finds no route yet — it is not a failure. Stay silent; the train draws on
+    // the next repaint once its geometry is cached. Only warn for a genuine
+    // miss outside an import.
+    if (!importInProgress) {
+      console.warn(
+        `No N02 railway route could be generated for train ${train.id}. Route will not be drawn.`,
+      );
+      setStatus(
+        els.fieldStatus,
+        "No N02 railway path could be generated from embedded N02 data. Check station codes / route_policy. No fake straight line was drawn.",
+        "warn",
+      );
+    }
     return [];
   }
 
