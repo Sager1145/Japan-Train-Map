@@ -5,11 +5,9 @@
  * (src/design/tokens.ts + src/lib/map/basemap.ts + src/lib/map/style.ts +
  * src/lib/map/popup.ts) into a dependency-free browser script:
  *
- *   - BASEMAP: OpenFreeMap `positron` vector style, VENDORED same-origin at
- *     ./basemap/positron.json (only tiles/glyphs/sprite come from
- *     tiles.openfreemap.org at runtime). If that online source is unavailable,
- *     the rail renders over a plain background (railprint's graceful
- *     degradation).
+ *   - BASEMAP: OpenFreeMap `positron` for the light theme and OpenFreeMap's
+ *     official `dark` style for the dark theme. If the online tile source is
+ *     unavailable, the rail renders over a theme-matched plain background.
  *   - NETWORK: the full MLIT N02 national network from railprint's rail
  *     package (./rail/jp-2025.json — 594 lines in official color, 9,442
  *     segments, 10,034 stations). Drawn exactly like railprint's "unridden"
@@ -93,6 +91,14 @@
 
   // ───────────────────────────── basemap loader (basemap.ts) ─────────────────────────────
   const LOAD_TIMEOUT_MS = 8000;
+  const BASEMAP_STYLE_URLS = {
+    light: "./basemap/positron.json",
+    dark: "https://tiles.openfreemap.org/styles/dark",
+  };
+  const MAP_SURFACE_COLORS = {
+    light: { background: "rgb(242,243,240)", fade: "#FFFFFF", casing: "#1A1A1A" },
+    dark: { background: "rgb(12,12,12)", fade: "#0C0C0C", casing: "#F5EEE9" },
+  };
 
   function normalizeBasemap(raw) {
     if (typeof raw !== "object" || raw === null) return null;
@@ -112,7 +118,19 @@
     return out;
   }
 
-  async function loadBasemap(force) {
+  function replaceStyleLiteral(value, from, to) {
+    if (Array.isArray(value))
+      return value.map((item) => replaceStyleLiteral(item, from, to));
+    return value === from ? to : value;
+  }
+
+  async function loadBasemap(theme, force) {
+    // Backward compatibility with the former loadBasemap(force) signature.
+    if (typeof theme === "boolean") {
+      force = theme;
+      theme = "light";
+    }
+    theme = theme === "dark" ? "dark" : "light";
     // No network ⇒ basemap-less on purpose (the vector tile fetches would fail).
     // `force` (the explicit online-retry path) skips the cheap navigator.onLine
     // gate and lets the fetch + origin probe decide.
@@ -121,9 +139,33 @@
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     const timer = ctl ? setTimeout(() => ctl.abort(), LOAD_TIMEOUT_MS) : null;
     try {
-      const res = await fetch("./basemap/positron.json", ctl ? { signal: ctl.signal } : undefined);
+      const res = await fetch(
+        BASEMAP_STYLE_URLS[theme],
+        ctl ? { signal: ctl.signal } : undefined,
+      );
       if (!res.ok) return null;
-      return normalizeBasemap(await res.json());
+      const basemap = normalizeBasemap(await res.json());
+      if (basemap) {
+        basemap.theme = theme;
+        // The official Dark style currently refers to "circle-11", while the
+        // official shared sprite exposes the matching icon as "circle_11".
+        // Correct that compatibility typo locally to avoid missing city dots.
+        if (theme === "dark") {
+          basemap.layers = basemap.layers.map((layer) => {
+            if (!layer.layout || layer.layout["icon-image"] == null) return layer;
+            return Object.assign({}, layer, {
+              layout: Object.assign({}, layer.layout, {
+                "icon-image": replaceStyleLiteral(
+                  layer.layout["icon-image"],
+                  "circle-11",
+                  "circle_11",
+                ),
+              }),
+            });
+          });
+        }
+      }
+      return basemap;
     } catch (e) {
       return null;
     } finally {
@@ -131,9 +173,9 @@
     }
   }
 
-  // positron.json is a LOCAL vendored file, so re-loading it "succeeds" even
-  // without connectivity — before splicing the basemap in, verify the remote tile
-  // origin is actually reachable (sprite JSON is the smallest stable asset).
+  // The light style JSON is vendored, so re-loading it can "succeed" without
+  // connectivity. Before splicing either theme into the map, verify the remote
+  // tile origin is actually reachable (sprite JSON is the smallest stable asset).
   async function probeBasemapOrigin(basemap) {
     const url = basemap.sprite
       ? basemap.sprite + ".json"
@@ -522,6 +564,8 @@
   function buildBaseStyle(opts) {
     const basemap = opts.basemap || null;
     const network = opts.network || null;
+    const theme = opts.theme === "dark" ? "dark" : "light";
+    const themeColors = MAP_SURFACE_COLORS[theme];
     const fadeOpacity = Math.max(0, Math.min(1, Number(opts.fadeOpacity || 0)));
 
     const sources = Object.assign({}, basemap ? basemap.sources : {});
@@ -550,9 +594,9 @@
     layers.push({
       id: "rp-bg",
       type: "background",
-      paint: { "background-color": "rgb(242,243,240)" },
+      paint: { "background-color": themeColors.background },
     });
-    // The positron layer stack splits around its FIRST symbol (label) layer:
+    // The basemap layer stack splits around its FIRST symbol (label) layer:
     // the national-network layers slot in between, so the network draws above
     // the basemap's land/water/roads but UNDER every place/city label (and
     // under all train layers, which come later still).
@@ -607,7 +651,10 @@
     layers.push({
       id: FADE_LAYER,
       type: "background",
-      paint: { "background-color": tokens.white, "background-opacity": fadeOpacity },
+      paint: {
+        "background-color": themeColors.fade,
+        "background-opacity": fadeOpacity,
+      },
     });
 
     // ── the trains ("ridden") — full-color line (glow removed by request) ──
@@ -702,7 +749,7 @@
       filter: ["==", ["get", "tid"], NO_TRAIN],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
-        "line-color": CASING_COLOR,
+        "line-color": themeColors.casing,
         "line-opacity": 0.9,
         "line-width": [
           "interpolate",
@@ -1636,13 +1683,23 @@
     _groupSwitchCandidate: null,
     _groupSwitchAnchor: null,
     _basemapLayerIds: [],
+    _basemapSourceIds: [],
+    _basemapMode: "none",
+    _theme: "light",
+    _basemapInstalledTheme: null,
     _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
 
-    attach(map, network, handlers, basemapLayerIds) {
+    attach(map, network, handlers, basemapLayerIds, basemapSourceIds, theme) {
       this._map = map;
       this._network = network || null;
       this._handlers = handlers || {};
       this._basemapLayerIds = basemapLayerIds || [];
+      this._basemapSourceIds = basemapSourceIds || [];
+      this._basemapMode = this._basemapLayerIds.length ? "positron" : "none";
+      this._theme = theme === "dark" ? "dark" : "light";
+      this._basemapInstalledTheme = this._basemapLayerIds.length
+        ? this._theme
+        : null;
       this._wireInteractions();
       // ALL opacity fades on these layers are driven manually by the rAF dim
       // engine (_applyDimPaint) and the fan slide — MapLibre skips its own
@@ -1941,6 +1998,7 @@
     },
     // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {
+      this._basemapMode = mode === "positron" ? "positron" : "none";
       const posVis = mode === "positron" ? "visible" : "none";
       this._basemapLayerIds.forEach((id) => this._setVisibility(id, posVis));
     },
@@ -1948,14 +2006,107 @@
     hasBasemap() {
       return this._basemapLayerIds.length > 0;
     },
-    // Online retry: boot may have degraded to no-basemap (network unavailable /
-    // fetch timeout). Re-fetches the vendored positron style, probes the
-    // remote tile origin, then splices the basemap's sources + layers into
-    // the LIVE style at the exact positions buildBaseStyle uses (pre-symbol
-    // layers under the national network, symbol/label layers under the fade
-    // layer). Injected layers start hidden — the caller decides visibility
-    // via setBasemapMode, so a background retry never flips the view.
-    // Resolves true when the vector basemap is available afterwards.
+    _applyThemePaint(theme) {
+      const m = this._map;
+      if (!m) return;
+      const colors = MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
+      if (m.getLayer("rp-bg"))
+        m.setPaintProperty("rp-bg", "background-color", colors.background);
+      if (m.getLayer(FADE_LAYER))
+        m.setPaintProperty(FADE_LAYER, "background-color", colors.fade);
+      if (m.getLayer(TRAIN_SEL_CASING_LAYER))
+        m.setPaintProperty(TRAIN_SEL_CASING_LAYER, "line-color", colors.casing);
+    },
+    async _installBasemap(basemap) {
+      const m = this._map;
+      if (!m || !basemap) return false;
+      const visible = this._basemapMode === "positron";
+      const addedLayerIds = [];
+      const addedSourceIds = [];
+      try {
+        // Remove only the previous basemap stack. Rail routes, markers,
+        // interaction sources and camera state remain untouched.
+        this._basemapLayerIds
+          .slice()
+          .reverse()
+          .forEach((id) => {
+            if (m.getLayer(id)) m.removeLayer(id);
+          });
+        this._basemapSourceIds.forEach((id) => {
+          if (m.getSource(id)) m.removeSource(id);
+        });
+
+        for (const id of Object.keys(basemap.sources)) {
+          if (!m.getSource(id)) {
+            m.addSource(id, basemap.sources[id]);
+            addedSourceIds.push(id);
+          }
+        }
+        if (basemap.glyphs && typeof m.setGlyphs === "function")
+          m.setGlyphs(basemap.glyphs);
+        if (basemap.sprite && typeof m.setSprite === "function")
+          m.setSprite(basemap.sprite);
+
+        const bmLayers = basemap.layers;
+        let firstSymbol = bmLayers.findIndex((l) => l && l.type === "symbol");
+        if (firstSymbol < 0) firstSymbol = bmLayers.length;
+        const addLayer = (sourceLayer, beforeId) => {
+          const layer = Object.assign({}, sourceLayer);
+          if (!visible) {
+            layer.layout = Object.assign({}, layer.layout, { visibility: "none" });
+          }
+          m.addLayer(layer, beforeId);
+          addedLayerIds.push(layer.id);
+        };
+        bmLayers.slice(0, firstSymbol).forEach((l) => addLayer(l, SEGMENTS_LAYER));
+        bmLayers.slice(firstSymbol).forEach((l) => addLayer(l, FADE_LAYER));
+        this._basemapLayerIds = bmLayers.map((l) => l.id);
+        this._basemapSourceIds = Object.keys(basemap.sources);
+        this._basemapInstalledTheme = basemap.theme || this._theme;
+        return true;
+      } catch (e) {
+        console.warn("[map] failed to install basemap theme", e);
+        addedLayerIds
+          .slice()
+          .reverse()
+          .forEach((id) => {
+            if (m.getLayer(id)) m.removeLayer(id);
+          });
+        addedSourceIds.forEach((id) => {
+          if (m.getSource(id)) m.removeSource(id);
+        });
+        this._basemapLayerIds = [];
+        this._basemapSourceIds = [];
+        this._basemapInstalledTheme = null;
+        return false;
+      }
+    },
+    // Switches only the basemap stack, preserving all railway overlays and
+    // the current view. OpenFreeMap's official Dark style is used in dark mode.
+    async setBasemapTheme(theme, options = {}) {
+      theme = theme === "dark" ? "dark" : "light";
+      this._theme = theme;
+      this._applyThemePaint(theme);
+      if (!this._map) return false;
+      if (this._basemapRetryInflight) await this._basemapRetryInflight;
+      if (this._basemapInstalledTheme === theme) return true;
+      this._basemapRetryInflight = (async () => {
+        try {
+          const basemap = await loadBasemap(theme, true);
+          if (!basemap) return false;
+          if (!(await probeBasemapOrigin(basemap))) return false;
+          if (typeof options.beforeInstall === "function")
+            await options.beforeInstall();
+          return await this._installBasemap(basemap);
+        } finally {
+          this._basemapRetryInflight = null;
+        }
+      })();
+      return this._basemapRetryInflight;
+    },
+    // Online retry: boot may have degraded to no-basemap. Load the style for
+    // the active page theme and splice it into the live map without touching
+    // railway overlays or camera state.
     async retryBasemap() {
       const m = this._map;
       if (!m) return false;
@@ -1963,30 +2114,10 @@
       if (this._basemapRetryInflight) return this._basemapRetryInflight;
       this._basemapRetryInflight = (async () => {
         try {
-          const basemap = await loadBasemap(true);
+          const basemap = await loadBasemap(this._theme, true);
           if (!basemap) return false;
           if (!(await probeBasemapOrigin(basemap))) return false;
-          if (basemap.glyphs && typeof m.setGlyphs === "function")
-            m.setGlyphs(basemap.glyphs);
-          if (basemap.sprite && typeof m.setSprite === "function")
-            m.setSprite(basemap.sprite);
-          for (const id of Object.keys(basemap.sources)) {
-            if (!m.getSource(id)) m.addSource(id, basemap.sources[id]);
-          }
-          const bmLayers = basemap.layers;
-          let firstSymbol = bmLayers.findIndex((l) => l && l.type === "symbol");
-          if (firstSymbol < 0) firstSymbol = bmLayers.length;
-          const addHidden = (l, beforeId) => {
-            if (m.getLayer(l.id)) return;
-            const layer = Object.assign({}, l, {
-              layout: Object.assign({}, l.layout, { visibility: "none" }),
-            });
-            m.addLayer(layer, beforeId);
-          };
-          bmLayers.slice(0, firstSymbol).forEach((l) => addHidden(l, SEGMENTS_LAYER));
-          bmLayers.slice(firstSymbol).forEach((l) => addHidden(l, FADE_LAYER));
-          this._basemapLayerIds = bmLayers.map((l) => l.id);
-          return true;
+          return await this._installBasemap(basemap);
         } catch (e) {
           return false;
         } finally {

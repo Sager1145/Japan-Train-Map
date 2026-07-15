@@ -1,6 +1,6 @@
 # N02 Limited Express Train JSON Specification
 
-版本：`1.3`（向后兼容 `1.2`）
+版本：`1.3`
 文件名：`jsonspec.md`
 适用范围：单 HTML N02 铁路地图、列车 JSON 导入/导出、JR-only 特急路线渲染、乘坐区间显示、停靠站/通过站管理。
 
@@ -35,7 +35,7 @@
 
 **第二部分 · 数据源（N02 / OSM）规范**
 
-2. 数据源说明　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要　23. 遗留字段 `route_geometry_cache`
+2. 数据源说明　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 站名对照表 `station-readings.json`**：汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
 
 ---
 
@@ -52,9 +52,8 @@
 }
 ```
 
-> `schema_version` 当前为 `"1.3"`，新增了每个 train 的 `date` 字段（见 3.1 / 3.3）。
-> 导入与服务器保存同时兼容旧版 `"1.2"`：缺少 `date` 字段的旧 JSON 仍可正常导入，
-> 系统会按「JSON 内 date → 当前选中日期 → 从 id 解析 → undated」的顺序自动补全 `date`。
+> `schema_version` 为 `"1.3"`；每个 train 有可选的 `date` 字段（见 3.1 / 3.3）。
+> 缺少 `date` 的 JSON 仍可导入，系统会按「JSON 内 date → 当前选中日期 → 从 id 解析 → undated」的顺序自动补全 `date`。
 
 ### 1.1 导出：永远是完整 store
 
@@ -75,7 +74,7 @@
 
 | 顶层形态 | 处理方式 |
 | ---- | ---- |
-| `{ "schema_version": "1.2"\|"1.3", "trains": [...] }` | 完整 store（必须含合法 `schema_version`，且不得含 `schema_version` / `trains` 以外的键） |
+| `{ "schema_version": "1.3", "trains": [...] }` | 完整 store（必须含合法 `schema_version`，且不得含 `schema_version` / `trains` 以外的键） |
 | `[ { ...train }, ... ]` | 裸列车数组 → 包装为 `{ schema_version:"1.3", trains:[...] }` |
 | `{ "id": ..., "stops": [...] }` | 单个列车对象（同时含 `id` 与 `stops`）→ 包装为单元素 store |
 
@@ -90,7 +89,7 @@
 
 | 字段               | 类型     | 必填 | 说明            |
 | ---------------- | ------ | -: | ------------- |
-| `schema_version` | string |  是 | 当前为 `"1.3"`，兼容旧版 `"1.2"` |
+| `schema_version` | string |  是 | 必须为 `"1.3"` |
 | `trains`         | array  |  是 | 列车数组          |
 
 ### 2.2 顶层示例
@@ -110,9 +109,7 @@
       "direction": "down",
       "visible": true,
       "style": {
-        "color": "#d9364f",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d9364f"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -176,9 +173,7 @@
 | `route_policy`   | object  |  否 | 见第 5 节 | 路线匹配策略（缺省时用默认策略）                |
 | `route_sections` | array   |  否 | `[]` / 由 stops 推导 | 站间 route section（缺省时按相邻 stops 自动生成，见 6.3） |
 
-> **`name` 字段已移除**：旧版的列车级 `name`（列車名稱）与 `number`（车次）内容重复，已从 schema 中删除。导入时仍然接受携带 `name` 的旧文件（宽松兼容），但该字段会被丢弃、不再导出。注意：route_section 级的支线 `name`（见 6.1b）**不受影响**，仍然保留。
->
-> 还有一个**可选遗留字段** `route_geometry_cache`：导入时被接受但忽略（不加载、不再导出），详见第 23 节。除此之外，train 对象出现任何其它键都会导致导入失败（严格白名单）。
+> **严格白名单**：train 对象只允许上表中的键，出现任何其它键都会导致导入失败。注意：route_section 级的支线 `name`（见 6.1b）是不同字段，**不受影响**。
 
 ### 3.2 Train ID 规则
 
@@ -284,21 +279,19 @@ id ASC             # 最终 tiebreaker
 
 ### 4.1 字段
 
-整个 `style` 对象以及其中每个字段都可省略；缺省时使用下表默认值。导出时三个字段总会被写出。
+`style` 对象及其字段均可省略。**每列车只有 `color` 一个字段**：线宽与淡色透明度是**全局显示设置、由网页统一控制，不写进 JSON**（见下方说明）。导出时 `style` 只写出 `color`。
 
-| 字段                 | 类型     | 必填 | 默认值       | 约束 / 说明                     |
-| ------------------ | ------ | -: | --------- | --------------------------- |
-| `color`            | string |  否 | `#d9364f` | 正常乘坐区间颜色；**必须为 `#RRGGBB`（6 位十六进制）**，否则校验报错 |
-| `weight`           | number |  否 | `6`       | 正常线宽；编辑器允许范围 `1`–`14`        |
-| `unridden_opacity` | number |  否 | `0.22`    | 非乘坐站/区间淡色透明度（`0`–`1`）        |
+| 字段      | 类型     | 必填 | 默认值       | 约束 / 说明                     |
+| ------- | ------ | -: | --------- | --------------------------- |
+| `color` | string |  否 | `#d9364f` | 正常乘坐区间颜色；**必须为 `#RRGGBB`（6 位十六进制）**，否则校验报错 |
+
+> **`weight` / `unridden_opacity` 已移除（不再由 JSON 控制）**：线宽是**全局设置**，由网页「顯示調節 → 線路粗細」（`DISPLAY.routeWidthScale`）统一控制，所有列车等宽渲染（`DEFAULT_TRAIN_WEIGHT × routeWidthScale`）；非乘坐区间**整段隐藏**（透明度 0），故 `unridden_opacity` 无意义。导入时若 JSON 仍带这两个字段，会被**忽略丢弃**，导出时不再写出。
 
 ### 4.2 示例
 
 ```json
 "style": {
-  "color": "#d9364f",
-  "weight": 6,
-  "unridden_opacity": 0.22
+  "color": "#d9364f"
 }
 ```
 
@@ -395,7 +388,9 @@ id ASC             # 最终 tiebreaker
 
 > `*` 起点/终点各自的「名称」与「码」二选一即可，并非同时必填。
 >
-> **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。导入时也接受旧别名 `operator_hints`（等价于 `operator_names`），导出统一写为 `operator_names`。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
+> **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
+
+> **canonical 形态省略可推导的 `from` / `to` 名**：站名是**每站常量**，已由 `from/to` 码经站名对照表（见 13.4）唯一确定，且每个车站的名字已在其 `stops[].name` 上保留一份。因此**导出 / 持久化的 route_section 默认只写 `from_n02_station_code` / `to_n02_station_code`（+ 线路/公司提示），不再重复 `from` / `to` 站名**——避免同一站名在 stops 和每个 section 里反复出现（当前存档约省 10%）。加载时前端按码从站表补回 `from` / `to`，所以站名匹配、§6.4 分歧检测、tooltip 等逻辑照常工作。**端点无码**（无法由码还原）或名字与码的权威站名**不一致**（别名）时，`from` / `to` 名会**保留**。
 
 ### 6.1b 支线车号 `number` / `name`（可选）
 
@@ -993,7 +988,7 @@ n02_station_code
 
 ```text
 color = train.style.color
-weight = train.style.weight
+weight = DEFAULT_TRAIN_WEIGHT × DISPLAY.routeWidthScale（全局线宽，见 §4）
 opacity = 0.92
 dashArray = null
 ```
@@ -1008,7 +1003,7 @@ dashArray = null
 区间内通过站      随区间一并隐藏，不绘制 marker
 ```
 
-> 旧版「淡色＋虚线」（`unridden_opacity` / `dashArray "4 6"`）表示未乘坐区间的做法已废弃：现在未乘坐 = 彻底隐藏。`style.unridden_opacity` 字段保留以兼容旧 JSON，但不再用于此渲染。
+> 旧版「淡色＋虚线」（`unridden_opacity` / `dashArray "4 6"`）表示未乘坐区间的做法已废弃：现在未乘坐 = 彻底隐藏。`style.unridden_opacity` 与 `style.weight` 已从 canonical JSON **移除**（导入时忽略、导出时不写；线宽改由全局 `routeWidthScale` 控制，见第一部分 §4）。
 
 ### 13.5 禁止直线 fallback
 
@@ -1095,7 +1090,7 @@ fromStop.ride_segment && toStop.ride_segment
 ```text
 顶层是对象（非数组）
 只含 schema_version 与 trains 两个键（多余键报错）
-schema_version ∈ {"1.2", "1.3"}
+schema_version = "1.3"
 trains 是 array
 trains[*].id 不重复
 ```
@@ -1115,8 +1110,6 @@ stops 是 array 且 length >= 2
 首站不应同时有 arrival 和 departure；末站同理
 date 若出现：必须是合法 YYYY-MM-DD 或 "undated"
 ```
-
-> 旧字段 `name`（列車名稱）已移除：导入宽松接受但丢弃，不再校验、不再导出（见 3.1）。
 
 下列字段为**可选**；只有在出现时才按规则校验（缺省时由规范化补默认值，见第 3/4/5/6 节）：
 
@@ -1184,9 +1177,7 @@ origin / destination / passenger_stop 匹配失败
       "direction": "down",
       "visible": true,
       "style": {
-        "color": "#d9364f",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d9364f"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1290,7 +1281,7 @@ origin / destination / passenger_stop 匹配失败
 
 ## 17. 实现必须遵守的核心规则
 
-1. 导出顶层永远是 `{ "schema_version": "1.3", "trains": [...] }`（兼容载入 `"1.2"`）；导入另宽松接受裸数组与单列车对象（见 1.2）。
+1. 导出顶层永远是 `{ "schema_version": "1.3", "trains": [...] }`；导入另宽松接受裸数组与单列车对象（见 1.2）。
 2. 导入时 append，不覆盖现有 trains；持久化到服务器 `train-store.json`（非 localStorage）。
 3. 导出时必须包含完整 stops。
 4. 每个 stop 必须包含 `ride_segment`。
@@ -1898,6 +1889,9 @@ N02_004 应作为路线匹配 hint，而不是唯一条件。
 二者名称不同，不应仅靠 N02 group code 自动合并。
 如需合并，应使用手动 transfer group 或 alias 规则。
 
+> N02 只有汉字站名，**没有假名 / 罗马字**。站名的平假名读音与罗马字不写进列车 JSON，
+> 集中存于按 `N02_005c` 索引的 `station-readings.json`（见第二部分 13.4 站名读音表）。
+
 ---
 
 ## 11. N02_005c 駅コード
@@ -1986,6 +1980,8 @@ N02_005g 不能覆盖不同名称但现实可换乘的站。
 | `N02_001`      | 匹配 filter                  | 铁道区分           |
 | `N02_002`      | 匹配 filter                  | 事业者种别          |
 
+> 站名的假名 / 罗马字**不进入** Stop 字段；另见 13.4 的 `station-readings.json`（前端 `placeName` 按 `n02_station_code` 查表，站名兜底）。
+
 ### 13.2 RailroadSection 到 Route Segment
 
 | N02 RailroadSection 字段 | 用途                       |
@@ -2012,6 +2008,100 @@ computed pass-through geometry
 ```
 
 这些属于构建结果或运行时状态，不属于手写列车 JSON。
+
+### 13.4 站名对照表 `station-readings.json`（汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）
+
+N02 数据只提供汉字站名（`N02_005`），**不含任何假名、罗马字或中文译名**（见第 4 / 10 节）。因此站名的全部表记既不写进列车 JSON，也不硬编码在前端字典里，而是集中放在一张**按站 ID 索引的对照表** `app/data/station-readings.json`，通过 `GET /api/station-readings` 提供。**本表是站名的唯一权威来源**：一条记录同时给出汉字原名、平假名、片假名、罗马字、繁体中文、简体中文六种表记。
+
+**为什么按站 ID 而不是站名**：N02 里存在大量同名不同站（当前在用车站中就有 54 个站名对应多个 `N02_005c`），且同名站偶有不同读音；以 `N02_005c`（駅コード，见第 11 节）为主键可精确区分，站名仅作兜底。主键天生免疫「同一车站多公司 / 多线路」——那种情况本就是多个不同的 `N02_005c`，各自独立、读音一致，不会冲突。
+
+#### 文件结构
+
+```json
+{
+  "note": "Station name table keyed by N02 station code (N02_005c). ...",
+  "byCode": {
+    "007958": { "name": "関西空港", "kana": "かんさいくうこう", "katakana": "カンサイクウコウ", "romaji": "Kansai-Kūkō", "zh_Hant": "關西空港", "zh_Hans": "关西空港" },
+    "003987": { "name": "三田",     "kana": "みた",             "katakana": "ミタ",             "romaji": "Mita",        "zh_Hant": "三田",     "zh_Hans": "三田" }
+  },
+  "byName": {
+    "関西空港": { "kana": "かんさいくうこう", "katakana": "カンサイクウコウ", "romaji": "Kansai-Kūkō", "zh_Hant": "關西空港", "zh_Hans": "关西空港" }
+  }
+}
+```
+
+| 字段                 | 类型     | 说明                                                             |
+| ------------------ | ------ | -------------------------------------------------------------- |
+| `byCode`           | object | 主表。键为 `N02_005c`，值为 `{ name, kana, katakana, romaji, zh_Hant, zh_Hans }` |
+| `byCode[].name`    | string | 汉字站名（等于该码的 `N02_005`），日文原名                                      |
+| `byCode[].kana`    | string | 平假名读音（只用平假名，长音不写「ー」）                                            |
+| `byCode[].katakana`| string | 片假名读音（由 `kana` 机械转写而来）                                          |
+| `byCode[].romaji`  | string | 修正 Hepburn 罗马字，长音用长音符（`ō` / `ū`），方位·地区前缀用连字符分隔（`Minami-`、`Iyo-`） |
+| `byCode[].zh_Hant` | string | 繁体中文名                                                          |
+| `byCode[].zh_Hans` | string | 简体中文名                                                          |
+| `byName`           | object | 兜底表。键为**归一化站名**，值为 `{ kana, katakana, romaji, zh_Hant, zh_Hans }`；**不含 id**（原数据无 id 者不补 id） |
+
+**归一化站名**（`byName` 的键，与前端 `normReadingKey` / `normalizeStationName` 一致）：
+
+```text
+NFKC 规整 → 去首尾空白 → ヶ→ケ → ヵ→カ
+```
+
+#### 覆盖范围（当前 N02-25 + 当前 store）
+
+```text
+byCode：793 条（覆盖当前所有列车实际停靠 / 经过的 N02_005c）
+byName：774 条（同名归一化兜底）
+缺失读音：0
+```
+
+对照表只需覆盖**在用**车站；新增列车若引入新站，需为其站码补一条 `byCode`（拿不到码时至少补 `byName`）。
+
+#### 查表顺序（前端 `I18N.placeName(jp, code)`）
+
+```text
+1. byCode[code]                —— 有站码时优先，精确
+2. byName[normReadingKey(jp)]  —— 无码或未命中时按归一化站名兜底
+3. 服务名字典 KANA / NAMES     —— 只剩列车名 / 线名（如 あずさ、京浜東北線）
+4. 原文                         —— 全未命中则原样返回站名
+```
+
+显示形态（与既有 `placeName` 一致）：
+
+```text
+zh-Hant / zh-Hans → 東京（とうきょう）   （汉字 ＋ 平假名）
+en                → 東京 (Tōkyō)        （汉字 ＋ 罗马字）
+ja                → 東京                 （仅汉字）
+```
+
+#### 与列车 JSON 的边界（重要）
+
+```text
+读音 / 片假名 / 中文永不写入 train-store.json：stop 只保留 name + n02_station_code
+  （每站名字在其 stop 上保留唯一一份），其余表记全部按码来本表取。
+route_sections 只保留 from/to 码：其 from/to 站名与 stops 重复、可由码经本表还原，
+  故导出 / 持久化时省略（见 6.1），加载时按码补回；无码端点或别名则保留名字。
+读音不再硬编码在 i18n.js：站名注音已整体移入本表，
+  i18n.js 的 KANA / NAMES 只保留列车服务名与线名。
+无 n02_station_code 的大站（東京 / 新宿 / 札幌 等），生成时已按最近锚点
+  补齐 N02_005c 写回 stops，故本表可统一按码命中；byName 仍作兜底。
+```
+
+#### 数据来源与生成
+
+```text
+平假名：依据权威网络资料（各站维基 / 官方読み仮名等）确定，
+  难读站（大楽毛=おたのしけ、撫牛子=ないじょうし、五十川=いらがわ 等）逐一核对。
+片假名：由平假名机械转写（ひらがな→カタカナ，1:1），确定性生成。
+罗马字：修正 Hepburn，长音 ō / ū，方位·地区前缀
+  （Kita- / Minami- / Higashi- / Nishi- / Shin- / Iyo- / Tosa- / Uzen- / Ugo- 等）连字符分隔。
+简繁中文：参考官方译名。纯汉字站名用运营商通行的简 / 繁写法
+  （OpenCC jp2t→t2s，并修正 jp2t 的过度繁化：予≠豫、余≠餘、渋→澀/涩、岳≠嶽、仙台=台 等）；
+  含假名 / ヶ / ノ / ツ 的站名用官方或既定译名（みなとみらい=港未來 / 港未来、
+  りんくうタウン=臨空城 / 临空城、ハウステンボス=豪斯登堡、トマム=苫鵡 / 苫鹉、
+  越前たけふ=越前武生、ひばりヶ丘=雲雀丘 / 云雀丘；ノ→之、ツ / ヶ 脱落）。
+本表为构建产物，可整表重建；应随在用车站集变化保持同步。
+```
 
 ---
 
@@ -2434,6 +2524,7 @@ route_policy
 自动保存到服务器 train-store.json（仅 UI 状态用 localStorage）
 根据 ride_segment 调整站点和路线颜色
 显示 warnings
+根据 station-readings.json 显示站名假名 / 罗马字（placeName 按 n02_station_code 查表，见第二部分 13.4 站名读音表）
 ```
 
 ---
@@ -2488,34 +2579,3 @@ route_policy
 18. 使用 N02 必须显示国土交通省国土数值情報出典。
 19. 使用 OSM 底图必须显示 OpenStreetMap contributors。
 20. 不得从 OSM 官方瓦片服务器批量下载离线瓦片。
-
----
-
-## 23. 遗留可选字段：`route_geometry_cache`（线路几何缓存）
-
-> **现状（重要）**：该字段为**遗留兼容字段**。当前实现**不再把线路几何写进 train store**：
-> 导入时 `route_geometry_cache` 会被**接受但丢弃**（不加载到内存），导出 / 自动保存也**不会**写出它。
-> 因此 canonical store 始终是「精简的语义 JSON」，体积大幅缩小。早期版本曾把它内嵌进每趟列车，
-> 约占文件 ~96% 体积——现已移除。
-
-为避免每次打开 / 导入都在浏览器端重新对 N02 路网做 Dijkstra 寻路（大量列车时明显卡顿），
-解算结果改为缓存在**浏览器 IndexedDB**（库 `n02-route-geometry-cache`）中：
-
-1. **唯一事实来源仍是语义数据**：`stops`、`route_sections`、`route_policy` 决定一切；几何只是其解算结果的记忆化缓存，随时可重建。
-2. **缓存键 / 自动失效**：缓存以 `railHash::cacheKey` 为键。`cacheKey` 由该列车的 `route_sections` + 偏好/过滤策略 + 允许的 `N02_002` 种别码派生；`railHash` 是当前 N02 路网内容的指纹。任一改变都会令旧条目不再命中并重新解算，因此不会显示过期几何；更换底层 N02 数据会整体失效旧缓存。
-3. **跨会话预热**：启动时把当前路网的缓存条目批量读入内存（`warmRouteCacheFromIndexedDb`）；命中则连重型路由图都无需构建，未命中才按需解算并回写 IndexedDB（`persistRouteCacheEntry`）。
-4. **与手写 JSON 无关**：手写 / 导出的列车 JSON **不应**也**不会**包含线路几何（与数据源部分「JSON 不直接保存 N02 geometry」一致）。
-
-兼容性：导入白名单仍接受 `route_geometry_cache` 键（旧文件不会因此被拒），但其内容会被静默忽略。
-若你的工具仍在生成该字段，可安全移除——不影响任何语义。其历史形状如下（仅供识别旧文件）：
-
-```json
-{
-  "route_geometry_cache": {
-    "key": "<派生自 sections/policy/institution codes 的字符串>",
-    "features": [
-      { "type": "Feature", "geometry": { "type": "LineString", "coordinates": [] }, "properties": {} }
-    ]
-  }
-}
-```

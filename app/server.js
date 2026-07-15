@@ -46,6 +46,10 @@ const DATA_FILES = {
   "default-trains": "default-trains.json",
   "matched-routes": "matched-routes.json",
   "matched-stops": "matched-stops.json",
+  // Station names keyed by N02 station code (N02_005c): kanji/kana/katakana/
+  // romaji/zh_Hant/zh_Hans; consumed by the frontend i18n layer for name
+  // display. Schema: jsonspec.md §13.4.
+  "station-readings": "station-readings.json",
 };
 
 // ---------------------------------------------------------------------------
@@ -196,9 +200,8 @@ app.get("/api/events", (req, res) => {
 // replacing the old browser-localStorage backup.
 // ---------------------------------------------------------------------------
 const TRAIN_STORE_FILE = path.join(DATA_DIR, "train-store.json");
-// Stores are written as 1.3 (per-train `date`); 1.2 is still accepted so old
-// saved stores and exports keep loading/saving without a migration step.
-const ACCEPTED_SCHEMA_VERSIONS = ["1.2", "1.3"];
+// Stores are written and accepted as 1.3 (per-train `date`).
+const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
 const DEFAULT_SCHEMA_VERSION = "1.3";
 
 // Validate a parsed body into a canonical store object, or throw a 400-style

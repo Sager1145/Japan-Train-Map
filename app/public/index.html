@@ -5,8 +5,37 @@
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <meta content="#ff5522" name="theme-color" />
     <title>N02 Limited Express Train Manager</title>
+    <script>
+      // Resolve the saved/system theme before CSS loads to prevent a light
+      // flash when opening the app in dark mode.
+      (() => {
+        let mode = "system";
+        try {
+          const saved = JSON.parse(
+            localStorage.getItem("n02-train-manager-display-settings-v4") || "{}",
+          );
+          if (["system", "light", "dark"].includes(saved.theme)) mode = saved.theme;
+        } catch (_) {}
+        const dark =
+          mode === "dark" ||
+          (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        document.querySelector('meta[name="theme-color"]').content = dark
+          ? "#1c1c1e"
+          : "#ff5522";
+        try {
+          document.documentElement.dataset.sidebar =
+            localStorage.getItem("n02-train-manager-sidebar-visible-v1") === "0"
+              ? "collapsed"
+              : "expanded";
+        } catch (_) {
+          document.documentElement.dataset.sidebar = "expanded";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260716-manual-fit2" />
+    <link rel="stylesheet" href="styles.css?v=20260716-sidebar-drawer2" />
     <!-- Start the two largest downloads during HTML parse, before any JS runs. -->
     <link rel="preload" href="rail/jp-2025.json" as="fetch" crossorigin />
     <link rel="preload" href="api/stations" as="fetch" crossorigin />
@@ -18,14 +47,28 @@
         <header>
           <div class="header-row">
             <h1><span class="brand-mark" aria-hidden="true">■</span><span data-i18n="app.title">N02 特急列車管理</span></h1>
-            <div class="lang-switch">
-              <label for="lang-select" data-i18n="lang.label">語言</label>
-              <select id="lang-select" data-i18n-aria-label="lang.label" aria-label="語言">
-                <option value="zh-Hant">中文（繁體）</option>
-                <option value="zh-Hans">中文（简体）</option>
-                <option value="ja">日本語</option>
-                <option value="en">English</option>
-              </select>
+            <div class="header-actions">
+              <div class="lang-switch">
+                <label for="lang-select" data-i18n="lang.label">語言</label>
+                <select id="lang-select" data-i18n-aria-label="lang.label" aria-label="語言">
+                  <option value="zh-Hant">中文（繁體）</option>
+                  <option value="zh-Hans">中文（简体）</option>
+                  <option value="ja">日本語</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div class="theme-switch">
+                <label for="theme-select" data-i18n="theme.label">主題</label>
+                <select
+                  id="theme-select"
+                  data-i18n-aria-label="theme.label"
+                  aria-label="主題"
+                >
+                  <option value="system" data-i18n="theme.system">跟隨系統</option>
+                  <option value="light" data-i18n="theme.light">亮色</option>
+                  <option value="dark" data-i18n="theme.dark">暗色</option>
+                </select>
+              </div>
             </div>
           </div>
           <div class="hint" data-i18n="app.hint">
@@ -95,9 +138,6 @@
               <label><span data-i18n="field.origin">起站</span> <input id="field-origin" /></label>
               <label><span data-i18n="field.destination">終站</span> <input id="field-destination" /></label>
               <label><span data-i18n="field.color">顏色</span> <input id="field-color" type="color" /></label>
-              <label
-                ><span data-i18n="field.weight">線寬</span> <input id="field-weight" max="14" min="1" type="number"
-              /></label>
             </div>
             <div class="toolbar">
               <button class="primary" id="save-fields" data-i18n="btn.saveFields">套用欄位</button>
@@ -217,14 +257,27 @@
         </section>
 
       </aside>
+      <button
+        class="sidebar-edge-tab"
+        id="sidebar-edge-tab"
+        type="button"
+        aria-controls="sidebar"
+        aria-expanded="true"
+        aria-label="隱藏選單"
+        title="隱藏選單"
+      >
+        <span class="sidebar-edge-tab-grip" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+      </button>
       <main id="map"></main>
     </div>
     <!-- Vendored MapLibre GL runtime + the railprint-style map core:
-     vendored OpenFreeMap positron basemap, the full N02 national network in
+     OpenFreeMap Positron/Dark basemaps, the full N02 national network in
      official line colors, and railprint's ridden-line / station-dot styling. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
-    <script src="i18n.js"></script>
-    <script src="railmap.js?v=20260716-near-parallel-overlap"></script>
-    <script src="app.js?v=20260716-near-parallel-overlap"></script>
+    <script src="i18n.js?v=20260716-theme-dropdown"></script>
+    <script src="railmap.js?v=20260716-theme-transition"></script>
+    <script src="app.js?v=20260716-theme-transition"></script>
   </body>
 </html>

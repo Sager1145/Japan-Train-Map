@@ -112,10 +112,8 @@ const JAPAN_FULL_TERRITORY_BOUNDS = [
 ];
 
 // Single source of truth for protocol/schema constants reused across the app.
-// Stores are now written as 1.3 (adds per-train `date`), but 1.2 (no date)
-// is still accepted on import/load for backward compatibility.
 const SCHEMA_VERSION = "1.3";
-const ACCEPTED_SCHEMA_VERSIONS = ["1.2", "1.3"];
+const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
 // Sentinel selectedDate value: show the combined "all trains" list.
 const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
@@ -124,7 +122,6 @@ const DEFAULT_TRAIN_COLOR = "#d9364f";
 // Single source of truth for the default route style numbers (railprint's
 // glowing-line spec: ridden lines draw from a 4px base, zoom-scaled).
 const DEFAULT_TRAIN_WEIGHT = 4;
-const DEFAULT_UNRIDDEN_OPACITY = 0.48;
 
 // N02 "institution type" (事業者種別, field N02_002) classifies a line's
 // operator. The default route policy allows all five classes; a train may
@@ -158,6 +155,7 @@ const N02_INSTITUTION_TYPE_CODES = new Set(
 const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
 const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v3";
 const DISPLAY_DEFAULTS = {
+  theme: "system", // system preference, explicit light, or explicit dark
   routeWidthScale: 1, // multiplies each train's route line width
   riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
   // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
@@ -216,6 +214,111 @@ const DISPLAY_TOGGLES = [
   { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false },
   { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false },
 ];
+const THEME_MEDIA = window.matchMedia("(prefers-color-scheme: dark)");
+const REDUCED_MOTION_MEDIA = window.matchMedia(
+  "(prefers-reduced-motion: reduce)",
+);
+let activeResolvedTheme = null;
+let themeSelectReady = false;
+let themeFallbackTimer = null;
+
+function resolveDisplayTheme(mode = DISPLAY.theme) {
+  if (mode === "dark" || mode === "light") return mode;
+  return THEME_MEDIA.matches ? "dark" : "light";
+}
+
+function updateThemeSelect() {
+  const select = document.getElementById("theme-select");
+  if (!select) return;
+  select.value = ["system", "light", "dark"].includes(DISPLAY.theme)
+    ? DISPLAY.theme
+    : "system";
+}
+
+function setupThemeSelect() {
+  if (themeSelectReady) return;
+  const select = document.getElementById("theme-select");
+  if (!select) return;
+  themeSelectReady = true;
+  select.addEventListener("change", () => {
+    DISPLAY.theme = select.value;
+    applyDisplayTheme();
+  });
+  updateThemeSelect();
+}
+
+function setDocumentTheme(resolved) {
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta)
+    themeMeta.content = resolved === "dark" ? "#1c1c1e" : "#ff5522";
+}
+
+async function transitionDocumentTheme(resolved, animate) {
+  const root = document.documentElement;
+  if (!animate) {
+    setDocumentTheme(resolved);
+    return;
+  }
+  if (typeof document.startViewTransition === "function") {
+    try {
+      const transition = document.startViewTransition(() => {
+        setDocumentTheme(resolved);
+      });
+      await transition.updateCallbackDone;
+      return;
+    } catch (_) {
+      // Fall through to the CSS colour transition when snapshots are not
+      // available (for example while another view transition is finishing).
+    }
+  }
+  root.classList.add("theme-transition-fallback");
+  // Flush the class before changing the inherited colour variables.
+  void root.offsetWidth;
+  setDocumentTheme(resolved);
+  clearTimeout(themeFallbackTimer);
+  themeFallbackTimer = setTimeout(() => {
+    root.classList.remove("theme-transition-fallback");
+  }, 520);
+}
+
+async function applyDisplayTheme({ updateMap = true, persist = true } = {}) {
+  const resolved = resolveDisplayTheme();
+  const previous = activeResolvedTheme;
+  const changed = resolved !== activeResolvedTheme;
+  activeResolvedTheme = resolved;
+  const animate =
+    changed && previous !== null && !REDUCED_MOTION_MEDIA.matches;
+  await transitionDocumentTheme(resolved, animate);
+  updateThemeSelect();
+  if (persist) persistDisplaySettings();
+  if (
+    updateMap &&
+    changed &&
+    map &&
+    window.RailMap &&
+    typeof RailMap.setBasemapTheme === "function"
+  ) {
+    let mapCovered = false;
+    try {
+      await RailMap.setBasemapTheme(resolved, {
+        beforeInstall: async () => {
+          if (!animate) return;
+          document.documentElement.classList.add("theme-map-covered");
+          mapCovered = true;
+          await new Promise((resolve) => setTimeout(resolve, 180));
+        },
+      });
+    } finally {
+      if (mapCovered) {
+        requestAnimationFrame(() => {
+          document.documentElement.classList.remove("theme-map-covered");
+        });
+      }
+    }
+  }
+}
 
 function loadDisplaySettings() {
   try {
@@ -233,6 +336,8 @@ function loadDisplaySettings() {
         if (migrated && k.indexOf("fitCurve") === 0) continue;
         if (typeof def === "boolean") {
           if (typeof v === "boolean") DISPLAY[k] = v;
+        } else if (typeof def === "string") {
+          if (typeof v === "string") DISPLAY[k] = v;
         } else if (typeof v === "number" && isFinite(v)) {
           DISPLAY[k] = v;
         }
@@ -375,6 +480,7 @@ function setupDisplaySettingsPanel() {
       applyPendingFitCurveSettings();
       fitCurveSettingsDirty = false;
       updateFitCurveRebuildButton();
+      applyDisplayTheme();
       applyDisplaySettings();
     });
   }
@@ -469,7 +575,10 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   if (!stop) return null;
   const feature = getStopFeature(stop, train);
   if (!feature) return null;
-  const name = I18N.placeName(feature.properties.name || stopName(stop));
+  const name = I18N.placeName(
+    feature.properties.name || stopName(stop),
+    stationCode(feature),
+  );
   if (!name) return null;
   const latlng = toLatLng(feature);
   const time = kind === "origin" ? stop.departure : stop.arrival;
@@ -705,7 +814,8 @@ function deckGetTooltip(info) {
       if (d) times.push(`<span style="opacity:0.8">${escapeHtml(d)}</span>`);
     }
     const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
-    return { html: `<b>${escapeHtml(I18N.placeName(name))}</b>${timeHtml}`, style };
+    const code = pr.n02_station_code || pr.N02_005c || null;
+    return { html: `<b>${escapeHtml(I18N.placeName(name, code))}</b>${timeHtml}`, style };
   }
   const t = o.train;
   if (!t) return null;
@@ -741,7 +851,7 @@ function deckGetTooltip(info) {
   // NOT set transform on it (doing so wipes deck's positioning and hides the
   // popup entirely — the bug this replaces).
   return {
-    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin))} \u2192 ${escapeHtml(I18N.placeName(dest))}${timeHtml}${overlapHtml}</div>`,
+    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin, oStop && stopStationCode(oStop)))} \u2192 ${escapeHtml(I18N.placeName(dest, dStop && stopStationCode(dStop)))}${timeHtml}${overlapHtml}</div>`,
     style: { background: "transparent", boxShadow: "none", padding: "0", margin: "0" },
   };
 }
@@ -1309,6 +1419,15 @@ let railSectionsGeoJson,
   matchedRoutesGeoJson,
   matchedStopsGeoJson;
 let stationCandidatesIndex;
+// N02_005c -> N02_005 station name. The station name is a per-station constant
+// (see jsonspec §13.4): it is kept ONCE on each stop, and route_sections carry
+// only codes — their from/to names are resolved from this map on load and
+// stripped from the persisted/exported JSON so the archive doesn't repeat every
+// station name in both the stops and the sections.
+let stationNameByCode = new Map();
+function stationNameForCode(code) {
+  return (code && stationNameByCode.get(String(code))) || "";
+}
 // Tracks the in-flight (or resolved) rail-sections fetch. rail-sections.json is
 // ~12 MB raw / 2.4 MB gzipped and is consumed ONLY by the route solver, which
 // runs after the map is already on screen — so it is fetched in parallel with
@@ -1322,6 +1441,18 @@ async function loadAppData() {
   railSectionsReady = fetchJson("rail-sections").then((data) => {
     railSectionsGeoJson = data;
     return data;
+  });
+
+  // Station readings (kana + romaji) keyed by N02 station code. Small file; we
+  // kick it off in parallel and inject it into the i18n layer once loaded so
+  // placeName() can annotate 東京（とうきょう）/ Tōkyō by station id. Non-fatal:
+  // on failure the service-name dictionaries still cover any inline fallback.
+  const stationReadingsReady = fetchJson("station-readings").catch((err) => {
+    console.warn(
+      "station-readings load failed; station kana/romaji unavailable.",
+      err,
+    );
+    return null;
   });
 
   // Block first paint only on the small, render-critical datasets. `stations`
@@ -1340,6 +1471,15 @@ async function loadAppData() {
   ]);
 
   stationCandidatesIndex = buildStationCandidatesIndex(stationsGeoJson);
+  stationNameByCode = new Map();
+  (stationsGeoJson.features || []).forEach((f) => {
+    const c = stationCode(f);
+    if (c) stationNameByCode.set(String(c), stationName(f));
+  });
+
+  const stationReadings = await stationReadingsReady;
+  if (stationReadings && window.I18N && I18N.setStationReadings)
+    I18N.setStationReadings(stationReadings);
 
   // Surface a rail-sections failure instead of leaving an unhandled rejection;
   // ensureRailSectionsLoaded() will retry on demand before the first solve.
@@ -1450,7 +1590,6 @@ const els = {
   origin: document.getElementById("field-origin"),
   destination: document.getElementById("field-destination"),
   color: document.getElementById("field-color"),
-  weight: document.getElementById("field-weight"),
   toggleFocusZoom: document.getElementById("toggle-focus-zoom"),
 };
 
@@ -1463,6 +1602,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Seed the display-tuning knobs from localStorage before the first render so
   // the user's saved line widths / sizes / opacities apply on load.
   loadDisplaySettings();
+  await applyDisplayTheme({ updateMap: false, persist: false });
+  setupThemeSelect();
+  const followSystemTheme = () => {
+    if (DISPLAY.theme === "system") applyDisplayTheme({ persist: false });
+  };
+  if (typeof THEME_MEDIA.addEventListener === "function")
+    THEME_MEDIA.addEventListener("change", followSystemTheme);
+  else if (typeof THEME_MEDIA.addListener === "function")
+    THEME_MEDIA.addListener(followSystemTheme);
   applyPendingFitCurveSettings();
   // Start the map's own downloads (vendored basemap style + the 9.2 MB rail
   // network package) IMMEDIATELY, in parallel with the /api datasets below.
@@ -1471,7 +1619,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // two multi-MB waterfalls and delaying first map paint by the whole first
   // phase. Both loaders resolve null on failure (never throw).
   const mapAssetsReady = Promise.all([
-    RailMap.loadBasemap(),
+    RailMap.loadBasemap(resolveDisplayTheme()),
     RailMap.loadNetwork(),
   ]);
   try {
@@ -1677,15 +1825,13 @@ function stationName(feature) {
   return (
     feature.properties.station_name ||
     feature.properties.name ||
-    feature.properties.N02_005 ||
-    feature.properties.station ||
-    feature.properties.id
+    feature.properties.N02_005
   );
 }
 
 function stationCode(feature) {
   const p = feature.properties || {};
-  return p.n02_station_code || p.N02_005c || p.station_id || null;
+  return p.n02_station_code || p.N02_005c || null;
 }
 
 function stationGroupCode(feature) {
@@ -1709,7 +1855,7 @@ function stationInstitutionTypeCode(feature) {
 }
 
 function stopName(stop) {
-  return stop.name || stop.station || "";
+  return stop.name || "";
 }
 
 function stopStationCode(stop) {
@@ -1895,8 +2041,8 @@ let serverStoreSaveTimer = null;
 let serverStoreSaveInFlight = false;
 let pendingServerStoreText = null;
 // Marks the in-memory store dirty WITHOUT serializing. The expensive full
-// JSON.stringify (which now also carries per-train route_geometry_cache) is
-// deferred until the debounced flush actually runs, so a rapid burst of small
+// JSON.stringify is deferred until the debounced flush actually runs, so a
+// rapid burst of small
 // mutations (visible toggles, field edits, ride_segment toggles) no longer
 // pays one — let alone two — full serializations on the synchronous path.
 let storeSaveDirty = false;
@@ -2599,19 +2745,11 @@ function canonicalStopShape(stop) {
 }
 
 function canonicalStyle(style) {
-  // Legacy default migration: stores written before the railprint restyle
-  // baked the OLD defaults (weight 6 / unridden 0.22) into every train.
-  // Treat exactly those values as "unset" so existing plans pick up the new
-  // railprint-scale defaults; any other explicit value is kept as-is.
-  let weight = Number(style?.weight || DEFAULT_TRAIN_WEIGHT);
-  if (weight === 6) weight = DEFAULT_TRAIN_WEIGHT;
-  let unridden = Number(style?.unridden_opacity ?? DEFAULT_UNRIDDEN_OPACITY);
-  if (unridden === 0.22) unridden = DEFAULT_UNRIDDEN_OPACITY;
-  return {
-    color: style?.color || DEFAULT_TRAIN_COLOR,
-    weight,
-    unridden_opacity: unridden,
-  };
+  // Only `color` is per-train now. Line width is a GLOBAL webpage setting
+  // (顯示調節 → 線路粗細 = DISPLAY.routeWidthScale) and unridden intervals are
+  // hidden entirely, so `weight` / `unridden_opacity` are no longer stored per
+  // train — any inbound values (legacy or hand-authored) are dropped here.
+  return { color: style?.color || DEFAULT_TRAIN_COLOR };
 }
 
 function canonicalRoutePolicy(routePolicy) {
@@ -2748,7 +2886,7 @@ function normalizeExportTrain(train) {
     visible: train.visible !== false,
     style: canonicalStyle(train.style),
     route_policy: canonicalRoutePolicy(train.route_policy),
-    route_sections: getRideRouteSectionsForTrain(train),
+    route_sections: getRideRouteSectionsForTrain(train).map(leanExportSection),
     stops: Array.isArray(train.stops)
       ? train.stops.map(canonicalStopShape)
       : [],
@@ -2758,6 +2896,33 @@ function normalizeExportTrain(train) {
   // boot) and re-solved on a miss, so embedding it here only bloated
   // train-store.json (~96% of the file) and the in-memory train objects.
   return normalized;
+}
+
+// Export-only: drop a route_section's from/to NAME when it is derivable from
+// the section's code (== the station table's authoritative name, jsonspec
+// §13.4), so the persisted/exported archive keeps each station's name once (on
+// its stop) instead of repeating it in every section. A name with no code, or
+// one that differs from the code's name (alias/override), is kept. Codes and
+// line/operator hints are always kept. NOTE: applied ONLY here in the export
+// path — getRideRouteSectionsForTrain() itself stays untouched because it also
+// feeds live routing / in-memory state (which must keep the resolved names).
+function leanExportSection(section) {
+  const fromCode = section.from_n02_station_code || null;
+  const toCode = section.to_n02_station_code || null;
+  const out = {};
+  if (section.from && (!fromCode || stationNameForCode(fromCode) !== section.from))
+    out.from = section.from;
+  if (section.to && (!toCode || stationNameForCode(toCode) !== section.to))
+    out.to = section.to;
+  out.from_n02_station_code = fromCode;
+  out.to_n02_station_code = toCode;
+  if (Array.isArray(section.line_names) && section.line_names.length)
+    out.line_names = [...section.line_names];
+  if (Array.isArray(section.operator_names) && section.operator_names.length)
+    out.operator_names = [...section.operator_names];
+  if (section.number) out.number = String(section.number);
+  if (section.name) out.name = String(section.name);
+  return out;
 }
 
 function buildCanonicalTrainStore() {
@@ -2851,27 +3016,27 @@ function normalizeImportedRouteSection(section) {
       "to_n02_station_code",
       "line_names",
       "operator_names",
-      "operator_hints",
       "number",
       "name",
     ],
     "Route section",
   );
 
+  // §13.4: from/to names are optional — when absent, resolve them from the
+  // from/to codes via the station table so all in-memory logic (name matching,
+  // §6.4 branch checks, tooltips) keeps working on a lean stored section.
+  const fromCode = section.from_n02_station_code || null;
+  const toCode = section.to_n02_station_code || null;
   const normalized = {
-    from: section.from || "",
-    to: section.to || "",
-    from_n02_station_code: section.from_n02_station_code || null,
-    to_n02_station_code: section.to_n02_station_code || null,
+    from: section.from || stationNameForCode(fromCode),
+    to: section.to || stationNameForCode(toCode),
+    from_n02_station_code: fromCode,
+    to_n02_station_code: toCode,
     line_names: Array.isArray(section.line_names)
       ? section.line_names.map(String).filter(Boolean)
       : [],
-    operator_names: Array.isArray(
-      section.operator_names || section.operator_hints,
-    )
-      ? (section.operator_names || section.operator_hints)
-          .map(String)
-          .filter(Boolean)
+    operator_names: Array.isArray(section.operator_names)
+      ? section.operator_names.map(String).filter(Boolean)
       : [],
   };
   // Optional per-section branch train number / name: some limited expresses run
@@ -2893,9 +3058,6 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       "id",
       "date",
       "number",
-      // Legacy field (removed from the schema: it always duplicated
-      // `number`). Still accepted on import, dropped on normalize/export.
-      "name",
       "train_type",
       "company",
       "origin",
@@ -2906,7 +3068,6 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       "route_policy",
       "route_sections",
       "stops",
-      "route_geometry_cache",
     ],
     "Train",
   );
@@ -2938,10 +3099,6 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       : [],
     stops: train.stops.map(normalizeImportedStop),
   };
-  // A legacy file may still carry route_geometry_cache; it stays in the
-  // allowed-keys list so import does not reject it, but we deliberately drop
-  // it instead of loading megabytes of geometry into memory. Geometry is
-  // rebuilt from IndexedDB / re-solved on first render.
   return normalized;
 }
 
@@ -3061,8 +3218,6 @@ function createBlankTrain() {
     visible: true,
     style: {
       color: "#1d7f8c",
-      weight: DEFAULT_TRAIN_WEIGHT,
-      unridden_opacity: DEFAULT_UNRIDDEN_OPACITY,
     },
     route_policy: {
       mode: "single_primary_route",
@@ -3147,8 +3302,8 @@ function persistAndRender() {
 // =========================================================================
 // The map renders with MapLibre GL, styled after yzhouwang/railprint
 // (see railmap.js for the ported style system):
-//   - vendored OpenFreeMap positron vector style (online tiles), with a plain
-//     background when the source is unavailable or the user chooses no map,
+//   - OpenFreeMap Positron/Dark vector styles (online tiles), with a plain
+//     theme-matched background when unavailable or the user chooses no map,
 //   - the full MLIT N02 national network + stations from railprint's
 //     jp-2025 rail package, every line in its official color, revealed
 //     by zoom tier (rank) and station spacing — OFF by default, toggled
@@ -3178,7 +3333,7 @@ function buildMapLayersControl(hasBasemap) {
   const selectLabelText = document.createElement("span");
   selectLabel.appendChild(selectLabelText);
   const select = document.createElement("select");
-  // "Positron (online)" is ALWAYS offered: when boot has no basemap the
+  // "OpenFreeMap (online)" is ALWAYS offered: when boot has no basemap the
   // option becomes the online-retry entry point (picking it re-attempts the
   // basemap via RailMap.retryBasemap and reverts on failure).
   const options = [
@@ -3246,7 +3401,7 @@ function buildMapLayersControl(hasBasemap) {
   });
   // Auto-recovery: when the browser regains connectivity, pre-warm the vector
   // basemap in the background. The view only switches if the user has already
-  // picked "Positron (online)" — otherwise the option just becomes available.
+  // picked "OpenFreeMap (online)" — otherwise the option just becomes available.
   if (!hasBasemap) {
     window.addEventListener("online", () => {
       if (RailMap.hasBasemap()) return;
@@ -3380,7 +3535,7 @@ function buildMapInfoControl() {
         </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
-          <p data-i18n="info.basemapBody">線上底圖使用 OpenFreeMap Positron。</p>
+          <p data-i18n="info.basemapBody">亮色使用 OpenFreeMap Positron，暗色使用官方 Dark 樣式。</p>
           <div class="map-info-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a><a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a></div>
         </article>
         <article class="map-info-source">
@@ -3415,7 +3570,7 @@ function buildMapInfoControl() {
 }
 
 async function initMap(mapAssetsReady) {
-  // The vendored positron style + railprint's jp-2025 rail package load in
+  // The theme-selected OpenFreeMap style + railprint's jp-2025 package load in
   // parallel (pre-started at boot, before the /api datasets); either may be
   // null (source unavailable) — the style builder degrades the same way railprint does
   // (plain background / no network overlay).
@@ -3424,6 +3579,7 @@ async function initMap(mapAssetsReady) {
   const style = RailMap.buildBaseStyle({
     basemap,
     network,
+    theme: resolveDisplayTheme(),
     fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
     // Pass-through dot LOD: the numerous white dots only draw from this zoom
     // (layer minzoom — no marker rebuild when the view crosses it).
@@ -3473,6 +3629,8 @@ async function initMap(mapAssetsReady) {
       getTooltip: deckGetTooltip,
     },
     basemap ? basemap.layers.map((l) => l.id) : [],
+    basemap ? Object.keys(basemap.sources) : [],
+    resolveDisplayTheme(),
   );
   // Selected-train width boost lives in the SEL layer's paint expression
   // (records stay selection-independent — picking a train rebuilds nothing).
@@ -3657,6 +3815,171 @@ function handleDeckRouteClick(info) {
 //  TabBar behavior) instead of scrolling one long column. Every card stays in
 //  the DOM (display:none only), so all JS bindings keep working while hidden.
 // =========================================================================
+const SIDEBAR_VISIBILITY_KEY = "n02-train-manager-sidebar-visible-v1";
+let sidebarVisible = true;
+let sidebarToggleReady = false;
+let sidebarMapResizeRaf = null;
+let sidebarMapResizeUntil = 0;
+let sidebarDragState = null;
+let suppressSidebarClick = false;
+
+function sidebarUsesVerticalDrag() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
+function sidebarFullSize() {
+  return sidebarUsesVerticalDrag()
+    ? Math.max(1, window.innerHeight * 0.58)
+    : 480;
+}
+
+function keepMapSizedDuringSidebarMotion(durationMs = 0) {
+  sidebarMapResizeUntil = Math.max(
+    sidebarMapResizeUntil,
+    performance.now() + Math.max(0, durationMs),
+  );
+  if (sidebarMapResizeRaf) return;
+  const step = () => {
+    sidebarMapResizeRaf = null;
+    if (map && typeof map.resize === "function") map.resize();
+    if (performance.now() < sidebarMapResizeUntil) {
+      sidebarMapResizeRaf = requestAnimationFrame(step);
+    }
+  };
+  sidebarMapResizeRaf = requestAnimationFrame(step);
+}
+
+function updateSidebarToggleLabel() {
+  const tab = document.getElementById("sidebar-edge-tab");
+  if (!tab) return;
+  const label = I18N.t(sidebarVisible ? "menu.hide" : "menu.show");
+  tab.setAttribute("aria-expanded", sidebarVisible ? "true" : "false");
+  tab.setAttribute("aria-label", label);
+  tab.title = label;
+}
+
+function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
+  const app = document.getElementById("app");
+  if (!app) return;
+  sidebarVisible = Boolean(visible);
+  app.classList.toggle("sidebar-collapsed", !sidebarVisible);
+  document.documentElement.dataset.sidebar = sidebarVisible
+    ? "expanded"
+    : "collapsed";
+  app.style.removeProperty("--sidebar-size");
+  updateSidebarToggleLabel();
+  if (persist) {
+    try {
+      localStorage.setItem(SIDEBAR_VISIBILITY_KEY, sidebarVisible ? "1" : "0");
+    } catch (_) {}
+  }
+  keepMapSizedDuringSidebarMotion(animate ? 380 : 0);
+}
+
+function setupSidebarToggle() {
+  if (sidebarToggleReady) return;
+  const app = document.getElementById("app");
+  const tab = document.getElementById("sidebar-edge-tab");
+  if (!app || !tab) return;
+  sidebarToggleReady = true;
+  try {
+    sidebarVisible = localStorage.getItem(SIDEBAR_VISIBILITY_KEY) !== "0";
+  } catch (_) {
+    sidebarVisible = true;
+  }
+  setSidebarVisible(sidebarVisible, { persist: false, animate: false });
+
+  tab.addEventListener("click", (event) => {
+    if (suppressSidebarClick) {
+      suppressSidebarClick = false;
+      event.preventDefault();
+      return;
+    }
+    setSidebarVisible(!sidebarVisible);
+  });
+
+  tab.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    const vertical = sidebarUsesVerticalDrag();
+    const fullSize = sidebarFullSize();
+    sidebarDragState = {
+      pointerId: event.pointerId,
+      vertical,
+      fullSize,
+      startX: event.clientX,
+      startY: event.clientY,
+      startSize: sidebarVisible ? fullSize : 0,
+      currentSize: sidebarVisible ? fullSize : 0,
+      moved: false,
+    };
+    app.classList.add("sidebar-dragging");
+    app.style.setProperty("--sidebar-size", `${sidebarDragState.startSize}px`);
+    try {
+      tab.setPointerCapture(event.pointerId);
+    } catch (_) {}
+  });
+
+  tab.addEventListener("pointermove", (event) => {
+    const drag = sidebarDragState;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const rawDelta = drag.vertical
+      ? drag.startY - event.clientY
+      : event.clientX - drag.startX;
+    if (Math.abs(rawDelta) > 3) drag.moved = true;
+    if (!drag.moved) return;
+    event.preventDefault();
+    drag.currentSize = Math.max(
+      0,
+      Math.min(drag.fullSize, drag.startSize + rawDelta),
+    );
+    app.style.setProperty("--sidebar-size", `${drag.currentSize}px`);
+    keepMapSizedDuringSidebarMotion(40);
+  });
+
+  const finishDrag = (event, cancelled = false) => {
+    const drag = sidebarDragState;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    sidebarDragState = null;
+    try {
+      if (tab.hasPointerCapture(event.pointerId))
+        tab.releasePointerCapture(event.pointerId);
+    } catch (_) {}
+    app.classList.remove("sidebar-dragging");
+    if (drag.moved && !cancelled) {
+      // A little under halfway feels deliberate while still making it easy to
+      // pull a completely hidden menu back into view from the edge tab.
+      const nextVisible = drag.currentSize >= drag.fullSize * 0.42;
+      suppressSidebarClick = true;
+      setTimeout(() => {
+        suppressSidebarClick = false;
+      }, 0);
+      setSidebarVisible(nextVisible);
+    } else {
+      app.style.removeProperty("--sidebar-size");
+      keepMapSizedDuringSidebarMotion(340);
+    }
+  };
+  tab.addEventListener("pointerup", (event) => finishDrag(event));
+  tab.addEventListener("pointercancel", (event) => finishDrag(event, true));
+
+  app.addEventListener("transitionend", (event) => {
+    if (
+      event.propertyName === "grid-template-columns" ||
+      event.propertyName === "grid-template-rows"
+    ) {
+      keepMapSizedDuringSidebarMotion();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (sidebarDragState) {
+      sidebarDragState = null;
+      app.classList.remove("sidebar-dragging");
+      app.style.removeProperty("--sidebar-size");
+    }
+    keepMapSizedDuringSidebarMotion(80);
+  });
+}
+
 const WORKSPACE_TABS = [
   "train-browser",
   "train-editor",
@@ -3710,6 +4033,7 @@ function setupWorkspaceTabs() {
 // The tab chrome needs only the static DOM — activate it immediately so the
 // panels behave as tabs during the (seconds-long) data load too. bindEvents()
 // calls it again later, which the guard turns into a no-op.
+setupSidebarToggle();
 setupWorkspaceTabs();
 
 function bindEvents() {
@@ -3721,6 +4045,8 @@ function bindEvents() {
   // train list/cards, editor, import target and the on-map labels.)
   if (window.I18N && typeof I18N.onChange === "function") {
     I18N.onChange(() => {
+      updateThemeSelect();
+      updateSidebarToggleLabel();
       DISPLAY_CONTROLS.forEach((cfg) => {
         if (cfg._name) cfg._name.textContent = I18N.t(cfg.labelKey);
       });
@@ -4856,10 +5182,9 @@ function appendTrainListItemIncremental(train) {
   );
 }
 
-// Lightweight search match. The old code ran JSON.stringify(train) — which now
-// serializes each train's full route_geometry_cache — for every train on every
-// keystroke. Match only the human-facing fields (id, number, name, direction,
-// endpoints, date, and stop names) instead. Built lazily and reused.
+// Lightweight search match. Match only the human-facing fields (id, number,
+// direction, endpoints, date, and stop names) rather than JSON.stringify(train)
+// on every keystroke. Built lazily and reused.
 function trainMatchesQuery(train, query) {
   const parts = [
     train.id,
@@ -5043,7 +5368,6 @@ function renderEditor() {
     els.origin,
     els.destination,
     els.color,
-    els.weight,
   ].forEach((el) => (el.disabled = disabled));
   document.getElementById("duplicate-train").disabled = disabled;
   document.getElementById("delete-train").disabled = disabled;
@@ -5063,7 +5387,6 @@ function renderEditor() {
       els.destination.value =
         "";
     els.color.value = DEFAULT_TRAIN_COLOR;
-    els.weight.value = DEFAULT_TRAIN_WEIGHT;
     els.stopsBody.innerHTML = "";
     return;
   }
@@ -5075,7 +5398,6 @@ function renderEditor() {
   els.origin.value = train.origin || "";
   els.destination.value = train.destination || "";
   els.color.value = normalizeColor(train.style?.color || DEFAULT_TRAIN_COLOR);
-  els.weight.value = train.style?.weight || DEFAULT_TRAIN_WEIGHT;
   renderStopsTable(train);
 }
 
@@ -5329,9 +5651,7 @@ function saveSelectedFields() {
     origin: els.origin.value.trim(),
     destination: els.destination.value.trim(),
     style: {
-      ...(train.style || {}),
       color: els.color.value,
-      weight: Number(els.weight.value || DEFAULT_TRAIN_WEIGHT),
     },
   };
   try {
@@ -5449,7 +5769,6 @@ function applyStationMetadata(stop, train) {
   const station = resolveStationForTrain(stop, train);
   if (!station) return;
   stop.name = stationName(station);
-  delete stop.station;
   stop.n02_station_code = stationCode(station);
   stop.n02_group_code = stationGroupCode(station);
 }
@@ -5637,7 +5956,7 @@ function computeRouteSignature(orderedTrains, dateActive) {
       const vis = train.visible === false ? 0 : 1;
       overlapPart.push(`${base}:${vis}`);
       const s = train.style || {};
-      return `${base}:${s.color || ""}:${s.weight || ""}:${s.unridden_opacity ?? ""}:${vis}`;
+      return `${base}:${s.color || ""}:${vis}`;
     })
     .join("|");
   // Selection deliberately stays OUT of the signature: picking a train only
@@ -5773,16 +6092,10 @@ function routeRecordScopeFlags(train) {
 // train so the spacing — and with it the whole record cache — never depends
 // on which train is currently selected.
 function currentOverlapSpacingPx(items) {
+  // Line weight is uniform (global 線路粗細), so spacing keys off the single
+  // base weight × scale + focus boost — no per-train weight scan.
   const scale = DISPLAY.routeWidthScale || 1;
-  let maxW = DEFAULT_TRAIN_WEIGHT * scale;
-  const seen = new Set();
-  (items || cachedRouteItems || []).forEach((it) => {
-    const t = it.train;
-    if (!t || seen.has(t.id)) return;
-    seen.add(t.id);
-    const w = Number(t.style?.weight || DEFAULT_TRAIN_WEIGHT) * scale;
-    if (w > maxW) maxW = w;
-  });
+  const maxW = DEFAULT_TRAIN_WEIGHT * scale;
   return Math.max(
     3 * DEFAULT_TRAIN_WEIGHT * scale,
     maxW + DISPLAY.focusBoost + 4,
@@ -8144,7 +8457,7 @@ function getTrainRouteTemplateKey(train) {
         .filter(Boolean)
         .sort()
         .join(",");
-      const operators = (section.operator_names || section.operator_hints || [])
+      const operators = (section.operator_names || [])
         .map(String)
         .filter(Boolean)
         .sort()
@@ -8226,27 +8539,6 @@ function generateMatchedRouteFeaturesForTrain(train) {
     const cached = runtimeRouteCache.get(cacheKey);
     return dedupeSameTrainRouteFeatures(
       cloneRouteFeaturesForTrain(cached, train),
-    );
-  }
-
-  // Fix #1: reuse geometry persisted in the train's JSON. If the train carries
-  // a cached route whose key still matches its current sections/policy, seed
-  // the in-memory cache from it and skip the expensive Dijkstra solve. Any
-  // change to stops/sections/policy changes cacheKey, so a stale cache is
-  // simply ignored and re-solved below.
-  const persisted = train.route_geometry_cache;
-  if (
-    persisted &&
-    persisted.key === cacheKey &&
-    Array.isArray(persisted.features) &&
-    persisted.features.length
-  ) {
-    runtimeRouteCache.set(cacheKey, persisted.features);
-    // Also seed the cross-session IndexedDB cache so other trains / future
-    // sessions with the same sections benefit even without an embedded cache.
-    persistRouteCacheEntry(cacheKey, persisted.features);
-    return dedupeSameTrainRouteFeatures(
-      cloneRouteFeaturesForTrain(persisted.features, train),
     );
   }
 
@@ -9539,7 +9831,7 @@ function buildSegmentRouteHints(section, fromStations, toStations, train) {
     ...(inferredConstraints.line_names || []),
   ]);
   const explicitRequiredOperators = new Set([
-    ...(section.operator_names || section.operator_hints || [])
+    ...(section.operator_names || [])
       .map(String)
       .filter(Boolean),
     ...(inferredConstraints.operator_names || []),
@@ -10068,7 +10360,7 @@ function dijkstraFromCandidateSources(
         (edge.is_station_connector
           ? 0
           : institutionPreferencePenaltyForEdge(edge, allowedCodes, train));
-      // Preferred hints should be strong but not hard unless the user put them in section.line_names/operator_hints.
+      // Preferred hints should be strong but not hard unless the user put them in section.line_names/operator_names.
       if (!edge.is_station_connector) {
         weight += nonPreferredLineOperatorPenalty(
           edge,
@@ -10456,7 +10748,6 @@ function getStopFeature(stop, train) {
     return (
       p.train_id === train.id &&
       (p.n02_station_code === stopStationCode(stop) ||
-        p.station === stopName(stop) ||
         p.name === stopName(stop))
     );
   });
@@ -10517,8 +10808,9 @@ function routeSegmentStyleValues(
   ridden,
   { focused = false, dimmed = false } = {},
 ) {
-  const weight =
-    Number(train.style?.weight || DEFAULT_TRAIN_WEIGHT) * DISPLAY.routeWidthScale;
+  // Line width is uniform across trains: the global base weight scaled by the
+  // 線路粗細 (DISPLAY.routeWidthScale) webpage control — no per-train weight.
+  const weight = DEFAULT_TRAIN_WEIGHT * DISPLAY.routeWidthScale;
   // Unridden intervals are now hidden ENTIRELY (opacity 0), not drawn pale.
   // opacity 0 makes the GPU path drop the segment (see buildDeckRouteRecords'
   // `opacity <= 0` guard) and the SVG path render nothing. The whole-train
@@ -11020,7 +11312,7 @@ function buildStopPopup(stopFeature, train) {
   return popupHtml(`${train.number || ""}`, [
     ["Train ID", train.id],
     ["Type / Company", trainTypeCompanyLabel(train) || "-"],
-    ["Station", p.name || p.station],
+    ["Station", p.name],
     ["Arrival", p.arrival || "-"],
     ["Departure", p.departure || "-"],
     ["stop_type", p.stop_type],

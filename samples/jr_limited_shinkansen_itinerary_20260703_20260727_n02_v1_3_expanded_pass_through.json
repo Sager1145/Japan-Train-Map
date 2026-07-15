@@ -1,18 +1,15 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "trains": [
     {
       "id": "20260703_01_haruka_kix_shinosaka",
       "number": "はるか",
-      "name": "はるか",
       "origin": "関西空港",
       "destination": "新大阪",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c64f3f",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c64f3f"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -165,15 +162,12 @@
     {
       "id": "20260703_02_tokaido_shinkansen_shinosaka_mishima",
       "number": "東海道新幹線 Hikari/Kodama",
-      "name": "東海道新幹線",
       "origin": "新大阪",
       "destination": "三島",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#334cc6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#334cc6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -355,15 +349,12 @@
       "id": "20260704_01_tokaido_numazu_mishima",
       "date": "2026-07-04",
       "number": "普通",
-      "name": "東海道本線 普通",
       "origin": "沼津",
       "destination": "三島",
       "direction": "三島・熱海",
       "visible": true,
       "style": {
-        "color": "#e8830c",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e8830c"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -418,15 +409,12 @@
       "id": "20260704_02_kodama918_mishima_shinagawa",
       "date": "2026-07-04",
       "number": "こだま918号",
-      "name": "こだま",
       "origin": "三島",
       "destination": "品川",
       "direction": "東京",
       "visible": true,
       "style": {
-        "color": "#1f6fb2",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#1f6fb2"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -515,15 +503,12 @@
       "id": "20260704_03_keikyu_asakusa_shinagawa_daimon",
       "date": "2026-07-04",
       "number": "京急本線・都営浅草線 直通",
-      "name": "京急本線→都営浅草線",
       "origin": "品川",
       "destination": "大門",
       "direction": "押上・浅草方面",
       "visible": true,
       "style": {
-        "color": "#d7141a",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d7141a"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -601,15 +586,12 @@
       "id": "20260704_04_oedo_daimon_akabanebashi",
       "date": "2026-07-04",
       "number": "都営大江戸線",
-      "name": "都営大江戸線",
       "origin": "大門",
       "destination": "赤羽橋",
       "direction": "六本木・都庁前",
       "visible": true,
       "style": {
-        "color": "#b6007a",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#b6007a"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -664,15 +646,12 @@
       "id": "20260704_05_mita_shibakoen_otemachi",
       "date": "2026-07-04",
       "number": "都営三田線",
-      "name": "都営三田線",
       "origin": "芝公園",
       "destination": "大手町",
       "direction": "西高島平",
       "visible": true,
       "style": {
-        "color": "#0079c2",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#0079c2"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -727,15 +706,12 @@
       "id": "20260704_06_marunouchi_otemachi_ikebukuro",
       "date": "2026-07-04",
       "number": "東京メトロ丸ノ内線",
-      "name": "丸ノ内線",
       "origin": "大手町",
       "destination": "池袋",
       "direction": "池袋",
       "visible": true,
       "style": {
-        "color": "#e60012",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e60012"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -790,15 +766,12 @@
       "id": "20260704_07_saikyo_rapid_ikebukuro_omiya",
       "date": "2026-07-04",
       "number": "埼京線 快速",
-      "name": "埼京線",
       "origin": "池袋",
       "destination": "大宮",
       "direction": "川越",
       "visible": true,
       "style": {
-        "color": "#00a650",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#00a650"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -874,15 +847,12 @@
       "id": "20260704_08_shonanshinjuku_rapid_omiya_yokohama",
       "date": "2026-07-04",
       "number": "湘南新宿ライン 特別快速",
-      "name": "湘南新宿ライン",
       "origin": "大宮",
       "destination": "横浜",
       "direction": "小田原",
       "visible": true,
       "style": {
-        "color": "#d7332d",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d7332d"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1047,15 +1017,12 @@
       "id": "20260704_09_negishi_yokohama_sakuragicho",
       "date": "2026-07-04",
       "number": "京浜東北・根岸線",
-      "name": "根岸線",
       "origin": "横浜",
       "destination": "桜木町",
       "direction": "大船・磯子",
       "visible": true,
       "style": {
-        "color": "#00a7db",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#00a7db"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1110,15 +1077,12 @@
       "id": "20260704_10_minatomirai_mm_yokohama",
       "date": "2026-07-04",
       "number": "みなとみらい線",
-      "name": "みなとみらい線",
       "origin": "みなとみらい",
       "destination": "横浜",
       "direction": "横浜",
       "visible": true,
       "style": {
-        "color": "#004098",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#004098"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1173,15 +1137,12 @@
       "id": "20260704_11_keihintohoku_yokohama_higashikanagawa",
       "date": "2026-07-04",
       "number": "京浜東北線",
-      "name": "京浜東北線",
       "origin": "横浜",
       "destination": "東神奈川",
       "direction": "大宮・南浦和",
       "visible": true,
       "style": {
-        "color": "#00a7db",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#00a7db"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1236,15 +1197,12 @@
       "id": "20260704_12_yokohamaline_higashikanagawa_shinyokohama",
       "date": "2026-07-04",
       "number": "横浜線",
-      "name": "横浜線",
       "origin": "東神奈川",
       "destination": "新横浜",
       "direction": "八王子・橋本",
       "visible": true,
       "style": {
-        "color": "#7fb539",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#7fb539"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1299,15 +1257,12 @@
       "id": "20260704_13_kodama915_shinyokohama_mishima",
       "date": "2026-07-04",
       "number": "こだま915号",
-      "name": "こだま",
       "origin": "新横浜",
       "destination": "三島",
       "direction": "三島",
       "visible": true,
       "style": {
-        "color": "#1f6fb2",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#1f6fb2"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1382,15 +1337,12 @@
       "id": "20260704_14_tokaido_mishima_numazu",
       "date": "2026-07-04",
       "number": "普通",
-      "name": "東海道本線 普通",
       "origin": "三島",
       "destination": "沼津",
       "direction": "沼津・静岡",
       "visible": true,
       "style": {
-        "color": "#e8830c",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e8830c"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1444,15 +1396,12 @@
     {
       "id": "20260705_06_tokaido_shinkansen_mishima_tokyo",
       "number": "東海道新幹線 Hikari/Kodama",
-      "name": "東海道新幹線",
       "origin": "三島",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d69c2a",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d69c2a"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1549,15 +1498,12 @@
     {
       "id": "20260705_07_joetsu_shinkansen_tokyo_niigata",
       "number": "とき",
-      "name": "とき",
       "origin": "東京",
       "destination": "新潟",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#8349e5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#8349e5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1738,15 +1684,12 @@
     {
       "id": "20260705_08_inaho_niigata_akita",
       "number": "いなほ",
-      "name": "いなほ",
       "origin": "新潟",
       "destination": "秋田",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3be548",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3be548"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -1983,15 +1926,12 @@
     {
       "id": "20260706_09_komachi_akita_tokyo",
       "number": "こまち",
-      "name": "こまち",
       "origin": "秋田",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e52d55",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e52d55"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -2145,15 +2085,12 @@
     {
       "id": "20260706_10_hokuriku_tokyo_toyama",
       "number": "北陸新幹線 Kagayaki/Hakutaka",
-      "name": "北陸新幹線",
       "origin": "東京",
       "destination": "富山",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3f84c6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3f84c6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -2390,15 +2327,12 @@
     {
       "id": "20260706_11_hida_toyama_nagoya",
       "number": "ひだ",
-      "name": "ひだ",
       "origin": "富山",
       "destination": "名古屋",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#a9c633",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#a9c633"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -2607,15 +2541,12 @@
     {
       "id": "20260707_12_shinano_nagoya_nagano",
       "number": "しなの",
-      "name": "しなの",
       "origin": "名古屋",
       "destination": "長野",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#b827c6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#b827c6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -2824,15 +2755,12 @@
     {
       "id": "20260707_13_hokuriku_nagano_kanazawa",
       "number": "北陸新幹線 Kagayaki/Hakutaka",
-      "name": "北陸新幹線",
       "origin": "長野",
       "destination": "金沢",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#44d69e",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#44d69e"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -2957,15 +2885,12 @@
     {
       "id": "20260707_14_tsurugi_kanazawa_kagaonsen",
       "number": "つるぎ",
-      "name": "つるぎ",
       "origin": "金沢",
       "destination": "加賀温泉",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d66b37",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d66b37"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3020,15 +2945,12 @@
     {
       "id": "20260708_15_tsurugi_kagaonsen_tsuruga",
       "number": "つるぎ",
-      "name": "つるぎ",
       "origin": "加賀温泉",
       "destination": "敦賀",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#302ad6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#302ad6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3111,15 +3033,12 @@
     {
       "id": "20260708_16_thunderbird_tsuruga_kyoto",
       "number": "サンダーバード",
-      "name": "サンダーバード",
       "origin": "敦賀",
       "destination": "京都",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#71e549",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#71e549"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3216,15 +3135,12 @@
     {
       "id": "20260708_17_kinosaki_kyoto_kinosaki",
       "number": "きのさき",
-      "name": "きのさき",
       "origin": "京都",
       "destination": "城崎温泉",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e53b98",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e53b98"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3391,15 +3307,12 @@
     {
       "id": "20260708_18_hamakaze_kinosaki_himeji",
       "number": "はまかぜ",
-      "name": "はまかぜ",
       "origin": "城崎温泉",
       "destination": "姫路",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#2dc8e5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#2dc8e5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3552,15 +3465,12 @@
     {
       "id": "20260708_19_shinkansen_himeji_maibara",
       "number": "山陽・東海道新幹線 Hikari/Kodama",
-      "name": "山陽・東海道新幹線",
       "origin": "姫路",
       "destination": "米原",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c6b53f",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c6b53f"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3657,15 +3567,12 @@
     {
       "id": "20260708_20_shirasagi_maibara_tsuruga",
       "number": "しらさぎ",
-      "name": "しらさぎ",
       "origin": "米原",
       "destination": "敦賀",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#8833c6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#8833c6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3818,15 +3725,12 @@
     {
       "id": "20260708_21_tsurugi_tsuruga_kanazawa",
       "number": "つるぎ",
-      "name": "つるぎ",
       "origin": "敦賀",
       "destination": "金沢",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#27c654",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#27c654"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -3937,15 +3841,12 @@
     {
       "id": "20260709_22_hokuriku_kanazawa_tokyo",
       "number": "北陸新幹線 Kagayaki/Hakutaka",
-      "name": "北陸新幹線",
       "origin": "金沢",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d64445",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d64445"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -4210,15 +4111,12 @@
     {
       "id": "20260709_23_shinkansen_tokyo_okayama",
       "number": "東海道・山陽新幹線 Hikari/Sakura",
-      "name": "東海道・山陽新幹線",
       "origin": "東京",
       "destination": "岡山",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3767d6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3767d6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -4539,15 +4437,12 @@
     {
       "id": "20260709_24_yakumo_okayama_matsue",
       "number": "やくも",
-      "name": "やくも",
       "origin": "岡山",
       "destination": "松江",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#90d62a",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#90d62a"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -4714,15 +4609,12 @@
     {
       "id": "20260710_25_super_oki_matsue_shinyamaguchi",
       "number": "スーパーおき",
-      "name": "スーパーおき",
       "origin": "松江",
       "destination": "新山口",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e549d3",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e549d3"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -4945,15 +4837,12 @@
     {
       "id": "20260710_26_shinkansen_shinyamaguchi_hiroshima",
       "number": "山陽新幹線 Sakura/Hikari",
-      "name": "山陽新幹線",
       "origin": "新山口",
       "destination": "広島",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3be5c7",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3be5c7"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -5022,15 +4911,12 @@
     {
       "id": "20260710_27_shinkansen_hiroshima_tokyo",
       "number": "山陽・東海道新幹線 Sakura/Hikari",
-      "name": "山陽・東海道新幹線",
       "origin": "広島",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e58f2d",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e58f2d"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -5435,15 +5321,12 @@
     {
       "id": "20260713_28_yamagata_tokyo_shinjo",
       "number": "つばさ",
-      "name": "つばさ",
       "origin": "東京",
       "destination": "新庄",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#603fc6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#603fc6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -5681,15 +5564,12 @@
     {
       "id": "20260713_29_yamagata_shinjo_fukushima",
       "number": "つばさ",
-      "name": "つばさ",
       "origin": "新庄",
       "destination": "福島",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3bc633",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3bc633"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -5857,15 +5737,12 @@
     {
       "id": "20260713_30_tohoku_fukushima_sendai",
       "number": "やまびこ",
-      "name": "やまびこ",
       "origin": "福島",
       "destination": "仙台",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c6275e",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c6275e"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -5920,15 +5797,12 @@
     {
       "id": "20260713_31_hayabusa_sendai_shinhakodate",
       "number": "はやぶさ",
-      "name": "はやぶさ",
       "origin": "仙台",
       "destination": "新函館北斗",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#44a0d6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#44a0d6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -6165,15 +6039,12 @@
     {
       "id": "20260713_32_hokuto_hakodate_sapporo",
       "number": "北斗",
-      "name": "北斗",
       "origin": "函館",
       "destination": "札幌",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#cad637",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#cad637"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -6410,15 +6281,12 @@
     {
       "id": "20260714_33_soya_sapporo_wakkanai",
       "number": "宗谷",
-      "name": "宗谷",
       "origin": "札幌",
       "destination": "稚内",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#b02ad6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#b02ad6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -6669,15 +6537,12 @@
     {
       "id": "20260715_34_sarobetsu_wakkanai_asahikawa",
       "number": "サロベツ",
-      "name": "サロベツ",
       "origin": "稚内",
       "destination": "旭川",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#49e596",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#49e596"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -6844,15 +6709,12 @@
     {
       "id": "20260715_35_taisetsu_asahikawa_abashiri",
       "number": "大雪 / オホーツク",
-      "name": "大雪 / オホーツク",
       "origin": "旭川",
       "destination": "網走",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e55d3b",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e55d3b"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7019,15 +6881,12 @@
     {
       "id": "20260717_36_ozora_kushiro_sapporo",
       "number": "おおぞら",
-      "name": "おおぞら",
       "origin": "釧路",
       "destination": "札幌",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#2d3ee5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#2d3ee5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7166,15 +7025,12 @@
     {
       "id": "20260717_37_hokuto_sapporo_shinhakodate",
       "number": "北斗",
-      "name": "北斗",
       "origin": "札幌",
       "destination": "新函館北斗",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#73c63f",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#73c63f"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7383,15 +7239,12 @@
     {
       "id": "20260717_38_hayabusa_shinhakodate_shinaomori",
       "number": "はやぶさ",
-      "name": "はやぶさ",
       "origin": "新函館北斗",
       "destination": "新青森",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c63397",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c63397"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7460,15 +7313,12 @@
     {
       "id": "20260717_39_tsugaru_aomori_akita",
       "number": "つがる",
-      "name": "つがる",
       "origin": "青森",
       "destination": "秋田",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#27c1c6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#27c1c6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7649,15 +7499,12 @@
     {
       "id": "20260718_40_komachi_akita_tokyo",
       "number": "こまち",
-      "name": "こまち",
       "origin": "秋田",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d6b044",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d6b044"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -7811,15 +7658,12 @@
     {
       "id": "20260720_41_tokaido_tokyo_shinosaka",
       "number": "東海道新幹線 Hikari",
-      "name": "東海道新幹線",
       "origin": "東京",
       "destination": "新大阪",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#7e37d6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#7e37d6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8070,15 +7914,12 @@
     {
       "id": "20260720_42_sanyo_shinosaka_okayama",
       "number": "山陽新幹線 Sakura/Hikari",
-      "name": "山陽新幹線",
       "origin": "新大阪",
       "destination": "岡山",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#2ad645",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#2ad645"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8175,15 +8016,12 @@
     {
       "id": "20260720_43_uzushio_takamatsu_tokushima",
       "number": "うずしお",
-      "name": "うずしお",
       "origin": "高松",
       "destination": "徳島",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e5495e",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e5495e"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8350,15 +8188,12 @@
     {
       "id": "20260720_44_tsurugisan_tokushima_awikeda",
       "number": "剣山",
-      "name": "剣山",
       "origin": "徳島",
       "destination": "阿波池田",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3b84e5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3b84e5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8525,15 +8360,12 @@
     {
       "id": "20260720_45_nanpu_awikeda_kochi",
       "number": "南風",
-      "name": "南風",
       "origin": "阿波池田",
       "destination": "高知",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#b1e52d",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#b1e52d"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8630,15 +8462,12 @@
     {
       "id": "20260721_46_ashizuri_kochi_kubokawa",
       "number": "あしずり",
-      "name": "あしずり",
       "origin": "高知",
       "destination": "窪川",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c53fc6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c53fc6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8749,15 +8578,12 @@
     {
       "id": "20260721_47_uwakai_uwajima_matsuyama",
       "number": "宇和海",
-      "name": "宇和海",
       "origin": "宇和島",
       "destination": "松山",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#33c69a",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#33c69a"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -8868,15 +8694,12 @@
     {
       "id": "20260721_48_shiokaze_matsuyama_okayama",
       "number": "しおかぜ",
-      "name": "しおかぜ",
       "origin": "松山",
       "destination": "岡山",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c66827",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c66827"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9071,15 +8894,12 @@
     {
       "id": "20260721_49_shinkansen_okayama_hakata",
       "number": "山陽新幹線 Sakura/Hikari",
-      "name": "山陽新幹線",
       "origin": "岡山",
       "destination": "博多",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#5544d6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#5544d6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9288,15 +9108,12 @@
     {
       "id": "20260721_50_kyushu_shinkansen_hakata_kumamoto",
       "number": "九州新幹線 Sakura/Tsubame",
-      "name": "九州新幹線",
       "origin": "博多",
       "destination": "熊本",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#53d637",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#53d637"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9407,15 +9224,12 @@
     {
       "id": "20260722_51_aso_kumamoto_beppu",
       "number": "あそぼーい！ / 九州横断特急",
-      "name": "あそぼーい！ / 九州横断特急",
       "origin": "熊本",
       "destination": "別府",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d62a7b",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d62a7b"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9568,15 +9382,12 @@
     {
       "id": "20260722_52_yufu_beppu_hakata",
       "number": "ゆふいんの森 / ゆふ",
-      "name": "ゆふいんの森 / ゆふ",
       "origin": "別府",
       "destination": "博多",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#49c0e5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#49c0e5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9701,15 +9512,12 @@
     {
       "id": "20260722_53_relay_hakata_takeo",
       "number": "リレーかもめ",
-      "name": "リレーかもめ",
       "origin": "博多",
       "destination": "武雄温泉",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e5dc3b",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e5dc3b"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9820,15 +9628,12 @@
     {
       "id": "20260722_54_nishikyushu_takeo_nagasaki",
       "number": "かもめ",
-      "name": "かもめ",
       "origin": "武雄温泉",
       "destination": "長崎",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#a62de5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#a62de5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -9911,15 +9716,12 @@
     {
       "id": "20260723_55_midori_sasebo_hakata",
       "number": "みどり",
-      "name": "みどり",
       "origin": "佐世保",
       "destination": "博多",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3fc670",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3fc670"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10058,15 +9860,12 @@
     {
       "id": "20260723_56_kyushu_shinkansen_hakata_kagoshima",
       "number": "九州新幹線 Sakura",
-      "name": "九州新幹線",
       "origin": "博多",
       "destination": "鹿児島中央",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c63e33",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c63e33"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10247,15 +10046,12 @@
     {
       "id": "20260723_57_ibusuki_kagoshima_ibusuki",
       "number": "指宿のたまて箱",
-      "name": "指宿のたまて箱",
       "origin": "鹿児島中央",
       "destination": "指宿",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#274ac6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#274ac6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10366,15 +10162,12 @@
     {
       "id": "20260724_58_kirishima_kagoshima_miyazaki",
       "number": "きりしま",
-      "name": "きりしま",
       "origin": "鹿児島中央",
       "destination": "宮崎",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#8fd644",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#8fd644"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10541,15 +10334,12 @@
     {
       "id": "20260724_59_nichirin_miyazaki_oita",
       "number": "にちりん",
-      "name": "にちりん",
       "origin": "宮崎",
       "destination": "大分",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#d637b7",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#d637b7"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10688,15 +10478,12 @@
     {
       "id": "20260724_60_sonic_oita_kokura",
       "number": "ソニック",
-      "name": "ソニック",
       "origin": "大分",
       "destination": "小倉",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#2ad6c5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#2ad6c5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -10835,15 +10622,12 @@
     {
       "id": "20260724_61_shinkansen_kokura_shinosaka",
       "number": "山陽新幹線 Sakura/Hikari",
-      "name": "山陽新幹線",
       "origin": "小倉",
       "destination": "新大阪",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#e5a849",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#e5a849"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -11108,15 +10892,12 @@
     {
       "id": "20260724_62_tokaido_shinkansen_shinosaka_nagoya",
       "number": "東海道新幹線 Hikari/Kodama",
-      "name": "東海道新幹線",
       "origin": "新大阪",
       "destination": "名古屋",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#723be5",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#723be5"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -11199,15 +10980,12 @@
     {
       "id": "20260725_63_tokaido_shinkansen_nagoya_mishima",
       "number": "東海道新幹線 Hikari/Kodama",
-      "name": "東海道新幹線",
       "origin": "名古屋",
       "destination": "三島",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#2de533",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#2de533"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -11332,15 +11110,12 @@
     {
       "id": "20260726_64_tokaido_shinkansen_mishima_tokyo",
       "number": "東海道新幹線 Hikari/Kodama",
-      "name": "東海道新幹線",
       "origin": "三島",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c63f63",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c63f63"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -11437,15 +11212,12 @@
     {
       "id": "20260726_65_fuji_excursion_shinjuku_kawaguchiko",
       "number": "富士回遊 / FUJI EXCURSION",
-      "name": "富士回遊",
       "origin": "新宿",
       "destination": "河口湖",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#3385c6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#3385c6"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -11613,15 +11385,12 @@
     {
       "id": "20260726_66_sunrise_izumo_down",
       "number": "サンライズ出雲",
-      "name": "サンライズ出雲",
       "origin": "東京",
       "destination": "出雲市",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#aec627",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#aec627"
       },
       "route_policy": {
         "mode": "single_primary_route",
@@ -12068,15 +11837,12 @@
     {
       "id": "20260727_67_sunrise_izumo_up",
       "number": "サンライズ出雲",
-      "name": "サンライズ出雲",
       "origin": "出雲市",
       "destination": "東京",
       "direction": "unknown",
       "visible": true,
       "style": {
-        "color": "#c244d6",
-        "weight": 6,
-        "unridden_opacity": 0.22
+        "color": "#c244d6"
       },
       "route_policy": {
         "mode": "single_primary_route",

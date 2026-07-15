@@ -43,6 +43,8 @@
     "nav.data": { zh: "資料", en: "Data" },
     "nav.display": { zh: "顯示", en: "Display" },
     "nav.about": { zh: "說明", en: "About" },
+    "menu.hide": { zh: "隱藏選單", en: "Hide menu" },
+    "menu.show": { zh: "顯示選單", en: "Show menu" },
 
     // search & actions
     "sec.search": { zh: "搜尋與操作", en: "Search & Actions" },
@@ -62,6 +64,10 @@
 
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
+    "theme.label": { zh: "主題", en: "Theme" },
+    "theme.system": { zh: "跟隨系統", en: "System" },
+    "theme.light": { zh: "亮色", en: "Light" },
+    "theme.dark": { zh: "暗色", en: "Dark" },
     "disp.hint": {
       zh: "擬合參數拖動後，須按「重建擬合曲線」才會套用。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。",
       en: "After changing a fit slider, press Rebuild Fitted Curves to apply it. A large detail scale can turn dense bends into a straight span or smooth arc. Cyan shows the pick box, orange the hold radius, and magenta the interval-switch zone.",
@@ -212,8 +218,8 @@
       en: 'Railway data: created from "National Land Numerical Information (Railway Data N02)" (MLIT Japan), CC BY 4.0.',
     },
     "legend.source2": {
-      zh: "Basemap © OpenStreetMap contributors｜OpenFreeMap (positron)。Romanizations © OpenStreetMap contributors, ODbL。Rail package © railprint (jp-2025)。",
-      en: "Basemap © OpenStreetMap contributors｜OpenFreeMap (positron). Romanizations © OpenStreetMap contributors, ODbL. Rail package © railprint (jp-2025).",
+      zh: "Basemap © OpenStreetMap contributors｜OpenFreeMap (Positron / Dark)。Romanizations © OpenStreetMap contributors, ODbL。Rail package © railprint (jp-2025)。",
+      en: "Basemap © OpenStreetMap contributors｜OpenFreeMap (Positron / Dark). Romanizations © OpenStreetMap contributors, ODbL. Rail package © railprint (jp-2025).",
     },
 
     // unified map information panel (bottom-right i button)
@@ -257,8 +263,8 @@
     },
     "info.basemapTitle": { zh: "地圖底圖", en: "Basemap" },
     "info.basemapBody": {
-      zh: "線上底圖使用 OpenFreeMap Positron。",
-      en: "The online basemap uses OpenFreeMap Positron.",
+      zh: "亮色使用 OpenFreeMap Positron，暗色使用官方 Dark 樣式。",
+      en: "Light mode uses OpenFreeMap Positron; dark mode uses the official Dark style.",
     },
     "info.namesTitle": { zh: "站名羅馬字", en: "Station romanization" },
     "info.namesBody": {
@@ -274,7 +280,7 @@
     // map corner control
     "map.layers": { zh: "地圖圖層", en: "Map Layers" },
     "map.basemap": { zh: "底圖", en: "Basemap" },
-    "map.positron": { zh: "Positron（線上）", en: "Positron (online)" },
+    "map.positron": { zh: "OpenFreeMap（線上）", en: "OpenFreeMap (online)" },
     "map.noBasemap": { zh: "無底圖", en: "No Basemap" },
     "map.routes": { zh: "列車路線", en: "Train Routes" },
     "map.stops": { zh: "中途停靠站", en: "Intermediate Stops" },
@@ -454,6 +460,8 @@
     "nav.data": "データ",
     "nav.display": "表示",
     "nav.about": "情報",
+    "menu.hide": "メニューを隠す",
+    "menu.show": "メニューを表示",
     "sec.search": "検索と操作",
     "ph.search": "列車番号・列車名・駅名・ID で検索",
     "btn.addTrain": "列車を追加",
@@ -466,6 +474,10 @@
     "state.on": "オン",
     "state.off": "オフ",
     "disp.reset": "初期設定に戻す",
+    "theme.label": "テーマ",
+    "theme.system": "システム",
+    "theme.light": "ライト",
+    "theme.dark": "ダーク",
     "disp.hint": "フィッティング設定はスライダー変更後に「フィッティング曲線を再構築」を押すと適用されます。ディテール尺度を大きくすると密集した折れを直線または滑らかな弧にできます。シアンはヒット領域、オレンジは一時保持範囲、マゼンタは区間切替範囲です。",
     "disp.routeWidthScale": "路線の太さ",
     "disp.riddenOpacity": "乗車区間の透明度",
@@ -584,14 +596,14 @@
     "info.n02Title": "日本の鉄道網",
     "info.n02Body": "国土交通省『国土数値情報（鉄道データ N02）』を加工して作成しています。",
     "info.basemapTitle": "背景地図",
-    "info.basemapBody": "オンライン背景地図には OpenFreeMap Positron を使用します。",
+    "info.basemapBody": "ライトモードは OpenFreeMap Positron、ダークモードは公式 Dark スタイルを使用します。",
     "info.namesTitle": "駅名のローマ字表記",
     "info.namesBody": "OpenStreetMap contributors、ODbL ライセンス。",
     "info.packageTitle": "鉄道データパッケージ",
     "info.packageBody": "railprint の日本鉄道データパッケージ jp-2025 を使用しています。",
     "map.layers": "地図レイヤー",
     "map.basemap": "背景地図",
-    "map.positron": "Positron（オンライン）",
+    "map.positron": "OpenFreeMap（オンライン）",
     "map.noBasemap": "背景地図なし",
     "map.routes": "列車経路",
     "map.stops": "途中停車駅",
@@ -748,92 +760,47 @@
 
   // ---- Japanese -> English (romaji / gloss) for stations & services -------
   const NAMES = {
-    // stations
-    "あつみ温泉": "Atsumi-Onsen", "いわき": "Iwaki", "さいたま新都心": "Saitama-Shintoshin",
-    "たびら平戸口": "Tabira-Hiradoguchi", "トマム": "Tomamu", "ハウステンボス": "Huis Ten Bosch",
-    "三島": "Mishima", "三本松": "Sanbonmatsu", "三股": "Mimata", "上諏訪": "Kami-Suwa",
-    "上越妙高": "Jōetsu-Myōkō", "上野": "Ueno", "下部温泉": "Shimobe-Onsen", "与野": "Yono",
-    "中佐世保": "Naka-Sasebo", "中名": "Nakamyō", "中条": "Nakajō", "中津": "Nakatsu",
-    "丸亀": "Marugame", "久留米": "Kurume", "二ツ井": "Futatsui", "二日市": "Futsukaichi",
-    "二月田": "Nigatsuden", "五位野": "Goino", "五稜郭": "Goryōkaku", "京都": "Kyōto",
-    "仁賀保": "Nikaho", "仙台": "Sendai", "伊達紋別": "Date-Monbetsu", "佐々": "Saza",
-    "佐世保": "Sasebo", "佐世保中央": "Sasebo-Chūō", "佐伯": "Saiki", "佐土原": "Sadowara",
-    "佐賀": "Saga", "余目": "Amarume", "児島": "Kojima", "八戸": "Hachinohe", "八王子": "Hachiōji",
-    "八郎潟": "Hachirōgata", "八雲": "Yakumo", "内船": "Utsubuna", "出水": "Izumi",
-    "函館": "Hakodate", "別府": "Beppu", "前之浜": "Maenohama", "加茂": "Kamo",
-    "加賀温泉": "Kaga-Onsen", "勝瑞": "Shōzui", "勝田": "Katsuta", "北佐世保": "Kita-Sasebo",
-    "北浦和": "Kita-Urawa", "南千歳": "Minami-Chitose", "南宮崎": "Minami-Miyazaki",
-    "南浦和": "Minami-Urawa", "南甲府": "Minami-Kōfu", "南稚内": "Minami-Wakkanai",
-    "南鹿児島": "Minami-Kagoshima", "博多": "Hakata", "厚岸": "Akkeshi", "厚床": "Attoko",
-    "原ノ町": "Haranomachi", "名古屋": "Nagoya", "名寄": "Nayoro", "和寒": "Wassamu",
-    "品川": "Shinagawa", "善通寺": "Zentsūji", "喜入": "Kiire", "国分": "Kokubu",
-    "土佐山田": "Tosa-Yamada", "土浦": "Tsuchiura", "坂之上": "Sakanoue", "坂出": "Sakaide",
-    "坂町": "Sakamachi", "塩尻": "Shiojiri", "士別": "Shibetsu", "多度津": "Tadotsu",
-    "大分": "Ōita", "大塔": "Daitō", "大宮": "Ōmiya", "大山": "Ōyama", "大曲": "Ōmagari",
-    "大月": "Ōtsuki", "大杉": "Ōsugi", "大村": "Ōmura", "大歩危": "Ōboke", "大館": "Ōdate",
-    "大鰐温泉": "Ōwani-Onsen", "天塩中川": "Teshio-Nakagawa", "妹尾": "Senoo", "姫路": "Himeji",
-    "奥津軽いまべつ": "Oku-Tsugaru-Imabetsu", "幌延": "Horonobe",
-    "嬉野温泉": "Ureshino-Onsen", "宇多津": "Utazu", "宇宿": "Utoko", "宮ヶ浜": "Miyagahama",
-    "宮地": "Miyaji", "宮崎": "Miyazaki", "宮崎神宮": "Miyazaki-Jingū", "富士": "Fuji",
-    "富士宮": "Fujinomiya", "富山": "Toyama", "小倉": "Kokura", "小松": "Komatsu",
-    "小森江": "Komorie", "小田原": "Odawara", "山之口": "Yamanokuchi", "山川": "Yamakawa",
-    "岡山": "Okayama", "岡谷": "Okaya", "岩見沢": "Iwamizawa", "川内": "Sendai",
-    "川棚": "Kawatana", "市川大門": "Ichikawa-Daimon", "帯広": "Obihiro", "平川": "Hirakawa",
-    "広島": "Hiroshima", "延岡": "Nobeoka", "引田": "Hiketa", "弘前": "Hirosaki",
-    "彼杵": "Sonogi", "後免": "Gomen", "徳島": "Tokushima", "志度": "Shido", "慈眼寺": "Jigenji",
-    "指宿": "Ibusuki", "新八代": "Shin-Yatsushiro", "新函館北斗": "Shin-Hakodate-Hokuto",
-    "新夕張": "Shin-Yūbari", "新大村": "Shin-Ōmura", "新大阪": "Shin-Ōsaka", "新宿": "Shinjuku",
-    "新富士": "Shin-Fuji", "新山口": "Shin-Yamaguchi", "新得": "Shintoku", "新札幌": "Shin-Sapporo",
-    "新横浜": "Shin-Yokohama", "新水俣": "Shin-Minamata", "新津": "Niitsu", "新潟": "Niigata",
-    "新発田": "Shibata", "新神戸": "Shin-Kōbe", "新青森": "Shin-Aomori", "新高岡": "Shin-Takaoka",
-    "新鳥栖": "Shin-Tosu", "日向市": "Hyūga-shi", "日宇": "Hiu", "日立": "Hitachi",
-    "早岐": "Haiki", "早島": "Hayashima", "旭川": "Asahikawa", "有田": "Arita", "木古内": "Kikonai",
-    "札幌": "Sapporo", "村上": "Murakami", "東三条": "Higashi-Sanjō", "東京": "Tōkyō",
-    "東室蘭": "Higashi-Muroran", "東能代": "Higashi-Noshiro", "東花輪": "Higashi-Hanawa",
-    "東釧路": "Higashi-Kushiro", "杵築": "Kitsuki", "松原": "Matsubara", "松本": "Matsumoto",
-    "松浦": "Matsuura", "板野": "Itano", "柏": "Kashiwa", "柏崎": "Kashiwazaki", "栗林": "Ritsurin",
-    "根室": "Nemuro", "森": "Mori", "森岳": "Moritake", "武蔵塚": "Musashizuka",
-    "武蔵浦和": "Musashi-Urawa", "武雄温泉": "Takeo-Onsen", "水戸": "Mito", "江北": "Kōhoku",
-    "池田": "Ikeda", "池谷": "Ikenotani", "沼津": "Numazu", "洞爺": "Tōya", "津久見": "Tsukumi",
-    "浜中": "Hamanaka", "浦上": "Urakami", "浦和": "Urawa", "浪岡": "Namioka", "深川": "Fukagawa",
-    "清武": "Kiyotake", "清水": "Shimizu", "滝川": "Takikawa", "瀬々串": "Sezekushi",
-    "熊本": "Kumamoto", "熱海": "Atami", "琴平": "Kotohira", "生見": "Nukumi", "田沢湖": "Tazawako",
-    "田野": "Tano", "甲府": "Kōfu", "甲斐岩間": "Kai-Iwama", "登別": "Noboribetsu",
-    "白糠": "Shiranuka", "盛岡": "Morioka", "直江津": "Naoetsu", "相浦": "Ainoura", "相馬": "Sōma",
-    "石井": "Ishii", "石岡": "Ishioka", "砂川": "Sunagawa", "碇ヶ関": "Ikarigaseki",
-    "福山": "Fukuyama", "秋田": "Akita", "稚内": "Wakkanai", "穴吹": "Anabuki", "立川": "Tachikawa",
-    "立野": "Tateno", "竹松": "Takematsu", "篠ノ井": "Shinonoi", "糸魚川": "Itoigawa",
-    "美唄": "Bibai", "美深": "Bifuka", "羽後本荘": "Ugo-Honjō", "肥後大津": "Higo-Ōzu",
-    "臼杵": "Usuki", "苫小牧": "Tomakomai", "茅野": "Chino", "茶内": "Chanai", "茶屋町": "Chayamachi",
-    "蔵本": "Kuramoto", "薩摩今和泉": "Satsuma-Imaizumi", "行橋": "Yukuhashi",
-    "西国分寺": "Nishi-Kokubunji", "西大山": "Nishi-Ōyama", "西小倉": "Nishi-Kokura",
-    "西都城": "Nishi-Miyakonojō", "見附": "Mitsuke", "角館": "Kakunodate", "諫早": "Isahaya",
-    "谷山": "Taniyama", "豊富": "Toyotomi", "豊栄": "Toyosaka", "象潟": "Kisakata",
-    "貞光": "Sadamitsu", "赤水": "Akamizu", "赤羽": "Akabane", "身延": "Minobu", "郡元": "Kōrimoto",
-    "都城": "Miyakonojō", "酒田": "Sakata", "金沢": "Kanazawa", "釧路": "Kushiro",
-    "長万部": "Oshamambe", "長岡": "Nagaoka", "長崎": "Nagasaki", "長野": "Nagano", "門司": "Moji",
-    "門司港": "Mojikō", "阿波加茂": "Awa-Kamo", "阿波川島": "Awa-Kawashima", "阿波池田": "Awa-Ikeda",
-    "阿蘇": "Aso", "隼人": "Hayato", "霧島神宮": "Kirishima-Jingū", "青森": "Aomori",
-    "静岡": "Shizuoka", "音威子府": "Otoineppu", "飯山": "Iiyama", "高松": "Takamatsu",
-    "高田": "Takada", "高知": "Kōchi", "高鍋": "Takanabe", "鰍沢口": "Kajikazawaguchi",
-    "鳥栖": "Tosu", "鴨島": "Kamojima", "鶴岡": "Tsuruoka", "鷹ノ巣": "Takanosu",
-    "鹿児島": "Kagoshima", "鹿児島中央": "Kagoshima-Chūō", "黒部宇奈月温泉": "Kurobe-Unazuki-Onsen",
-
-    // limited-express / line service names
-    "あずさ": "Azusa", "あそぼーい！": "Aso Boy!", "いなほ": "Inaho", "うずしお": "Uzushio",
-    "おおぞら": "Ōzora", "かもめ": "Kamome", "きりしま": "Kirishima", "こだま": "Kodama",
-    "こまち": "Komachi", "こまち+はやぶさ": "Komachi + Hayabusa", "さくら": "Sakura",
-    "しなの": "Shinano", "しらゆき": "Shirayuki", "つがる": "Tsugaru", "ときわ": "Tokiwa",
-    "にちりん": "Nichirin", "はくたか": "Hakutaka", "はこだてライナー": "Hakodate Liner",
-    "はやぶさ": "Hayabusa", "はやぶさ+こまち": "Hayabusa + Komachi", "ひかり": "Hikari",
-    "ひたち": "Hitachi", "ふじかわ": "Fujikawa", "みどり": "Midori",
-    "シーサイドライナー": "Seaside Liner", "ソニック": "Sonic", "マリンライナー": "Marine Liner",
-    "リレーかもめ": "Relay Kamome", "京浜東北線": "Keihin-Tōhoku Line", "剣山": "Tsurugisan",
-    "北斗": "Hokuto", "南風": "Nanpū", "奥羽線 普通": "Ōu Line (Local)", "宗谷": "Sōya",
-    "快速ノサップ": "Rapid Nosappu", "指宿枕崎線 普通": "Ibusuki-Makurazaki Line (Local)",
-    "東北線・京浜東北線": "Tōhoku Line · Keihin-Tōhoku Line", "東海道線 普通": "Tōkaidō Line (Local)",
+    "あずさ": "Azusa",
+    "あそぼーい！": "Aso Boy!",
+    "いなほ": "Inaho",
+    "うずしお": "Uzushio",
+    "おおぞら": "Ōzora",
+    "かもめ": "Kamome",
+    "きりしま": "Kirishima",
+    "こだま": "Kodama",
+    "こまち": "Komachi",
+    "こまち+はやぶさ": "Komachi + Hayabusa",
+    "さくら": "Sakura",
+    "しなの": "Shinano",
+    "しらゆき": "Shirayuki",
+    "つがる": "Tsugaru",
+    "ときわ": "Tokiwa",
+    "にちりん": "Nichirin",
+    "はくたか": "Hakutaka",
+    "はこだてライナー": "Hakodate Liner",
+    "はやぶさ": "Hayabusa",
+    "はやぶさ+こまち": "Hayabusa + Komachi",
+    "ひかり": "Hikari",
+    "ひたち": "Hitachi",
+    "ふじかわ": "Fujikawa",
+    "みどり": "Midori",
+    "シーサイドライナー": "Seaside Liner",
+    "ソニック": "Sonic",
+    "マリンライナー": "Marine Liner",
+    "リレーかもめ": "Relay Kamome",
+    "京浜東北線": "Keihin-Tōhoku Line",
+    "剣山": "Tsurugisan",
+    "北斗": "Hokuto",
+    "南風": "Nanpū",
+    "奥羽線 普通": "Ōu Line (Local)",
+    "宗谷": "Sōya",
+    "快速ノサップ": "Rapid Nosappu",
+    "指宿枕崎線 普通": "Ibusuki-Makurazaki Line (Local)",
+    "東北線・京浜東北線": "Tōhoku Line · Keihin-Tōhoku Line",
+    "東海道線 普通": "Tōkaidō Line (Local)",
     "松浦鉄道 西九州線": "Matsuura Railway Nishi-Kyūshū Line",
-    "武蔵野線・東北線": "Musashino Line · Tōhoku Line", "花咲線 普通": "Hanasaki Line (Local)",
+    "武蔵野線・東北線": "Musashino Line · Tōhoku Line",
+    "花咲線 普通": "Hanasaki Line (Local)",
     "鹿児島本線 普通": "Kagoshima Main Line (Local)",
   };
 
@@ -842,83 +809,20 @@
   // in kana (e.g. あずさ, ソニック) get no parenthetical so the display stays
   // clean. Used by placeName() to render "東京（とうきょう）" in zh mode.
   const KANA = {
-    // stations
-    "あつみ温泉": "あつみおんせん", "さいたま新都心": "さいたましんとしん",
-    "たびら平戸口": "たびらひらどぐち", "三島": "みしま", "三本松": "さんぼんまつ",
-    "三股": "みまた", "上諏訪": "かみすわ", "上越妙高": "じょうえつみょうこう", "上野": "うえの",
-    "下部温泉": "しもべおんせん", "与野": "よの", "中佐世保": "なかさせぼ", "中名": "なかみょう",
-    "中条": "なかじょう", "中津": "なかつ", "丸亀": "まるがめ", "久留米": "くるめ",
-    "二ツ井": "ふたつい", "二日市": "ふつかいち", "二月田": "にがつでん", "五位野": "ごいの",
-    "五稜郭": "ごりょうかく", "京都": "きょうと", "仁賀保": "にかほ", "仙台": "せんだい",
-    "伊達紋別": "だてもんべつ", "佐々": "さざ", "佐世保": "させぼ", "佐世保中央": "させぼちゅうおう",
-    "佐伯": "さいき", "佐土原": "さどわら", "佐賀": "さが", "余目": "あまるめ", "児島": "こじま",
-    "八戸": "はちのへ", "八王子": "はちおうじ", "八郎潟": "はちろうがた", "八雲": "やくも",
-    "内船": "うつぶな", "出水": "いずみ", "函館": "はこだて", "別府": "べっぷ",
-    "前之浜": "まえのはま", "加茂": "かも", "加賀温泉": "かがおんせん", "勝瑞": "しょうずい",
-    "勝田": "かつた", "北佐世保": "きたさせぼ", "北浦和": "きたうらわ", "南千歳": "みなみちとせ",
-    "南宮崎": "みなみみやざき", "南浦和": "みなみうらわ", "南甲府": "みなみこうふ",
-    "南稚内": "みなみわっかない", "南鹿児島": "みなみかごしま", "博多": "はかた", "厚岸": "あっけし",
-    "厚床": "あっとこ", "原ノ町": "はらのまち", "名古屋": "なごや", "名寄": "なよろ",
-    "和寒": "わっさむ", "品川": "しながわ", "善通寺": "ぜんつうじ", "喜入": "きいれ",
-    "国分": "こくぶ", "土佐山田": "とさやまだ", "土浦": "つちうら", "坂之上": "さかのうえ",
-    "坂出": "さかいで", "坂町": "さかまち", "塩尻": "しおじり", "士別": "しべつ", "多度津": "たどつ",
-    "大分": "おおいた", "大塔": "だいとう", "大宮": "おおみや", "大山": "おおやま", "大曲": "おおまがり",
-    "大月": "おおつき", "大杉": "おおすぎ", "大村": "おおむら", "大歩危": "おおぼけ", "大館": "おおだて",
-    "大鰐温泉": "おおわにおんせん", "天塩中川": "てしおなかがわ", "奥津軽いまべつ": "おくつがるいまべつ",
-    "幌延": "ほろのべ", "妹尾": "せのお", "姫路": "ひめじ", "嬉野温泉": "うれしのおんせん",
-    "宇多津": "うたづ", "宇宿": "うとこ", "宮ヶ浜": "みやがはま", "宮地": "みやじ", "宮崎": "みやざき",
-    "宮崎神宮": "みやざきじんぐう", "富士": "ふじ", "富士宮": "ふじのみや", "富山": "とやま",
-    "小倉": "こくら", "小松": "こまつ", "小森江": "こもりえ", "小田原": "おだわら",
-    "山之口": "やまのくち", "山川": "やまかわ", "岡山": "おかやま", "岡谷": "おかや",
-    "岩見沢": "いわみざわ", "川内": "せんだい", "川棚": "かわたな", "市川大門": "いちかわだいもん",
-    "帯広": "おびひろ", "平川": "ひらかわ", "広島": "ひろしま", "延岡": "のべおか", "引田": "ひけた",
-    "弘前": "ひろさき", "彼杵": "そのぎ", "後免": "ごめん", "徳島": "とくしま", "志度": "しど",
-    "慈眼寺": "じげんじ", "指宿": "いぶすき", "新八代": "しんやつしろ",
-    "新函館北斗": "しんはこだてほくと", "新夕張": "しんゆうばり", "新大村": "しんおおむら",
-    "新大阪": "しんおおさか", "新宿": "しんじゅく", "新富士": "しんふじ", "新山口": "しんやまぐち",
-    "新得": "しんとく", "新札幌": "しんさっぽろ", "新横浜": "しんよこはま", "新水俣": "しんみなまた",
-    "新津": "にいつ", "新潟": "にいがた", "新発田": "しばた", "新神戸": "しんこうべ",
-    "新青森": "しんあおもり", "新高岡": "しんたかおか", "新鳥栖": "しんとす", "日向市": "ひゅうがし",
-    "日宇": "ひう", "日立": "ひたち", "早岐": "はいき", "早島": "はやしま", "旭川": "あさひかわ",
-    "有田": "ありた", "木古内": "きこない", "札幌": "さっぽろ", "村上": "むらかみ",
-    "東三条": "ひがしさんじょう", "東京": "とうきょう", "東室蘭": "ひがしむろらん",
-    "東能代": "ひがしのしろ", "東花輪": "ひがしはなわ", "東釧路": "ひがしくしろ", "杵築": "きつき",
-    "松原": "まつばら", "松本": "まつもと", "松浦": "まつうら", "板野": "いたの", "柏": "かしわ",
-    "柏崎": "かしわざき", "栗林": "りつりん", "根室": "ねむろ", "森": "もり", "森岳": "もりたけ",
-    "武蔵塚": "むさしづか", "武蔵浦和": "むさしうらわ", "武雄温泉": "たけおおんせん", "水戸": "みと",
-    "江北": "こうほく", "池田": "いけだ", "池谷": "いけのたに", "沼津": "ぬまづ", "洞爺": "とうや",
-    "津久見": "つくみ", "浜中": "はまなか", "浦上": "うらかみ", "浦和": "うらわ", "浪岡": "なみおか",
-    "深川": "ふかがわ", "清武": "きよたけ", "清水": "しみず", "滝川": "たきかわ", "瀬々串": "せせくし",
-    "熊本": "くまもと", "熱海": "あたみ", "琴平": "ことひら", "生見": "ぬくみ", "田沢湖": "たざわこ",
-    "田野": "たの", "甲府": "こうふ", "甲斐岩間": "かいいわま", "登別": "のぼりべつ", "白糠": "しらぬか",
-    "盛岡": "もりおか", "直江津": "なおえつ", "相浦": "あいのうら", "相馬": "そうま", "石井": "いしい",
-    "石岡": "いしおか", "砂川": "すながわ", "碇ヶ関": "いかりがせき", "福山": "ふくやま",
-    "秋田": "あきた", "稚内": "わっかない", "穴吹": "あなぶき", "立川": "たちかわ", "立野": "たての",
-    "竹松": "たけまつ", "篠ノ井": "しののい", "糸魚川": "いといがわ", "美唄": "びばい", "美深": "びふか",
-    "羽後本荘": "うごほんじょう", "肥後大津": "ひごおおづ", "臼杵": "うすき", "苫小牧": "とまこまい",
-    "茅野": "ちの", "茶内": "ちゃない", "茶屋町": "ちゃやまち", "蔵本": "くらもと",
-    "薩摩今和泉": "さつまいまいずみ", "行橋": "ゆくはし", "西国分寺": "にしこくぶんじ",
-    "西大山": "にしおおやま", "西小倉": "にしこくら", "西都城": "にしみやこのじょう", "見附": "みつけ",
-    "角館": "かくのだて", "諫早": "いさはや", "谷山": "たにやま", "豊富": "とよとみ", "豊栄": "とよさか",
-    "象潟": "きさかた", "貞光": "さだみつ", "赤水": "あかみず", "赤羽": "あかばね", "身延": "みのぶ",
-    "郡元": "こおりもと", "都城": "みやこのじょう", "酒田": "さかた", "金沢": "かなざわ",
-    "釧路": "くしろ", "長万部": "おしゃまんべ", "長岡": "ながおか", "長崎": "ながさき", "長野": "ながの",
-    "門司": "もじ", "門司港": "もじこう", "阿波加茂": "あわかも", "阿波川島": "あわかわしま",
-    "阿波池田": "あわいけだ", "阿蘇": "あそ", "隼人": "はやと", "霧島神宮": "きりしまじんぐう",
-    "青森": "あおもり", "静岡": "しずおか", "音威子府": "おといねっぷ", "飯山": "いいやま",
-    "高松": "たかまつ", "高田": "たかだ", "高知": "こうち", "高鍋": "たかなべ",
-    "鰍沢口": "かじかざわぐち", "鳥栖": "とす", "鴨島": "かもじま", "鶴岡": "つるおか",
-    "鷹ノ巣": "たかのす", "鹿児島": "かごしま", "鹿児島中央": "かごしまちゅうおう",
-    "黒部宇奈月温泉": "くろべうなづきおんせん",
-
-    // limited-express / line service names with kanji
-    "剣山": "つるぎさん", "北斗": "ほくと", "南風": "なんぷう", "奥羽線 普通": "おううせん ふつう",
-    "宗谷": "そうや", "快速ノサップ": "かいそくノサップ",
+    "剣山": "つるぎさん",
+    "北斗": "ほくと",
+    "南風": "なんぷう",
+    "奥羽線 普通": "おううせん ふつう",
+    "宗谷": "そうや",
+    "快速ノサップ": "かいそくノサップ",
     "指宿枕崎線 普通": "いぶすきまくらざきせん ふつう",
-    "東北線・京浜東北線": "とうほくせん・けいひんとうほくせん", "東海道線 普通": "とうかいどうせん ふつう",
+    "東北線・京浜東北線": "とうほくせん・けいひんとうほくせん",
+    "東海道線 普通": "とうかいどうせん ふつう",
     "松浦鉄道 西九州線": "まつうらてつどう にしきゅうしゅうせん",
-    "武蔵野線・東北線": "むさしのせん・とうほくせん", "花咲線 普通": "はなさきせん ふつう",
-    "鹿児島本線 普通": "かごしまほんせん ふつう", "京浜東北線": "けいひんとうほくせん",
+    "武蔵野線・東北線": "むさしのせん・とうほくせん",
+    "花咲線 普通": "はなさきせん ふつう",
+    "鹿児島本線 普通": "かごしまほんせん ふつう",
+    "京浜東北線": "けいひんとうほくせん",
   };
 
   // ---- core helpers -------------------------------------------------------
@@ -948,14 +852,47 @@
   //   ZH-Hant  -> "東京（とうきょう）" (Japanese + kana reading)
   //   ZH-Hans  -> same presentation; source proper nouns stay unchanged
   //   JA       -> original Japanese only
-  function placeName(jp) {
+  // Station readings (kana + romaji) keyed by N02 station code, loaded at
+  // runtime from /api/station-readings and injected via setStationReadings().
+  // Station注音 no longer lives inline in the dictionaries below — those keep
+  // only limited-express SERVICE names and line names. placeName() prefers the
+  // id-keyed table (code first, then a normalized-name fallback), and only
+  // falls back to the service dictionaries for non-station labels.
+  let STATION_READINGS = { byCode: {}, byName: {} };
+  function setStationReadings(data) {
+    if (data && typeof data === "object")
+      STATION_READINGS = {
+        byCode: data.byCode || {},
+        byName: data.byName || {},
+      };
+  }
+  function normReadingKey(jp) {
+    return String(jp || "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/ヶ/g, "ケ")
+      .replace(/ヵ/g, "カ");
+  }
+  function stationReading(code, jp) {
+    if (code && STATION_READINGS.byCode) {
+      const e = STATION_READINGS.byCode[code];
+      if (e) return e;
+    }
+    if (jp && STATION_READINGS.byName) {
+      const e = STATION_READINGS.byName[normReadingKey(jp)];
+      if (e) return e;
+    }
+    return null;
+  }
+  function placeName(jp, code) {
     if (!jp) return jp || "";
+    if (currentLang === "ja") return jp;
+    const r = stationReading(code, jp);
     if (currentLang === "en") {
-      const en = NAMES[jp];
+      const en = (r && r.romaji) || NAMES[jp];
       return en ? jp + " (" + en + ")" : jp;
     }
-    if (currentLang === "ja") return jp;
-    const kana = KANA[jp];
+    const kana = (r && r.kana) || KANA[jp];
     return kana ? jp + "（" + kana + "）" : jp;
   }
   const trainName = placeName; // same dictionary covers service names
@@ -1049,6 +986,7 @@
     t: t,
     placeName: placeName,
     trainName: trainName,
+    setStationReadings: setStationReadings,
     setLang: setLang,
     onChange: onChange,
     applyStatic: applyStatic,

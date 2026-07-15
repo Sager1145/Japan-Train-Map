@@ -36,6 +36,7 @@ updates itself.
 | `POST` | `/api/agent/import` | Import a rail plan (replace by default). |
 | `POST` | `/api/agent/import?mode=append` | Merge trains into the existing store (upsert by `id`). |
 | `GET`  | `/api/events` | SSE stream of `store-changed` events (the frontend subscribes; agents normally don't need this). |
+| `GET`  | `/api/station-readings` | Station names (kanji/kana/katakana/romaji/zh-Hant/zh-Hans) keyed by N02 station code; the frontend uses it for name display (see [`jsonspec.md`](./jsonspec.md) §13.4). Agents normally don't need it. |
 | `GET`  | `/api/train-store` | Read the currently-saved store (`404` if none). |
 | `PUT`  | `/api/train-store` | Same as before — the UI's autosave path. |
 | `DELETE` | `/api/train-store` | Clear the store; open maps fall back to built-in defaults. |

@@ -14,6 +14,10 @@
   --ink: #241b18;
   --ink-muted: #746a66;
   --white: #ffffff;
+  --surface-subtle: #fafbfa;
+  --map-bg: rgb(242, 243, 240);
+  --danger-border: #e5c4c1;
+  --danger-bg: #fbf1f0;
 
   /* scale tokens */
   --radius-card: 14px;
@@ -35,6 +39,61 @@
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
   --shadow: 0 2px 10px rgba(26, 26, 26, 0.05);
+}
+
+html[data-theme="dark"] {
+  --rail-lit: #ff7448;
+  --rail-text: #ff9a78;
+  --rail-text-hover: #ffb096;
+  /* macOS dark system-gray surfaces. Accent colour is reserved for selected
+     and highlighted UI; it must not tint menus, cards or their borders. */
+  --rail-dim: #48484a;
+  --rail-bg: #3a3a3c;
+  --ink: #f5eee9;
+  --ink-muted: #aeaeb2;
+  --white: #2c2c2e;
+  --surface-subtle: #323234;
+  --map-bg: rgb(12, 12, 12);
+  --warn: #f0ad4e;
+  --ok: #62cf96;
+  --err: #ff7d8b;
+  --danger: #ff7d8b;
+  --danger-border: #684248;
+  --danger-bg: #382328;
+  --bg: #1c1c1e;
+  --panel: var(--white);
+  --line: var(--rail-dim);
+  --text: var(--ink);
+  --muted: var(--ink-muted);
+  --accent: var(--rail-lit);
+  --accent-2: var(--rail-text);
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+}
+
+/* Native View Transitions cross-fade the fully rendered interface, including
+   controls that inherit theme colours through CSS variables. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.46s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Colour-transition fallback for browsers without View Transitions. */
+html.theme-transition-fallback body,
+html.theme-transition-fallback #sidebar,
+html.theme-transition-fallback .card,
+html.theme-transition-fallback input,
+html.theme-transition-fallback select,
+html.theme-transition-fallback textarea,
+html.theme-transition-fallback button,
+html.theme-transition-fallback a,
+html.theme-transition-fallback th,
+html.theme-transition-fallback td,
+html.theme-transition-fallback details,
+html.theme-transition-fallback .maplibregl-ctrl-group {
+  transition-property: background-color, color, border-color, box-shadow;
+  transition-duration: 0.46s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * {
@@ -64,25 +123,151 @@ body {
 }
 
 #app {
+  --sidebar-open-size: 480px;
+  --sidebar-size: var(--sidebar-open-size);
+  position: relative;
   display: grid;
-  grid-template-columns: 480px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
+  transition: grid-template-columns 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#app.sidebar-collapsed {
+  --sidebar-size: 0px;
+}
+
+html[data-sidebar="collapsed"] #app {
+  --sidebar-size: 0px;
+}
+
+#app.sidebar-dragging {
+  transition: none;
 }
 
 #sidebar {
+  /* Keep the drawer at its full width while the grid track reveals more or
+     less of it. Translating the panel preserves every child layout during a
+     drag instead of reflowing cards into an ever-narrower column. */
+  width: var(--sidebar-open-size);
+  min-width: var(--sidebar-open-size);
+  max-width: var(--sidebar-open-size);
   overflow: auto;
   scroll-behavior: smooth;
   padding: 12px 14px 24px;
   border-right: 1px solid var(--rail-dim);
   background: var(--bg);
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#app.sidebar-collapsed #sidebar {
+  pointer-events: none;
+  transform: translateX(calc(-1 * var(--sidebar-open-size)));
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#app.sidebar-dragging #sidebar {
+  pointer-events: auto;
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+  transition: none;
+}
+
+.sidebar-edge-tab {
+  position: absolute;
+  top: 50%;
+  left: var(--sidebar-size);
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 62px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--rail-dim);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: color-mix(in srgb, var(--white) 94%, transparent);
+  color: var(--rail-text);
+  box-shadow: 3px 0 10px rgba(0, 0, 0, 0.14);
+  cursor: ew-resize;
+  touch-action: none;
+  transform: translateY(-50%);
+  transition:
+    left 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.15s ease,
+    border-color 0.15s ease;
+  backdrop-filter: blur(8px);
+  user-select: none;
+}
+
+.sidebar-edge-tab:hover,
+.sidebar-edge-tab:focus-visible {
+  border-color: var(--rail-text);
+  background: var(--rail-bg);
+}
+
+.sidebar-edge-tab:focus-visible {
+  /* An outer outline is clipped when the collapsed tab sits at the viewport
+     edge. Keep the keyboard focus indicator visible inside the handle. */
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--rail-text),
+    3px 0 10px rgba(0, 0, 0, 0.14);
+}
+
+.sidebar-edge-tab-grip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.sidebar-edge-tab-grip span {
+  width: 2px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+#app.sidebar-dragging .sidebar-edge-tab {
+  transition: none;
+  background: var(--rail-bg);
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--rail-lit) 45%, transparent);
 }
 
 #map {
+  position: relative;
   width: 100%;
   height: 100%;
   /* railprint / positron muted paper grey — also the no-basemap background */
-  background: rgb(242, 243, 240);
+  background: var(--map-bg);
+}
+
+/* The official OpenFreeMap styles are replaced as a layer stack. Briefly
+   cover the map immediately before installation, then reveal the new stack,
+   so the basemap does not flash between light and dark. */
+#map::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  background: var(--map-bg);
+  opacity: 0;
+  transition:
+    opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.theme-map-covered #map::after {
+  opacity: 0.96;
 }
 
 /* Visible focus ring for keyboard nav (railprint accessibility spec). */
@@ -107,6 +292,13 @@ header {
   gap: 10px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
 h1 {
   display: flex;
   align-items: center;
@@ -124,21 +316,24 @@ h1 {
   font-size: 10px;
 }
 
-.lang-switch {
+.lang-switch,
+.theme-switch {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: none;
 }
 
-.lang-switch label {
+.lang-switch label,
+.theme-switch label {
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--ink-muted);
 }
 
-.lang-switch select {
+.lang-switch select,
+.theme-switch select {
   width: auto;
   font: inherit;
   font-size: 12px;
@@ -149,6 +344,10 @@ h1 {
   background: var(--white);
   color: var(--ink);
   cursor: pointer;
+}
+
+.theme-switch select {
+  max-width: 94px;
 }
 
 /* RailPrint-style workspace pills stay available while the sidebar scrolls. */
@@ -415,7 +614,10 @@ button:hover {
   background: var(--rail-bg);
 }
 
-button:active:not(:disabled) {
+/* The sidebar edge tab uses transform for its own centering. Applying this
+   generic press scale would replace translateY/translateX and make the tab
+   jump while pressed or dragged. */
+button:active:not(:disabled):not(.sidebar-edge-tab) {
   transform: scale(0.98);
 }
 
@@ -431,12 +633,12 @@ button.primary:hover {
 }
 
 button.danger {
-  border-color: #e5c4c1;
+  border-color: var(--danger-border);
   color: var(--danger);
 }
 button.danger:hover {
   border-color: var(--danger);
-  background: #fbf1f0;
+  background: var(--danger-bg);
   color: var(--danger);
 }
 
@@ -820,12 +1022,12 @@ button:disabled {
 /* ---- Danger zone --------------------------------------------------------- */
 .danger-zone {
   margin-top: 4px;
-  border: 1px dashed #e5c4c1;
+  border: 1px dashed var(--danger-border);
   border-radius: var(--radius-button);
   padding: 8px 10px;
 }
 .danger-zone[open] {
-  background: #fdf7f7;
+  background: var(--danger-bg);
 }
 .danger-zone > summary {
   cursor: pointer;
@@ -895,7 +1097,7 @@ th {
   font-size: 11px;
   letter-spacing: 0.02em;
   text-align: left;
-  background: #f8faf8;
+  background: var(--surface-subtle);
 }
 
 td input,
@@ -952,7 +1154,7 @@ tr.branch-header strong {
 }
 tr.branch-junction td {
   color: var(--ink-muted);
-  background: #fafbfa;
+  background: var(--surface-subtle);
   font-style: italic;
 }
 
@@ -975,6 +1177,8 @@ tr.branch-junction td {
   border-radius: var(--radius-button);
   box-shadow: 0 4px 14px rgba(26, 26, 26, 0.18);
   font: inherit;
+  background: var(--white);
+  color: var(--ink);
 }
 .popup-title {
   font-weight: 700;
@@ -992,18 +1196,72 @@ tr.branch-junction td {
 
 @media (max-width: 900px) {
   #app {
+    --sidebar-open-size: 58vh;
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(260px, 42vh) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) var(--sidebar-size);
+    transition: grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  #app.sidebar-dragging {
+    transition: none;
   }
 
   #sidebar {
     order: 2;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: var(--sidebar-open-size);
+    min-height: var(--sidebar-open-size);
+    max-height: var(--sidebar-open-size);
     border-right: none;
     border-top: 1px solid var(--rail-dim);
+    transform: translateY(0);
+  }
+
+  #app.sidebar-collapsed #sidebar {
+    transform: translateY(18px);
+  }
+
+  #app.sidebar-dragging #sidebar {
+    transform: translateY(0);
   }
 
   #map {
     order: 1;
+  }
+
+  .sidebar-edge-tab {
+    top: auto;
+    bottom: var(--sidebar-size);
+    left: 50%;
+    width: 62px;
+    height: 24px;
+    border-left: 1px solid var(--rail-dim);
+    border-bottom: 0;
+    border-radius: 9px 9px 0 0;
+    cursor: ns-resize;
+    transform: translateX(-50%);
+    transition:
+      bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+      background 0.15s ease,
+      border-color 0.15s ease;
+    box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.14);
+  }
+
+  .sidebar-edge-tab:focus-visible {
+    box-shadow:
+      inset 0 0 0 2px var(--rail-text),
+      0 -3px 10px rgba(0, 0, 0, 0.14);
+  }
+
+  .sidebar-edge-tab-grip {
+    flex-direction: column;
+  }
+
+  .sidebar-edge-tab-grip span {
+    width: 22px;
+    height: 2px;
   }
   .train-list {
     max-height: 260px;
@@ -1027,7 +1285,8 @@ tr.branch-junction td {
     font-size: 17px;
   }
 
-  .lang-switch label {
+  .lang-switch label,
+  .theme-switch label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1037,6 +1296,10 @@ tr.branch-junction td {
 
   .lang-switch select {
     max-width: 118px;
+  }
+
+  .theme-switch select {
+    max-width: 92px;
   }
 
   .workspace-nav {
@@ -1378,7 +1641,7 @@ tr.branch-junction td {
   padding: 10px;
   border: 1px solid var(--rail-dim);
   border-radius: var(--radius-button);
-  background: #fafbfa;
+  background: var(--surface-subtle);
 }
 
 .map-info-links {
@@ -1617,7 +1880,7 @@ tr.branch-junction td {
   top: 0;
   transform: translate(-50%, calc(-100% - 14px));
   background: rgba(26, 26, 26, 0.92);
-  color: var(--white);
+  color: #ffffff;
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;
@@ -1628,7 +1891,41 @@ tr.branch-junction td {
   pointer-events: none;
 }
 
+/* MapLibre's bundled controls are light by default; keep their native icons
+   and popup arrows legible on the dark page and official Dark basemap. */
+html[data-theme="dark"] .maplibregl-ctrl-group {
+  background: var(--white);
+  box-shadow: 0 0 0 1px var(--rail-dim), 0 2px 10px rgba(0, 0, 0, 0.32);
+}
+html[data-theme="dark"] .maplibregl-ctrl-group button + button {
+  border-top-color: var(--rail-dim);
+}
+html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(1.35);
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--white);
+}
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--white);
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--white);
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--white);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.01ms !important;
+  }
+
   * {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
