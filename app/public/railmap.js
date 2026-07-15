@@ -160,83 +160,114 @@
   }
 
   // ───────────────────────────── rail package loader ─────────────────────────────
-  // Loads railprint's jp-2025 RailGeoPackage and builds the two GeoJSON
+  // Loads the jp-2025 rail package in its compact-v1 format (stations and
+  // segments nested per line, derivable fields omitted — see
+  // scripts/railpkg.py for the format spec) and builds the two GeoJSON
   // collections + the geo index the hover popup needs (buildSegmentCollection /
   // buildStationCollection / geo-index, ported).
+  //   station row: [stationGroupId, name, lon, lat, (nameRoma, romaSourceCode)]
+  //   segment row: [km, sharedFirstPoint, coordinates, (arcDirection)]
+  //   segment i joins station i to station (i+1) % n (loop lines close the ring)
   async function loadNetwork() {
     try {
       const res = await fetch("./rail/jp-2025.json");
       if (!res.ok) return null;
       const pkg = await res.json();
-      if (!pkg || !Array.isArray(pkg.lines)) return null;
+      if (!pkg || pkg.format !== "compact-v1" || !Array.isArray(pkg.lines))
+        return null;
 
+      const ROMA_SOURCE = { 1: "osm", 2: "wikidata" };
       const lineById = new Map();
-      const colorByLine = new Map();
-      const lineMinzByLine = new Map();
-      for (const l of pkg.lines) {
-        lineById.set(l.lineId, l);
-        colorByLine.set(l.lineId, l.color || DEFAULT_LINE_COLOR);
-        lineMinzByLine.set(l.lineId, minzForRank(l.rank));
-      }
-
-      // Segments — one LineString per RailSegment, static official `color` + `minz`.
-      const segFeatures = pkg.segments.map((seg) => ({
-        type: "Feature",
-        geometry: seg.geometry,
-        properties: {
-          segmentId: seg.segmentId,
-          lineId: seg.lineId,
-          color: colorByLine.get(seg.lineId) || DEFAULT_LINE_COLOR,
-          minz: lineMinzByLine.get(seg.lineId) || 0,
-        },
-      }));
-
-      // Per line: total km, spacing-derived dot reveal zoom, termini (anchor at line zoom).
-      const kmByLine = new Map();
-      for (const s of pkg.segments)
-        kmByLine.set(s.lineId, (kmByLine.get(s.lineId) || 0) + s.km);
-      const dotMinzByLine = new Map();
-      const terminiByLine = new Map();
-      for (const l of pkg.lines) {
-        const lineMinz = lineMinzByLine.get(l.lineId) || 0;
-        const n = (l.stationOrder || []).length;
-        dotMinzByLine.set(
-          l.lineId,
-          stationMinzForLine(lineMinz, kmByLine.get(l.lineId) || 0, n),
-        );
-        if (!l.isLoop && n >= 2)
-          terminiByLine.set(
-            l.lineId,
-            new Set([l.stationOrder[0], l.stationOrder[n - 1]]),
-          );
-      }
-
       const stationById = new Map();
       const groupMembers = new Map(); // groupKey -> [station, ...]
-      const stFeatures = pkg.stations.map((st) => {
-        stationById.set(st.stationId, st);
-        const gk = st.stationGroupId || "solo:" + st.stationId;
-        let arr = groupMembers.get(gk);
-        if (!arr) groupMembers.set(gk, (arr = []));
-        arr.push(st);
-        const term = terminiByLine.get(st.lineId);
-        const minz =
-          term && term.has(st.stationId)
-            ? lineMinzByLine.get(st.lineId) || 0
-            : dotMinzByLine.get(st.lineId) || 0;
-        return {
-          type: "Feature",
-          geometry: { type: "Point", coordinates: [st.lon, st.lat] },
-          properties: {
-            stationId: st.stationId,
-            lineId: st.lineId,
-            name: st.name,
-            nameRoma: st.nameRoma || "",
-            stationGroupId: st.stationGroupId || "",
-            minz,
-          },
-        };
-      });
+      const segFeatures = [];
+      const stFeatures = [];
+
+      for (const cl of pkg.lines) {
+        const lid = cl.id;
+        const n = cl.stations.length;
+        const color = cl.color || DEFAULT_LINE_COLOR;
+        const lineMinz = minzForRank(cl.rank);
+        const stationIds = cl.stations.map((row) => lid + ":" + row[0]);
+
+        let km = 0;
+        for (const row of cl.segments) km += row[0];
+
+        lineById.set(lid, {
+          lineId: lid,
+          name: cl.name,
+          operator: cl.operator,
+          nameRoma: cl.nameRoma,
+          isHSR: !!cl.isHSR,
+          isLoop: !!cl.isLoop,
+          rank: cl.rank,
+          color: cl.color,
+          logo: cl.logo ? "/rail/logos/" + lid + ".png" : null,
+          stationOrder: stationIds,
+          km,
+        });
+
+        // Segments — one LineString each, static official `color` + `minz`.
+        // A row's `shared` flag means its first coordinate is the previous
+        // segment's last and was omitted on disk.
+        let prevLast = null;
+        for (let i = 0; i < cl.segments.length; i++) {
+          const row = cl.segments[i];
+          const coords = row[1] ? [prevLast].concat(row[2]) : row[2];
+          prevLast = coords[coords.length - 1];
+          segFeatures.push({
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: coords },
+            properties: {
+              segmentId:
+                lid + ":" + cl.stations[i][0] + "-" + cl.stations[(i + 1) % n][0],
+              lineId: lid,
+              color,
+              minz: lineMinz,
+            },
+          });
+        }
+
+        // Stations — spacing-derived dot reveal zoom, termini anchor at line zoom.
+        const dotMinz = stationMinzForLine(lineMinz, km, n);
+        const termini =
+          !cl.isLoop && n >= 2
+            ? new Set([stationIds[0], stationIds[n - 1]])
+            : null;
+        for (let i = 0; i < n; i++) {
+          const row = cl.stations[i];
+          const st = {
+            stationId: stationIds[i],
+            name: row[1],
+            lineId: lid,
+            seq: i,
+            lon: row[2],
+            lat: row[3],
+            stationGroupId: row[0],
+          };
+          if (row.length > 4) {
+            st.nameRoma = row[4];
+            st.romaSource = ROMA_SOURCE[row[5]];
+          }
+          stationById.set(st.stationId, st);
+          const gk = st.stationGroupId || "solo:" + st.stationId;
+          let arr = groupMembers.get(gk);
+          if (!arr) groupMembers.set(gk, (arr = []));
+          arr.push(st);
+          stFeatures.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [st.lon, st.lat] },
+            properties: {
+              stationId: st.stationId,
+              lineId: lid,
+              name: st.name,
+              nameRoma: st.nameRoma || "",
+              stationGroupId: st.stationGroupId || "",
+              minz: termini && termini.has(st.stationId) ? lineMinz : dotMinz,
+            },
+          });
+        }
+      }
 
       return {
         version: pkg.version,

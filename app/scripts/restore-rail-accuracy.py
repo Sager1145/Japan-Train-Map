@@ -21,8 +21,11 @@ A `.bak` of the original package is written next to it once (reused as the
 pristine input on re-runs, so the script is idempotent).
 """
 
-import json, math, os, heapq, gzip, shutil
+import json, math, os, heapq, shutil, sys
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import railpkg
 
 APP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG_PATH = os.path.join(APP, "public/rail/jp-2025.json")
@@ -97,7 +100,7 @@ def douglas_peucker(pts, eps_m):
 def main():
     bak = PKG_PATH + ".bak"
     src_pkg = bak if os.path.exists(bak) else PKG_PATH  # idempotent re-runs
-    pkg = json.load(open(src_pkg))
+    pkg = railpkg.load(src_pkg)  # auto-detects compact-v1 vs legacy flat
     n02 = json.load(open(N02_PATH))
 
     feats_by_key = defaultdict(list)
@@ -256,10 +259,7 @@ def main():
 
     if not os.path.exists(bak):
         shutil.copyfile(PKG_PATH, bak)
-    with open(PKG_PATH, "w") as f:
-        json.dump(pkg, f, ensure_ascii=False, separators=(",", ":"))
-    with open(PKG_PATH, "rb") as srcf, gzip.open(PKG_PATH + ".gz", "wb", compresslevel=9) as dst:
-        shutil.copyfileobj(srcf, dst)
+    railpkg.save(PKG_PATH, pkg)  # writes compact-v1 + refreshes the .gz sidecar
 
     print(json.dumps(stats))
     print(f"vertices: {v_old} -> {v_new}")

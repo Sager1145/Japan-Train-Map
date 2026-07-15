@@ -410,11 +410,12 @@ app.delete("/api/train-store", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Large static JSON assets (the 9.2 MB rail package rail/jp-2025.json, the
-// basemap style, logo credits) are served by the same gzip-sidecar + ETag path
-// as the /api datasets. Previously express.static streamed jp-2025.json raw at
-// 9.2 MB with Cache-Control: max-age=0, so every reload re-downloaded it in
-// full. Now it goes over the wire at ~1.7 MB and revalidates to a 304.
+// Large static JSON assets (the rail package rail/jp-2025.json — ~2.8 MB in
+// compact-v1 format, see scripts/railpkg.py — the basemap style, logo
+// credits) are served by the same gzip-sidecar + ETag path as the /api
+// datasets. Previously express.static streamed jp-2025.json raw with
+// Cache-Control: max-age=0, so every reload re-downloaded it in full. Now it
+// goes over the wire at ~0.9 MB gzipped and revalidates to a 304.
 // ---------------------------------------------------------------------------
 const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
 // JSON data packages rarely change → cache a day. JS/CSS are app code that
