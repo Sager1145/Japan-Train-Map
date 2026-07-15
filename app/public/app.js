@@ -4251,24 +4251,15 @@ function renderMileageStatsDom(view) {
   if (daily) {
     if (view.daily) {
       const d = view.daily;
-      const catRows = STAT_CATEGORIES.filter(
-        (c) => (d.stats.riddenByMask.get(c.mask) || 0) >= 0.05,
-      )
-        .map(
-          (c) => `
-        <div class="stats-daily-row">
-          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
-          <span class="stat-km">${formatStatKm(d.stats.riddenByMask.get(c.mask) || 0)} km</span>
-        </div>`,
-        )
-        .join("");
       daily.innerHTML = `
         <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: d.date }))}</h3>
         <div class="stats-daily-hero">
           <span class="stats-daily-km">${formatStatKm(d.stats.riddenAll)}<span class="unit">km</span></span>
           <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} ${escapeHtml(formatStatDuration(d.stats.rideMinutes || 0))} · ${escapeHtml(I18N.t("stat.trains", { n: d.trainCount }))}</span>
         </div>
-        ${catRows ? `<div class="stats-daily-rows">${catRows}</div>` : ""}
+        <!-- Use the same mutually-exclusive ride groups as 實際乘坐量. Each
+             row includes distance, time and train count; the overlapping
+             network-category mileage rows previously shown here were removed. -->
         ${serviceRowsHtml(d.stats.services)}
         <div class="divider"></div>`;
     } else {
@@ -4276,7 +4267,7 @@ function renderMileageStatsDom(view) {
         <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: "--" }))}</h3>
         <div class="stats-daily-hero">
           <span class="stats-daily-km">--<span class="unit">km</span></span>
-          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} --</span>
+          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} -- · ${escapeHtml(I18N.t("stat.trains", { n: "--" }))}</span>
         </div>
         <div class="divider"></div>`;
     }

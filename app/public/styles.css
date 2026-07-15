@@ -817,19 +817,6 @@ button:disabled {
   font-size: 0.55em;
   margin-left: 3px;
 }
-.stats-daily-rows {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px 14px;
-}
-.stats-daily-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---- Danger zone --------------------------------------------------------- */
 .danger-zone {
   margin-top: 4px;
