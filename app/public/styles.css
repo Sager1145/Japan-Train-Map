@@ -81,7 +81,7 @@ body {
 #map {
   width: 100%;
   height: 100%;
-  /* railprint / positron muted paper grey — also the offline plain background */
+  /* railprint / positron muted paper grey — also the no-basemap background */
   background: rgb(242, 243, 240);
 }
 

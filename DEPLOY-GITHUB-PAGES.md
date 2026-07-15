@@ -35,8 +35,8 @@
 
 ## 工作流做了什么
 
-- 把 `app/public/`（前端）复制为静态站，**排除**约 98 MB 的离线瓦片
-  `tiles/` 和预压缩的 `*.gz`（Pages 会自动 gzip）。
+- 把 `app/public/`（前端）复制为静态站，并排除预压缩的 `*.gz`
+  （Pages 会自动 gzip）。
 - 把数据集放到 `api/` 目录，文件名**不带扩展名**，以匹配前端的取数路径
   （`app.js` 里 `fetchJson("stations")` → `./api/stations`）：
   `rail-sections` / `stations` / `default-trains` / `matched-routes` / `matched-stops`。
@@ -77,10 +77,6 @@
 ```
 [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store || true
 ```
-
-**加回离线备用底图**
-把工作流里 `rsync ... --exclude='tiles/'` 中的 `--exclude='tiles/'` 去掉即可，
-但站点会多出约 98 MB（线上默认走在线底图，一般不需要）。
 
 **用自定义域名**
 在仓库 Settings → Pages 填 Custom domain，并在工作流的装配步骤里加一行

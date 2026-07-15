@@ -3147,8 +3147,8 @@ function persistAndRender() {
 // =========================================================================
 // The map renders with MapLibre GL, styled after yzhouwang/railprint
 // (see railmap.js for the ported style system):
-//   - vendored OpenFreeMap positron vector basemap (offline -> plain
-//     background, with the pre-downloaded raster tiles selectable),
+//   - vendored OpenFreeMap positron vector style (online tiles), with a plain
+//     background when the source is unavailable or the user chooses no map,
 //   - the full MLIT N02 national network + stations from railprint's
 //     jp-2025 rail package, every line in its official color, revealed
 //     by zoom tier (rank) and station spacing — OFF by default, toggled
@@ -3178,12 +3178,11 @@ function buildMapLayersControl(hasBasemap) {
   const selectLabelText = document.createElement("span");
   selectLabel.appendChild(selectLabelText);
   const select = document.createElement("select");
-  // "Positron (online)" is ALWAYS offered: when boot degraded to offline the
+  // "Positron (online)" is ALWAYS offered: when boot has no basemap the
   // option becomes the online-retry entry point (picking it re-attempts the
   // basemap via RailMap.retryBasemap and reverts on failure).
   const options = [
     ["positron", "map.positron"],
-    ["raster", "map.localTiles"],
     ["none", "map.noBasemap"],
   ];
   const optionNodes = new Map();
@@ -3196,10 +3195,10 @@ function buildMapLayersControl(hasBasemap) {
   });
   selectLabel.appendChild(select);
   body.appendChild(selectLabel);
-  select.value = hasBasemap ? "positron" : "raster";
+  select.value = hasBasemap ? "positron" : "none";
   RailMap.setBasemapMode(select.value);
   let prevMode = select.value;
-  let positronState = hasBasemap ? "" : "offline";
+  let positronState = hasBasemap ? "" : "unavailable";
 
   const updateControlTranslations = () => {
     summaryText.textContent = I18N.t("map.layers");
@@ -3223,7 +3222,7 @@ function buildMapLayersControl(hasBasemap) {
     if (!ok)
       setTimeout(() => {
         if (!RailMap.hasBasemap()) {
-          positronState = "offline";
+          positronState = "unavailable";
           updateControlTranslations();
         }
       }, 2500);
@@ -3381,8 +3380,8 @@ function buildMapInfoControl() {
         </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
-          <p data-i18n="info.basemapBody">線上使用 OpenFreeMap Positron；離線圖磚使用 CARTO Positron。</p>
-          <div class="map-info-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a><a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a><a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a></div>
+          <p data-i18n="info.basemapBody">線上底圖使用 OpenFreeMap Positron。</p>
+          <div class="map-info-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a><a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a></div>
         </article>
         <article class="map-info-source">
           <strong data-i18n="info.namesTitle">站名羅馬字</strong>
@@ -3418,7 +3417,7 @@ function buildMapInfoControl() {
 async function initMap(mapAssetsReady) {
   // The vendored positron style + railprint's jp-2025 rail package load in
   // parallel (pre-started at boot, before the /api datasets); either may be
-  // null (offline) — the style builder degrades the same way railprint does
+  // null (source unavailable) — the style builder degrades the same way railprint does
   // (plain background / no network overlay).
   const [basemap, network] = await (mapAssetsReady ||
     Promise.all([RailMap.loadBasemap(), RailMap.loadNetwork()]));
@@ -3483,7 +3482,7 @@ async function initMap(mapAssetsReady) {
   buildMapLayersControl(Boolean(basemap));
   buildMapInfoControl();
 
-  // Basemap tile failures are expected degradation (offline) — never fatal.
+  // Online basemap tile failures degrade to the plain background — never fatal.
   map.on("error", (e) => {
     const msg = (e && e.error && e.error.message) || "";
     const url = (e && e.error && e.error.url) || "";

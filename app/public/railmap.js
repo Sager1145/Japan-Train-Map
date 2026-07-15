@@ -7,10 +7,9 @@
  *
  *   - BASEMAP: OpenFreeMap `positron` vector style, VENDORED same-origin at
  *     ./basemap/positron.json (only tiles/glyphs/sprite come from
- *     tiles.openfreemap.org at runtime). Offline / fetch failure => the rail
- *     renders over a plain background (railprint's graceful degradation);
- *     the pre-downloaded raster tiles in ./tiles remain available as a
- *     selectable fallback basemap.
+ *     tiles.openfreemap.org at runtime). If that online source is unavailable,
+ *     the rail renders over a plain background (railprint's graceful
+ *     degradation).
  *   - NETWORK: the full MLIT N02 national network from railprint's rail
  *     package (./rail/jp-2025.json — 594 lines in official color, 9,442
  *     segments, 10,034 stations). Drawn exactly like railprint's "unridden"
@@ -114,7 +113,7 @@
   }
 
   async function loadBasemap(force) {
-    // Offline ⇒ basemap-less on purpose (the vector tile fetches would all fail).
+    // No network ⇒ basemap-less on purpose (the vector tile fetches would fail).
     // `force` (the explicit online-retry path) skips the cheap navigator.onLine
     // gate and lets the fetch + origin probe decide.
     if (!force && typeof navigator !== "undefined" && navigator.onLine === false)
@@ -133,7 +132,7 @@
   }
 
   // positron.json is a LOCAL vendored file, so re-loading it "succeeds" even
-  // while offline — before splicing the basemap in, verify the remote tile
+  // without connectivity — before splicing the basemap in, verify the remote tile
   // origin is actually reachable (sprite JSON is the smallest stable asset).
   async function probeBasemapOrigin(basemap) {
     const url = basemap.sprite
@@ -426,8 +425,6 @@
   const SEGMENTS_LAYER = "rn-segments-line";
   const STATIONS_LAYER = "rn-stations-dot";
   const FADE_LAYER = "rp-fade";
-  const LOCAL_RASTER_SOURCE = "local-raster";
-  const LOCAL_RASTER_LAYER = "local-raster-layer";
   const TRAIN_ROUTES_SOURCE = "train-routes";
   const TRAIN_PICK_SOURCE = "train-routes-pick";
   const TRAIN_EXPAND_SOURCE = "train-routes-expand-src";
@@ -528,17 +525,6 @@
     const fadeOpacity = Math.max(0, Math.min(1, Number(opts.fadeOpacity || 0)));
 
     const sources = Object.assign({}, basemap ? basemap.sources : {});
-    // Pre-downloaded CARTO raster tiles: the offline fallback basemap. Present
-    // in the style either way; visible only when the vector basemap is absent
-    // (or the user picks it in the basemap control).
-    sources[LOCAL_RASTER_SOURCE] = {
-      type: "raster",
-      tiles: [location.href.replace(/[^/]*$/, "") + "tiles/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      minzoom: 4,
-      maxzoom: 12,
-      attribution: "Offline tiles © OpenStreetMap contributors © CARTO",
-    };
     sources[SEGMENTS_SOURCE] = {
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
@@ -559,18 +545,12 @@
     const passMinzoom = Math.max(0, Number(opts.passMinzoom || 0));
 
     const layers = [];
-    // Plain background — also railprint's offline degradation surface.
+    // Plain background used for the explicit no-basemap mode and graceful
+    // degradation when the online style is unavailable.
     layers.push({
       id: "rp-bg",
       type: "background",
       paint: { "background-color": "rgb(242,243,240)" },
-    });
-    layers.push({
-      id: LOCAL_RASTER_LAYER,
-      type: "raster",
-      source: LOCAL_RASTER_SOURCE,
-      layout: { visibility: basemap ? "none" : "visible" },
-      paint: { "raster-opacity": 1 },
     });
     // The positron layer stack splits around its FIRST symbol (label) layer:
     // the national-network layers slot in between, so the network draws above
@@ -1959,17 +1939,16 @@
     setNetworkStationsVisible(v) {
       this._setVisibility(STATIONS_LAYER, v ? "visible" : "none");
     },
-    // Basemap mode: 'positron' (vector) | 'raster' (offline tiles) | 'none'.
+    // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {
       const posVis = mode === "positron" ? "visible" : "none";
       this._basemapLayerIds.forEach((id) => this._setVisibility(id, posVis));
-      this._setVisibility(LOCAL_RASTER_LAYER, mode === "raster" ? "visible" : "none");
     },
     // Whether the vector (online) basemap is present in the live style.
     hasBasemap() {
       return this._basemapLayerIds.length > 0;
     },
-    // Online retry: boot may have degraded to no-basemap (offline start /
+    // Online retry: boot may have degraded to no-basemap (network unavailable /
     // fetch timeout). Re-fetches the vendored positron style, probes the
     // remote tile origin, then splices the basemap's sources + layers into
     // the LIVE style at the exact positions buildBaseStyle uses (pre-symbol
@@ -2898,6 +2877,16 @@
         const stickyBefore = currentStickyTids();
         let hit = queryAt(point, true, stickyBefore);
         let id = hit && hit.record.train ? hit.record.train.id : null;
+        // Snapshot the GENUINE geometric pick before the endpoint / fan
+        // hysteresis below can replace `hit` with a synthesized tooltip
+        // record. The hold anchor (_lastGroupPoint) must only advance on a
+        // REAL corridor touch — see the anchor update further down. Advancing
+        // it on a hysteresis HOLD made the fan-hold radius measure from the
+        // CURRENT pointer every frame, so a slow drift (each step < the hold
+        // radius) re-anchored forever and the fan trailed the pointer across
+        // the screen, never releasing; a fast flick (one step past the radius)
+        // collapsed normally. Gating on the raw hit restores a fixed release.
+        const rawHit = hit;
         // Hover-expand: pointer on an overlapped run fans that group's lines
         // out into their date-ordered lanes; empty ground collapses. Marker
         // hits (station dots take pick precedence) keep the current state so
@@ -2998,14 +2987,15 @@
         // Anchor the hold radius at the latest REAL overlapped-run hit for the
         // group that is (now) open; clear it once the fan is genuinely down so a
         // later re-entry starts fresh. Marker holds and hysteresis holds
-        // deliberately leave it put, so the radius measures travel since the
-        // pointer last truly touched the corridor.
+        // deliberately leave it put (rawHit, not the possibly-rewritten hit, so
+        // a synthesized hold record can't re-anchor), so the radius measures
+        // travel since the pointer last truly touched the corridor.
         if (
-          hit &&
-          hit.kind === "route" &&
-          hit.record.overlapCount > 1 &&
+          rawHit &&
+          rawHit.kind === "route" &&
+          rawHit.record.overlapCount > 1 &&
           group &&
-          (hit.record.groupKey || null) === group
+          (rawHit.record.groupKey || null) === group
         )
           self._lastGroupPoint = { x: point.x, y: point.y };
         else if (!group) {

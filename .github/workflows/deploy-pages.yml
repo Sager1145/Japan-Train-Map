@@ -6,8 +6,8 @@
 # falls back to built-in defaults, and the SSE live-refresh no-ops when absent.
 #
 # What this workflow does on every push to main:
-#   1. copies app/public/ (the frontend) into _site/, minus the 98 MB offline
-#      raster tiles and the precompressed *.gz sidecars (Pages gzips for us);
+#   1. copies app/public/ (the frontend) into _site/, minus the precompressed
+#      *.gz sidecars (Pages gzips for us);
 #   2. drops the datasets into _site/api/<name> WITHOUT a .json extension, to
 #      match how app.js fetches them (fetchJson("stations") -> ./api/stations);
 #   3. seeds _site/api/train-store with your real itinerary so the live map
@@ -50,9 +50,9 @@ jobs:
           rm -rf _site
           mkdir -p _site
 
-          # 1) Frontend, excluding the offline-only raster tiles (~98 MB) and
-          #    the *.gz sidecars. -L resolves any symlinks to real files.
-          rsync -rL --exclude='tiles/' --exclude='*.gz' app/public/ _site/
+          # 1) Frontend, excluding *.gz sidecars. -L resolves any symlinks to
+          #    real files.
+          rsync -rL --exclude='*.gz' app/public/ _site/
 
           # 2) Datasets — served WITH a .json extension on purpose.
           #    GitHub Pages sets Content-Type from the file extension and only

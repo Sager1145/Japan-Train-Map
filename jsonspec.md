@@ -2204,18 +2204,10 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 把 tile.openstreetmap.org 当离线瓦片源
 ```
 
-### 16.3 离线底图模式
+### 16.3 不提供离线底图
 
-如果需要离线底图，必须使用：
-
-```text
-自托管瓦片
-合法授权的离线瓦片
-明确允许离线使用的瓦片服务
-本地 tiles/{z}/{x}/{y}.png
-PMTiles
-MBTiles 转换结果
-```
+系统不包含本地瓦片、PMTiles、MBTiles 或其他离线底图加载功能。底图只允许使用
+在线服务；在线底图不可用时，自动进入无底图模式。
 
 ### 16.4 无底图模式
 
