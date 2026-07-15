@@ -61,14 +61,10 @@
     "state.off": { zh: "關", en: "Off" },
 
     // display settings
-    "disp.summary": {
-      zh: "顯示調節（線寬／站點大小／透明度）",
-      en: "Display Settings (line width / marker size / opacity)",
-    },
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
     "disp.hint": {
-      zh: "調整全部列車的線路粗細、起終點、通過站外圈、停靠站中心點與透明度等。設定即時生效，並自動保存到此瀏覽器。",
-      en: "Adjust line width, terminals, pass-through outer circles, stop center dots and opacity for all trains. Changes apply instantly and are saved to this browser.",
+      zh: "調整線路、站點與 C2 擬合曲線。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。限制衝突時，以偏離上限為準。",
+      en: "Adjust routes, markers and the C2 fitted curve. A large detail scale can turn dense bends into a straight span or smooth arc. Cyan shows the pick box, orange the temporary hold radius, and magenta the interval-switch zone. The deviation limit wins when constraints conflict.",
     },
     "disp.routeWidthScale": { zh: "線路粗細", en: "Line width" },
     "disp.riddenOpacity": { zh: "已乘區間透明度", en: "Ridden segment opacity" },
@@ -82,10 +78,15 @@
     "disp.markerStrokeScale": { zh: "標記邊框粗細", en: "Marker border width" },
     "disp.focusBoost": { zh: "選中放大量", en: "Selection zoom boost" },
     "disp.mapOpacity": { zh: "地圖底圖透明度", en: "Basemap opacity" },
-    "disp.onlyEndpoints": {
-      zh: "僅顯示首尾端點（隱藏中間停站）",
-      en: "Show only first/last endpoints (hide intermediate stops)",
+    "disp.fitCurvePrecision": {
+      zh: "擬合曲線採樣精度",
+      en: "Fitted-curve sampling precision",
     },
+    "disp.fitCurveMinRadius": { zh: "最小曲線半徑", en: "Minimum curve radius" },
+    "disp.fitCurveMinDetail": { zh: "最小細節尺度", en: "Minimum detail scale" },
+    "disp.fitCurveMaxDeviation": { zh: "最大允許偏離原線", en: "Maximum source deviation" },
+    "disp.fitCurves": { zh: "顯示擬合曲線（除錯）", en: "Show Fitted Curves (Debug)" },
+    "disp.hoverRegions": { zh: "顯示 Hover 監測範圍（除錯）", en: "Show Hover Regions (Debug)" },
 
     // JSON import / local data
     "sec.import": { zh: "JSON 匯入／本地資料", en: "JSON Import / Local Data" },
@@ -464,9 +465,8 @@
     "btn.autoFocus": "自動フォーカス：",
     "state.on": "オン",
     "state.off": "オフ",
-    "disp.summary": "表示設定（線幅／マーカーサイズ／透明度）",
     "disp.reset": "初期設定に戻す",
-    "disp.hint": "全列車の線幅、始終点、通過駅の外円、停車駅の中心点、透明度などを調整します。変更は即時反映され、このブラウザーに自動保存されます。",
+    "disp.hint": "路線、駅マーカー、C2 フィッティング曲線を調整します。ディテール尺度を大きくすると密集した折れを直線または滑らかな弧にできます。シアンはヒット領域、オレンジは一時保持範囲、マゼンタは区間切替範囲です。条件が競合する場合は最大許容偏差を優先します。",
     "disp.routeWidthScale": "路線の太さ",
     "disp.riddenOpacity": "乗車区間の透明度",
     "disp.dimOpacity": "選択日以外の淡色表示",
@@ -476,7 +476,12 @@
     "disp.markerStrokeScale": "マーカー枠線の太さ",
     "disp.focusBoost": "選択時の拡大量",
     "disp.mapOpacity": "背景地図の透明度",
-    "disp.onlyEndpoints": "始終点のみ表示（途中停車駅を隠す）",
+    "disp.fitCurvePrecision": "フィッティング曲線のサンプリング精度",
+    "disp.fitCurveMinRadius": "最小曲線半径",
+    "disp.fitCurveMinDetail": "最小ディテール尺度",
+    "disp.fitCurveMaxDeviation": "元線からの最大許容偏差",
+    "disp.fitCurves": "フィッティング曲線を表示（デバッグ）",
+    "disp.hoverRegions": "Hover 監視範囲を表示（デバッグ）",
     "sec.import": "JSON 読み込み／ローカルデータ",
     "ph.importJson": "完全な store、列車配列、または単一の列車オブジェクトを貼り付け",
     "btn.openLocal": "ローカル JSON を開く",

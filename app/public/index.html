@@ -203,19 +203,18 @@
           </div>
         </section>
 
-        <!-- ============ Card 4: 顯示調節 (collapsible) ============ -->
-        <details class="card card-details" id="display-settings">
-          <summary class="card-tab"><span class="mark" aria-hidden="true">■</span><span data-i18n="disp.summary">顯示調節（線寬／站點大小／透明度）</span><span class="chev" aria-hidden="true">▾</span></summary>
+        <!-- ============ Card 4: 顯示調節 ============ -->
+        <section class="card" id="display-settings">
           <div class="card-body">
             <div class="display-settings-body" id="display-settings-body"></div>
             <div class="toolbar">
               <button id="display-settings-reset" data-i18n="disp.reset">重置為預設</button>
             </div>
             <p class="hint" data-i18n="disp.hint">
-              調整全部列車的線路粗細、起終點／停靠站／通過站大小與透明度等。設定即時生效，並自動保存到此瀏覽器。
+              調整線路、站點與 C2 擬合曲線。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。限制衝突時，以偏離上限為準。
             </p>
           </div>
-        </details>
+        </section>
 
       </aside>
       <main id="map"></main>
@@ -225,7 +224,7 @@
      official line colors, and railprint's ridden-line / station-dot styling. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="i18n.js"></script>
-    <script src="railmap.js"></script>
-    <script src="app.js"></script>
+    <script src="railmap.js?v=20260716-hover-debug3"></script>
+    <script src="app.js?v=20260716-hover-debug3"></script>
   </body>
 </html>

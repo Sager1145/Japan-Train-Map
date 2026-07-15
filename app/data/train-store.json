@@ -18402,7 +18402,13 @@
      "from": "函館",
      "to": "新函館北斗",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "函館線"
+     ],
+     "operator_names": [
+      "北海道旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -18885,7 +18891,14 @@
      "from": "秋田",
      "to": "田沢湖",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "奥羽線",
+      "田沢湖線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -18935,13 +18948,25 @@
      "to": "盛岡",
      "from_n02_station_code": null,
      "to_n02_station_code": null,
-     "number": "こまち38号"
+     "number": "こまち38号",
+     "line_names": [
+      "田沢湖線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道"
+     ]
     },
     {
      "from": "盛岡",
      "to": "大宮",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "東北新幹線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -19223,7 +19248,14 @@
      "from": "甲府",
      "to": "静岡",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "身延線",
+      "東海道線"
+     ],
+     "operator_names": [
+      "東海旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -19272,7 +19304,15 @@
      "from": "静岡",
      "to": "岡山",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "東海道新幹線",
+      "山陽新幹線"
+     ],
+     "operator_names": [
+      "東海旅客鉄道",
+      "西日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -19321,7 +19361,13 @@
      "from": "岡山",
      "to": "広島",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "山陽新幹線"
+     ],
+     "operator_names": [
+      "西日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -19370,7 +19416,13 @@
      "from": "広島",
      "to": "博多",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "山陽新幹線"
+     ],
+     "operator_names": [
+      "西日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -20628,7 +20680,14 @@
      "from": "武雄温泉",
      "to": "新鳥栖",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "佐世保線",
+      "長崎線"
+     ],
+     "operator_names": [
+      "九州旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -20677,7 +20736,13 @@
      "from": "新鳥栖",
      "to": "熊本",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "九州新幹線"
+     ],
+     "operator_names": [
+      "九州旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -20726,7 +20791,13 @@
      "from": "熊本",
      "to": "宮地",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "豊肥線"
+     ],
+     "operator_names": [
+      "九州旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -20775,7 +20846,13 @@
      "from": "宮地",
      "to": "熊本",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "豊肥線"
+     ],
+     "operator_names": [
+      "九州旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -24689,7 +24766,13 @@
      "from": "名古屋",
      "to": "三島",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "東海道新幹線"
+     ],
+     "operator_names": [
+      "東海旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -24738,7 +24821,13 @@
      "from": "三島",
      "to": "東京",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "東海道新幹線"
+     ],
+     "operator_names": [
+      "東海旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -24787,7 +24876,14 @@
      "from": "東京",
      "to": "新宿",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "東北線",
+      "中央線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
@@ -24836,7 +24932,16 @@
      "from": "新宿",
      "to": "河口湖",
      "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "to_n02_station_code": null,
+     "line_names": [
+      "中央線",
+      "大月線",
+      "河口湖線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道",
+      "富士山麓電気鉄道"
+     ]
     }
    ],
    "stops": [
@@ -24884,14 +24989,21 @@
     {
      "from": "河口湖",
      "to": "大月",
-     "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "from_n02_station_code": "004529",
+     "to_n02_station_code": "004171",
+     "line_names": [
+      "河口湖線",
+      "大月線"
+     ],
+     "operator_names": [
+      "富士山麓電気鉄道"
+     ]
     }
    ],
    "stops": [
     {
      "name": "河口湖",
-     "n02_station_code": null,
+     "n02_station_code": "004529",
      "arrival": null,
      "departure": "15:08",
      "stop_type": "origin",
@@ -24899,7 +25011,7 @@
     },
     {
      "name": "大月",
-     "n02_station_code": null,
+     "n02_station_code": "004171",
      "arrival": "16:00",
      "departure": null,
      "stop_type": "destination",
@@ -24933,14 +25045,20 @@
     {
      "from": "大月",
      "to": "八王子",
-     "from_n02_station_code": null,
-     "to_n02_station_code": null
+     "from_n02_station_code": "004166",
+     "to_n02_station_code": "003947",
+     "line_names": [
+      "中央線"
+     ],
+     "operator_names": [
+      "東日本旅客鉄道"
+     ]
     }
    ],
    "stops": [
     {
      "name": "大月",
-     "n02_station_code": null,
+     "n02_station_code": "004166",
      "arrival": null,
      "departure": "16:09",
      "stop_type": "origin",
@@ -24948,7 +25066,7 @@
     },
     {
      "name": "八王子",
-     "n02_station_code": null,
+     "n02_station_code": "003947",
      "arrival": "16:48",
      "departure": null,
      "stop_type": "destination",

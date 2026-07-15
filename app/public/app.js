@@ -155,7 +155,8 @@ const N02_INSTITUTION_TYPE_CODES = new Set(
 // full opacity, ridden lines full color, railprint-scale station dots). The
 // versioned key intentionally orphans v1 saved settings, whose numbers were
 // tuned for the old faded-raster look.
-const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v2";
+const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
+const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v3";
 const DISPLAY_DEFAULTS = {
   routeWidthScale: 1, // multiplies each train's route line width
   riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
@@ -170,10 +171,29 @@ const DISPLAY_DEFAULTS = {
   markerStrokeScale: 1, // multiplies every marker's stroke width
   focusBoost: 2, // extra line width / marker radius for the selected train
   mapOpacity: 1, // basemap visibility; lower fades the map toward pure white (railprint: no fade)
-  onlyEndpoints: false, // show only the trip's first origin + last destination
+  fitCurvePrecision: 1, // B-spline output sampling density only
+  fitCurveMinRadius: 3100, // requested minimum geometric/direction radius, metres
+  fitCurveMinDetail: 3300, // source details below this physical scale are removed
+  fitCurveMaxDeviation: 4200, // how far fit controls may leave the source, metres
+  showFitCurves: false, // topmost black/white dashed fitted-curve debug overlay
+  showHoverRegions: false, // topmost hover pick / hysteresis region debug overlay
 };
 // Live working copy (mutated by the UI; seeded from localStorage on boot).
 const DISPLAY = { ...DISPLAY_DEFAULTS };
+const FIT_CURVE_SETTING_KEYS = [
+  "fitCurvePrecision",
+  "fitCurveMinRadius",
+  "fitCurveMinDetail",
+  "fitCurveMaxDeviation",
+];
+const APPLIED_FIT_CURVE_SETTINGS = {};
+function applyPendingFitCurveSettings() {
+  FIT_CURVE_SETTING_KEYS.forEach((key) => {
+    APPLIED_FIT_CURVE_SETTINGS[key] = DISPLAY[key];
+  });
+}
+const formatFitDistance = (x) =>
+  x >= 1000 ? (x / 1000).toFixed(1) + "km" : Math.round(x) + "m";
 // Slider definitions for the "顯示調節" submenu (built dynamically in JS so the
 // HTML stays tiny and every control is wired the same way).
 const DISPLAY_CONTROLS = [
@@ -186,21 +206,31 @@ const DISPLAY_CONTROLS = [
   { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
   { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
   { key: "mapOpacity", labelKey: "disp.mapOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
+  { key: "fitCurvePrecision", labelKey: "disp.fitCurvePrecision", min: 0.5, max: 2, step: 0.1, fmt: (x) => x.toFixed(1) + "×", manualFitRebuild: true },
+  { key: "fitCurveMinRadius", labelKey: "disp.fitCurveMinRadius", min: 200, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
+  { key: "fitCurveMinDetail", labelKey: "disp.fitCurveMinDetail", min: 100, max: 20000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
+  { key: "fitCurveMaxDeviation", labelKey: "disp.fitCurveMaxDeviation", min: 100, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
 ];
 // Checkbox toggles for the submenu (booleans, rendered under the sliders).
 const DISPLAY_TOGGLES = [
-  { key: "onlyEndpoints", labelKey: "disp.onlyEndpoints" },
+  { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false },
+  { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false },
 ];
 
 function loadDisplaySettings() {
   try {
-    const raw = localStorage.getItem(DISPLAY_STORAGE_KEY);
+    const current = localStorage.getItem(DISPLAY_STORAGE_KEY);
+    const migrated = !current;
+    const raw = current || localStorage.getItem(PREVIOUS_DISPLAY_STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
       for (const k of Object.keys(DISPLAY_DEFAULTS)) {
         const def = DISPLAY_DEFAULTS[k];
         const v = parsed[k];
+        // Keep existing visual preferences while deliberately seeding the new
+        // much broader v3 curve-fit defaults for users upgrading from v2.
+        if (migrated && k.indexOf("fitCurve") === 0) continue;
         if (typeof def === "boolean") {
           if (typeof v === "boolean") DISPLAY[k] = v;
         } else if (typeof v === "number" && isFinite(v)) {
@@ -223,9 +253,14 @@ function persistDisplaySettings() {
 
 // Apply a settings change: persist, drop the route-item cache so segments are
 // re-emitted with the new numbers, then re-render both layers.
-function applyDisplaySettings() {
+function applyDisplaySettings({ rebuild = true } = {}) {
   persistDisplaySettings();
   applyMapOpacity();
+  if (window.RailMap && RailMap.setFitCurvesVisible)
+    RailMap.setFitCurvesVisible(DISPLAY.showFitCurves);
+  if (window.RailMap && RailMap.setHoverRegionsVisible)
+    RailMap.setHoverRegionsVisible(DISPLAY.showHoverRegions);
+  if (!rebuild) return;
   cachedRouteItems = null;
   cachedRouteSignature = "";
   // DISPLAY values (dimOpacity, routeWidthScale, …) are NOT part of the route
@@ -238,6 +273,15 @@ function applyDisplaySettings() {
   if (window.RailMap && RailMap.setFocusBoost)
     RailMap.setFocusBoost(DISPLAY.focusBoost);
   if (typeof renderTrainLayers === "function") renderTrainLayers();
+}
+
+let fitCurveSettingsDirty = false;
+let fitCurveRebuildButton = null;
+function updateFitCurveRebuildButton() {
+  if (!fitCurveRebuildButton) return;
+  fitCurveRebuildButton.textContent = I18N.t("disp.rebuildFitCurves");
+  fitCurveRebuildButton.dataset.pending = fitCurveSettingsDirty ? "true" : "false";
+  fitCurveRebuildButton.classList.toggle("pending", fitCurveSettingsDirty);
 }
 
 // Build + wire the submenu sliders. Safe to call once after the DOM exists.
@@ -264,7 +308,16 @@ function setupDisplaySettingsPanel() {
     input.addEventListener("input", () => {
       DISPLAY[cfg.key] = Number(input.value);
       val.textContent = cfg.fmt(Number(input.value));
-      applyDisplaySettings();
+      if (cfg.manualFitRebuild) {
+        fitCurveSettingsDirty = true;
+        persistDisplaySettings();
+        updateFitCurveRebuildButton();
+      } else if (cfg.debounceMs) {
+        clearTimeout(cfg._applyTimer);
+        cfg._applyTimer = setTimeout(() => applyDisplaySettings(), cfg.debounceMs);
+      } else {
+        applyDisplaySettings();
+      }
     });
     head.appendChild(name);
     head.appendChild(val);
@@ -275,6 +328,20 @@ function setupDisplaySettingsPanel() {
     cfg._val = val;
     cfg._name = name;
   });
+  const rebuildWrap = document.createElement("div");
+  rebuildWrap.className = "toolbar fit-curve-rebuild-toolbar";
+  fitCurveRebuildButton = document.createElement("button");
+  fitCurveRebuildButton.type = "button";
+  fitCurveRebuildButton.id = "rebuild-fit-curves";
+  fitCurveRebuildButton.addEventListener("click", () => {
+    applyPendingFitCurveSettings();
+    fitCurveSettingsDirty = false;
+    updateFitCurveRebuildButton();
+    applyDisplaySettings();
+  });
+  updateFitCurveRebuildButton();
+  rebuildWrap.appendChild(fitCurveRebuildButton);
+  body.appendChild(rebuildWrap);
   DISPLAY_TOGGLES.forEach((cfg) => {
     const wrap = document.createElement("label");
     wrap.className = "inline-check display-toggle";
@@ -285,7 +352,7 @@ function setupDisplaySettingsPanel() {
     span.textContent = I18N.t(cfg.labelKey);
     input.addEventListener("change", () => {
       DISPLAY[cfg.key] = input.checked;
-      applyDisplaySettings();
+      applyDisplaySettings({ rebuild: cfg.rebuild !== false });
     });
     wrap.appendChild(input);
     wrap.appendChild(span);
@@ -305,6 +372,9 @@ function setupDisplaySettingsPanel() {
       DISPLAY_TOGGLES.forEach((cfg) => {
         if (cfg._input) cfg._input.checked = Boolean(DISPLAY[cfg.key]);
       });
+      applyPendingFitCurveSettings();
+      fitCurveSettingsDirty = false;
+      updateFitCurveRebuildButton();
       applyDisplaySettings();
     });
   }
@@ -357,9 +427,9 @@ function computeGlobalEndpoints(trains) {
   return { firstId: first.id, lastId: last.id };
 }
 
-// Endpoints for the current view scope. With a concrete date selected, the
-// "only endpoints" toggle shows THAT day's first origin + last destination;
-// with "全部" showing it falls back to the whole trip's global endpoints.
+// Endpoints for the current view scope. With a concrete date selected, use
+// that day's first origin + last destination; with "全部", fall back to the
+// whole trip's global endpoints.
 function computeScopedEndpoints(trains) {
   if (selectedDate !== ALL_DATES) {
     const dayTrains = (trains || []).filter(
@@ -368,16 +438,6 @@ function computeScopedEndpoints(trains) {
     if (dayTrains.length) return computeGlobalEndpoints(dayTrains);
   }
   return computeGlobalEndpoints(trains);
-}
-
-// When the "only endpoints" toggle is on, allow only the trip's first origin
-// marker and last destination marker; otherwise allow everything.
-function passesOnlyEndpoints(endpoints, train, stopFeature) {
-  if (!DISPLAY.onlyEndpoints) return true;
-  const st = stopFeature.properties && stopFeature.properties.stop_type;
-  if (train.id === endpoints.firstId && st === "origin") return true;
-  if (train.id === endpoints.lastId && st === "destination") return true;
-  return false;
 }
 
 // On-map origin/destination name labels come from two sources: (1) whenever a
@@ -720,6 +780,34 @@ const ROUTE_SIMPLIFY_METERS = (function () {
   return 8;
 })();
 
+// Short single-train slivers inside an otherwise identical overlap membership
+// are closed before records are split.  This handles an extra/missing graph
+// vertex without allowing a real route divergence to inherit the old fan.
+const OVERLAP_BRIDGE_MAX_METERS = (function () {
+  try {
+    const m = /[?&]bridge=(\d+(?:\.\d+)?)/.exec(location.search);
+    if (m) return Number(m[1]);
+  } catch (e) {
+    /* no location — use default */
+  }
+  return 140;
+})();
+
+// Separate route features often stop a few metres either side of the same
+// station/graph join.  Exact segment keys cannot describe the empty interval,
+// so join compatible overlap runs geometrically and add an invisible pick
+// connector.  This is deliberately much shorter than a station-to-station
+// section and requires matching membership plus tangent continuity.
+const OVERLAP_CORRIDOR_JOIN_METERS = (function () {
+  try {
+    const m = /[?&]join=(\d+(?:\.\d+)?)/.exec(location.search);
+    if (m) return Number(m[1]);
+  } catch (e) {
+    /* no location — use default */
+  }
+  return 120;
+})();
+
 // Perpendicular distance (metres) from point p to segment a-b, using a local
 // equirectangular scaling (longitude compressed by cos(latitude)).
 function perpDistanceMeters(p, a, b, sx, sy) {
@@ -778,26 +866,122 @@ function douglasPeuckerIndices(points, epsilonMeters) {
   return out;
 }
 
+// Tolerance for canonicalising route vertices before overlap keys are built.
+// It is intentionally sub-track-width: only graph-coordinate jitter is
+// absorbed; genuinely parallel tracks remain separate.
+const OVERLAP_SNAP_METERS = (function () {
+  try {
+    const m = /[?&]snap=(\d+(?:\.\d+)?)/.exec(location.search);
+    if (m) return Number(m[1]);
+  } catch (e) {
+    /* no location — use default */
+  }
+  return 2.5;
+})();
+
+// Shared vertex canonicaliser, rebuilt per overlap pass (refreshRouteVertexSnap
+// from buildDeckOverlapMap). `_routeVertexSnap(coord)` returns the canonical
+// representative [lon,lat] for coord's ~OVERLAP_SNAP_METERS neighbourhood; the
+// first vertex seen in a neighbourhood becomes its representative (deterministic
+// for a given item order). The version counter invalidates getRouteLinePairs'
+// per-feature segKey cache when the snap map is rebuilt.
+let _routeVertexSnap = null;
+let _routeVertexSnapVer = 0;
+
+function refreshRouteVertexSnap(items, tolMeters) {
+  _routeVertexSnapVer += 1;
+  const tol = tolMeters > 0 ? tolMeters : 0;
+  if (!tol) {
+    _routeVertexSnap = null;
+    return;
+  }
+  const mLat = 110540; // metres per degree latitude (mean)
+  const gridLon = 80000; // stable Japan-wide grid; distance check stays exact
+  const cells = new Map(); // "gx,gy" -> array of representative [lon,lat]
+  const mLonAt = (lat) => Math.cos((lat * Math.PI) / 180) * 111320;
+  const dist = (a, b) => {
+    const mx = mLonAt(a[1]);
+    return Math.hypot((a[0] - b[0]) * mx, (a[1] - b[1]) * mLat);
+  };
+  const canon = (c) => {
+    // Never multiply absolute longitude by a latitude-dependent scale here:
+    // doing so moves the grid itself as latitude changes and can put two
+    // sub-metre neighbours several cells apart.
+    const gx = Math.floor((c[0] * gridLon) / tol);
+    const gy = Math.floor((c[1] * mLat) / tol);
+    for (let dx = -2; dx <= 2; dx += 1)
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const arr = cells.get(gx + dx + "," + (gy + dy));
+        if (arr)
+          for (let k = 0; k < arr.length; k += 1)
+            if (dist(c, arr[k]) <= tol) return arr[k];
+      }
+    const key = gx + "," + gy;
+    let arr = cells.get(key);
+    if (!arr) {
+      arr = [];
+      cells.set(key, arr);
+    }
+    arr.push(c);
+    return c;
+  };
+  // Register a representative for every vertex, in a stable order, so the whole
+  // pass shares one canonical set.
+  items.forEach((it) => {
+    if (!it.feature) return;
+    iterateGeometryLines(it.feature.geometry).forEach((line) => {
+      for (let i = 0; i < line.length; i += 1) canon(line[i]);
+    });
+  });
+  _routeVertexSnap = canon;
+}
+
+// Corridor-node identity key for a coordinate, snapped to the shared
+// representative so it matches the node keys embedded in segKeys. Use this
+// (not raw coordKey) anywhere a coordinate is compared ACROSS trains as an
+// overlap/corridor node; keep raw orig coords for drawn geometry and vectors.
+function overlapNodeKey(coord) {
+  return coordKey(_routeVertexSnap ? _routeVertexSnap(coord) : coord);
+}
+
 // Route lines for a feature, computed once and cached on the feature object
 // (WeakMap). Each entry pairs the ORIGINAL (normalized) line with the display
 // simplification and the per-segment overlap keys:
 //   orig    — the full normalized coordinate array (exact shared N02 coords),
 //   keepIdx — ascending original indices Douglas-Peucker kept (null = all,
 //             when ?simplify=0),
-//   segKeys — routeCoordinateSegmentKey per ORIGINAL segment (segKeys[i] is
-//             the direction-independent key of orig[i]→orig[i+1]).
-// Overlap detection works on `orig`/`segKeys` — identical for every train
-// sharing the same N02 track — while drawing uses the keepIdx subset. This
-// way per-feature simplification differences can never fragment an overlap
-// corridor (the old cause of parallel lanes breaking into little pieces).
+//   segKeys — routeCoordinateSegmentKey per ORIGINAL segment, built on the
+//             SNAPPED endpoints (segKeys[i] is the direction-independent key of
+//             orig[i]→orig[i+1]); sub-tolerance segments whose two ends snap to
+//             one representative keep their true coords so the key stays
+//             non-degenerate.
+// Overlap detection works on `segKeys` — snapped so coincident N02 track keys
+// identically across trains — while drawing uses `orig`/keepIdx. This way
+// neither per-feature simplification NOR sub-metre solve jitter can fragment an
+// overlap corridor (the old causes of parallel lanes breaking into pieces).
 const _routeLinePairCache = new WeakMap();
 function getRouteLinePairs(feature) {
   let cached = _routeLinePairCache.get(feature);
-  if (cached) return cached;
+  if (cached && cached._snapVer === _routeVertexSnapVer) return cached;
+  const snap = _routeVertexSnap;
   cached = iterateGeometryLines(feature.geometry).map((orig) => {
     const segKeys = new Array(Math.max(0, orig.length - 1));
-    for (let i = 0; i < orig.length - 1; i += 1)
-      segKeys[i] = routeCoordinateSegmentKey(orig[i], orig[i + 1]);
+    for (let i = 0; i < orig.length - 1; i += 1) {
+      let a = orig[i];
+      let b = orig[i + 1];
+      if (snap) {
+        const sa = snap(a);
+        const sb = snap(b);
+        // Only adopt the snapped endpoints when they stay distinct; a segment
+        // whose ends collapse to one representative (sub-tolerance) keeps its
+        // true coords so its key can't degenerate to "P|P".
+        if (sa !== sb) {
+          a = sa;
+          b = sb;
+        }
+      }
+      segKeys[i] = routeCoordinateSegmentKey(a, b);
+    }
     return {
       orig,
       keepIdx:
@@ -807,6 +991,7 @@ function getRouteLinePairs(feature) {
       segKeys,
     };
   });
+  cached._snapVer = _routeVertexSnapVer;
   _routeLinePairCache.set(feature, cached);
   return cached;
 }
@@ -1194,6 +1379,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Seed the display-tuning knobs from localStorage before the first render so
   // the user's saved line widths / sizes / opacities apply on load.
   loadDisplaySettings();
+  applyPendingFitCurveSettings();
   // Start the map's own downloads (vendored basemap style + the 9.2 MB rail
   // network package) IMMEDIATELY, in parallel with the /api datasets below.
   // Previously initMap() kicked these off only after loadAppData() had fully
@@ -3208,6 +3394,8 @@ async function initMap(mapAssetsReady) {
   // Selected-train width boost lives in the SEL layer's paint expression
   // (records stay selection-independent — picking a train rebuilds nothing).
   RailMap.setFocusBoost(DISPLAY.focusBoost);
+  RailMap.setFitCurvesVisible(DISPLAY.showFitCurves);
+  RailMap.setHoverRegionsVisible(DISPLAY.showHoverRegions);
   buildMapLayersControl(Boolean(basemap));
   buildMapInfoControl();
 
@@ -3456,6 +3644,7 @@ function bindEvents() {
       DISPLAY_TOGGLES.forEach((cfg) => {
         if (cfg._span) cfg._span.textContent = I18N.t(cfg.labelKey);
       });
+      updateFitCurveRebuildButton();
       updateFocusZoomButton();
       renderAll();
       updateEndpointLabels();
@@ -5578,6 +5767,553 @@ function applyLaneShift(path, sx, sy, offsetDeg) {
   return out;
 }
 
+function corridorEndpointOutward(gi, side) {
+  const line = gi && gi._line;
+  if (!line || line.length < 2) return null;
+  const a = side === 0 ? line[0] : line[line.length - 1];
+  const b = side === 0 ? line[1] : line[line.length - 2];
+  const cs = Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180) || 1e-6;
+  const dx = (a[0] - b[0]) * cs;
+  const dy = a[1] - b[1];
+  const len = Math.hypot(dx, dy);
+  return len > 0 ? [dx / len, dy / len] : null;
+}
+
+// Two loose run ends may represent the same corridor join even when their
+// coordinates do not literally touch.  Besides distance, require the two
+// outward tangents to face one another along the missing interval; nearby
+// parallel tracks and real forks are therefore not glued together.
+function corridorEndpointPair(a, b) {
+  if (!a || !b || a.key === b.key || a.sig !== b.sig) return null;
+  const metres = distanceMeters(a.p, b.p);
+  if (metres > OVERLAP_CORRIDOR_JOIN_METERS) return null;
+  if (metres <= OVERLAP_SNAP_METERS) return { metres, score: metres };
+  const lat = (a.p[1] + b.p[1]) / 2;
+  const cs = Math.cos((lat * Math.PI) / 180) || 1e-6;
+  const gx = (b.p[0] - a.p[0]) * cs;
+  const gy = b.p[1] - a.p[1];
+  const gl = Math.hypot(gx, gy) || 1;
+  const ux = gx / gl;
+  const uy = gy / gl;
+  const aAlong = a.out[0] * ux + a.out[1] * uy;
+  const bAlong = b.out[0] * ux + b.out[1] * uy;
+  const facing = -(a.out[0] * b.out[0] + a.out[1] * b.out[1]);
+  if (aAlong < 0.35 || bAlong > -0.35 || facing < 0.55) return null;
+  return {
+    metres,
+    score: metres * (1 + (1 - facing) + (1 - aAlong) + (1 + bAlong)),
+  };
+}
+
+// Walk a component through the explicit endpoint joins selected below.  Gap
+// endpoints are both retained in the direction curve, so its arc length stays
+// continuous across source-feature seams without changing visible geometry.
+function buildCorridorChain(c, groupInfo, joins) {
+  const byKey = new Map();
+  joins.forEach((j) => {
+    if (!c.keySet.has(j.a.key) || !c.keySet.has(j.b.key)) return;
+    [j.a.key, j.b.key].forEach((k) => {
+      let list = byKey.get(k);
+      if (!list) byKey.set(k, (list = []));
+      list.push(j);
+    });
+  });
+  let startKey = c.keys.find((k) => (byKey.get(k) || []).length < 2) || c.keys[0];
+  const startJoins = byKey.get(startKey) || [];
+  let fromSide = startJoins.length === 1
+    ? 1 - (startJoins[0].a.key === startKey ? startJoins[0].a.side : startJoins[0].b.side)
+    : 0;
+  const unused = new Set(c.keys);
+  const usedJoins = new Set();
+  const chain = [];
+  let key = startKey;
+  while (key && unused.has(key)) {
+    unused.delete(key);
+    const gi = groupInfo.get(key);
+    let line = gi && gi._line;
+    if (!line || line.length < 2) break;
+    if (fromSide === 1) line = line.slice().reverse();
+    for (let i = 0; i < line.length; i += 1) {
+      if (!chain.length || distanceMeters(chain[chain.length - 1], line[i]) > 0.05)
+        chain.push(line[i]);
+    }
+    const endSide = 1 - fromSide;
+    const nextJoin = (byKey.get(key) || []).find((j) => {
+      if (usedJoins.has(j)) return false;
+      const end = j.a.key === key ? j.a : j.b;
+      return end.side === endSide;
+    });
+    if (!nextJoin) break;
+    usedJoins.add(nextJoin);
+    const nextEnd = nextJoin.a.key === key ? nextJoin.b : nextJoin.a;
+    key = nextEnd.key;
+    fromSide = nextEnd.side;
+  }
+  return chain.length >= 2 ? chain : null;
+}
+
+// Build a genuinely smooth physical-distance fit for the hover fan. The source
+// polyline is only an ANCHOR: controls may leave it by fitCurveMaxDeviation,
+// sub-fitCurveMinDetail features are removed, curvature is regularised toward
+// fitCurveMinRadius, then an open cubic B-spline produces a C2-continuous curve.
+// fitCurvePrecision changes output sampling only — it can never reintroduce a
+// source corner into either the displayed debug curve or the direction field.
+function smoothCorridorCurve(line) {
+  if (!line || line.length < 2) return null;
+  const precision = Math.max(
+    0.5,
+    Math.min(2, Number(APPLIED_FIT_CURVE_SETTINGS.fitCurvePrecision) || 1),
+  );
+  const minRadius = Math.max(
+    100,
+    Math.min(
+      40000,
+      Number(APPLIED_FIT_CURVE_SETTINGS.fitCurveMinRadius) || 3100,
+    ),
+  );
+  const minDetail = Math.max(
+    20,
+    Math.min(
+      30000,
+      Number(APPLIED_FIT_CURVE_SETTINGS.fitCurveMinDetail) || 3300,
+    ),
+  );
+  const maxDeviation = Math.max(
+    20,
+    Math.min(
+      40000,
+      Number(APPLIED_FIT_CURVE_SETTINGS.fitCurveMaxDeviation) || 4200,
+    ),
+  );
+  const cum = [0];
+  for (let i = 1; i < line.length; i += 1)
+    cum.push(cum[i - 1] + distanceMeters(line[i - 1], line[i]));
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return null;
+  const pointOnSource = (target) => {
+    let lo = 0;
+    let hi = cum.length - 1;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] <= target) lo = mid;
+      else hi = mid;
+    }
+    const span = cum[lo + 1] - cum[lo] || 1;
+    const t = Math.max(0, Math.min(1, (target - cum[lo]) / span));
+    return [
+      line[lo][0] + (line[lo + 1][0] - line[lo][0]) * t,
+      line[lo][1] + (line[lo + 1][1] - line[lo][1]) * t,
+    ];
+  };
+
+  // Work resolution is independent of the debug-output resolution. Keeping it
+  // tied to physical detail makes every option stable across source densities.
+  const workStepTarget = Math.max(20, Math.min(90, minDetail / 6));
+  const workN = Math.max(
+    20,
+    Math.min(1800, Math.ceil(total / workStepTarget) + 1),
+  );
+  const workStep = total / (workN - 1);
+  const anchors = new Array(workN);
+  for (let i = 0; i < workN; i += 1)
+    anchors[i] = pointOnSource((total * i) / (workN - 1));
+
+  const lat0 = line.reduce((s, p) => s + p[1], 0) / line.length;
+  const coslat = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
+  const mx = 111320 * coslat;
+  const my = 110540;
+  const origin = anchors[0];
+  const anchorMetric = anchors.map((p) => [
+    (p[0] - origin[0]) * mx,
+    (p[1] - origin[1]) * my,
+  ]);
+  let metric = anchorMetric.map((p) => p.slice());
+
+  // This first scale-space fit is intentionally allowed to cut inside bends.
+  // Linear continuation at either end avoids the endpoint kink caused by
+  // pinning a moving average to the first/last source vertex.
+  const sigmaM = Math.max(100, minDetail * 1.1, minRadius * 0.65);
+  const gaussianPass = (input, sigma) => {
+    const radius = Math.max(
+      3,
+      Math.min(240, input.length - 1, Math.ceil((sigma * 3) / workStep)),
+    );
+    const weights = new Array(radius + 1);
+    for (let k = 0; k <= radius; k += 1)
+      weights[k] = Math.exp(-0.5 * Math.pow((k * workStep) / sigma, 2));
+    const edgeSpan = Math.min(input.length - 1, Math.max(3, radius));
+    const startDx = (input[edgeSpan][0] - input[0][0]) / edgeSpan;
+    const startDy = (input[edgeSpan][1] - input[0][1]) / edgeSpan;
+    const endDx =
+      (input[input.length - 1][0] - input[input.length - 1 - edgeSpan][0]) /
+      edgeSpan;
+    const endDy =
+      (input[input.length - 1][1] - input[input.length - 1 - edgeSpan][1]) /
+      edgeSpan;
+    const at = (i) => {
+      if (i < 0)
+        return [input[0][0] + startDx * i, input[0][1] + startDy * i];
+      if (i >= input.length) {
+        const d = i - (input.length - 1);
+        return [
+          input[input.length - 1][0] + endDx * d,
+          input[input.length - 1][1] + endDy * d,
+        ];
+      }
+      return input[i];
+    };
+    return input.map((_, i) => {
+      let sx = 0;
+      let sy = 0;
+      let sw = 0;
+      for (let k = -radius; k <= radius; k += 1) {
+        const w = weights[Math.abs(k)];
+        const p = at(i + k);
+        sx += p[0] * w;
+        sy += p[1] * w;
+        sw += w;
+      }
+      return [sx / sw, sy / sw];
+    });
+  };
+  metric = gaussianPass(metric, sigmaM);
+  metric = gaussianPass(metric, sigmaM * 0.65);
+
+  const clampDeviation = (p, anchor) => {
+    const dx = p[0] - anchor[0];
+    const dy = p[1] - anchor[1];
+    const d = Math.hypot(dx, dy);
+    if (d <= maxDeviation || d < 1e-9) return p;
+    const f = maxDeviation / d;
+    return [anchor[0] + dx * f, anchor[1] + dy * f];
+  };
+  metric = metric.map((p, i) => clampDeviation(p, anchorMetric[i]));
+  // Keep physical corridor endpoints addressable; the clamped B-spline still
+  // provides a smooth one-sided tangent there.
+  metric[0] = anchorMetric[0].slice();
+  metric[metric.length - 1] = anchorMetric[anchorMetric.length - 1].slice();
+
+  const circumRadius = (a, b, c) => {
+    const ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+    const ca = Math.hypot(a[0] - c[0], a[1] - c[1]);
+    const cross = Math.abs(
+      (b[0] - a[0]) * (c[1] - a[1]) -
+        (b[1] - a[1]) * (c[0] - a[0]),
+    );
+    return cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross);
+  };
+
+  // Curvature projection: repeatedly relax only the points whose measured
+  // radius is below the requested minimum. Deviation limiting is applied on
+  // every pass, so the two user constraints remain well-behaved together.
+  const curvatureHalf = Math.max(
+    1,
+    Math.round(
+      Math.max(100, minDetail * 0.45, minRadius * 0.12) / workStep,
+    ),
+  );
+  for (let pass = 0; pass < 48; pass += 1) {
+    const next = metric.map((p) => p.slice());
+    let violations = 0;
+    let maxMove = 0;
+    for (let i = curvatureHalf; i < metric.length - curvatureHalf; i += 1) {
+      const a = metric[i - curvatureHalf];
+      const b = metric[i];
+      const c = metric[i + curvatureHalf];
+      const radius = circumRadius(a, b, c);
+      if (radius >= minRadius) continue;
+      violations += 1;
+      const severity = Math.max(0, Math.min(1, 1 - radius / minRadius));
+      const pull = 0.08 + severity * 0.34;
+      const target = [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+      const candidate = clampDeviation(
+        [b[0] + (target[0] - b[0]) * pull, b[1] + (target[1] - b[1]) * pull],
+        anchorMetric[i],
+      );
+      maxMove = Math.max(maxMove, Math.hypot(candidate[0] - b[0], candidate[1] - b[1]));
+      next[i] = candidate;
+    }
+    metric = next;
+    metric[0] = anchorMetric[0].slice();
+    metric[metric.length - 1] = anchorMetric[anchorMetric.length - 1].slice();
+    if (!violations || maxMove < 0.01) break;
+  }
+
+  // Physical knot spacing, not source vertices, controls what the spline may
+  // express. A larger minimum-detail value therefore removes more wiggles and
+  // also gives the B-spline more freedom to span across small protrusions.
+  const knotSpacing = Math.max(100, minDetail * 1.25, minRadius * 0.18);
+  const knotEvery = Math.max(1, Math.round(knotSpacing / workStep));
+  let controls = [];
+  for (let i = 0; i < metric.length; i += knotEvery) controls.push(metric[i]);
+  if (controls[controls.length - 1] !== metric[metric.length - 1])
+    controls.push(metric[metric.length - 1]);
+  if (controls.length < 4) {
+    controls = [];
+    for (let i = 0; i < 4; i += 1)
+      controls.push(metric[Math.round(((metric.length - 1) * i) / 3)]);
+  }
+  // A sub-radius corridor cannot meaningfully express a bend while keeping
+  // both physical endpoints. Treat it as a straight C2 span instead of
+  // magnifying tiny source protrusions into a sharp hover-direction change.
+  if (total <= Math.max(minDetail * 4, minRadius * 1.1)) {
+    const a = anchorMetric[0];
+    const b = anchorMetric[anchorMetric.length - 1];
+    controls = [0, 1 / 3, 2 / 3, 1].map((t) => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+    ]);
+  }
+
+  // Open/clamped cubic B-spline evaluated with de Boor. Unlike a polyline or
+  // Catmull-Rom chain this is C2 continuous at every interior knot, so both
+  // tangent and curvature change continuously while the mouse moves.
+  const degree = 3;
+  const knotCount = controls.length + degree + 1;
+  const knots = new Array(knotCount);
+  for (let i = 0; i < knotCount; i += 1) {
+    if (i <= degree) knots[i] = 0;
+    else if (i >= controls.length) knots[i] = 1;
+    else knots[i] = (i - degree) / (controls.length - degree);
+  }
+  const splinePoint = (u) => {
+    if (u <= 0) return controls[0].slice();
+    if (u >= 1) return controls[controls.length - 1].slice();
+    let lo = degree;
+    let hi = controls.length;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (knots[mid] <= u) lo = mid;
+      else hi = mid;
+    }
+    const span = Math.min(controls.length - 1, lo);
+    const d = new Array(degree + 1);
+    for (let j = 0; j <= degree; j += 1)
+      d[j] = controls[span - degree + j].slice();
+    for (let r = 1; r <= degree; r += 1)
+      for (let j = degree; j >= r; j -= 1) {
+        const i = span - degree + j;
+        const den = knots[i + degree - r + 1] - knots[i];
+        const alpha = den ? (u - knots[i]) / den : 0;
+        d[j] = [
+          d[j - 1][0] * (1 - alpha) + d[j][0] * alpha,
+          d[j - 1][1] * (1 - alpha) + d[j][1] * alpha,
+        ];
+      }
+    return d[degree];
+  };
+  const outputN = Math.max(
+    20,
+    Math.min(3200, Math.ceil(total / (30 / precision)) + 1),
+  );
+  const evaluateSpline = () => {
+    const out = new Array(outputN);
+    for (let i = 0; i < outputN; i += 1)
+      out[i] = splinePoint(i / (outputN - 1));
+    return out;
+  };
+  const measuredSplineRadius = (points) => {
+    let length = 0;
+    for (let i = 1; i < points.length; i += 1)
+      length += Math.hypot(
+        points[i][0] - points[i - 1][0],
+        points[i][1] - points[i - 1][1],
+      );
+    const step = length / Math.max(1, points.length - 1);
+    const half = Math.max(
+      1,
+      Math.round(Math.max(60, minDetail * 0.2) / Math.max(1, step)),
+    );
+    let radius = Infinity;
+    for (let i = half; i < points.length - half; i += 1)
+      radius = Math.min(
+        radius,
+        circumRadius(points[i - half], points[i], points[i + half]),
+      );
+    return radius;
+  };
+  let splineMetric = evaluateSpline();
+  let achievedMinRadius = measuredSplineRadius(splineMetric);
+
+  // If local filtering alone cannot meet the requested radius, progressively
+  // pull the complete control polygon toward its endpoint chord. Each target
+  // is still clamped against its corresponding source anchor, so increasing
+  // the radius never silently violates the maximum-deviation option. This
+  // global fallback is what lets the fit leave a jagged source instead of
+  // merely rounding each of its individual corners.
+  if (achievedMinRadius < minRadius * 0.98) {
+    const originalControls = controls.map((p) => p.slice());
+    let bestControls = originalControls;
+    let bestSpline = splineMetric;
+    let bestRadius = achievedMinRadius;
+    for (let pass = 1; pass <= 16; pass += 1) {
+      const f = pass / 16;
+      controls = originalControls.map((p, i) => {
+        const t = i / Math.max(1, originalControls.length - 1);
+        const ai = Math.round(t * (anchorMetric.length - 1));
+        const chord = [
+          anchorMetric[0][0] +
+            (anchorMetric[anchorMetric.length - 1][0] - anchorMetric[0][0]) * t,
+          anchorMetric[0][1] +
+            (anchorMetric[anchorMetric.length - 1][1] - anchorMetric[0][1]) * t,
+        ];
+        const target = clampDeviation(chord, anchorMetric[ai]);
+        return [
+          p[0] + (target[0] - p[0]) * f,
+          p[1] + (target[1] - p[1]) * f,
+        ];
+      });
+      const candidate = evaluateSpline();
+      const candidateRadius = measuredSplineRadius(candidate);
+      if (candidateRadius > bestRadius) {
+        bestRadius = candidateRadius;
+        bestControls = controls.map((p) => p.slice());
+        bestSpline = candidate;
+      }
+      if (candidateRadius >= minRadius * 0.98) break;
+    }
+    controls = bestControls;
+    splineMetric = bestSpline;
+    achievedMinRadius = bestRadius;
+  }
+  const cur = splineMetric.map((p) => [
+    origin[0] + p[0] / mx,
+    origin[1] + p[1] / my,
+  ]);
+  const smoothCum = [0];
+  for (let i = 1; i < cur.length; i += 1)
+    smoothCum.push(smoothCum[i - 1] + distanceMeters(cur[i - 1], cur[i]));
+  const smoothTotal = smoothCum[smoothCum.length - 1];
+  const outputStep = smoothTotal / Math.max(1, cur.length - 1);
+  const directionRadiusM = Math.max(minRadius, minDetail * 2);
+  const baseHalf = Math.max(
+    1,
+    Math.round(Math.max(60, minDetail * 0.18) / Math.max(1, outputStep)),
+  );
+  let angles = cur.map((_, i) => {
+    const a = cur[Math.max(0, i - baseHalf)];
+    const b = cur[Math.min(cur.length - 1, i + baseHalf)];
+    return Math.atan2(b[1] - a[1], (b[0] - a[0]) * coslat);
+  });
+  // Unwrap before smoothing. Averaging unit vectors is unstable at a U-turn:
+  // two nearly opposite vectors cancel and their normalized result can jump
+  // tens of degrees between adjacent samples. A continuous scalar angle has
+  // no such zero-vector singularity.
+  for (let i = 1; i < angles.length; i += 1) {
+    let d = angles[i] - angles[i - 1];
+    while (d > Math.PI) {
+      angles[i] -= 2 * Math.PI;
+      d -= 2 * Math.PI;
+    }
+    while (d < -Math.PI) {
+      angles[i] += 2 * Math.PI;
+      d += 2 * Math.PI;
+    }
+  }
+  const smoothAngles = (input, sigma) => {
+    const radius = Math.max(
+      3,
+      Math.min(
+        300,
+        input.length - 1,
+        Math.ceil((sigma * 3) / Math.max(1, outputStep)),
+      ),
+    );
+    const weights = new Array(radius + 1);
+    for (let k = 0; k <= radius; k += 1)
+      weights[k] = Math.exp(
+        -0.5 * Math.pow((k * outputStep) / sigma, 2),
+      );
+    return input.map((_, i) => {
+      let sum = 0;
+      let sw = 0;
+      for (let k = -radius; k <= radius; k += 1) {
+        const w = weights[Math.abs(k)];
+        const j = Math.max(0, Math.min(input.length - 1, i + k));
+        sum += input[j] * w;
+        sw += w;
+      }
+      return sum / sw;
+    });
+  };
+  const directionSigmaM = Math.max(80, minDetail * 0.45, minRadius * 0.12);
+  angles = smoothAngles(angles, directionSigmaM);
+  angles = smoothAngles(angles, directionSigmaM * 0.65);
+  const maxTurn = Math.min(
+    0.045,
+    Math.max(0.002, outputStep / Math.max(100, minRadius)),
+  );
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let i = 1; i < angles.length; i += 1)
+      angles[i] = Math.max(
+        angles[i - 1] - maxTurn,
+        Math.min(angles[i - 1] + maxTurn, angles[i]),
+      );
+    for (let i = angles.length - 2; i >= 0; i -= 1)
+      angles[i] = Math.max(
+        angles[i + 1] - maxTurn,
+        Math.min(angles[i + 1] + maxTurn, angles[i]),
+      );
+  }
+  const dirs = angles.map((a) => [Math.cos(a), Math.sin(a)]);
+
+  let actualMaxDeviation = 0;
+  const pointSegmentDistance = (p, a, b) => {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const den = vx * vx + vy * vy;
+    const t = den
+      ? Math.max(
+          0,
+          Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / den),
+        )
+      : 0;
+    return Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t));
+  };
+  // Measure against the source polyline itself, not a same-index anchor.
+  // B-spline parameterisation is not exactly arc-length parameterisation, so
+  // the old same-index diagnostic could falsely report a deviation overrun.
+  const deviationSearch = Math.max(
+    12,
+    Math.ceil((maxDeviation + sigmaM * 2) / Math.max(1, workStep)),
+  );
+  for (let i = 0; i < splineMetric.length; i += 1) {
+    const ai = Math.round(((anchorMetric.length - 1) * i) / (splineMetric.length - 1));
+    const from = Math.max(0, ai - deviationSearch);
+    const to = Math.min(anchorMetric.length - 2, ai + deviationSearch);
+    let nearest = Infinity;
+    for (let j = from; j <= to; j += 1)
+      nearest = Math.min(
+        nearest,
+        pointSegmentDistance(
+          splineMetric[i],
+          anchorMetric[j],
+          anchorMetric[j + 1],
+        ),
+      );
+    actualMaxDeviation = Math.max(actualMaxDeviation, nearest);
+  }
+  return {
+    pts: cur,
+    cum: smoothCum,
+    dirs,
+    totalMeters: smoothTotal,
+    radiusMeters: directionRadiusM,
+    smoothingSigmaMeters: sigmaM,
+    directionSigmaMeters: directionSigmaM,
+    requestedMinRadiusMeters: minRadius,
+    achievedMinRadiusMeters: isFinite(achievedMinRadius)
+      ? achievedMinRadius
+      : null,
+    minDetailMeters: minDetail,
+    maxDeviationMeters: maxDeviation,
+    actualMaxDeviationMeters: actualMaxDeviation,
+    fitType: "cubic-bspline-c2",
+    coslat,
+  };
+}
+
 // Index every ORIGINAL route segment by the direction-independent key the
 // route dedupe uses, so shared N02 track (identical source coordinates) is
 // detected exactly — INDEPENDENT of how each feature's geometry was
@@ -5587,6 +6323,12 @@ function applyLaneShift(path, sx, sy, offsetDeg) {
 // read left→right / top→bottom in chronological order, and a train keeps the
 // same lane along the whole shared stretch.
 function buildDeckOverlapMap(items) {
+  // Rebuild the shared vertex canonicaliser FIRST, then bump the version so the
+  // segKeys getRouteLinePairs hands back below (and to the record builder) are
+  // snapped against this exact representative set. Coincident N02 track now
+  // keys identically across trains, so a shared corridor no longer fragments
+  // into single-train slivers.
+  refreshRouteVertexSnap(items, OVERLAP_SNAP_METERS);
   const uniqueTrains = [];
   const seenIds = new Set();
   items.forEach((it) => {
@@ -5891,6 +6633,46 @@ function buildDeckRouteRecords(items) {
           segMult[i] = 0;
         }
       }
+      // ── bridge hair-thin overlap-key gaps ────────────────────────────────
+      // A shared corridor interrupted by a SHORT single-train sliver (segIds
+      // null) whose two neighbours carry the IDENTICAL sharing set is really
+      // one continuous corridor: the sliver only lost its key to a micro-vertex
+      // difference (see OVERLAP_BRIDGE_MAX_METERS). Re-attach it to that set so
+      // the run below stays one piece — the fan no longer collapses+reopens as
+      // the pointer slides across the sliver. Bridged segments are flagged so
+      // they are excluded from the (cross-train-identical) groupKey, whose
+      // members' keys diverge exactly here.
+      const segBridged = new Array(nSeg).fill(false);
+      if (!noPick) {
+        let i = 0;
+        while (i < nSeg) {
+          if (segIds[i] !== null) {
+            i += 1;
+            continue;
+          }
+          let j = i;
+          while (j < nSeg && segIds[j] === null) j += 1; // gap spans [i, j)
+          const before = i > 0 ? segIds[i - 1] : null;
+          const after = j < nSeg ? segIds[j] : null;
+          if (before && before === after) {
+            let gapM = 0;
+            for (let k = i; k < j; k += 1)
+              gapM += distanceMeters(orig[k], orig[k + 1]);
+            if (gapM <= OVERLAP_BRIDGE_MAX_METERS) {
+              const slot = overlap.slotFor(before, tid);
+              const mult = slot - (before.size - 1) / 2;
+              for (let k = i; k < j; k += 1) {
+                segIds[k] = before;
+                segSlot[k] = slot;
+                segMult[k] = mult;
+                segBridged[k] = true;
+              }
+              lineHasOverlap = true;
+            }
+          }
+          i = j;
+        }
+      }
       if (lineHasOverlap) _deckHasOverlaps = true;
       // Maximal runs of constant overlap membership (Set identity — the same
       // instance for every sharing train, so run boundaries coincide exactly
@@ -5932,41 +6714,80 @@ function buildDeckRouteRecords(items) {
         const mult = segMult[ra];
         let groupKey = "";
         if (n > 1) {
-          groupKey = segKeys[ra];
-          for (let i = ra + 1; i < rb; i += 1)
-            if (segKeys[i] < groupKey) groupKey = segKeys[i];
+          // Smallest ORIGINAL segment key in the run — but only over segments
+          // that are NATIVELY shared. A bridged sliver carries this train's
+          // own key, which differs across members, so including it could hand
+          // two members different groupKeys and split one fan in two. Every
+          // bridged run still contains its shared flank segments, so a real
+          // key is always found.
+          for (let i = ra; i < rb; i += 1) {
+            if (segBridged[i]) continue;
+            if (groupKey === "" || segKeys[i] < groupKey) groupKey = segKeys[i];
+          }
+          if (groupKey === "") {
+            groupKey = segKeys[ra];
+            for (let i = ra + 1; i < rb; i += 1)
+              if (segKeys[i] < groupKey) groupKey = segKeys[i];
+          }
         }
-        // One shift vector + lane multipliers per GROUP, computed from the
-        // run's canonical (train-independent) orientation so every sharing
-        // train derives the identical fan. Right-hand perpendicular to the
-        // dominant direction; sx pre-divided by cos(latRef) so the shift
-        // spans the same PIXEL distance regardless of heading.
+        // One shift vector + lane multipliers per GROUP. The shift direction
+        // is the perpendicular of the CHORD joining the overlap run's start
+        // and end points (a straight start-station → end-station line), so
+        // the whole fan translates along ONE consistent axis no matter where
+        // on the run the pointer hovers or how the track curves in between.
+        // The chord is canonically oriented (lexicographic endpoint order)
+        // so every sharing train derives the identical vector; sx is
+        // pre-divided by cos(latRef) so the shift spans the same PIXEL
+        // distance regardless of heading.
         let gi = null;
         if (n > 1) {
           gi = groupInfo.get(groupKey);
           if (!gi) {
-            let dxSum = 0;
-            let dySum = 0;
             let latSum = 0;
-            for (let i = ra; i < rb; i += 1) {
-              const d = overlap.dirForKey(segKeys[i], coordKey(orig[i]));
-              const latMid = (orig[i][1] + orig[i + 1][1]) / 2;
-              const coslat = Math.cos((latMid * Math.PI) / 180) || 1e-6;
-              dxSum += (orig[i + 1][0] - orig[i][0]) * coslat * d;
-              dySum += (orig[i + 1][1] - orig[i][1]) * d;
-              latSum += latMid;
-            }
-            const len = Math.hypot(dxSum, dySum) || 1;
+            for (let i = ra; i < rb; i += 1)
+              latSum += (orig[i][1] + orig[i + 1][1]) / 2;
             const latRef = latSum / (rb - ra);
             const coslatRef = Math.cos((latRef * Math.PI) / 180) || 1e-6;
+            // Chord endpoints in canonical (train-independent) order.
+            let pa = orig[ra];
+            let pb = orig[rb];
+            if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
+              const t = pa;
+              pa = pb;
+              pb = t;
+            }
+            let dx = (pb[0] - pa[0]) * coslatRef;
+            let dy = pb[1] - pa[1];
+            let len = Math.hypot(dx, dy);
+            if (len < 1e-9) {
+              // Degenerate chord (run starts and ends at the same station,
+              // e.g. a loop): fall back to the canonical dominant direction.
+              dx = 0;
+              dy = 0;
+              for (let i = ra; i < rb; i += 1) {
+                const d = overlap.dirForKey(segKeys[i], overlapNodeKey(orig[i]));
+                const latMid = (orig[i][1] + orig[i + 1][1]) / 2;
+                const coslat = Math.cos((latMid * Math.PI) / 180) || 1e-6;
+                dx += (orig[i + 1][0] - orig[i][0]) * coslat * d;
+                dy += (orig[i + 1][1] - orig[i][1]) * d;
+              }
+              len = Math.hypot(dx, dy) || 1;
+            }
             const mults = {};
             ids.forEach((id) => {
               mults[id] = overlap.slotFor(ids, id) - (ids.size - 1) / 2;
             });
             gi = {
-              sx: dySum / len / coslatRef, // right-hand perpendicular
-              sy: -dxSum / len,
+              sx: dy / len / coslatRef, // right-hand perpendicular of chord
+              sy: -dx / len,
               mults,
+              // Run endpoints, geometry + reference latitude, kept for the
+              // corridor stitching pass below (which builds the smoothed
+              // corridor curve and the fallback unified vector).
+              _pa: orig[ra],
+              _pb: orig[rb],
+              _line: runLine,
+              _latRef: latRef,
             };
             groupInfo.set(groupKey, gi);
           }
@@ -5999,6 +6820,202 @@ function buildDeckRouteRecords(items) {
       expandRecords.push({ path: drawn, color, width, train });
     });
   });
+
+  // ── one shift axis per contiguous CORRIDOR ──
+  // A single visual overlap corridor is usually split into many runs (the
+  // source geometry is chopped into per-feature LineStrings), so each run
+  // got its own chord above and the fan direction changed as the pointer
+  // moved between runs. Stitch together groups whose member-train sets are
+  // identical and whose runs touch end-to-end, then give the whole chain ONE
+  // shift vector: the perpendicular of the straight line joining the
+  // corridor's overall start and end points. Hovering anywhere along the
+  // corridor now fans along the same axis.
+  if (groupInfo.size > 0) {
+    const parent = new Map();
+    const find = (k) => {
+      let r = k;
+      while (parent.get(r) !== r) r = parent.get(r);
+      let c = k;
+      while (parent.get(c) !== c) {
+        const nx = parent.get(c);
+        parent.set(c, r);
+        c = nx;
+      }
+      return r;
+    };
+    const union = (a, b) => {
+      parent.set(find(a), find(b));
+    };
+    groupInfo.forEach((gi, key) => {
+      parent.set(key, key);
+      gi._sig = Object.keys(gi.mults).sort().join("|"); // membership signature
+    });
+    // Select one geometrically continuous partner per run endpoint.  Matching
+    // by proximity as well as snapped identity closes feature seams; greedy
+    // one-to-one pairing prevents a nearby fork from merging into the chain.
+    const endpoints = [];
+    groupInfo.forEach((gi, key) => {
+      [gi._pa, gi._pb].forEach((p, side) => {
+        const out = corridorEndpointOutward(gi, side);
+        if (out)
+          endpoints.push({ id: key + "::" + side, key, side, p, out, sig: gi._sig });
+      });
+    });
+    const cellDeg = Math.max(1e-6, OVERLAP_CORRIDOR_JOIN_METERS / 80000);
+    const buckets = new Map();
+    const candidates = [];
+    endpoints.forEach((end) => {
+      const gx = Math.floor(end.p[0] / cellDeg);
+      const gy = Math.floor(end.p[1] / cellDeg);
+      for (let dx = -2; dx <= 2; dx += 1)
+        for (let dy = -1; dy <= 1; dy += 1) {
+          const list = buckets.get(end.sig + "::" + (gx + dx) + "," + (gy + dy));
+          if (!list) continue;
+          list.forEach((other) => {
+            const match = corridorEndpointPair(other, end);
+            if (match) candidates.push({ a: other, b: end, ...match });
+          });
+        }
+      const bk = end.sig + "::" + gx + "," + gy;
+      let list = buckets.get(bk);
+      if (!list) buckets.set(bk, (list = []));
+      list.push(end);
+    });
+    candidates.sort((a, b) => a.score - b.score);
+    const usedEnds = new Set();
+    const joins = [];
+    candidates.forEach((join) => {
+      if (usedEnds.has(join.a.id) || usedEnds.has(join.b.id)) return;
+      usedEnds.add(join.a.id);
+      usedEnds.add(join.b.id);
+      joins.push(join);
+      union(join.a.key, join.b.key);
+    });
+    // Per component: endpoint degrees, so the corridor's global start/end
+    // are the endpoints touched by exactly one run.
+    const comps = new Map(); // root → { keys, eps: Map(ck → {p, n}), latSum, n }
+    groupInfo.forEach((gi, key) => {
+      const root = find(key);
+      let c = comps.get(root);
+      if (!c)
+        comps.set(
+          root,
+          (c = { keys: [], keySet: new Set(), eps: new Map(), latSum: 0, n: 0 }),
+        );
+      c.keys.push(key);
+      c.keySet.add(key);
+      c.latSum += gi._latRef;
+      c.n += 1;
+      [gi._pa, gi._pb].forEach((p) => {
+        const ck = overlapNodeKey(p);
+        const e = c.eps.get(ck);
+        if (e) e.n += 1;
+        else c.eps.set(ck, { p, n: 1 });
+      });
+    });
+    const corridorAliases = new Map();
+    const corridorMasters = new Set();
+    comps.forEach((c) => {
+      // Smoothed corridor centerline: chain the member runs end-to-end and
+      // normalize into a very smooth curve. railmap.js derives the fan's
+      // shift direction from this curve's LOCAL perpendicular under the
+      // pointer, so the direction turns smoothly as the pointer moves.
+      const chain = buildCorridorChain(c, groupInfo, joins);
+      const curve = chain ? smoothCorridorCurve(chain) : null;
+      const canonicalKey = c.keys.slice().sort()[0];
+      const master = groupInfo.get(canonicalKey);
+      corridorMasters.add(canonicalKey);
+      c.keys.forEach((k) => corridorAliases.set(k, canonicalKey));
+      master._corridorJoins = joins.filter(
+        (j) => c.keySet.has(j.a.key) && c.keySet.has(j.b.key) && j.metres > 0.05,
+      );
+      if (curve)
+        c.keys.forEach((k) => {
+          groupInfo.get(k).curve = curve;
+        });
+      if (c.keys.length < 2) return; // lone run keeps its own chord
+      const ends = [];
+      c.eps.forEach((e) => {
+        if (e.n === 1) ends.push(e.p);
+      });
+      if (ends.length < 2) return; // closed loop: keep per-run vectors
+      const coslat = Math.cos(((c.latSum / c.n) * Math.PI) / 180) || 1e-6;
+      // Farthest pair of degree-1 endpoints = corridor start / end stations
+      // (robust even if a branch gives more than two loose ends).
+      let pa = ends[0];
+      let pb = ends[1];
+      let best = -1;
+      for (let i = 0; i < ends.length; i += 1)
+        for (let j = i + 1; j < ends.length; j += 1) {
+          const ddx = (ends[j][0] - ends[i][0]) * coslat;
+          const ddy = ends[j][1] - ends[i][1];
+          const d2 = ddx * ddx + ddy * ddy;
+          if (d2 > best) {
+            best = d2;
+            pa = ends[i];
+            pb = ends[j];
+          }
+        }
+      if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
+        const t = pa;
+        pa = pb;
+        pb = t;
+      }
+      const dx = (pb[0] - pa[0]) * coslat;
+      const dy = pb[1] - pa[1];
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-9) return;
+      const sx = dy / len / coslat;
+      const sy = -dx / len;
+      c.keys.forEach((k) => {
+        const g = groupInfo.get(k);
+        g.sx = sx;
+        g.sy = sy;
+      });
+    });
+    // Collapse all runs in one continuous corridor onto ONE interaction key.
+    // Previously only the curve was shared: the open fan moved the current
+    // run's pick lane but left the adjacent run on the true track, so crossing
+    // the run boundary produced a miss/collapse/reopen flash.
+    const representative = new Map();
+    records.forEach((r, index) => {
+      if (r.overlapCount <= 1 || !r.groupKey) return;
+      const canonicalKey = corridorAliases.get(r.groupKey) || r.groupKey;
+      const g = groupInfo.get(canonicalKey);
+      r.groupKey = canonicalKey;
+      if (g) {
+        r.shiftX = g.sx;
+        r.shiftY = g.sy;
+        r.pickPath = applyLaneShift(r.path, g.sx, g.sy, r.laneMult * spacingDeg);
+      }
+      const tid = r.train && r.train.id;
+      const rk = canonicalKey + "::" + tid;
+      if (!representative.has(rk)) representative.set(rk, index);
+    });
+    corridorMasters.forEach((canonicalKey) => {
+      const g = groupInfo.get(canonicalKey);
+      g.pickBridges = [];
+      (g._corridorJoins || []).forEach((join) => {
+        Object.keys(g.mults).forEach((tid) => {
+          const index = representative.get(canonicalKey + "::" + tid);
+          if (index === undefined) return;
+          g.pickBridges.push({
+            path: [join.a.p, join.b.p],
+            tid,
+            idx: index,
+            laneMult: g.mults[tid],
+            pickWidth: Math.max(spacingPx, 8),
+          });
+        });
+      });
+    });
+    // Only canonical entries remain addressable by railmap.js.
+    [...groupInfo.keys()].forEach((key) => {
+      const canonicalKey = corridorAliases.get(key);
+      if (canonicalKey && canonicalKey !== key) groupInfo.delete(key);
+    });
+  }
+
   _cachedDeckRecords = { records, expandRecords, groupInfo, spacingDeg };
   _cachedDeckRecordsSig = sig;
   _lastOverlapSpacingDeg = spacingDeg;
@@ -6093,7 +7110,6 @@ function getComputedPassThroughFeaturesCached(train) {
 // changes with the route signature / display settings.
 function buildDeckMarkerRecords(orderedTrains) {
   const records = [];
-  const endpoints = computeScopedEndpoints(orderedTrains);
   (orderedTrains || []).forEach((train) => {
     if (train.visible === false) return;
     const opts = routeRecordScopeFlags(train);
@@ -6114,7 +7130,6 @@ function buildDeckMarkerRecords(orderedTrains) {
     stops.forEach((stop, idx) => {
       const stopFeature = getStopFeature(stop, train);
       if (!stopFeature) return;
-      if (!passesOnlyEndpoints(endpoints, train, stopFeature)) return;
       const isPass = stopFeature.properties.stop_type === "pass_through";
       // Hidden (not effectively ridden) markers are dropped entirely.
       const eff = effectiveStopRide(stops, idx);
@@ -6154,18 +7169,16 @@ function buildDeckMarkerRecords(orderedTrains) {
         });
       }
     });
-    if (!DISPLAY.onlyEndpoints) {
-      getComputedPassThroughFeaturesCached(train).forEach((feature) => {
-        if (feature.properties && feature.properties.ride_segment === false)
-          return;
-        if (catFilterOn) {
-          const cat = markerCategoryForStation(feature);
-          if (cat && RIDDEN_CATEGORY_FILTER[cat] === false) return;
-        }
-        const rec = deckMarkerRecord(feature, train, opts, "pass");
-        if (rec) records.push(rec);
-      });
-    }
+    getComputedPassThroughFeaturesCached(train).forEach((feature) => {
+      if (feature.properties && feature.properties.ride_segment === false)
+        return;
+      if (catFilterOn) {
+        const cat = markerCategoryForStation(feature);
+        if (cat && RIDDEN_CATEGORY_FILTER[cat] === false) return;
+      }
+      const rec = deckMarkerRecord(feature, train, opts, "pass");
+      if (rec) records.push(rec);
+    });
   });
   return records;
 }
