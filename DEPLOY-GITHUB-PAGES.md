@@ -20,13 +20,16 @@
    git push origin main
    ```
 
-2. 打开仓库网页 → **Settings** → 左侧 **Pages** →
-   **Build and deployment** → **Source** 选 **GitHub Actions**。
-
-3. 回到仓库 **Actions** 标签，等 “Deploy to GitHub Pages” 这个工作流跑完
-   （约 1–2 分钟）。绿勾之后，上面那个网址就能打开了。
+2. 到仓库 **Actions** 标签，等 “Deploy to GitHub Pages” 工作流跑完
+   （约 1–2 分钟）。工作流里的 `configure-pages` 会用 `enablement: true`
+   **自动开启 Pages**，一般不用手动设置。绿勾之后，上面那个网址就能打开。
 
 以后每次 `git push origin main` 都会自动重新部署，无需再手动操作。
+
+> **如果某次运行报错 “Get Pages site failed / Not Found”**：说明该仓库还没启用
+> Pages，且自动开启被限制（少数账号/组织策略会这样）。手动兜底一次即可：
+> **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**，
+> 然后到 **Actions** 里对失败的那次点 **Re-run all jobs**。
 
 ---
 

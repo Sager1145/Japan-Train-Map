@@ -73,6 +73,11 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Auto-enable Pages (build type = GitHub Actions) on the first run,
+          # using the workflow's pages:write token — so you don't have to flip
+          # Settings -> Pages -> Source manually. No-op once Pages is enabled.
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
