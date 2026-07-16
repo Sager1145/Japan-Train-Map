@@ -129,7 +129,11 @@ body {
   display: grid;
   grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
   width: 100vw;
+  /* 100dvh (dynamic viewport height) tracks iOS Safari's collapsing toolbar so
+     the app fills exactly the visible area; 100vh is the fallback for engines
+     without dvh (which on iOS overshoots behind the toolbar). */
   height: 100vh;
+  height: 100dvh;
   transition: grid-template-columns 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -1217,6 +1221,16 @@ tr.branch-junction td {
     border-right: none;
     border-top: 1px solid var(--rail-dim);
     transform: translateY(0);
+    /* viewport-fit=cover extends the bottom drawer under the home indicator;
+       reserve that space so the last row of controls stays tappable. */
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+
+  /* The map fills under the status bar / notch (viewport-fit=cover); nudge the
+     on-map zoom controls clear of the top inset so they stay reachable. */
+  .maplibregl-ctrl-top-left {
+    margin-top: env(safe-area-inset-top);
+    margin-left: calc(10px + env(safe-area-inset-left));
   }
 
   #app.sidebar-collapsed #sidebar {
@@ -1484,6 +1498,7 @@ tr.branch-junction td {
   bottom: 46px;
   width: min(380px, calc(100vw - 20px));
   max-height: min(570px, calc(100vh - 76px));
+  max-height: min(570px, calc(100dvh - 76px));
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--rail-dim);

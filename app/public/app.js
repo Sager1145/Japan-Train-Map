@@ -1093,22 +1093,28 @@ function refreshRouteVertexSnap(items, tolMeters) {
   const gridLon = 80000; // stable Japan-wide grid; distance check stays exact
   const cells = new Map(); // "gx,gy" -> array of representative [lon,lat]
   const mLonAt = (lat) => Math.cos((lat * Math.PI) / 180) * 111320;
-  const dist = (a, b) => {
-    const mx = mLonAt(a[1]);
-    return Math.hypot((a[0] - b[0]) * mx, (a[1] - b[1]) * mLat);
-  };
+  const tol2 = tol * tol; // squared-metre compare, avoiding Math.hypot's sqrt
   const canon = (c) => {
     // Never multiply absolute longitude by a latitude-dependent scale here:
     // doing so moves the grid itself as latitude changes and can put two
     // sub-metre neighbours several cells apart.
     const gx = Math.floor((c[0] * gridLon) / tol);
     const gy = Math.floor((c[1] * mLat) / tol);
+    // The longitude->metre scale is fixed for this query's latitude, so take the
+    // cosine ONCE here instead of once per candidate inside the scan. Keep the
+    // dx in [-2,2] span: north of ~44 deg a cell is narrower than the tolerance
+    // (gridLon > mLonAt), so a within-tol match can sit two cells away. The
+    // squared-distance test is the exact equivalent of Math.hypot(...) <= tol.
+    const mx = mLonAt(c[1]);
     for (let dx = -2; dx <= 2; dx += 1)
       for (let dy = -1; dy <= 1; dy += 1) {
         const arr = cells.get(gx + dx + "," + (gy + dy));
         if (arr)
-          for (let k = 0; k < arr.length; k += 1)
-            if (dist(c, arr[k]) <= tol) return arr[k];
+          for (let k = 0; k < arr.length; k += 1) {
+            const ex = (c[0] - arr[k][0]) * mx;
+            const ey = (c[1] - arr[k][1]) * mLat;
+            if (ex * ex + ey * ey <= tol2) return arr[k];
+          }
       }
     const key = gx + "," + gy;
     let arr = cells.get(key);
@@ -1160,12 +1166,17 @@ function getRouteLinePairs(feature) {
   const snap = _routeVertexSnap;
   cached = iterateGeometryLines(feature.geometry).map((orig) => {
     const segKeys = new Array(Math.max(0, orig.length - 1));
+    // Snap each vertex once: consecutive segments share an endpoint, so mapping
+    // the whole line up front halves the canon() calls versus snapping both a
+    // and b per segment. snap() is pure for the current _routeVertexSnap, so
+    // each segment's endpoints are the same representatives as before.
+    const snapped = snap ? orig.map((c) => snap(c)) : null;
     for (let i = 0; i < orig.length - 1; i += 1) {
       let a = orig[i];
       let b = orig[i + 1];
       if (snap) {
-        const sa = snap(a);
-        const sb = snap(b);
+        const sa = snapped[i];
+        const sb = snapped[i + 1];
         // Only adopt the snapped endpoints when they stay distinct; a segment
         // whose ends collapse to one representative (sub-tolerance) keeps its
         // true coords so its key can't degenerate to "P|P".
@@ -1394,6 +1405,15 @@ function reconcileSelectedDate({ preferEarliestWhenAll = false } = {}) {
 // working when it is served from a sub-path (e.g. behind a reverse proxy at
 // /something/) instead of only from the domain root.
 const API_BASE = "./api";
+// True on the Node/Express deployment, whose backend answers the write/live
+// endpoints — /api/events (SSE live-refresh) and PUT/DELETE /api/train-store
+// (server autosave / clear). The GitHub Pages STATIC build has no backend, so
+// the deploy workflow rewrites this line to `false`; the app then skips those
+// backend-only calls instead of firing requests that 404 on a static host. The
+// read-only dataset/seed GETs (fetchJson, loadTrainStoreFromServer) are served
+// as plain files on Pages and stay enabled either way. Local-file save/load via
+// the File System Access API is independent of this flag.
+const HAS_BACKEND = true;
 // A per-tab id sent with every store write (X-Client-Id). The server echoes it
 // in the SSE "store-changed" event so this tab can ignore the write it just
 // made and only react to changes from *other* sources (another tab, or an AI
@@ -1410,6 +1430,16 @@ const fetchJson = async (path) => {
   if (!res.ok)
     throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
   return res.json();
+};
+// Same request semantics as fetchJson but returns the raw text WITHOUT the
+// atomic native JSON.parse. Used for rail-sections so its ~1.1 s parse can be
+// deferred and chunked (see parseRailSectionsChunked / ensureRailSectionsLoaded)
+// instead of blocking the main thread the instant the 12 MB body arrives.
+const fetchText = async (path) => {
+  const res = await fetch(`${API_BASE}/${path}`);
+  if (!res.ok)
+    throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
+  return res.text();
 };
 
 // Data is now served by the backend instead of being embedded in the page.
@@ -1434,14 +1464,17 @@ function stationNameForCode(code) {
 // boot but never blocks first paint. ensureRailSectionsLoaded() awaits it right
 // before the first solve.
 let railSectionsReady = null;
+// The boot DOWNLOAD of rail-sections (response.text(), no JSON.parse). Kept
+// separate from railSectionsReady (the parse pipeline) so the ~1.1 s parse can
+// be deferred off the first-paint path and run in yielding chunks later.
+let railSectionsTextReady = null;
 
 async function loadAppData() {
-  // Kick off the big solver-only dataset immediately, but do NOT block boot on
-  // it — assign it to the module global as soon as it lands.
-  railSectionsReady = fetchJson("rail-sections").then((data) => {
-    railSectionsGeoJson = data;
-    return data;
-  });
+  // Kick off the big solver-only dataset immediately, but only DOWNLOAD it here
+  // (response.text(), no JSON.parse) so its ~1.1 s parse never blocks boot or
+  // first paint. ensureRailSectionsLoaded() parses it in yielding chunks after
+  // the map is on screen, right before the first solve.
+  railSectionsTextReady = fetchText("rail-sections");
 
   // Station readings (kana + romaji) keyed by N02 station code. Small file; we
   // kick it off in parallel and inject it into the i18n layer once loaded so
@@ -1470,22 +1503,24 @@ async function loadAppData() {
     fetchJson("matched-stops"),
   ]);
 
-  stationCandidatesIndex = buildStationCandidatesIndex(stationsGeoJson);
-  stationNameByCode = new Map();
-  (stationsGeoJson.features || []).forEach((f) => {
-    const c = stationCode(f);
-    if (c) stationNameByCode.set(String(c), stationName(f));
-  });
+  // Build the two station-resolution indexes in ~12 ms slices so this no
+  // longer lands as one long synchronous task at the tail of boot Block 1
+  // (right after the native JSON.parse of stations.json). Still awaited here,
+  // so every downstream consumer (the first route solve, later imports, SSE
+  // reloads) sees a fully-built index exactly as before; the produced index
+  // contents are byte-for-byte identical to the old synchronous passes.
+  await buildStationIndexesSliced(stationsGeoJson);
 
   const stationReadings = await stationReadingsReady;
   if (stationReadings && window.I18N && I18N.setStationReadings)
     I18N.setStationReadings(stationReadings);
 
-  // Surface a rail-sections failure instead of leaving an unhandled rejection;
-  // ensureRailSectionsLoaded() will retry on demand before the first solve.
-  railSectionsReady.catch((err) =>
+  // Surface a rail-sections DOWNLOAD failure instead of leaving an unhandled
+  // rejection; ensureRailSectionsLoaded() re-fetches on demand before the first
+  // solve.
+  railSectionsTextReady.catch((err) =>
     console.error(
-      "rail-sections load failed during boot; will retry before first route solve.",
+      "rail-sections download failed during boot; will retry before first route solve.",
       err,
     ),
   );
@@ -1494,23 +1529,92 @@ async function loadAppData() {
 // Guarantee the rail-sections dataset is present before any route solve. Awaits
 // the background boot fetch; retries once if that fetch failed. Cheap and
 // idempotent once the data is resident.
-async function ensureRailSectionsLoaded() {
-  if (railSectionsGeoJson) return railSectionsGeoJson;
-  if (railSectionsReady) {
-    try {
-      await railSectionsReady;
-    } catch (err) {
-      /* fall through to a fresh retry below */
+// Parse the ~12 MB rail-sections FeatureCollection WITHOUT one atomic ~1.1 s
+// JSON.parse. We locate the top-level "features" array and JSON.parse each
+// feature object on its own, yielding to the event loop every few ms. Each
+// per-feature parse is tiny, so the work becomes many short tasks the browser
+// can interleave with paint/input instead of a single main-thread freeze. Only
+// ".features" is read anywhere (verified), so the rebuilt {type, features} is
+// behaviourally identical to res.json() (top-level name/crs, which nothing
+// consumes, are dropped). Falls back to a native parse if the shape is
+// unexpected. Each feature is still parsed by native JSON.parse, so the feature
+// objects themselves are byte-for-byte identical to the old path.
+async function parseRailSectionsChunked(text) {
+  const n = text.length;
+  const key = text.indexOf('"features"');
+  let i = key === -1 ? -1 : text.indexOf("[", key);
+  if (i === -1) return JSON.parse(text); // unexpected shape: safe fallback
+  i += 1; // step past '['
+  const features = [];
+  let t0 = performance.now();
+  while (i < n) {
+    // Skip inter-element whitespace and commas.
+    let c = text.charCodeAt(i);
+    while (
+      i < n &&
+      (c === 32 || c === 10 || c === 13 || c === 9 || c === 44)
+    ) {
+      i += 1;
+      c = text.charCodeAt(i);
+    }
+    if (i >= n || c === 93 /* ] */) break; // end of features array
+    // Scan one balanced {..} object, respecting strings and escapes.
+    const start = i;
+    let depth = 0,
+      inStr = false,
+      esc = false;
+    for (; i < n; i += 1) {
+      const ch = text.charCodeAt(i);
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === 92 /* \ */) esc = true;
+        else if (ch === 34 /* " */) inStr = false;
+      } else if (ch === 34 /* " */) {
+        inStr = true;
+      } else if (ch === 123 /* { */) {
+        depth += 1;
+      } else if (ch === 125 /* } */) {
+        depth -= 1;
+        if (depth === 0) {
+          i += 1;
+          break;
+        }
+      }
+    }
+    features.push(JSON.parse(text.slice(start, i)));
+    // Yield roughly every 8 ms so no single slice blocks the main thread.
+    // (features.length & 255) caps the performance.now() polling overhead.
+    if ((features.length & 255) === 0 && performance.now() - t0 > 8) {
+      await _statsYield();
+      t0 = performance.now();
     }
   }
-  if (!railSectionsGeoJson) {
-    railSectionsReady = fetchJson("rail-sections").then((data) => {
+  return { type: "FeatureCollection", features };
+}
+
+async function ensureRailSectionsLoaded() {
+  if (railSectionsGeoJson) return railSectionsGeoJson;
+  if (!railSectionsReady) {
+    railSectionsReady = (async () => {
+      // Reuse the in-flight/finished boot download; re-fetch once on failure.
+      let text;
+      try {
+        text = await (railSectionsTextReady ||
+          (railSectionsTextReady = fetchText("rail-sections")));
+      } catch (err) {
+        railSectionsTextReady = fetchText("rail-sections");
+        text = await railSectionsTextReady;
+      }
+      const data = await parseRailSectionsChunked(text);
       railSectionsGeoJson = data;
       return data;
+    })();
+    // On any failure clear the memo so a later call retries cleanly.
+    railSectionsReady.catch(() => {
+      railSectionsReady = null;
     });
-    await railSectionsReady;
   }
-  return railSectionsGeoJson;
+  return railSectionsReady;
 }
 // =========================================================================
 //  §8.  Core mutable state & cached DOM element references
@@ -1620,7 +1724,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // phase. Both loaders resolve null on failure (never throw).
   const mapAssetsReady = Promise.all([
     RailMap.loadBasemap(resolveDisplayTheme()),
-    RailMap.loadNetwork(),
+    // The 9.2 MB national-network package is HIDDEN by default (opt-in via the
+    // 全部鐵路線 layer toggle). Deferred out of boot: RailMap.ensureNetwork()
+    // fetches + builds + setData's it lazily the first time the user enables
+    // that toggle, so its parse/build/upload never blocks first map paint.
+    Promise.resolve(null),
   ]);
   try {
     await loadAppData();
@@ -1722,6 +1830,7 @@ function drainPendingLiveReload() {
 }
 
 function subscribeToStoreEvents() {
+  if (!HAS_BACKEND) return; // static deploy: no /api/events endpoint to subscribe to
   if (typeof EventSource === "undefined") return; // very old browser: no live refresh
   try {
     storeEventSource = new EventSource(`${API_BASE}/events`);
@@ -1907,6 +2016,44 @@ function buildStationCandidatesIndex(collection) {
   return index;
 }
 
+// Async, frame-budget-sliced construction of BOTH station-resolution indexes
+// (the name/code candidate index and the code -> name map) in a single pass
+// over the feature list. Replaces the two synchronous O(N) loops that used to
+// run inline in loadAppData and extended boot Block 1's long task. Yields to
+// the browser (setTimeout 0) whenever the current slice has run ~12 ms, and
+// builds into local Maps that are atomically swapped into the module globals
+// only at the end, so no consumer can observe a half-built index mid-slice.
+// The results are identical to buildStationCandidatesIndex + the old
+// stationNameByCode loop.
+async function buildStationIndexesSliced(collection) {
+  const candidates = new Map();
+  const nameByCode = new Map();
+  const features = (collection && collection.features) || [];
+  const now = () =>
+    typeof performance !== "undefined" ? performance.now() : Date.now();
+  let t0 = now();
+  for (let i = 0; i < features.length; i += 1) {
+    const feature = features[i];
+    const name = stationName(feature);
+    const code = stationCode(feature);
+    stationLookupKeys(name, code).forEach((key) => {
+      let arr = candidates.get(key);
+      if (!arr) {
+        arr = [];
+        candidates.set(key, arr);
+      }
+      arr.push(feature);
+    });
+    if (code) nameByCode.set(String(code), name);
+    if ((i & 1023) === 1023 && now() - t0 > 12) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      t0 = now();
+    }
+  }
+  stationCandidatesIndex = candidates;
+  stationNameByCode = nameByCode;
+}
+
 // Display coordinates of a train's UNAMBIGUOUS stops (single name candidate or
 // carrying a station code). These anchor the geographic disambiguation of any
 // same-name stop, so e.g. 池田 on a Hokkaido train resolves to 根室線 池田 rather
@@ -2072,6 +2219,14 @@ function serializePendingStoreIfDirty() {
 let serverStoreSavePromise = null;
 
 async function flushServerStoreSave() {
+  // Static deploy: there is no server to PUT to. Drop the pending write (rather
+  // than letting it 404 on every edit) — edits are persisted through the local
+  // JSON file path instead. Skips the expensive serialize below too.
+  if (!HAS_BACKEND) {
+    storeSaveDirty = false;
+    pendingServerStoreText = null;
+    return;
+  }
   serializePendingStoreIfDirty();
   if (serverStoreSaveInFlight) return serverStoreSavePromise;
   if (pendingServerStoreText === null) return;
@@ -2450,7 +2605,7 @@ function resetTrainStoreForProgressiveLoad() {
 // cross-train overlap offsets and refreshes the date bar / export textarea.
 async function runProgressiveAppend(
   trains,
-  { persistEachStep = true, onProgress, fallbackDate = null } = {},
+  { persistEachStep = true, onProgress, fallbackDate = null, finalRender = true } = {},
 ) {
   const appendedIds = [];
   const total = trains.length;
@@ -2502,8 +2657,13 @@ async function runProgressiveAppend(
     await yieldIfNeeded();
   }
   // Single authoritative repaint: full sorted list + date bar + cross-train
-  // overlap offsets, all once at the end.
-  renderAll();
+  // overlap offsets, all once at the end. The two "replace" callers run
+  // finalizeProgressiveLoad() -> renderAll() synchronously the moment this
+  // awaited call returns (no paint in between), so they pass finalRender:false
+  // to skip this duplicate full pass (renderTrainList's 119 item builds + the
+  // whole overlap/offset rebuild). Append mode has no finalize step and keeps
+  // the default repaint so its imported lines settle to final styling.
+  if (finalRender) renderAll();
   if (persistEachStep) saveTrainStore();
   return appendedIds;
 }
@@ -2574,6 +2734,10 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
 
     const appendedIds = await runProgressiveAppend(importedStore.trains, {
       persistEachStep: true,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns, so skip runProgressiveAppend's duplicate
+      // authoritative repaint (full list + overlap rebuild) here.
+      finalRender: false,
       // Per-item progress lives only in the progress bar's own text. The
       // status line is left for the final summary so the two don't echo the
       // same "n/total" message at once.
@@ -2633,6 +2797,10 @@ async function replaceTrainStoreFromStoreProgressive(
 
     const appendedIds = await runProgressiveAppend(importedStore.trains, {
       persistEachStep,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns, so skip runProgressiveAppend's duplicate
+      // authoritative repaint (full list + overlap rebuild) here.
+      finalRender: false,
       // Per-item progress lives only in the progress bar's own text; the
       // status line is reserved for the final summary to avoid a duplicate
       // "正在…n/total" line echoing the same thing.
@@ -3164,11 +3332,24 @@ function appendImportedTrain(
 
 function waitForImportPaint() {
   return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    // Prefer yielding on a real paint (rAF) so progressively-loaded lines appear
+    // as they solve — BUT never depend on it. Browsers suspend requestAnimationFrame
+    // in a hidden/backgrounded tab, so an rAF-only wait hangs the ENTIRE progressive
+    // import until the tab is foregrounded: the map would sit stuck at "0/N" if the
+    // page loads in a background tab or the user switches away mid-load. The timeout
+    // both drives progress while hidden and caps the per-slice yield when a heavy
+    // frame delays rAF. When visible, rAF (~16ms) wins the race and UX is unchanged.
     if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => setTimeout(resolve, 0));
-      return;
+      requestAnimationFrame(() => setTimeout(done, 0));
     }
-    setTimeout(resolve, 0);
+    const hidden = typeof document !== "undefined" && document.hidden;
+    setTimeout(done, hidden ? 0 : 100);
   });
 }
 
@@ -3426,17 +3607,33 @@ function buildMapLayersControl(hasBasemap) {
     });
   }
 
+  // Latest desired state of the 全部鐵路線 overlay. ensureNetwork() lazily loads
+  // the 9.2 MB package on first opt-in (~1 s); if the user toggles back OFF
+  // during that load, this guards the deferred .then() from re-showing the
+  // layers against the user's newer intent (toggle-off-during-load race).
+  let networkOverlayWanted = false;
   const toggles = [
     ["map.routes", (v) => RailMap.setVisible(v), true],
     ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
     ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), true],
     ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
-    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default.
+    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default. The network package
+    // is deferred out of boot (RailMap.ensureNetwork), so first opt-in loads it
+    // lazily, THEN reveals the now-populated hidden layers.
     [
       "map.allRailways",
       (v) => {
-        RailMap.setNetworkVisible(v);
-        RailMap.setNetworkStationsVisible(v);
+        networkOverlayWanted = v;
+        if (v) {
+          RailMap.ensureNetwork().then(() => {
+            if (!networkOverlayWanted) return; // toggled back off during load
+            RailMap.setNetworkVisible(true);
+            RailMap.setNetworkStationsVisible(true);
+          });
+        } else {
+          RailMap.setNetworkVisible(false);
+          RailMap.setNetworkStationsVisible(false);
+        }
       },
       false,
     ],
@@ -3590,7 +3787,7 @@ async function initMap(mapAssetsReady) {
   // null (source unavailable) — the style builder degrades the same way railprint does
   // (plain background / no network overlay).
   const [basemap, network] = await (mapAssetsReady ||
-    Promise.all([RailMap.loadBasemap(), RailMap.loadNetwork()]));
+    Promise.all([RailMap.loadBasemap(), Promise.resolve(null)]));
   const style = RailMap.buildBaseStyle({
     basemap,
     network,
@@ -3600,6 +3797,7 @@ async function initMap(mapAssetsReady) {
     // (layer minzoom — no marker rebuild when the view crosses it).
     passMinzoom: PASSTHROUGH_MIN_ZOOM,
   });
+  const isSmallScreen = window.matchMedia("(max-width: 900px)").matches;
   map = new maplibregl.Map({
     container: "map",
     style,
@@ -3610,7 +3808,25 @@ async function initMap(mapAssetsReady) {
     pitchWithRotate: false,
     center: [138.2, 36.4],
     zoom: 4,
-    fadeDuration: 200,
+    // Cap the device pixel ratio. A DPR-3 iPhone would otherwise allocate a
+    // WebGL canvas backing store ~9x (3^2) the CSS-pixel area — a leading cause
+    // of WebKit terminating the tab under memory pressure ("jetsam"). 2 keeps
+    // retina crispness (~4x) on desktop; phones are capped tighter (~2.25x).
+    pixelRatio: Math.min(window.devicePixelRatio || 1, isSmallScreen ? 1.5 : 2),
+    // Japan is a single small region viewed at zoom >= 4, so the antimeridian
+    // world-copy wrapping is never visible — skip it to save render work/memory.
+    renderWorldCopies: false,
+    // Bound the basemap vector-tile cache on phones so panning doesn't grow the
+    // GPU/JS tile pool without limit (desktop keeps MapLibre's adaptive default).
+    ...(isSmallScreen ? { maxTileCacheSize: 24 } : {}),
+    // fadeDuration:0 — the train overlay's opacity fades are rAF-driven via
+    // setPaintProperty on line/circle layers (see railmap's dim engine), NOT by
+    // MapLibre's symbol/label crossfade, so a non-zero fadeDuration buys the
+    // overlay nothing. It DOES keep MapLibre's symbol-placement render loop
+    // (_updatePlacement) scheduling frames while basemap labels crossfade, which
+    // prevents the map from settling to idle after route data stops changing.
+    // Snapping labels in (no 200ms crossfade) lets _triggerRenderFrame quiesce.
+    fadeDuration: 0,
   });
   if (map.touchZoomRotate && map.touchZoomRotate.disableRotation)
     map.touchZoomRotate.disableRotation();
@@ -3854,12 +4070,24 @@ function keepMapSizedDuringSidebarMotion(durationMs = 0) {
     performance.now() + Math.max(0, durationMs),
   );
   if (sidebarMapResizeRaf) return;
+  let lastResize = 0;
   const step = () => {
     sidebarMapResizeRaf = null;
-    if (map && typeof map.resize === "function") map.resize();
-    if (performance.now() < sidebarMapResizeUntil) {
-      sidebarMapResizeRaf = requestAnimationFrame(step);
+    const now = performance.now();
+    const running = now < sidebarMapResizeUntil;
+    // map.resize() reallocates the WebGL canvas backing store — expensive on
+    // memory-constrained phones. Cap it to ~30fps during the 320ms drawer slide
+    // (was every frame) and always finish with one authoritative resize once the
+    // motion settles, so the map still tracks the sliding container smoothly.
+    if (
+      (!running || now - lastResize >= 30) &&
+      map &&
+      typeof map.resize === "function"
+    ) {
+      map.resize();
+      lastResize = now;
     }
+    if (running) sidebarMapResizeRaf = requestAnimationFrame(step);
   };
   sidebarMapResizeRaf = requestAnimationFrame(step);
 }
@@ -4239,12 +4467,14 @@ function bindEvents() {
         if (serverStoreSaveInFlight) await serverStoreSavePromise;
         pendingServerStoreText = null;
         storeSaveDirty = false;
-        const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
-          method: "DELETE",
-          headers: { "X-Client-Id": CLIENT_ID },
-        });
-        if (!res.ok && res.status !== 404)
-          throw new Error(`${res.status} ${res.statusText}`);
+        if (HAS_BACKEND) {
+          const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+            method: "DELETE",
+            headers: { "X-Client-Id": CLIENT_ID },
+          });
+          if (!res.ok && res.status !== 404)
+            throw new Error(`${res.status} ${res.statusText}`);
+        }
         await deleteStoredFileHandle();
         setStatus(
           els.jsonStatus,
@@ -4818,8 +5048,9 @@ async function runMileageStatsJob() {
   if (!railSectionsGeoJson) {
     headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.loading"))}</div>`;
     rows.innerHTML = "";
-    if (railSectionsReady)
-      railSectionsReady.then(() => scheduleMileageStats()).catch(() => {});
+    ensureRailSectionsLoaded()
+      .then(() => scheduleMileageStats())
+      .catch(() => {});
     return;
   }
   if (!_statsEdgeIndex) {
@@ -6639,6 +6870,17 @@ function smoothCorridorCurve(line) {
         ].map((v) => Math.round(v * 1000) / 1000),
       ),
     );
+    // Anchor segment vectors are invariant across every radius/side/sweep
+    // candidate and every sampled point; precompute them once instead of
+    // rebuilding vx/vy/den in the innermost loop.
+    const arcSegs = new Array(anchorMetric.length - 1);
+    for (let j = 0; j < anchorMetric.length - 1; j += 1) {
+      const a0 = anchorMetric[j];
+      const b0 = anchorMetric[j + 1];
+      const vx = b0[0] - a0[0];
+      const vy = b0[1] - a0[1];
+      arcSegs[j] = { ax: a0[0], ay: a0[1], vx, vy, den: vx * vx + vy * vy };
+    }
     let bestArc = null;
     let bestArcScore = Infinity;
     radii.forEach((radius) => {
@@ -6673,31 +6915,27 @@ function smoothCorridorCurve(line) {
             const stride = Math.max(1, Math.floor(outputN / 96));
             for (let i = 0; i < outputN; i += stride) {
               const p = candidate[i];
-              let nearest = Infinity;
-              for (let j = 0; j < anchorMetric.length - 1; j += 1) {
-                const a0 = anchorMetric[j];
-                const b0 = anchorMetric[j + 1];
-                const vx = b0[0] - a0[0];
-                const vy = b0[1] - a0[1];
-                const den = vx * vx + vy * vy;
-                const u = den
+              const px = p[0];
+              const py = p[1];
+              let nearestSq = Infinity;
+              for (let j = 0; j < arcSegs.length; j += 1) {
+                const s = arcSegs[j];
+                const u = s.den
                   ? Math.max(
                       0,
                       Math.min(
                         1,
-                        ((p[0] - a0[0]) * vx + (p[1] - a0[1]) * vy) /
-                          den,
+                        ((px - s.ax) * s.vx + (py - s.ay) * s.vy) /
+                          s.den,
                       ),
                     )
                   : 0;
-                nearest = Math.min(
-                  nearest,
-                  Math.hypot(
-                    p[0] - (a0[0] + vx * u),
-                    p[1] - (a0[1] + vy * u),
-                  ),
-                );
+                const ex = px - (s.ax + s.vx * u);
+                const ey = py - (s.ay + s.vy * u);
+                const dSq = ex * ex + ey * ey;
+                if (dSq < nearestSq) nearestSq = dSq;
               }
+              const nearest = Math.sqrt(nearestSq);
               sampledDeviation += nearest;
               maxNearestDeviation = Math.max(maxNearestDeviation, nearest);
               sampledCount += 1;
@@ -6860,7 +7098,7 @@ function smoothCorridorCurve(line) {
     : Infinity;
 
   let actualMaxDeviation = 0;
-  const pointSegmentDistance = (p, a, b) => {
+  const pointSegmentDistanceSq = (p, a, b) => {
     const vx = b[0] - a[0];
     const vy = b[1] - a[1];
     const den = vx * vx + vy * vy;
@@ -6870,7 +7108,12 @@ function smoothCorridorCurve(line) {
           Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / den),
         )
       : 0;
-    return Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t));
+    // Squared distance: the caller only takes a running minimum, so defer the
+    // sqrt to a single call per sampled point. Result is fp-identical and this
+    // value feeds only the diagnostic actualMaxDeviation.
+    const ex = p[0] - (a[0] + vx * t);
+    const ey = p[1] - (a[1] + vy * t);
+    return ex * ex + ey * ey;
   };
   // Measure against the source polyline itself, not a same-index anchor.
   // B-spline parameterisation is not exactly arc-length parameterisation, so
@@ -6885,17 +7128,16 @@ function smoothCorridorCurve(line) {
     const to = usedCircularArc
       ? anchorMetric.length - 2
       : Math.min(anchorMetric.length - 2, ai + deviationSearch);
-    let nearest = Infinity;
-    for (let j = from; j <= to; j += 1)
-      nearest = Math.min(
-        nearest,
-        pointSegmentDistance(
-          splineMetric[i],
-          anchorMetric[j],
-          anchorMetric[j + 1],
-        ),
+    let nearestSq = Infinity;
+    for (let j = from; j <= to; j += 1) {
+      const dSq = pointSegmentDistanceSq(
+        splineMetric[i],
+        anchorMetric[j],
+        anchorMetric[j + 1],
       );
-    actualMaxDeviation = Math.max(actualMaxDeviation, nearest);
+      if (dSq < nearestSq) nearestSq = dSq;
+    }
+    actualMaxDeviation = Math.max(actualMaxDeviation, Math.sqrt(nearestSq));
   }
   return {
     pts: cur,
@@ -10656,15 +10898,31 @@ function distanceMeters(a, b) {
 //  §30.  Geometry helpers & matched-route feature assembly
 // =========================================================================
 
+// Normalized lines are a pure function of the (immutable) geometry object, so
+// memoize per geometry. refreshRouteVertexSnap re-walks every matched route on
+// EACH overlap rebuild, and the route-graph builders re-walk rail features, and
+// all of them previously re-ran normalizeGraphCoord (toFixed rounding) over the
+// same constant coordinates every pass. Every caller only READS the returned
+// arrays (segKeys / bbox / graph edges / flat() copies are built into fresh
+// structures; none mutate a coordinate pair or a line array), so sharing the
+// cached arrays is behavior-identical. WeakMap-keyed so entries drop with the
+// feature geometry. Empty results are not cached (cheap, and Point-without-
+// coordinates is already screened out above).
+const _geometryLinesCache = new WeakMap();
 function iterateGeometryLines(geometry) {
   if (!geometry || !geometry.coordinates) return [];
+  const memo = _geometryLinesCache.get(geometry);
+  if (memo) return memo;
+  let result;
   if (geometry.type === "LineString")
-    return [geometry.coordinates.map(normalizeGraphCoord)];
-  if (geometry.type === "MultiLineString")
-    return geometry.coordinates.map((line) => line.map(normalizeGraphCoord));
-  if (geometry.type === "Point")
-    return [[normalizeGraphCoord(geometry.coordinates)]];
-  return [];
+    result = [geometry.coordinates.map(normalizeGraphCoord)];
+  else if (geometry.type === "MultiLineString")
+    result = geometry.coordinates.map((line) => line.map(normalizeGraphCoord));
+  else if (geometry.type === "Point")
+    result = [[normalizeGraphCoord(geometry.coordinates)]];
+  else return [];
+  _geometryLinesCache.set(geometry, result);
+  return result;
 }
 
 class MinHeap {

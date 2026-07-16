@@ -39,7 +39,7 @@
   （Pages 会自动 gzip）。
 - 把数据集放到 `api/` 目录，文件名**不带扩展名**，以匹配前端的取数路径
   （`app.js` 里 `fetchJson("stations")` → `./api/stations`）：
-  `rail-sections` / `stations` / `default-trains` / `matched-routes` / `matched-stops`。
+  `rail-sections` / `stations` / `station-readings` / `default-trains` / `matched-routes` / `matched-stops`。
 - 用你的 `app/data/train-store.json` 作为地图的**初始数据**（当前 119 趟列车），
   这样线上直接显示你的实际路线，而不是内置的演示数据。
 - 加一个 `.nojekyll`，让所有文件（含无扩展名的 `api/*`）原样发布。

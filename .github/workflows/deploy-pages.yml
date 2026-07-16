@@ -3,7 +3,9 @@
 # The app normally runs on the Node/Express server in app/server.js, but GitHub
 # Pages only serves static files. It works here anyway because the frontend
 # degrades cleanly: the data APIs are just JSON files, a missing saved store
-# falls back to built-in defaults, and the SSE live-refresh no-ops when absent.
+# falls back to built-in defaults, and the assemble step below flips the
+# HAS_BACKEND flag to false so the backend-only calls (SSE live-refresh, server
+# autosave/clear) are skipped entirely rather than 404-ing.
 #
 # What this workflow does on every push to main:
 #   1. copies app/public/ (the frontend) into _site/, minus the precompressed
@@ -84,11 +86,16 @@ jobs:
             let s = fs.readFileSync("_site/app.js", "utf8");
             s = s.split("`${API_BASE}/${path}`").join("`${API_BASE}/${path}.json`");
             s = s.split("`${API_BASE}/${TRAIN_STORE_API}`").join("`${API_BASE}/${TRAIN_STORE_API}.json`");
+            // No Node backend on Pages: disable the SSE live-refresh subscription
+            // and the server autosave/clear writes so they do not 404 on load/edit.
+            const before = s;
+            s = s.split("const HAS_BACKEND = true;").join("const HAS_BACKEND = false;");
+            if (s === before) { console.error("HAS_BACKEND flag not found in app.js — refusing to ship a static build that would 404 on /api/events"); process.exit(1); }
             fs.writeFileSync("_site/app.js", s);
             let h = fs.readFileSync("_site/index.html", "utf8");
             h = h.split("href=\"api/stations\"").join("href=\"api/stations.json\"");
             fs.writeFileSync("_site/index.html", h);
-            console.log("Rewrote static frontend to fetch .json datasets");
+            console.log("Rewrote static frontend: .json dataset URLs + HAS_BACKEND=false");
           '
 
           # 5) Disable Jekyll so every file ships as-is.

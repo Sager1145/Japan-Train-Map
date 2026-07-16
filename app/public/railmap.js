@@ -1650,6 +1650,7 @@
 
     _map: null,
     _network: null,
+    _networkPromise: null, // dedups concurrent ensureNetwork() lazy loads
     _handlers: {},
     _records: [],
     _expandRecords: [],
@@ -1996,6 +1997,47 @@
     setNetworkStationsVisible(v) {
       this._setVisibility(STATIONS_LAYER, v ? "visible" : "none");
     },
+    // Lazily fetch + build + upload the 9.2 MB national-network package the
+    // FIRST time it is actually needed (user opts into 全部鐵路線). The map is
+    // built with EMPTY_FC network sources at boot (buildBaseStyle degrades that
+    // way), so this just setData's the real collections into the two existing,
+    // still-hidden sources. Deduped so concurrent toggles parse once.
+    ensureNetwork() {
+      if (this._network) return Promise.resolve(this._network);
+      if (this._networkPromise) return this._networkPromise;
+      const m = this._map;
+      this._networkPromise = loadNetwork()
+        .then((network) => {
+          if (!network) {
+            this._networkPromise = null; // allow a later retry
+            return null;
+          }
+          this._network = network;
+          if (m) {
+            // Upload into the pre-created (still-hidden) EMPTY_FC sources.
+            // Returns false if the style isn't ready yet (getSource undefined) —
+            // e.g. the overlay is toggled during the initial map load — in which
+            // case we apply once the style finishes ('load'), so the data is
+            // never silently dropped.
+            const applyNetwork = () => {
+              const seg = m.getSource(SEGMENTS_SOURCE);
+              const sta = m.getSource(STATIONS_SOURCE);
+              if (seg) seg.setData(network.segments);
+              if (sta) sta.setData(network.stations);
+              return Boolean(seg && sta);
+            };
+            if (!applyNetwork() && typeof m.once === "function")
+              m.once("load", applyNetwork);
+          }
+          return network;
+        })
+        .catch((e) => {
+          this._networkPromise = null;
+          console.warn("[railmap] network load failed:", e);
+          return null;
+        });
+      return this._networkPromise;
+    },
     // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {
       this._basemapMode = mode === "positron" ? "positron" : "none";
@@ -2150,6 +2192,13 @@
       this._pushPick();
     },
     _pushFitCurves() {
+      // The fitted-curve overlay is a debug layer that is HIDDEN by default
+      // (setFitCurvesVisible false; layer visibility 'none'). Uploading its
+      // source on every route render forces a worker re-tile + repaint for
+      // geometry nobody sees. Skip when hidden — setFitCurvesVisible() pushes
+      // on enable and every subsequent data change while visible still pushes,
+      // so the curves populate the moment the overlay is turned on.
+      if (!this._fitCurvesVisible) return;
       const src = this._src(FIT_CURVES_SOURCE);
       if (src) src.setData(fitCurvesToFC(this._groupInfo));
     },
@@ -3199,7 +3248,7 @@
         const el = document.createElement("div");
         el.className = "railmap-tooltip";
         el.style.cssText =
-          "position:absolute;z-index:30;pointer-events:none;display:none;";
+          "position:absolute;left:0;top:0;z-index:30;pointer-events:none;display:none;will-change:transform;";
         map.getContainer().appendChild(el);
         this._tooltipEl = el;
       }
@@ -3210,8 +3259,8 @@
       // re-running getTooltip + innerHTML on every movement.
       if (record === this._tooltipRecord) {
         if (record && point && el.style.display !== "none") {
-          el.style.left = point.x + 12 + "px";
-          el.style.top = point.y + 12 + "px";
+          el.style.transform =
+            "translate(" + (point.x + 12) + "px," + (point.y + 12) + "px)";
         }
         return;
       }
@@ -3228,8 +3277,8 @@
       const st = tip.style || {};
       for (const k of Object.keys(st)) el.style[k] = st[k];
       el.style.display = "block";
-      el.style.left = point.x + 12 + "px";
-      el.style.top = point.y + 12 + "px";
+      el.style.transform =
+        "translate(" + (point.x + 12) + "px," + (point.y + 12) + "px)";
     },
 
     // C5 — bilingual hover popup on the NETWORK station dots (only when the
