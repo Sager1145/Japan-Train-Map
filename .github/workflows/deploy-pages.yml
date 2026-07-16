@@ -8,13 +8,14 @@
 # autosave/clear) are skipped entirely rather than 404-ing.
 #
 # What this workflow does on every push to main:
-#   1. copies app/public/ (the frontend) into _site/, minus the precompressed
+#   1. precomputes every train's route geometry offline (one part file per
+#      train) so the phone never runs the route solver during page load;
+#   2. copies app/public/ (the frontend) into _site/, minus the precompressed
 #      *.gz sidecars (Pages gzips for us);
-#   2. drops the datasets into _site/api/<name> WITHOUT a .json extension, to
-#      match how app.js fetches them (fetchJson("stations") -> ./api/stations);
-#   3. seeds _site/api/train-store with your real itinerary so the live map
-#      shows your trains (see the SEED line below to change this);
-#   4. publishes _site/ to Pages.
+#   3. drops the datasets + train parts into _site/api/;
+#   4. seeds _site/api/train-store with your real itinerary as the fallback
+#      (see the SEED line below to change this);
+#   5. publishes _site/ to Pages.
 #
 # ONE-TIME SETUP (in the repo on github.com):
 #   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
@@ -46,6 +47,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Solve every train's route geometry OFFLINE (the script runs app.js's
+      # own solver inside a Node vm) and emit app/data/train-parts/: a manifest
+      # plus one part-NNN.json per train carrying its precomputed geometry.
+      # The static frontend fetches and draws these ONE TRAIN AT A TIME on
+      # boot, so the phone never builds the 600k-node route graphs nor runs
+      # Dijkstra — that on-device cold solve (memory, not download size) is
+      # what kept crashing iPhone Safari even after the gzip fix above.
+      - name: Precompute per-train route parts
+        run: node app/scripts/precompute-train-parts.mjs
+
       - name: Assemble static site
         run: |
           set -euo pipefail
@@ -75,6 +86,12 @@ jobs:
           # 3) SEED: publish your saved itinerary as the map's initial data.
           #    Delete this line to ship only the built-in demo trains instead.
           [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store.json || true
+
+          # 3b) Per-train precomputed route parts from the previous step. The
+          #     frontend prefers these on static deploys (loads/draws one train
+          #     at a time, zero on-device route solving); train-store.json
+          #     above stays as the fallback if the manifest is missing.
+          cp -r app/data/train-parts _site/api/train-parts
 
           # 4) Point the STATIC frontend copy at the .json dataset URLs. Local
           #    dev is untouched — app/server.js keeps serving the extensionless

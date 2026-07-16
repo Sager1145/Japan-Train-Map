@@ -154,6 +154,36 @@ for (const [route, file] of Object.entries(DATA_FILES)) {
   });
 }
 
+// Per-train precomputed route parts (manifest.json + part-NNN.json), generated
+// by app/scripts/precompute-train-parts.mjs. The backend deployment itself
+// boots from the live /api/train-store (its source of truth for edits), but
+// the files are served here too — extensionless like every other dataset —
+// so the parts pipeline can be exercised against the dev server. `no-cache`
+// (with the ETag from serveGzippable) makes clients revalidate: parts change
+// whenever the store is re-exported.
+const TRAIN_PARTS_DIR = path.join(DATA_DIR, "train-parts");
+app.get("/api/train-parts/:name", async (req, res) => {
+  const name = String(req.params.name || "").replace(/\.json$/, "");
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+    return res.status(400).json({ error: "Invalid train part name." });
+  }
+  const filePath = path.join(TRAIN_PARTS_DIR, `${name}.json`);
+  let stat;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch (err) {
+    return res.status(404).json({ error: `Train part not found: ${name}` });
+  }
+  await serveGzippable(
+    req,
+    res,
+    filePath,
+    stat,
+    "no-cache",
+    `train-parts/${name}.json`,
+  );
+});
+
 // Simple health/listing endpoint.
 app.get("/api", (req, res) => {
   res.json({

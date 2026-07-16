@@ -91,14 +91,80 @@
 
   // ───────────────────────────── basemap loader (basemap.ts) ─────────────────────────────
   const LOAD_TIMEOUT_MS = 8000;
+  const BASEMAP_CROSSFADE_MS = 460;
+  const BASEMAP_STAGE_OPACITY = 0.001;
   const BASEMAP_STYLE_URLS = {
     light: "./basemap/positron.json",
     dark: "https://tiles.openfreemap.org/styles/dark",
   };
+  const BASEMAP_LOAD_CACHE = new Map();
   const MAP_SURFACE_COLORS = {
     light: { background: "rgb(242,243,240)", fade: "#FFFFFF", casing: "#1A1A1A" },
     dark: { background: "rgb(12,12,12)", fade: "#0C0C0C", casing: "#F5EEE9" },
   };
+  const LAYER_OPACITY_PROPS = {
+    background: ["background-opacity"],
+    fill: ["fill-opacity"],
+    line: ["line-opacity"],
+    circle: ["circle-opacity", "circle-stroke-opacity"],
+    symbol: ["icon-opacity", "text-opacity"],
+    raster: ["raster-opacity"],
+    heatmap: ["heatmap-opacity"],
+    "fill-extrusion": ["fill-extrusion-opacity"],
+  };
+
+  function opacityPropsForLayer(layer) {
+    return (layer && LAYER_OPACITY_PROPS[layer.type]) || [];
+  }
+
+  function namespaceBasemap(basemap, namespace, startTransparent) {
+    const sourceIds = Object.keys(basemap.sources);
+    const sourceIdMap = new Map(
+      sourceIds.map((id) => [id, namespace + id]),
+    );
+    const layerIdMap = new Map(
+      basemap.layers.map((layer) => [layer.id, namespace + layer.id]),
+    );
+    const sources = {};
+    sourceIds.forEach((id) => {
+      sources[sourceIdMap.get(id)] = Object.assign({}, basemap.sources[id]);
+    });
+    const opacityTargets = new Map();
+    const layers = basemap.layers.map((sourceLayer) => {
+      const layer = Object.assign({}, sourceLayer, {
+        id: layerIdMap.get(sourceLayer.id),
+      });
+      if (sourceLayer.source && sourceIdMap.has(sourceLayer.source))
+        layer.source = sourceIdMap.get(sourceLayer.source);
+      if (sourceLayer.ref && layerIdMap.has(sourceLayer.ref))
+        layer.ref = layerIdMap.get(sourceLayer.ref);
+      if (sourceLayer.layout)
+        layer.layout = Object.assign({}, sourceLayer.layout);
+      layer.paint = Object.assign({}, sourceLayer.paint);
+      const targets = {};
+      opacityPropsForLayer(layer).forEach((prop) => {
+        targets[prop] = Object.prototype.hasOwnProperty.call(layer.paint, prop)
+          ? layer.paint[prop]
+          : 1;
+        // Install the normal theme-transition timing with the initial style so
+        // an interactive switch only updates opacity targets. Writing a
+        // transition object to 100+ layers at click time delays the first frame
+        // and makes the menu appear to change before the map.
+        layer.paint[prop + "-transition"] = {
+          duration: BASEMAP_CROSSFADE_MS,
+          delay: 0,
+        };
+        if (startTransparent) {
+          // A literal zero can let MapLibre skip loading a staged source. This
+          // imperceptible value keeps both theme tile stacks warm from boot.
+          layer.paint[prop] = BASEMAP_STAGE_OPACITY;
+        }
+      });
+      opacityTargets.set(layer.id, targets);
+      return layer;
+    });
+    return { sources, layers, opacityTargets };
+  }
 
   function normalizeBasemap(raw) {
     if (typeof raw !== "object" || raw === null) return null;
@@ -124,13 +190,27 @@
     return value === from ? to : value;
   }
 
-  async function loadBasemap(theme, force) {
+  function loadBasemap(theme, force) {
     // Backward compatibility with the former loadBasemap(force) signature.
     if (typeof theme === "boolean") {
       force = theme;
       theme = "light";
     }
     theme = theme === "dark" ? "dark" : "light";
+    if (!force && BASEMAP_LOAD_CACHE.has(theme))
+      return BASEMAP_LOAD_CACHE.get(theme);
+    const pending = loadBasemapUncached(theme, force);
+    if (!force) {
+      BASEMAP_LOAD_CACHE.set(theme, pending);
+      pending.then((result) => {
+        if (!result && BASEMAP_LOAD_CACHE.get(theme) === pending)
+          BASEMAP_LOAD_CACHE.delete(theme);
+      });
+    }
+    return pending;
+  }
+
+  async function loadBasemapUncached(theme, force) {
     // No network ⇒ basemap-less on purpose (the vector tile fetches would fail).
     // `force` (the explicit online-retry path) skips the cheap navigator.onLine
     // gate and lets the fetch + origin probe decide.
@@ -563,12 +643,28 @@
   // ───────────────────────────── the base style (style.ts buildBaseStyle) ────────────────
   function buildBaseStyle(opts) {
     const basemap = opts.basemap || null;
+    const alternateBasemap = opts.alternateBasemap || null;
     const network = opts.network || null;
     const theme = opts.theme === "dark" ? "dark" : "light";
     const themeColors = MAP_SURFACE_COLORS[theme];
     const fadeOpacity = Math.max(0, Math.min(1, Number(opts.fadeOpacity || 0)));
 
-    const sources = Object.assign({}, basemap ? basemap.sources : {});
+    const primaryStack = basemap
+      ? namespaceBasemap(basemap, "", false)
+      : null;
+    const alternateTheme = theme === "dark" ? "light" : "dark";
+    const alternateStack = alternateBasemap
+      ? namespaceBasemap(
+          alternateBasemap,
+          "rp-bm-preload-" + alternateTheme + "-",
+          true,
+        )
+      : null;
+    const sources = Object.assign(
+      {},
+      primaryStack ? primaryStack.sources : {},
+      alternateStack ? alternateStack.sources : {},
+    );
     sources[SEGMENTS_SOURCE] = {
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
@@ -596,14 +692,24 @@
       type: "background",
       paint: { "background-color": themeColors.background },
     });
-    // The basemap layer stack splits around its FIRST symbol (label) layer:
-    // the national-network layers slot in between, so the network draws above
-    // the basemap's land/water/roads but UNDER every place/city label (and
-    // under all train layers, which come later still).
-    const bmLayers = basemap ? basemap.layers : [];
-    let firstSymbol = bmLayers.findIndex((l) => l && l.type === "symbol");
-    if (firstSymbol < 0) firstSymbol = bmLayers.length;
-    layers.push(...bmLayers.slice(0, firstSymbol));
+    // Keep the complete basemap stack below the fade and every railway layer.
+    // This guarantees that roads, labels and theme masks can never cover the
+    // ordinary network or any ridden route.
+    const bmLayers = primaryStack ? primaryStack.layers : [];
+    layers.push(...bmLayers);
+    if (alternateStack) layers.push(...alternateStack.layers);
+
+    // Optional map-opacity tint affects only the basemap. Theme switching
+    // cross-fades the basemap stacks themselves; this layer stays unchanged.
+    layers.push({
+      id: FADE_LAYER,
+      type: "background",
+      paint: {
+        "background-color": themeColors.fade,
+        "background-opacity": fadeOpacity,
+        "background-opacity-transition": { duration: 0, delay: 0 },
+      },
+    });
 
     // ── the full national network — railprint's "unridden field" ──
     // Hidden by default: the network is opt-in via the layers-control switch.
@@ -640,20 +746,6 @@
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.4, 12, 3],
         "circle-stroke-color": tokens.white,
         "circle-stroke-width": 1,
-      },
-    });
-
-    // The basemap's label (symbol) layers ride ABOVE the network so city /
-    // place names are never covered by the all-lines overlay.
-    layers.push(...bmLayers.slice(firstSymbol));
-    // Optional white fade above the whole basemap (the 顯示調節 mapOpacity
-    // slider); railprint default is NO fade (opacity 0).
-    layers.push({
-      id: FADE_LAYER,
-      type: "background",
-      paint: {
-        "background-color": themeColors.fade,
-        "background-opacity": fadeOpacity,
       },
     });
 
@@ -931,8 +1023,30 @@
     });
 
     const style = { version: 8, sources, layers };
-    if (basemap && basemap.glyphs) style.glyphs = basemap.glyphs;
-    if (basemap && basemap.sprite) style.sprite = basemap.sprite;
+    const assetBasemap = basemap || alternateBasemap;
+    if (assetBasemap && assetBasemap.glyphs) style.glyphs = assetBasemap.glyphs;
+    if (assetBasemap && assetBasemap.sprite) style.sprite = assetBasemap.sprite;
+    const stacks = {};
+    if (primaryStack) {
+      stacks[theme] = {
+        layerIds: primaryStack.layers.map((layer) => layer.id),
+        sourceIds: Object.keys(primaryStack.sources),
+        opacityTargets: primaryStack.opacityTargets,
+      };
+    }
+    if (alternateStack) {
+      stacks[alternateTheme] = {
+        layerIds: alternateStack.layers.map((layer) => layer.id),
+        sourceIds: Object.keys(alternateStack.sources),
+        opacityTargets: alternateStack.opacityTargets,
+      };
+    }
+    // Application-only metadata must not be passed through MapLibre's style
+    // validator, so keep it non-enumerable and hand it directly to attach().
+    Object.defineProperty(style, "__railMapBasemapStacks", {
+      value: stacks,
+      enumerable: false,
+    });
     return style;
   }
 
@@ -1685,22 +1799,44 @@
     _groupSwitchAnchor: null,
     _basemapLayerIds: [],
     _basemapSourceIds: [],
+    _basemapStacks: {},
     _basemapMode: "none",
     _theme: "light",
     _basemapInstalledTheme: null,
     _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
+    _basemapGeneration: 0,
+    _basemapTransitionDuration: BASEMAP_CROSSFADE_MS,
+    _fadeOpacity: 0,
 
-    attach(map, network, handlers, basemapLayerIds, basemapSourceIds, theme) {
+    attach(
+      map,
+      network,
+      handlers,
+      basemapLayerIds,
+      basemapSourceIds,
+      theme,
+      basemapStacks,
+    ) {
       this._map = map;
       this._network = network || null;
       this._handlers = handlers || {};
-      this._basemapLayerIds = basemapLayerIds || [];
-      this._basemapSourceIds = basemapSourceIds || [];
+      this._basemapStacks = basemapStacks || {};
+      const stackValues = Object.values(this._basemapStacks);
+      this._basemapLayerIds = stackValues.length
+        ? stackValues.flatMap((stack) => stack.layerIds || [])
+        : basemapLayerIds || [];
+      this._basemapSourceIds = stackValues.length
+        ? stackValues.flatMap((stack) => stack.sourceIds || [])
+        : basemapSourceIds || [];
       this._basemapMode = this._basemapLayerIds.length ? "positron" : "none";
       this._theme = theme === "dark" ? "dark" : "light";
       this._basemapInstalledTheme = this._basemapLayerIds.length
         ? this._theme
         : null;
+      const initialFade = map.getLayer(FADE_LAYER)
+        ? Number(map.getPaintProperty(FADE_LAYER, "background-opacity"))
+        : 0;
+      this._fadeOpacity = Number.isFinite(initialFade) ? initialFade : 0;
       this._wireInteractions();
       // ALL opacity fades on these layers are driven manually by the rAF dim
       // engine (_applyDimPaint) and the fan slide — MapLibre skips its own
@@ -2048,39 +2184,137 @@
     hasBasemap() {
       return this._basemapLayerIds.length > 0;
     },
-    _applyThemePaint(theme) {
+    _crossfadeBasemapStacks(theme, duration) {
+      const m = this._map;
+      const targetStack = this._basemapStacks[theme];
+      if (!m || !targetStack) return false;
+      const transition = {
+        duration: Math.max(0, Number(duration) || 0),
+        delay: 0,
+      };
+      const updateTransition =
+        transition.duration !== this._basemapTransitionDuration;
+      const layerOrder = new Map(
+        m.getStyle().layers.map((layer, index) => [layer.id, index]),
+      );
+      const stacksTopFirst = Object.entries(this._basemapStacks).sort(
+        ([, a], [, b]) =>
+          Math.max(...b.layerIds.map((id) => layerOrder.get(id) ?? -1)) -
+          Math.max(...a.layerIds.map((id) => layerOrder.get(id) ?? -1)),
+      );
+      stacksTopFirst.forEach(([stackTheme, stack]) => {
+        const active = stackTheme === theme;
+        stack.opacityTargets.forEach((targets, id) => {
+          if (!m.getLayer(id)) return;
+          Object.keys(targets).forEach((prop) => {
+            if (updateTransition)
+              m.setPaintProperty(id, prop + "-transition", transition);
+            m.setPaintProperty(
+              id,
+              prop,
+              active ? targets[prop] : BASEMAP_STAGE_OPACITY,
+            );
+          });
+        });
+      });
+      this._basemapTransitionDuration = transition.duration;
+      this._basemapInstalledTheme = theme;
+      return true;
+    },
+    _applyThemePaint(theme, duration) {
       const m = this._map;
       if (!m) return;
       const colors = MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
-      if (m.getLayer("rp-bg"))
+      const transition = {
+        duration: Math.max(0, Number(duration) || 0),
+        delay: 0,
+      };
+      if (m.getLayer("rp-bg")) {
+        m.setPaintProperty(
+          "rp-bg",
+          "background-color-transition",
+          transition,
+        );
         m.setPaintProperty("rp-bg", "background-color", colors.background);
-      if (m.getLayer(FADE_LAYER))
+      }
+      if (m.getLayer(FADE_LAYER)) {
+        m.setPaintProperty(
+          FADE_LAYER,
+          "background-color-transition",
+          transition,
+        );
         m.setPaintProperty(FADE_LAYER, "background-color", colors.fade);
+      }
       if (m.getLayer(TRAIN_SEL_CASING_LAYER))
         m.setPaintProperty(TRAIN_SEL_CASING_LAYER, "line-color", colors.casing);
     },
-    async _installBasemap(basemap) {
+    _applyEffectiveFade(duration) {
+      const m = this._map;
+      if (!m || !m.getLayer(FADE_LAYER)) return;
+      const transition = {
+        duration: Math.max(0, Number(duration) || 0),
+        delay: 0,
+      };
+      m.setPaintProperty(
+        FADE_LAYER,
+        "background-opacity-transition",
+        transition,
+      );
+      m.setPaintProperty(
+        FADE_LAYER,
+        "background-opacity",
+        this._fadeOpacity,
+      );
+    },
+    _waitForBasemapSources(sourceIds, timeoutMs) {
+      const m = this._map;
+      if (!m || !sourceIds.length || typeof m.isSourceLoaded !== "function")
+        return Promise.resolve();
+      return new Promise((resolve) => {
+        let done = false;
+        let timer = null;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer !== null) clearTimeout(timer);
+          if (typeof m.off === "function") m.off("sourcedata", check);
+          resolve();
+        };
+        const check = () => {
+          if (sourceIds.every((id) => m.getSource(id) && m.isSourceLoaded(id)))
+            finish();
+        };
+        timer = setTimeout(finish, Math.max(0, Number(timeoutMs) || 1200));
+        if (typeof m.on === "function") m.on("sourcedata", check);
+        check();
+        if (typeof m.triggerRepaint === "function") m.triggerRepaint();
+      });
+    },
+    async _installBasemap(basemap, options = {}) {
       const m = this._map;
       if (!m || !basemap) return false;
       const visible = this._basemapMode === "positron";
+      const oldLayerIds = this._basemapLayerIds.slice();
+      const oldSourceIds = this._basemapSourceIds.slice();
+      const animate =
+        options.animate !== false &&
+        visible &&
+        oldLayerIds.some((id) => m.getLayer(id));
+      const namespace =
+        "rp-bm-" +
+        ++this._basemapGeneration +
+        "-" +
+        (basemap.theme === "dark" ? "dark-" : "light-");
+      const staged = namespaceBasemap(basemap, namespace, animate);
       const addedLayerIds = [];
       const addedSourceIds = [];
       try {
-        // Remove only the previous basemap stack. Rail routes, markers,
-        // interaction sources and camera state remain untouched.
-        this._basemapLayerIds
-          .slice()
-          .reverse()
-          .forEach((id) => {
-            if (m.getLayer(id)) m.removeLayer(id);
-          });
-        this._basemapSourceIds.forEach((id) => {
-          if (m.getSource(id)) m.removeSource(id);
-        });
-
-        for (const id of Object.keys(basemap.sources)) {
+        // Stage the new basemap below the fade/railway stack while the old
+        // basemap remains live. Once its tiles settle, cross-fade both stacks
+        // directly instead of passing through a solid white/black cover.
+        for (const id of Object.keys(staged.sources)) {
           if (!m.getSource(id)) {
-            m.addSource(id, basemap.sources[id]);
+            m.addSource(id, staged.sources[id]);
             addedSourceIds.push(id);
           }
         }
@@ -2089,9 +2323,7 @@
         if (basemap.sprite && typeof m.setSprite === "function")
           m.setSprite(basemap.sprite);
 
-        const bmLayers = basemap.layers;
-        let firstSymbol = bmLayers.findIndex((l) => l && l.type === "symbol");
-        if (firstSymbol < 0) firstSymbol = bmLayers.length;
+        const bmLayers = staged.layers;
         const addLayer = (sourceLayer, beforeId) => {
           const layer = Object.assign({}, sourceLayer);
           if (!visible) {
@@ -2100,11 +2332,57 @@
           m.addLayer(layer, beforeId);
           addedLayerIds.push(layer.id);
         };
-        bmLayers.slice(0, firstSymbol).forEach((l) => addLayer(l, SEGMENTS_LAYER));
-        bmLayers.slice(firstSymbol).forEach((l) => addLayer(l, FADE_LAYER));
+        bmLayers.forEach((layer) => addLayer(layer, FADE_LAYER));
+
+        if (animate) {
+          await this._waitForBasemapSources(
+            Object.keys(staged.sources),
+            2200,
+          );
+          const transition = {
+            duration: BASEMAP_CROSSFADE_MS,
+            delay: 0,
+          };
+          oldLayerIds.forEach((id) => {
+            const layer = m.getLayer(id);
+            if (!layer) return;
+            opacityPropsForLayer(layer).forEach((prop) => {
+              m.setPaintProperty(id, prop + "-transition", transition);
+              m.setPaintProperty(id, prop, 0);
+            });
+          });
+          staged.opacityTargets.forEach((targets, id) => {
+            if (!m.getLayer(id)) return;
+            Object.keys(targets).forEach((prop) => {
+              m.setPaintProperty(id, prop + "-transition", transition);
+              m.setPaintProperty(id, prop, targets[prop]);
+            });
+          });
+          await new Promise((resolve) =>
+            setTimeout(resolve, BASEMAP_CROSSFADE_MS + 40),
+          );
+        }
+
+        oldLayerIds
+          .slice()
+          .reverse()
+          .forEach((id) => {
+            if (m.getLayer(id)) m.removeLayer(id);
+          });
+        oldSourceIds.forEach((id) => {
+          if (m.getSource(id)) m.removeSource(id);
+        });
+
         this._basemapLayerIds = bmLayers.map((l) => l.id);
-        this._basemapSourceIds = Object.keys(basemap.sources);
+        this._basemapSourceIds = Object.keys(staged.sources);
         this._basemapInstalledTheme = basemap.theme || this._theme;
+        this._basemapStacks = {
+          [this._basemapInstalledTheme]: {
+            layerIds: this._basemapLayerIds.slice(),
+            sourceIds: this._basemapSourceIds.slice(),
+            opacityTargets: staged.opacityTargets,
+          },
+        };
         return true;
       } catch (e) {
         console.warn("[map] failed to install basemap theme", e);
@@ -2117,9 +2395,6 @@
         addedSourceIds.forEach((id) => {
           if (m.getSource(id)) m.removeSource(id);
         });
-        this._basemapLayerIds = [];
-        this._basemapSourceIds = [];
-        this._basemapInstalledTheme = null;
         return false;
       }
     },
@@ -2128,8 +2403,16 @@
     async setBasemapTheme(theme, options = {}) {
       theme = theme === "dark" ? "dark" : "light";
       this._theme = theme;
-      this._applyThemePaint(theme);
+      const animate = options.animate !== false;
+      this._applyThemePaint(theme, animate ? BASEMAP_CROSSFADE_MS : 0);
       if (!this._map) return false;
+      if (
+        this._crossfadeBasemapStacks(
+          theme,
+          animate ? BASEMAP_CROSSFADE_MS : 0,
+        )
+      )
+        return true;
       if (this._basemapRetryInflight) await this._basemapRetryInflight;
       if (this._basemapInstalledTheme === theme) return true;
       this._basemapRetryInflight = (async () => {
@@ -2137,9 +2420,7 @@
           const basemap = await loadBasemap(theme, true);
           if (!basemap) return false;
           if (!(await probeBasemapOrigin(basemap))) return false;
-          if (typeof options.beforeInstall === "function")
-            await options.beforeInstall();
-          return await this._installBasemap(basemap);
+          return await this._installBasemap(basemap, { animate });
         } finally {
           this._basemapRetryInflight = null;
         }
@@ -2152,7 +2433,7 @@
     async retryBasemap() {
       const m = this._map;
       if (!m) return false;
-      if (this._basemapLayerIds.length) return true; // already present
+      if (this._basemapStacks[this._theme]) return true; // already present
       if (this._basemapRetryInflight) return this._basemapRetryInflight;
       this._basemapRetryInflight = (async () => {
         try {
@@ -2169,12 +2450,8 @@
       return this._basemapRetryInflight;
     },
     setFadeOpacity(v) {
-      if (!this._map || !this._map.getLayer(FADE_LAYER)) return;
-      this._map.setPaintProperty(
-        FADE_LAYER,
-        "background-opacity",
-        Math.max(0, Math.min(1, v)),
-      );
+      this._fadeOpacity = Math.max(0, Math.min(1, Number(v) || 0));
+      this._applyEffectiveFade(0);
     },
 
     _setVisibility(layerId, vis) {

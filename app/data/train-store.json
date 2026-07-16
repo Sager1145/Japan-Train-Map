@@ -16613,31 +16613,711 @@
       ]
     },
     {
-      "id": "20260716_01_hokuto22",
+      "id": "20260716_01_sapporo_subway_namboku_sapporo_susukino",
       "date": "2026-07-16",
-      "number": "北斗22号（Hokuto 22）",
-      "train_type": "特急",
-      "company": "JR北海道",
-      "origin": "札幌",
-      "destination": "函館",
-      "direction": "unknown",
+      "number": "札幌市営地下鉄 南北線（さっぽろ→すすきの）",
+      "train_type": "地下鉄",
+      "company": "札幌市交通局",
+      "origin": "さっぽろ",
+      "destination": "すすきの",
+      "direction": "真駒内",
       "visible": true,
       "style": {
-        "color": "#ca8a04"
+        "color": "#00893D"
       },
       "route_policy": {
         "mode": "single_primary_route",
         "jr_only": false,
         "allow_alternatives": false,
         "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "3"
+        ],
+        "preferred_line_names": [
+          "南北線"
+        ],
+        "preferred_operator_names": [
+          "札幌市"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000229",
+          "to_n02_station_code": "000234",
+          "line_names": [
+            "南北線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000234",
+          "to_n02_station_code": "000253",
+          "line_names": [
+            "南北線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "さっぽろ",
+          "n02_station_code": "000229",
+          "arrival": null,
+          "departure": "11:30",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大通",
+          "n02_station_code": "000234",
+          "arrival": null,
+          "departure": "11:31",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "すすきの",
+          "n02_station_code": "000253",
+          "arrival": "11:33",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_02_sapporo_subway_namboku_odori_nakajimakoen",
+      "date": "2026-07-16",
+      "number": "札幌市営地下鉄 南北線（大通→中島公園）",
+      "train_type": "地下鉄",
+      "company": "札幌市交通局",
+      "origin": "大通",
+      "destination": "中島公園",
+      "direction": "真駒内",
+      "visible": true,
+      "style": {
+        "color": "#00893D"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "3"
+        ],
+        "preferred_line_names": [
+          "南北線"
+        ],
+        "preferred_operator_names": [
+          "札幌市"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000234",
+          "to_n02_station_code": "000253",
+          "line_names": [
+            "南北線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000253",
+          "to_n02_station_code": "000262",
+          "line_names": [
+            "南北線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大通",
+          "n02_station_code": "000234",
+          "arrival": null,
+          "departure": "13:30",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "すすきの",
+          "n02_station_code": "000253",
+          "arrival": null,
+          "departure": "13:32",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "中島公園",
+          "n02_station_code": "000262",
+          "arrival": "13:33",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_03_sapporo_streetcar_nakajimakoendori_susukino",
+      "date": "2026-07-16",
+      "number": "札幌市電 内回り（中島公園通→すすきの）",
+      "train_type": "路面電車",
+      "company": "札幌市交通事業振興公社",
+      "origin": "中島公園通",
+      "destination": "すすきの",
+      "direction": "内回り",
+      "visible": true,
+      "style": {
+        "color": "#E60012"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "山鼻線"
+        ],
+        "preferred_operator_names": [
+          "一般社団法人札幌市交通事業振興公社"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000268",
+          "to_n02_station_code": "000261",
+          "line_names": [
+            "山鼻線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from_n02_station_code": "000261",
+          "to_n02_station_code": "000259",
+          "line_names": [
+            "山鼻線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from_n02_station_code": "000259",
+          "to_n02_station_code": "000254",
+          "line_names": [
+            "山鼻線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from_n02_station_code": "000254",
+          "to_n02_station_code": "000251",
+          "line_names": [
+            "山鼻線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "中島公園通",
+          "n02_station_code": "000268",
+          "arrival": null,
+          "departure": "14:02",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "山鼻9条",
+          "n02_station_code": "000261",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東本願寺前",
+          "n02_station_code": "000259",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "資生館小学校前",
+          "n02_station_code": "000254",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "すすきの",
+          "n02_station_code": "000251",
+          "arrival": "14:13",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_04_sapporo_streetcar_susukino_chuokuyakushomae",
+      "date": "2026-07-16",
+      "number": "札幌市電 内回り（すすきの→中央区役所前）",
+      "train_type": "路面電車",
+      "company": "札幌市交通事業振興公社",
+      "origin": "すすきの",
+      "destination": "中央区役所前",
+      "direction": "内回り",
+      "visible": true,
+      "style": {
+        "color": "#E60012"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "都心線",
+          "1条線"
+        ],
+        "preferred_operator_names": [
+          "一般社団法人札幌市交通事業振興公社"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000252",
+          "to_n02_station_code": "000242",
+          "line_names": [
+            "都心線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from_n02_station_code": "000242",
+          "to_n02_station_code": "000236",
+          "line_names": [
+            "都心線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from": "西4丁目",
+          "to_n02_station_code": "000238",
+          "line_names": [
+            "1条線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        },
+        {
+          "from_n02_station_code": "000238",
+          "to_n02_station_code": "000241",
+          "line_names": [
+            "1条線"
+          ],
+          "operator_names": [
+            "一般社団法人札幌市交通事業振興公社"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "すすきの",
+          "n02_station_code": "000252",
+          "arrival": null,
+          "departure": "14:21",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "狸小路",
+          "n02_station_code": "000242",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "西4丁目",
+          "n02_station_code": "000236",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "西8丁目",
+          "n02_station_code": "000238",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "中央区役所前",
+          "n02_station_code": "000241",
+          "arrival": "14:27",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_05_sapporo_subway_tozai_nishi11_odori",
+      "date": "2026-07-16",
+      "number": "札幌市営地下鉄 東西線（西11丁目→大通）",
+      "train_type": "地下鉄",
+      "company": "札幌市交通局",
+      "origin": "西11丁目",
+      "destination": "大通",
+      "direction": "新さっぽろ",
+      "visible": true,
+      "style": {
+        "color": "#F58220"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "3"
+        ],
+        "preferred_line_names": [
+          "東西線"
+        ],
+        "preferred_operator_names": [
+          "札幌市"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000237",
+          "to_n02_station_code": "000233",
+          "line_names": [
+            "東西線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "西11丁目",
+          "n02_station_code": "000237",
+          "arrival": null,
+          "departure": "14:57",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大通",
+          "n02_station_code": "000233",
+          "arrival": "14:59",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_06_sapporo_subway_namboku_odori_sapporo",
+      "date": "2026-07-16",
+      "number": "札幌市営地下鉄 南北線（大通→さっぽろ）",
+      "train_type": "地下鉄",
+      "company": "札幌市交通局",
+      "origin": "大通",
+      "destination": "さっぽろ",
+      "direction": "麻生",
+      "visible": true,
+      "style": {
+        "color": "#00893D"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "3"
+        ],
+        "preferred_line_names": [
+          "南北線"
+        ],
+        "preferred_operator_names": [
+          "札幌市"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "000234",
+          "to_n02_station_code": "000229",
+          "line_names": [
+            "南北線"
+          ],
+          "operator_names": [
+            "札幌市"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大通",
+          "n02_station_code": "000234",
+          "arrival": null,
+          "departure": "15:07",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "さっぽろ",
+          "n02_station_code": "000229",
+          "arrival": "15:09",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260716_07_hokuto20",
+      "date": "2026-07-16",
+      "number": "北斗20号（Hokuto 20）",
+      "train_type": "特急",
+      "company": "JR北海道",
+      "origin": "札幌",
+      "destination": "函館",
+      "direction": "函館",
+      "visible": true,
+      "style": {
+        "color": "#ca8a04"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "函館線",
+          "千歳線",
+          "室蘭線"
+        ],
+        "preferred_operator_names": [
+          "北海道旅客鉄道"
+        ],
         "institution_filter_mode": "soft"
       },
       "route_sections": [
         {
-          "from": "札幌",
-          "to": "函館",
-          "from_n02_station_code": null,
-          "to_n02_station_code": null
+          "from_n02_station_code": "000227",
+          "to": "白石",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000255",
+          "to_n02_station_code": "000278",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000278",
+          "to_n02_station_code": "000354",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000354",
+          "to_n02_station_code": "000365",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from": "沼ノ端",
+          "to_n02_station_code": "000367",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000367",
+          "to_n02_station_code": "000383",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000383",
+          "to_n02_station_code": "000395",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000395",
+          "to_n02_station_code": "000406",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000406",
+          "to_n02_station_code": "000393",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000393",
+          "to_n02_station_code": "000384",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000384",
+          "to_n02_station_code": "000387",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from": "長万部",
+          "to_n02_station_code": "000412",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000412",
+          "to_n02_station_code": "000420",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000420",
+          "to_n02_station_code": "000426",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000426",
+          "to_n02_station_code": "000429",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000429",
+          "to_n02_station_code": "000439",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000439",
+          "to_n02_station_code": "000455",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         }
       ],
       "stops": [
@@ -16645,14 +17325,142 @@
           "name": "札幌",
           "n02_station_code": "000227",
           "arrival": null,
-          "departure": "18:46",
+          "departure": "16:51",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "白石",
+          "n02_station_code": "000255",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新札幌",
+          "n02_station_code": "000278",
+          "arrival": null,
+          "departure": "17:02",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "南千歳",
+          "n02_station_code": "000354",
+          "arrival": null,
+          "departure": "17:26",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "沼ノ端",
+          "n02_station_code": "000365",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "苫小牧",
+          "n02_station_code": "000367",
+          "arrival": null,
+          "departure": "17:43",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "白老",
+          "n02_station_code": "000383",
+          "arrival": null,
+          "departure": "17:56",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "登別",
+          "n02_station_code": "000395",
+          "arrival": null,
+          "departure": "18:08",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東室蘭",
+          "n02_station_code": "000406",
+          "arrival": "18:20",
+          "departure": "18:21",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "伊達紋別",
+          "n02_station_code": "000393",
+          "arrival": null,
+          "departure": "18:37",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "洞爺",
+          "n02_station_code": "000384",
+          "arrival": null,
+          "departure": "18:48",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "長万部",
+          "n02_station_code": "000387",
+          "arrival": null,
+          "departure": "19:15",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "八雲",
+          "n02_station_code": "000412",
+          "arrival": null,
+          "departure": "19:35",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "森",
+          "n02_station_code": "000420",
+          "arrival": null,
+          "departure": "19:57",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "大沼公園",
+          "n02_station_code": "000426",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新函館北斗",
+          "n02_station_code": "000429",
+          "arrival": null,
+          "departure": "20:24",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "五稜郭",
+          "n02_station_code": "000439",
+          "arrival": null,
+          "departure": "20:34",
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
           "name": "函館",
           "n02_station_code": "000455",
-          "arrival": "22:31",
+          "arrival": "20:39",
           "departure": null,
           "stop_type": "destination",
           "ride_segment": true

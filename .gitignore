@@ -4,6 +4,12 @@ __pycache__/
 
 app/data/*.json.gz
 
+# Per-train precomputed route parts (manifest + one JSON per train, ~8 MB).
+# Regenerated from train-store.json by app/scripts/precompute-train-parts.mjs —
+# the Pages deploy workflow runs it on every push, so the output is never
+# committed. Run it manually for local static-build testing.
+app/data/train-parts/
+
 # Lazily generated gzip sidecars for large static assets (rail package, basemap,
 # logo credits). Regenerated on demand by server.js; never committed.
 app/public/**/*.json.gz

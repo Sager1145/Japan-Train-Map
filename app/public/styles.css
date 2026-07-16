@@ -70,30 +70,44 @@ html[data-theme="dark"] {
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
 }
 
-/* Native View Transitions cross-fade the fully rendered interface, including
-   controls that inherit theme colours through CSS variables. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 0.46s;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Colour-transition fallback for browsers without View Transitions. */
-html.theme-transition-fallback body,
-html.theme-transition-fallback #sidebar,
-html.theme-transition-fallback .card,
-html.theme-transition-fallback input,
-html.theme-transition-fallback select,
-html.theme-transition-fallback textarea,
-html.theme-transition-fallback button,
-html.theme-transition-fallback a,
-html.theme-transition-fallback th,
-html.theme-transition-fallback td,
-html.theme-transition-fallback details,
-html.theme-transition-fallback .maplibregl-ctrl-group {
-  transition-property: background-color, color, border-color, box-shadow;
-  transition-duration: 0.46s;
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+/* Theme changes use the same 460 ms linear blend as the two preloaded map
+   stacks. Cover the complete sidebar and map-menu subtrees, including dynamic
+   train rows, table branches, symbols and pseudo-elements. There is no
+   fullscreen cover, and the WebGL railway overlay is not faded. */
+html.theme-transitioning body,
+html.theme-transitioning #sidebar,
+html.theme-transitioning #sidebar *,
+html.theme-transitioning #sidebar *::before,
+html.theme-transitioning #sidebar *::after,
+html.theme-transitioning #sidebar-edge-tab,
+html.theme-transitioning #sidebar-edge-tab *,
+html.theme-transitioning #sidebar-edge-tab *::before,
+html.theme-transitioning #sidebar-edge-tab *::after,
+html.theme-transitioning .map-layers-control,
+html.theme-transitioning .map-layers-control *,
+html.theme-transitioning .map-layers-control *::before,
+html.theme-transitioning .map-layers-control *::after,
+html.theme-transitioning .map-info-control,
+html.theme-transitioning .map-info-control *,
+html.theme-transitioning .map-info-control *::before,
+html.theme-transitioning .map-info-control *::after,
+html.theme-transitioning .maplibregl-ctrl-group,
+html.theme-transitioning .maplibregl-ctrl-group *,
+html.theme-transitioning .maplibregl-popup-content {
+  transition-property:
+    background-color,
+    color,
+    border-color,
+    outline-color,
+    box-shadow,
+    text-decoration-color,
+    fill,
+    stroke,
+    filter,
+    accent-color,
+    caret-color;
+  transition-duration: 460ms;
+  transition-timing-function: linear;
 }
 
 * {
@@ -126,15 +140,13 @@ body {
   --sidebar-open-size: 480px;
   --sidebar-size: var(--sidebar-open-size);
   position: relative;
-  display: grid;
-  grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
+  display: block;
   width: 100vw;
   /* 100dvh (dynamic viewport height) tracks iOS Safari's collapsing toolbar so
      the app fills exactly the visible area; 100vh is the fallback for engines
      without dvh (which on iOS overshoots behind the toolbar). */
   height: 100vh;
   height: 100dvh;
-  transition: grid-template-columns 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 #app.sidebar-collapsed {
@@ -145,14 +157,13 @@ html[data-sidebar="collapsed"] #app {
   --sidebar-size: 0px;
 }
 
-#app.sidebar-dragging {
-  transition: none;
-}
-
 #sidebar {
-  /* Keep the drawer at its full width while the grid track reveals more or
-     less of it. Translating the panel preserves every child layout during a
-     drag instead of reflowing cards into an ever-narrower column. */
+  position: absolute;
+  z-index: 70;
+  inset: 0 auto 0 0;
+  /* Keep the drawer at its full width and slide it over the fixed map
+     viewport. Resizing the WebGL viewport during this motion stretches or
+     squeezes railway geometry and can force visible backing-store flashes. */
   width: var(--sidebar-open-size);
   min-width: var(--sidebar-open-size);
   max-width: var(--sidebar-open-size);
@@ -247,31 +258,23 @@ html[data-sidebar="collapsed"] #app {
 }
 
 #map {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   /* railprint / positron muted paper grey — also the no-basemap background */
   background: var(--map-bg);
 }
 
-/* The official OpenFreeMap styles are replaced as a layer stack. Briefly
-   cover the map immediately before installation, then reveal the new stack,
-   so the basemap does not flash between light and dark. */
-#map::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 70;
-  pointer-events: none;
-  background: var(--map-bg);
-  opacity: 0;
-  transition:
-    opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 0.46s cubic-bezier(0.22, 1, 0.36, 1);
+/* The map viewport stays fixed while the drawer moves. Map camera padding
+   shifts railway content into the visible area without scaling its canvas. */
+.maplibregl-ctrl-top-left {
+  left: var(--sidebar-size);
+  transition: left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-html.theme-map-covered #map::after {
-  opacity: 0.96;
+#app.sidebar-dragging .maplibregl-ctrl-top-left {
+  transition: none;
 }
 
 /* Visible focus ring for keyboard nav (railprint accessibility spec). */
@@ -1201,17 +1204,10 @@ tr.branch-junction td {
 @media (max-width: 900px) {
   #app {
     --sidebar-open-size: 58vh;
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) var(--sidebar-size);
-    transition: grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  #app.sidebar-dragging {
-    transition: none;
   }
 
   #sidebar {
-    order: 2;
+    inset: auto 0 0 0;
     width: 100%;
     min-width: 0;
     max-width: none;
@@ -1220,7 +1216,10 @@ tr.branch-junction td {
     max-height: var(--sidebar-open-size);
     border-right: none;
     border-top: 1px solid var(--rail-dim);
-    transform: translateY(0);
+    transform: translateY(
+      calc(var(--sidebar-open-size) - var(--sidebar-size))
+    );
+    transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
     /* viewport-fit=cover extends the bottom drawer under the home indicator;
        reserve that space so the last row of controls stays tappable. */
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
@@ -1229,20 +1228,19 @@ tr.branch-junction td {
   /* The map fills under the status bar / notch (viewport-fit=cover); nudge the
      on-map zoom controls clear of the top inset so they stay reachable. */
   .maplibregl-ctrl-top-left {
+    left: 0;
     margin-top: env(safe-area-inset-top);
     margin-left: calc(10px + env(safe-area-inset-left));
   }
 
   #app.sidebar-collapsed #sidebar {
-    transform: translateY(18px);
+    transform: translateY(var(--sidebar-open-size));
   }
 
   #app.sidebar-dragging #sidebar {
-    transform: translateY(0);
-  }
-
-  #map {
-    order: 1;
+    transform: translateY(
+      calc(var(--sidebar-open-size) - var(--sidebar-size))
+    );
   }
 
   .sidebar-edge-tab {
@@ -1261,6 +1259,15 @@ tr.branch-junction td {
       background 0.15s ease,
       border-color 0.15s ease;
     box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.14);
+  }
+
+  .maplibregl-ctrl-bottom-right {
+    bottom: var(--sidebar-size);
+    transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  #app.sidebar-dragging .maplibregl-ctrl-bottom-right {
+    transition: none;
   }
 
   .sidebar-edge-tab:focus-visible {
@@ -1936,11 +1943,6 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: 0.01ms !important;
-  }
-
   * {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;

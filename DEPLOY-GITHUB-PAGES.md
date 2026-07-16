@@ -35,14 +35,17 @@
 
 ## 工作流做了什么
 
+- **离线预解算路线**（`node app/scripts/precompute-train-parts.mjs`）：在 CI 里把
+  train-store 中每趟列车的路线几何用 app.js 自己的解算器提前算好，导出成
+  `api/train-parts/`（manifest + 每趟一个 `part-NNN.json`）。静态站开机时
+  **一次加载并显示一趟**，手机端完全不跑路线解算（此前 iPhone 打开即崩的根因
+  就是开机在手机上冷解算全部路线导致内存爆掉）。
 - 把 `app/public/`（前端）复制为静态站，并排除预压缩的 `*.gz`
   （Pages 会自动 gzip）。
-- 把数据集放到 `api/` 目录，文件名**不带扩展名**，以匹配前端的取数路径
-  （`app.js` 里 `fetchJson("stations")` → `./api/stations`）：
-  `rail-sections` / `stations` / `station-readings` / `default-trains` / `matched-routes` / `matched-stops`。
-- 用你的 `app/data/train-store.json` 作为地图的**初始数据**（当前 119 趟列车），
-  这样线上直接显示你的实际路线，而不是内置的演示数据。
-- 加一个 `.nojekyll`，让所有文件（含无扩展名的 `api/*`）原样发布。
+- 把数据集放到 `api/` 目录，文件名**带 `.json` 扩展名**（Pages 只压缩已知类型），
+  并把前端取数路径改写成 `./api/<name>.json`。
+- 用你的 `app/data/train-store.json` 作为**兜底初始数据**（train-parts 缺失时回退用）。
+- 加一个 `.nojekyll`，让所有文件原样发布。
 
 部署后的站点体积约 **22 MB**，远在 Pages 的单文件 100 MB / 站点约 1 GB 限制之内。
 

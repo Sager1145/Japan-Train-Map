@@ -220,7 +220,8 @@ const REDUCED_MOTION_MEDIA = window.matchMedia(
 );
 let activeResolvedTheme = null;
 let themeSelectReady = false;
-let themeFallbackTimer = null;
+let themeTransitionTimer = null;
+const THEME_TRANSITION_MS = 460;
 
 function resolveDisplayTheme(mode = DISPLAY.theme) {
   if (mode === "dark" || mode === "light") return mode;
@@ -255,32 +256,22 @@ function setDocumentTheme(resolved) {
     themeMeta.content = resolved === "dark" ? "#1c1c1e" : "#ff5522";
 }
 
-async function transitionDocumentTheme(resolved, animate) {
+function transitionDocumentTheme(resolved, animate) {
   const root = document.documentElement;
-  if (!animate) {
-    setDocumentTheme(resolved);
-    return;
-  }
-  if (typeof document.startViewTransition === "function") {
-    try {
-      const transition = document.startViewTransition(() => {
-        setDocumentTheme(resolved);
-      });
-      await transition.updateCallbackDone;
-      return;
-    } catch (_) {
-      // Fall through to the CSS colour transition when snapshots are not
-      // available (for example while another view transition is finishing).
-    }
-  }
-  root.classList.add("theme-transition-fallback");
-  // Flush the class before changing the inherited colour variables.
-  void root.offsetWidth;
+  clearTimeout(themeTransitionTimer);
+  root.classList.toggle("theme-transitioning", Boolean(animate));
+  if (animate) void root.offsetWidth;
   setDocumentTheme(resolved);
-  clearTimeout(themeFallbackTimer);
-  themeFallbackTimer = setTimeout(() => {
-    root.classList.remove("theme-transition-fallback");
-  }, 520);
+  if (animate) {
+    // Commit the menu's colour transition before the MapLibre paint updates.
+    // Both timelines then advance together even if updating many basemap
+    // layers occupies the main thread before the next visible frame.
+    void root.offsetWidth;
+    themeTransitionTimer = setTimeout(() => {
+      root.classList.remove("theme-transitioning");
+      themeTransitionTimer = null;
+    }, THEME_TRANSITION_MS + 40);
+  }
 }
 
 async function applyDisplayTheme({ updateMap = true, persist = true } = {}) {
@@ -290,33 +281,17 @@ async function applyDisplayTheme({ updateMap = true, persist = true } = {}) {
   activeResolvedTheme = resolved;
   const animate =
     changed && previous !== null && !REDUCED_MOTION_MEDIA.matches;
-  await transitionDocumentTheme(resolved, animate);
   updateThemeSelect();
   if (persist) persistDisplaySettings();
-  if (
+  const canUpdateMap =
     updateMap &&
     changed &&
     map &&
     window.RailMap &&
-    typeof RailMap.setBasemapTheme === "function"
-  ) {
-    let mapCovered = false;
-    try {
-      await RailMap.setBasemapTheme(resolved, {
-        beforeInstall: async () => {
-          if (!animate) return;
-          document.documentElement.classList.add("theme-map-covered");
-          mapCovered = true;
-          await new Promise((resolve) => setTimeout(resolve, 180));
-        },
-      });
-    } finally {
-      if (mapCovered) {
-        requestAnimationFrame(() => {
-          document.documentElement.classList.remove("theme-map-covered");
-        });
-      }
-    }
+    typeof RailMap.setBasemapTheme === "function";
+  transitionDocumentTheme(resolved, animate);
+  if (canUpdateMap) {
+    await RailMap.setBasemapTheme(resolved, { animate });
   }
 }
 
@@ -1607,6 +1582,10 @@ async function ensureRailSectionsLoaded() {
       }
       const data = await parseRailSectionsChunked(text);
       railSectionsGeoJson = data;
+      // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
+      // download promise would otherwise keep it resident for the whole session,
+      // which matters on memory-tight iPhones.
+      railSectionsTextReady = null;
       return data;
     })();
     // On any failure clear the memo so a later call retries cleanly.
@@ -1615,6 +1594,45 @@ async function ensureRailSectionsLoaded() {
     });
   }
   return railSectionsReady;
+}
+
+// One-time gate for everything the route SOLVER needs beyond the render path:
+// the parsed rail-sections dataset plus the persisted route-geometry cache
+// (IndexedDB). Boot no longer awaits either — on a static deploy every train
+// ships with precomputed geometry (see train-parts below), so the solver may
+// never run at all. The first genuine cache MISS awaits this instead, paying
+// the one-time load exactly when it is needed. Memoised; cleared on failure so
+// a later solve retries cleanly.
+let solverReadyPromise = null;
+function ensureSolverReady() {
+  if (!solverReadyPromise) {
+    solverReadyPromise = (async () => {
+      await ensureRailSectionsLoaded();
+      await warmRouteCacheFromIndexedDb();
+    })();
+    solverReadyPromise.catch(() => {
+      solverReadyPromise = null;
+    });
+  }
+  return solverReadyPromise;
+}
+
+// Render-path helper: a synchronous render found a train with no cached route
+// while rail-sections are still loading. Kick the solver warm-up and repaint
+// once, so the missing line appears without user interaction — and WITHOUT
+// running (or negative-caching!) a solve on data that isn't there yet.
+let solverRenderKickPending = false;
+function requestSolverThenRerender() {
+  if (solverRenderKickPending) return;
+  solverRenderKickPending = true;
+  ensureSolverReady()
+    .then(() => {
+      solverRenderKickPending = false;
+      renderTrainLayers();
+    })
+    .catch(() => {
+      solverRenderKickPending = false;
+    });
 }
 // =========================================================================
 //  §8.  Core mutable state & cached DOM element references
@@ -1722,8 +1740,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // downloaded AND parsed stations/default-trains/matched-* — serializing the
   // two multi-MB waterfalls and delaying first map paint by the whole first
   // phase. Both loaders resolve null on failure (never throw).
+  const initialMapTheme = resolveDisplayTheme();
+  const alternateMapTheme = initialMapTheme === "dark" ? "light" : "dark";
   const mapAssetsReady = Promise.all([
-    RailMap.loadBasemap(resolveDisplayTheme()),
+    RailMap.loadBasemap(initialMapTheme),
+    RailMap.loadBasemap(alternateMapTheme),
     // The 9.2 MB national-network package is HIDDEN by default (opt-in via the
     // 全部鐵路線 layer toggle). Deferred out of boot: RailMap.ensureNetwork()
     // fetches + builds + setData's it lazily the first time the user enables
@@ -1752,48 +1773,67 @@ document.addEventListener("DOMContentLoaded", async () => {
   fitJapanMainIslands();
   renderAll();
 
-  // Warm the persistent route-geometry cache (IndexedDB) BEFORE the progressive
-  // load runs its solves, so cached trains hit memory and the heavy route graph
-  // is never built. Best-effort and namespaced to the current rail network.
-  // The map is now on screen (initMap loaded the visible rail network + basemap
-  // without waiting on the 12 MB rail-sections graph source). Route solving —
-  // and the railHash that namespaces the IndexedDB route cache — both need
-  // rail-sections, so make sure it has finished loading before we warm the cache
-  // or solve. By now it has almost always arrived in parallel with initMap, so
-  // this rarely blocks.
-  await ensureRailSectionsLoaded();
-
-  await warmRouteCacheFromIndexedDb();
-
-  // Boot from the server-saved store; if nothing has been saved yet, fall
-  // back to the built-in defaults (and do not persist them until edited).
-  const savedStore = await loadTrainStoreFromServer();
-  await replaceTrainStoreFromStoreProgressive(
-    savedStore || getDefaultTrainStore(),
-    savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
+  // The train load no longer waits for the 12 MB rail-sections parse or the
+  // IndexedDB route-cache warm-up: on a static deploy every train arrives with
+  // its geometry precomputed (train-parts), and on the Node deployment the
+  // first cache MISS awaits ensureSolverReady() itself. Trains therefore start
+  // appearing right after the map paints.
+  const bootLoadOptions = {
+    persistEachStep: false,
+    finalPersist: false,
     // First run (no saved filter): default to the earliest date per spec 1.1.
     // Returning user: keep their restored selection if it is still valid.
-    {
-      persistEachStep: false,
-      finalPersist: false,
-      selectEarliestDate: !restoredSelectedDate,
-      // A freshly opened page starts as an overview. The user can choose a
-      // train deliberately instead of the progressive loader selecting one.
-      selectFirstTrain: false,
-    },
-  );
-  if (!savedStore) {
-    setStatus(
-      els.importStatus,
-      I18N.t("status.noSavedStore"),
-      "warn",
+    selectEarliestDate: !restoredSelectedDate,
+    // A freshly opened page starts as an overview. The user can choose a
+    // train deliberately instead of the progressive loader selecting one.
+    selectFirstTrain: false,
+  };
+  // Static deploy: prefer the per-train parts published by the deploy
+  // pipeline — fetched, seeded and DRAWN one train at a time, so the phone
+  // never parses one big store JSON and never runs the route solver on boot.
+  // The Node deployment keeps the live server store as its source of truth.
+  const partsManifest = HAS_BACKEND ? null : await loadTrainPartsManifest();
+  let partsLoadedCount = 0;
+  if (partsManifest) {
+    const partsResult = await replaceTrainStoreFromPartsProgressive(
+      partsManifest,
+      I18N.t("src.serverStore"),
+      bootLoadOptions,
     );
+    partsLoadedCount = partsResult.count;
+  }
+  // No parts published — or the parts load came up empty (e.g. every part
+  // fetch failed against a mid-deploy site): boot from the whole-store path.
+  if (!partsLoadedCount) {
+    // Boot from the server-saved store; if nothing has been saved yet, fall
+    // back to the built-in defaults (and do not persist them until edited).
+    const savedStore = await loadTrainStoreFromServer();
+    await replaceTrainStoreFromStoreProgressive(
+      savedStore || getDefaultTrainStore(),
+      savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
+      bootLoadOptions,
+    );
+    if (!savedStore) {
+      setStatus(
+        els.importStatus,
+        I18N.t("status.noSavedStore"),
+        "warn",
+      );
+    }
   }
 
-  // Warm up the heavy N02 routing graph in the background so the first local
-  // JSON open / import doesn't pay that one-time build cost synchronously
-  // (which would freeze the UI mid-open).
-  scheduleRouteGraphPrebuild();
+  // Warm the solver stack in the background — rail-sections (which the mileage
+  // stats panel needs anyway), the persisted route-geometry cache and the
+  // lightweight spatial index — so the first edit / local JSON open doesn't
+  // pay those one-time costs synchronously. Never blocks or fails the boot.
+  ensureSolverReady()
+    .then(() => scheduleRouteGraphPrebuild())
+    .catch((err) =>
+      console.warn(
+        "Background solver warm-up failed; it will retry before the first solve.",
+        err,
+      ),
+    );
 
   // Listen for store changes pushed by the server (another tab's edit, or an
   // AI agent calling /api/agent/import) and live-reload the map so the new
@@ -1906,6 +1946,10 @@ async function handleExternalStoreChange(detail) {
 // first on-demand regional solve from paying the index build synchronously.
 function scheduleRouteGraphPrebuild() {
   const prebuild = () => {
+    // Rail-sections may still be loading (boot no longer awaits it). Skip —
+    // the index is built lazily by the first solve — rather than memoising an
+    // EMPTY spatial index that would make every later solve come up dry.
+    if (!railSectionsGeoJson) return;
     try {
       getRailSectionSpatialIndex();
     } catch (err) {
@@ -2046,7 +2090,9 @@ async function buildStationIndexesSliced(collection) {
     });
     if (code) nameByCode.set(String(code), name);
     if ((i & 1023) === 1023 && now() - t0 > 12) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // _statsYield, not setTimeout(0): exempt from the >=1 s background-tab
+      // timer clamp, so a boot in a hidden tab isn't stretched by seconds.
+      await _statsYield();
       t0 = now();
     }
   }
@@ -2350,6 +2396,13 @@ async function idbDeleteValue(key) {
 let railContentHashCache = null;
 function getRailContentHash() {
   if (railContentHashCache) return railContentHashCache;
+  // Guard against namespacing the persistent route cache by a hash of ZERO
+  // features: every caller runs after ensureSolverReady(), but if one ever
+  // slips in early, failing loud beats silently caching under a bogus key.
+  if (!railSectionsGeoJson)
+    throw new Error(
+      "rail-sections not loaded yet; await ensureSolverReady() before touching the route cache.",
+    );
   const feats = (railSectionsGeoJson && railSectionsGeoJson.features) || [];
   // Cheap deterministic content signature (hashing the full 12MB text every
   // boot would be wasteful): feature count + a sampled coordinate sweep.
@@ -2603,12 +2656,18 @@ function resetTrainStoreForProgressiveLoad() {
 // stays O(N) and the page keeps responding while lines appear progressively.
 // A single authoritative renderAll() at the end re-renders with the correct
 // cross-train overlap offsets and refreshes the date bar / export textarea.
+// `source` is either a plain array of raw trains, or an async part source
+// ({ total, get(index) → Promise<rawTrain|null> }) that fetches one train per
+// network request (see makeTrainPartsSource). A null from a source means that
+// part could not be fetched/validated — the loop skips it and keeps loading
+// the rest instead of aborting the whole boot on one flaky mobile request.
 async function runProgressiveAppend(
-  trains,
+  source,
   { persistEachStep = true, onProgress, fallbackDate = null, finalRender = true } = {},
 ) {
+  const fromArray = Array.isArray(source);
   const appendedIds = [];
-  const total = trains.length;
+  const total = fromArray ? source.length : source.total;
   // Time-budget chunked scheduling. Keep processing trains until ~FRAME_BUDGET_MS
   // of work has accumulated, THEN yield one frame — instead of paying a whole
   // frame per train (which made N trains cost >= N frames regardless of how
@@ -2636,7 +2695,9 @@ async function runProgressiveAppend(
   await waitForImportPaint();
   frameStart = now();
   for (let index = 0; index < total; index += 1) {
-    const id = appendImportedTrain(trains[index], fallbackDate);
+    const rawTrain = fromArray ? source[index] : await source.get(index);
+    if (rawTrain == null) continue; // unfetchable part: already warned, keep going
+    const id = appendImportedTrain(rawTrain, fallbackDate);
     appendedIds.push(id);
 
     const appendedTrain = getTrain(id);
@@ -2829,6 +2890,166 @@ async function replaceTrainStoreFromStoreProgressive(
     importInProgress = false;
     // If a server-side store change arrived mid-import, reconcile it now
     // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-train parts boot (static deploys). The deploy pipeline runs the route
+// solver OFFLINE (app/scripts/precompute-train-parts.mjs) and publishes the
+// store as api/train-parts/: a manifest plus one part-NNN.json per train, each
+// carrying the raw train AND its solved route geometry keyed by the exact
+// cacheKey prepareTrainRouteSolve() computes. Boot fetches the parts one train
+// at a time, seeds the runtime route cache, appends and draws that train, then
+// moves to the next — so the phone never parses one big store JSON, never
+// builds a route graph and never runs Dijkstra during the initial load (the
+// on-device cold solve of ~1,100 sections is what crashed iPhone Safari).
+// A stale part (train edited without regenerating parts) just misses the cache
+// and falls back to the normal streaming solve for that one train.
+// ---------------------------------------------------------------------------
+async function loadTrainPartsManifest() {
+  try {
+    const manifest = await fetchJson("train-parts/manifest");
+    if (
+      !manifest ||
+      manifest.format !== 1 ||
+      !Array.isArray(manifest.parts) ||
+      !manifest.parts.length ||
+      !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
+    )
+      return null;
+    return manifest;
+  } catch (err) {
+    // No parts published (or unreachable): fall back to the whole-store load.
+    return null;
+  }
+}
+
+// Seed the runtime route cache from one part's precomputed solve so the
+// subsequent warm-up is a pure cache hit. Safe by construction: a mismatched
+// cache_key is simply never looked up, and a known-unsolvable train seeds the
+// negative cache so the doomed graph build is skipped exactly as if this
+// session had already solved (and failed) it.
+function seedRouteCacheFromPart(part) {
+  const route = part && part.route;
+  if (!route || typeof route.cache_key !== "string" || !route.cache_key) return;
+  if (route.unsolvable === true) {
+    runtimeRouteNegativeCache.add(route.cache_key);
+    return;
+  }
+  if (
+    Array.isArray(route.features) &&
+    route.features.length &&
+    !runtimeRouteCache.has(route.cache_key)
+  )
+    runtimeRouteCache.set(route.cache_key, route.features);
+}
+
+// Async train source over the published parts: fetches ONE train per request,
+// keeping a small window of fetches in flight ahead of the append cursor so
+// the per-file network latency overlaps with append/draw work instead of
+// serialising 100+ round-trips. Each part is retried once and then skipped
+// (returns null) so a single flaky mobile request can't abort the whole boot.
+function makeTrainPartsSource(manifest) {
+  const names = manifest.parts;
+  const PREFETCH_WINDOW = 4;
+  const inflight = new Map(); // index -> Promise<part|null>
+  const fetchPart = (index) => {
+    let pending = inflight.get(index);
+    if (!pending) {
+      pending = (async () => {
+        const partPath = `train-parts/${names[index]}`;
+        try {
+          return await fetchJson(partPath);
+        } catch (err) {
+          try {
+            return await fetchJson(partPath); // one retry for transient failures
+          } catch (retryErr) {
+            console.warn(
+              `Train part ${names[index]} failed to load; skipping this train.`,
+              retryErr,
+            );
+            return null;
+          }
+        }
+      })();
+      inflight.set(index, pending);
+    }
+    return pending;
+  };
+  return {
+    total: names.length,
+    async get(index) {
+      const last = Math.min(index + PREFETCH_WINDOW, names.length - 1);
+      for (let ahead = index; ahead <= last; ahead += 1) fetchPart(ahead);
+      const part = await fetchPart(index);
+      inflight.delete(index); // consumed: let the part JSON be collected
+      if (!part || part.format !== 1 || !part.train) {
+        if (part) console.warn(`Train part ${names[index]} has an unexpected shape; skipping.`);
+        return null;
+      }
+      seedRouteCacheFromPart(part);
+      return part.train;
+    },
+  };
+}
+
+// "Replace" progressive load over the published per-train parts — the static
+// deploy's counterpart of replaceTrainStoreFromStoreProgressive, sharing the
+// same reset/append/finalize machinery and options.
+async function replaceTrainStoreFromPartsProgressive(
+  manifest,
+  sourceLabel = "JSON",
+  options = {},
+) {
+  if (importInProgress) {
+    console.warn(
+      "A progressive load/import is already running; ignoring concurrent replaceTrainStoreFromPartsProgressive.",
+    );
+    return { count: 0, ids: [] };
+  }
+  importInProgress = true;
+  try {
+    const source = makeTrainPartsSource(manifest);
+    const total = source.total;
+
+    const persistEachStep = Boolean(options.persistEachStep);
+    const finalPersist = options.finalPersist !== false;
+    const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const selectFirstTrain = options.selectFirstTrain !== false;
+
+    resetTrainStoreForProgressiveLoad();
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
+
+    const appendedIds = await runProgressiveAppend(source, {
+      persistEachStep,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns; skip the duplicate authoritative repaint.
+      finalRender: false,
+      onProgress: ({ count, total: t, id }) => {
+        setImportProgress(
+          count,
+          t,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
+        );
+      },
+    });
+
+    finalizeProgressiveLoad(appendedIds, {
+      finalPersist,
+      selectEarliestDate,
+      selectFirstTrain,
+    });
+    const skipped = total - appendedIds.length;
+    setImportProgress(total, total, I18N.t("prog.done", { count: appendedIds.length }));
+    setStatus(
+      els.importStatus,
+      I18N.t("status.restoredAll", { label: sourceLabel, total: appendedIds.length }),
+      skipped ? "warn" : "ok",
+    );
+    return { count: appendedIds.length, ids: appendedIds };
+  } finally {
+    importInProgress = false;
     drainPendingLiveReload();
   }
 }
@@ -3349,7 +3570,11 @@ function waitForImportPaint() {
       requestAnimationFrame(() => setTimeout(done, 0));
     }
     const hidden = typeof document !== "undefined" && document.hidden;
-    setTimeout(done, hidden ? 0 : 100);
+    // Hidden tab: rAF is suspended AND setTimeout(0) is clamped to >= 1 s, so
+    // drive progress with an unthrottled macrotask yield instead — a 119-train
+    // load in a background tab stays seconds, not minutes.
+    if (hidden) _statsYield().then(done);
+    else setTimeout(done, 100);
   });
 }
 
@@ -3786,12 +4011,19 @@ async function initMap(mapAssetsReady) {
   // parallel (pre-started at boot, before the /api datasets); either may be
   // null (source unavailable) — the style builder degrades the same way railprint does
   // (plain background / no network overlay).
-  const [basemap, network] = await (mapAssetsReady ||
-    Promise.all([RailMap.loadBasemap(), Promise.resolve(null)]));
+  const theme = resolveDisplayTheme();
+  const alternateTheme = theme === "dark" ? "light" : "dark";
+  const [basemap, alternateBasemap, network] = await (mapAssetsReady ||
+    Promise.all([
+      RailMap.loadBasemap(theme),
+      RailMap.loadBasemap(alternateTheme),
+      Promise.resolve(null),
+    ]));
   const style = RailMap.buildBaseStyle({
     basemap,
+    alternateBasemap,
     network,
-    theme: resolveDisplayTheme(),
+    theme,
     fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
     // Pass-through dot LOD: the numerous white dots only draw from this zoom
     // (layer minzoom — no marker rebuild when the view crosses it).
@@ -3828,6 +4060,10 @@ async function initMap(mapAssetsReady) {
     // Snapping labels in (no 200ms crossfade) lets _triggerRenderFrame quiesce.
     fadeDuration: 0,
   });
+  // The drawer overlays a fixed-size WebGL viewport. Camera padding keeps the
+  // initial view centred in the uncovered area without resizing or distorting
+  // the canvas.
+  applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
   if (map.touchZoomRotate && map.touchZoomRotate.disableRotation)
     map.touchZoomRotate.disableRotation();
   map.addControl(
@@ -3861,14 +4097,15 @@ async function initMap(mapAssetsReady) {
     },
     basemap ? basemap.layers.map((l) => l.id) : [],
     basemap ? Object.keys(basemap.sources) : [],
-    resolveDisplayTheme(),
+    theme,
+    style.__railMapBasemapStacks,
   );
   // Selected-train width boost lives in the SEL layer's paint expression
   // (records stay selection-independent — picking a train rebuilds nothing).
   RailMap.setFocusBoost(DISPLAY.focusBoost);
   RailMap.setFitCurvesVisible(DISPLAY.showFitCurves);
   RailMap.setHoverRegionsVisible(DISPLAY.showHoverRegions);
-  buildMapLayersControl(Boolean(basemap));
+  buildMapLayersControl(Boolean(basemap || alternateBasemap));
   buildMapInfoControl();
 
   // Online basemap tile failures degrade to the plain background — never fatal.
@@ -4049,8 +4286,9 @@ function handleDeckRouteClick(info) {
 const SIDEBAR_VISIBILITY_KEY = "n02-train-manager-sidebar-visible-v1";
 let sidebarVisible = true;
 let sidebarToggleReady = false;
-let sidebarMapResizeRaf = null;
-let sidebarMapResizeUntil = 0;
+let sidebarMapPaddingRaf = null;
+let sidebarPendingMapSize = null;
+let sidebarWindowResizeTimer = null;
 let sidebarDragState = null;
 let suppressSidebarClick = false;
 
@@ -4059,37 +4297,76 @@ function sidebarUsesVerticalDrag() {
 }
 
 function sidebarFullSize() {
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) {
+    const rect = sidebar.getBoundingClientRect();
+    const measured = sidebarUsesVerticalDrag() ? rect.height : rect.width;
+    if (measured > 0) return measured;
+  }
   return sidebarUsesVerticalDrag()
     ? Math.max(1, window.innerHeight * 0.58)
     : 480;
 }
 
-function keepMapSizedDuringSidebarMotion(durationMs = 0) {
-  sidebarMapResizeUntil = Math.max(
-    sidebarMapResizeUntil,
-    performance.now() + Math.max(0, durationMs),
-  );
-  if (sidebarMapResizeRaf) return;
-  let lastResize = 0;
-  const step = () => {
-    sidebarMapResizeRaf = null;
-    const now = performance.now();
-    const running = now < sidebarMapResizeUntil;
-    // map.resize() reallocates the WebGL canvas backing store — expensive on
-    // memory-constrained phones. Cap it to ~30fps during the 320ms drawer slide
-    // (was every frame) and always finish with one authoritative resize once the
-    // motion settles, so the map still tracks the sliding container smoothly.
-    if (
-      (!running || now - lastResize >= 30) &&
-      map &&
-      typeof map.resize === "function"
-    ) {
-      map.resize();
-      lastResize = now;
-    }
-    if (running) sidebarMapResizeRaf = requestAnimationFrame(step);
+function sidebarViewportPadding(size = sidebarVisible ? sidebarFullSize() : 0) {
+  const safeSize = Math.max(0, Number(size) || 0);
+  return sidebarUsesVerticalDrag()
+    ? { top: 0, right: 0, bottom: safeSize, left: 0 }
+    : { top: 0, right: 0, bottom: 0, left: safeSize };
+}
+
+function mapPaddingWithSidebar(basePadding = 0) {
+  const base = Math.max(0, Number(basePadding) || 0);
+  const currentSize = sidebarDragState
+    ? sidebarDragState.currentSize
+    : sidebarVisible
+      ? sidebarFullSize()
+      : 0;
+  const sidebarPadding = sidebarViewportPadding(currentSize);
+  return {
+    top: sidebarPadding.top + base,
+    right: sidebarPadding.right + base,
+    bottom: sidebarPadding.bottom + base,
+    left: sidebarPadding.left + base,
   };
-  sidebarMapResizeRaf = requestAnimationFrame(step);
+}
+
+function applySidebarMapPadding(size, durationMs = 0) {
+  if (!map) return;
+  const padding = sidebarViewportPadding(size);
+  const duration =
+    REDUCED_MOTION_MEDIA.matches ? 0 : Math.max(0, Number(durationMs) || 0);
+  if (duration && typeof map.easeTo === "function") {
+    map.easeTo({
+      padding,
+      duration,
+      easing: (t) => 1 - Math.pow(1 - t, 3),
+      essential: true,
+    });
+  } else if (typeof map.setPadding === "function") {
+    map.setPadding(padding);
+  } else if (typeof map.jumpTo === "function") {
+    map.jumpTo({ padding });
+  }
+}
+
+function scheduleSidebarMapPadding(size) {
+  sidebarPendingMapSize = size;
+  if (sidebarMapPaddingRaf) return;
+  sidebarMapPaddingRaf = requestAnimationFrame(() => {
+    sidebarMapPaddingRaf = null;
+    const nextSize = sidebarPendingMapSize;
+    sidebarPendingMapSize = null;
+    applySidebarMapPadding(nextSize, 0);
+  });
+}
+
+function cancelScheduledSidebarMapPadding() {
+  if (sidebarMapPaddingRaf) {
+    cancelAnimationFrame(sidebarMapPaddingRaf);
+    sidebarMapPaddingRaf = null;
+  }
+  sidebarPendingMapSize = null;
 }
 
 function updateSidebarToggleLabel() {
@@ -4116,7 +4393,11 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
       localStorage.setItem(SIDEBAR_VISIBILITY_KEY, sidebarVisible ? "1" : "0");
     } catch (_) {}
   }
-  keepMapSizedDuringSidebarMotion(animate ? 380 : 0);
+  cancelScheduledSidebarMapPadding();
+  applySidebarMapPadding(
+    sidebarVisible ? sidebarFullSize() : 0,
+    animate ? 320 : 0,
+  );
 }
 
 function setupSidebarToggle() {
@@ -4176,7 +4457,7 @@ function setupSidebarToggle() {
       Math.min(drag.fullSize, drag.startSize + rawDelta),
     );
     app.style.setProperty("--sidebar-size", `${drag.currentSize}px`);
-    keepMapSizedDuringSidebarMotion(40);
+    scheduleSidebarMapPadding(drag.currentSize);
   });
 
   const finishDrag = (event, cancelled = false) => {
@@ -4199,27 +4480,25 @@ function setupSidebarToggle() {
       setSidebarVisible(nextVisible);
     } else {
       app.style.removeProperty("--sidebar-size");
-      keepMapSizedDuringSidebarMotion(340);
+      cancelScheduledSidebarMapPadding();
+      applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
     }
   };
   tab.addEventListener("pointerup", (event) => finishDrag(event));
   tab.addEventListener("pointercancel", (event) => finishDrag(event, true));
 
-  app.addEventListener("transitionend", (event) => {
-    if (
-      event.propertyName === "grid-template-columns" ||
-      event.propertyName === "grid-template-rows"
-    ) {
-      keepMapSizedDuringSidebarMotion();
-    }
-  });
   window.addEventListener("resize", () => {
     if (sidebarDragState) {
       sidebarDragState = null;
       app.classList.remove("sidebar-dragging");
       app.style.removeProperty("--sidebar-size");
     }
-    keepMapSizedDuringSidebarMotion(80);
+    clearTimeout(sidebarWindowResizeTimer);
+    sidebarWindowResizeTimer = setTimeout(() => {
+      sidebarWindowResizeTimer = null;
+      if (map && typeof map.resize === "function") map.resize();
+      applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
+    }, 80);
   });
 }
 
@@ -4984,7 +5263,25 @@ function formatStatPct(pct) {
 // The UI recompute path: never blocks more than ~12 ms at a time. A newer
 // schedule cancels an in-flight job via the token.
 let _statsJobToken = 0;
-const _statsYield = () => new Promise((resolve) => setTimeout(resolve, 0));
+// Yield one macrotask WITHOUT the background-tab timer clamp. setTimeout(0) is
+// throttled to >= 1 s in hidden tabs, which stretched the chunked rail-sections
+// parse (~85 yields) and the stats edge-index build (~170 yields) to MINUTES
+// whenever the page loaded in a background tab or the user switched apps
+// mid-load — extremely common on iPhone. MessageChannel messages are ordinary
+// macrotasks (paint and input still interleave between slices) but are exempt
+// from timer throttling, so hidden-tab loads run at full speed.
+const _statsYield =
+  typeof MessageChannel === "function"
+    ? () =>
+        new Promise((resolve) => {
+          const channel = new MessageChannel();
+          channel.port1.onmessage = () => {
+            channel.port1.close();
+            resolve();
+          };
+          channel.port2.postMessage(null);
+        })
+    : () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // The sliced index build is NEVER cancelled — it runs once, shared by every
 // job via ensureStatsEdgeIndexAsync(). (An earlier version aborted on job
@@ -8917,6 +9214,14 @@ function generateMatchedRouteFeaturesForTrain(train) {
   const prep = prepareTrainRouteSolve(train);
   if (prep.done) return prep.result;
   if (importInProgress) return [];
+  // Rail-sections may still be loading in the background (boot no longer
+  // awaits it). Solving now would run Dijkstra over an EMPTY dataset and
+  // negative-cache the train as unsolvable — persistently. Skip this frame,
+  // kick the solver warm-up, and repaint once it is ready.
+  if (!railSectionsGeoJson) {
+    requestSolverThenRerender();
+    return [];
+  }
 
   const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
   const generated = [];
@@ -8941,7 +9246,15 @@ function generateMatchedRouteFeaturesForTrain(train) {
 // Writes the exact same runtime/negative caches + matched-routes features as the
 // synchronous solver, so the later render-time lookup is an untouched cache hit.
 async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
-  const prep = prepareTrainRouteSolve(train);
+  let prep = prepareTrainRouteSolve(train);
+  if (prep.done) return prep.result;
+
+  // Genuine cache miss: this is the first point that actually needs the
+  // solver, so pay the one-time rail-sections load + IndexedDB warm-up here
+  // (boot no longer blocks on either). The warm-up may itself satisfy this
+  // train, so re-check before running a fresh solve.
+  await ensureSolverReady();
+  prep = prepareTrainRouteSolve(train);
   if (prep.done) return prep.result;
 
   const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
@@ -9234,6 +9547,13 @@ function buildRouteGraphFromFeatures(features) {
 // regional subgraph proves insufficient — never eagerly at startup.
 function getRuntimeRouteGraph() {
   if (runtimeRouteGraph) return runtimeRouteGraph;
+  // Never memoise a graph built from missing data: with boot no longer
+  // awaiting rail-sections, a premature call here would permanently cache an
+  // EMPTY full-network graph and every solve would silently fail.
+  if (!railSectionsGeoJson)
+    throw new Error(
+      "rail-sections not loaded yet; await ensureSolverReady() before solving.",
+    );
   const graph = buildRouteGraphFromFeatures(
     (railSectionsGeoJson && railSectionsGeoJson.features) || [],
   );
@@ -9284,6 +9604,12 @@ function featureBbox(feature) {
 // references), built once, so regional builds avoid scanning all 22k features.
 function getRailSectionSpatialIndex() {
   if (railSectionSpatialIndex) return railSectionSpatialIndex;
+  // Same poisoning hazard as getRuntimeRouteGraph: memoising an index over
+  // zero features would make every regional solve come up empty forever.
+  if (!railSectionsGeoJson)
+    throw new Error(
+      "rail-sections not loaded yet; await ensureSolverReady() before solving.",
+    );
   const grid = new Map();
   const feats = (railSectionsGeoJson && railSectionsGeoJson.features) || [];
   feats.forEach((feature) => {
@@ -11344,10 +11670,11 @@ function smoothFitBounds(bounds, opts) {
   if (!map || !bounds) return;
   const { maxZoom = 12, padding = 90 } = opts || {};
   map.fitBounds(bounds, {
-    padding,
+    padding: mapPaddingWithSidebar(padding),
     maxZoom,
     duration: 800,
     essential: true,
+    retainPadding: false,
   });
 }
 
@@ -11393,8 +11720,9 @@ function toLngLatBounds(latLngBounds) {
 function fitJapanMainIslands() {
   if (!map) return;
   map.fitBounds(toLngLatBounds(JAPAN_MAIN_ISLANDS_BOUNDS), {
-    padding: 28,
+    padding: mapPaddingWithSidebar(28),
     duration: 0,
+    retainPadding: false,
   });
 }
 
