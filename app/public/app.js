@@ -1408,7 +1408,7 @@ const fetchJson = async (path) => {
 };
 // Same request semantics as fetchJson but returns the raw text WITHOUT the
 // atomic native JSON.parse. Used for rail-sections so its ~1.1 s parse can be
-// deferred and chunked (see parseRailSectionsChunked / ensureRailSectionsLoaded)
+// deferred and chunked (see parseFeatureCollectionChunked / ensureRailSectionsLoaded)
 // instead of blocking the main thread the instant the 12 MB body arrives.
 const fetchText = async (path) => {
   const res = await fetch(`${API_BASE}/${path}`);
@@ -1463,27 +1463,27 @@ async function loadAppData() {
     return null;
   });
 
-  // Block first paint only on the small, render-critical datasets. `stations`
-  // (3.3 MB / 456 KB gz) feeds the marker/station-resolution paths used by the
-  // very first render, so it stays in the blocking set.
-  [
-    stationsGeoJson,
-    defaultTrainStore,
-    matchedRoutesGeoJson,
-    matchedStopsGeoJson,
-  ] = await Promise.all([
-    fetchJson("stations"),
-    fetchJson("default-trains"),
-    fetchJson("matched-routes"),
-    fetchJson("matched-stops"),
-  ]);
+  // `stations` (3.3 MB / 456 KB gz) feeds the marker/station-resolution paths
+  // used by the very first render, so it blocks first paint — but its native
+  // JSON.parse is a single ~100-250 ms long task on iPhone Safari, the largest
+  // blocking parse left in the render path. DOWNLOAD it as text in parallel with
+  // the small datasets, then parse it in yielding chunks (same path as
+  // rail-sections) so it interleaves with paint/input instead of freezing.
+  const stationsTextReady = fetchText("stations");
+  [defaultTrainStore, matchedRoutesGeoJson, matchedStopsGeoJson] =
+    await Promise.all([
+      fetchJson("default-trains"),
+      fetchJson("matched-routes"),
+      fetchJson("matched-stops"),
+    ]);
+  stationsGeoJson = await parseFeatureCollectionChunked(await stationsTextReady);
 
   // Build the two station-resolution indexes in ~12 ms slices so this no
   // longer lands as one long synchronous task at the tail of boot Block 1
-  // (right after the native JSON.parse of stations.json). Still awaited here,
-  // so every downstream consumer (the first route solve, later imports, SSE
-  // reloads) sees a fully-built index exactly as before; the produced index
-  // contents are byte-for-byte identical to the old synchronous passes.
+  // (right after the chunked parse of stations). Still awaited here, so every
+  // downstream consumer (the first route solve, later imports, SSE reloads)
+  // sees a fully-built index exactly as before; the produced index contents are
+  // byte-for-byte identical to the old synchronous passes.
   await buildStationIndexesSliced(stationsGeoJson);
 
   const stationReadings = await stationReadingsReady;
@@ -1504,17 +1504,18 @@ async function loadAppData() {
 // Guarantee the rail-sections dataset is present before any route solve. Awaits
 // the background boot fetch; retries once if that fetch failed. Cheap and
 // idempotent once the data is resident.
-// Parse the ~12 MB rail-sections FeatureCollection WITHOUT one atomic ~1.1 s
-// JSON.parse. We locate the top-level "features" array and JSON.parse each
-// feature object on its own, yielding to the event loop every few ms. Each
-// per-feature parse is tiny, so the work becomes many short tasks the browser
-// can interleave with paint/input instead of a single main-thread freeze. Only
-// ".features" is read anywhere (verified), so the rebuilt {type, features} is
-// behaviourally identical to res.json() (top-level name/crs, which nothing
-// consumes, are dropped). Falls back to a native parse if the shape is
-// unexpected. Each feature is still parsed by native JSON.parse, so the feature
-// objects themselves are byte-for-byte identical to the old path.
-async function parseRailSectionsChunked(text) {
+// Parse a large GeoJSON FeatureCollection WITHOUT one atomic multi-hundred-ms
+// JSON.parse (rail-sections ~12 MB, stations ~3.3 MB). We locate the top-level
+// "features" array and JSON.parse each feature object on its own, yielding to
+// the event loop every few ms. Each per-feature parse is tiny, so the work
+// becomes many short tasks the browser can interleave with paint/input instead
+// of a single main-thread freeze. Only ".features" is read from either dataset
+// (verified), so the rebuilt {type, features} is behaviourally identical to
+// res.json() (top-level name/crs, which nothing consumes, are dropped). Falls
+// back to a native parse if the shape is unexpected. Each feature is still
+// parsed by native JSON.parse, so the feature objects are byte-for-byte
+// identical to the old path.
+async function parseFeatureCollectionChunked(text) {
   const n = text.length;
   const key = text.indexOf('"features"');
   let i = key === -1 ? -1 : text.indexOf("[", key);
@@ -1580,7 +1581,7 @@ async function ensureRailSectionsLoaded() {
         railSectionsTextReady = fetchText("rail-sections");
         text = await railSectionsTextReady;
       }
-      const data = await parseRailSectionsChunked(text);
+      const data = await parseFeatureCollectionChunked(text);
       railSectionsGeoJson = data;
       // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
       // download promise would otherwise keep it resident for the whole session,
@@ -1633,6 +1634,62 @@ function requestSolverThenRerender() {
     .catch(() => {
       solverRenderKickPending = false;
     });
+}
+
+// Set while a SINGLE train's route is being solved (sync or the async queue
+// below). It lifts the regional-graph cache to the larger transient budget for
+// the duration so a multi-region train doesn't evict-then-rebuild its own
+// regions mid-solve (see getRegionalRouteGraph).
+let _solveInProgress = false;
+
+// Off-thread solve queue. A cold route solve builds ~0.4 s regional graphs per
+// region — running it synchronously on a click/render froze the tab for ~2 s
+// ("selecting a rail is slow"). Instead we enqueue the train, solve it in the
+// background one section at a time (yielding to paint/input between sections),
+// and repaint once its geometry is cached. The train draws a beat later rather
+// than hanging the UI — the same deal the progressive import already makes.
+const _pendingRouteSolves = new Set();
+let _routeSolveDraining = false;
+async function drainPendingRouteSolves() {
+  if (_routeSolveDraining) return;
+  _routeSolveDraining = true;
+  _solveInProgress = true;
+  try {
+    let frameStart = performance.now();
+    const yieldIfNeeded = async () => {
+      if (performance.now() - frameStart < 12) return;
+      await waitForImportPaint();
+      frameStart = performance.now();
+    };
+    while (_pendingRouteSolves.size) {
+      const id = _pendingRouteSolves.values().next().value;
+      _pendingRouteSolves.delete(id);
+      const train = getTrain(id);
+      if (!train) continue;
+      try {
+        await warmRouteCacheForTrainStreaming(train, { yieldIfNeeded });
+        // Draw it incrementally as soon as it's solved (invalidates the
+        // signature-cached route items — which are geometry-independent — so the
+        // freshly-solved geometry is actually picked up) and shows progressively
+        // instead of all-at-once at the end.
+        appendTrainToLayers(train);
+      } catch (err) {
+        console.warn(`Background route solve failed for ${id}.`, err);
+      }
+    }
+  } finally {
+    _solveInProgress = false;
+    trimRegionalGraphCache(REGIONAL_GRAPH_NODE_BUDGET);
+    _routeSolveDraining = false;
+    // Repaint so the freshly-cached routes appear; markers follow the same
+    // signature so this is a cheap cache-hit render.
+    renderTrainLayers();
+  }
+}
+function requestTrainRouteSolve(train) {
+  if (!train || _pendingRouteSolves.has(train.id)) return;
+  _pendingRouteSolves.add(train.id);
+  drainPendingRouteSolves();
 }
 // =========================================================================
 //  §8.  Core mutable state & cached DOM element references
@@ -1822,18 +1879,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Warm the solver stack in the background — rail-sections (which the mileage
-  // stats panel needs anyway), the persisted route-geometry cache and the
-  // lightweight spatial index — so the first edit / local JSON open doesn't
-  // pay those one-time costs synchronously. Never blocks or fails the boot.
-  ensureSolverReady()
-    .then(() => scheduleRouteGraphPrebuild())
-    .catch((err) =>
-      console.warn(
-        "Background solver warm-up failed; it will retry before the first solve.",
-        err,
-      ),
-    );
+  // Warm the solver stack in the background — rail-sections, the persisted
+  // route-geometry cache and the lightweight spatial index — so the first
+  // edit / local JSON open doesn't pay those one-time costs synchronously.
+  //
+  // ONLY on the Node backend, where routes are solved on the client. On the
+  // static/parts deploy (the memory-tight iPhone target) every train boots with
+  // its geometry precomputed, so the solver is never touched unless a stale part
+  // misses the cache — and warmRouteCacheForTrainStreaming() awaits
+  // ensureSolverReady() itself at that point. Eagerly parsing the 12 MB
+  // rail-sections + hashing ~405k coordinates on boot there was pure memory/CPU
+  // pressure during the load window the parts system exists to protect. The
+  // mileage-stats panel lazy-loads rail-sections on first open (see
+  // runMileageStatsJob), so nothing else needs this eager warm-up either.
+  if (HAS_BACKEND) {
+    ensureSolverReady()
+      .then(() => scheduleRouteGraphPrebuild())
+      .catch((err) =>
+        console.warn(
+          "Background solver warm-up failed; it will retry before the first solve.",
+          err,
+        ),
+      );
+  }
 
   // Listen for store changes pushed by the server (another tab's edit, or an
   // AI agent calling /api/agent/import) and live-reload the map so the new
@@ -2047,19 +2115,6 @@ function stationLookupKeys(name, code) {
   return [...new Set(keys)];
 }
 
-function buildStationCandidatesIndex(collection) {
-  const index = new Map();
-  (collection.features || []).forEach((feature) => {
-    stationLookupKeys(stationName(feature), stationCode(feature)).forEach(
-      (key) => {
-        if (!index.has(key)) index.set(key, []);
-        index.get(key).push(feature);
-      },
-    );
-  });
-  return index;
-}
-
 // Async, frame-budget-sliced construction of BOTH station-resolution indexes
 // (the name/code candidate index and the code -> name map) in a single pass
 // over the feature list. Replaces the two synchronous O(N) loops that used to
@@ -2067,8 +2122,7 @@ function buildStationCandidatesIndex(collection) {
 // the browser (setTimeout 0) whenever the current slice has run ~12 ms, and
 // builds into local Maps that are atomically swapped into the module globals
 // only at the end, so no consumer can observe a half-built index mid-slice.
-// The results are identical to buildStationCandidatesIndex + the old
-// stationNameByCode loop.
+// Builds the name/code candidate index plus the code -> name map in one pass.
 async function buildStationIndexesSliced(collection) {
   const candidates = new Map();
   const nameByCode = new Map();
@@ -2839,9 +2893,13 @@ async function replaceTrainStoreFromStoreProgressive(
   }
   importInProgress = true;
   try {
-    const importedStore = parseImportedCanonicalStore(
-      JSON.stringify(store || { trains: [] }),
-    );
+    // `store` already arrived as a parsed object (server res.json() / defaults /
+    // SSE payload) and is discarded by every caller after this. The old
+    // JSON.stringify()+re-parse round-trip (a full serialize of the whole store
+    // on every boot AND every live reload) bought nothing: parseImportedCanonicalStore
+    // accepts an object directly, and the progressive append only READS from it
+    // (normalizeImportedTrain builds fresh objects — it never mutates the source).
+    const importedStore = parseImportedCanonicalStore(store || { trains: [] });
     const total = importedStore.trains.length;
     if (!total) {
       renderAll();
@@ -3058,7 +3116,22 @@ async function replaceTrainStoreFromPartsProgressive(
 //  §17.  Train CRUD (add / update / duplicate / delete / move / visibility)
 // =========================================================================
 
+// A progressive load/import (boot restore, local-file open, JSON import, SSE
+// live reload) OWNS trainStore while it streams trains in. The interactive edit
+// actions must not run mid-import: they reassign or splice trainStore while
+// runProgressiveAppend is still appending to it — yielding a mixed/partly
+// clobbered store — and their debounced autosave would PUT that PARTIAL store to
+// the server (which boot's finalPersist:false never corrects, so other tabs
+// would reload fewer trains than were actually loaded). Every mutating handler
+// funnels through this guard: while an import runs it no-ops with a brief hint.
+function importBusy() {
+  if (!importInProgress) return false;
+  if (els.importStatus) setStatus(els.importStatus, I18N.t("status.importBusy"), "warn");
+  return true;
+}
+
 function addTrain(train) {
+  if (importBusy()) return;
   const base = train || createBlankTrain();
   const candidate = clone(base);
   candidate.id = uniqueId(candidate.id || "LE");
@@ -3069,6 +3142,7 @@ function addTrain(train) {
 }
 
 function duplicateTrain(trainId) {
+  if (importBusy()) return;
   const train = getTrain(trainId);
   if (!train) return;
   const copy = clone(train);
@@ -3081,6 +3155,7 @@ function duplicateTrain(trainId) {
 }
 
 function deleteTrain(trainId) {
+  if (importBusy()) return;
   const index = trainStore.trains.findIndex((t) => t.id === trainId);
   if (index < 0) return;
   trainStore.trains.splice(index, 1);
@@ -3092,6 +3167,7 @@ function deleteTrain(trainId) {
 }
 
 function deleteAllTrains() {
+  if (importBusy()) return;
   trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
   selectedTrainId = null;
   focusedTrainId = null;
@@ -3099,6 +3175,7 @@ function deleteAllTrains() {
 }
 
 function toggleTrainVisibility(trainId) {
+  if (importBusy()) return;
   const train = getTrain(trainId);
   if (!train) return;
   train.visible = train.visible === false;
@@ -3114,6 +3191,7 @@ function toggleTrainVisibility(trainId) {
 }
 
 function moveTrain(trainId, direction) {
+  if (importBusy()) return;
   const index = trainStore.trains.findIndex((t) => t.id === trainId);
   const next = index + direction;
   if (index < 0 || next < 0 || next >= trainStore.trains.length) return;
@@ -3738,7 +3816,9 @@ function persistAndRender() {
 function buildMapLayersControl(hasBasemap) {
   const wrap = document.createElement("details");
   wrap.className = "map-layers-control";
-  wrap.open = window.matchMedia("(min-width: 901px)").matches;
+  // Collapsed by default on every screen size — it opens on click/tap. (It used
+  // to auto-open on desktop, covering the top-right of the map on load.)
+  wrap.open = false;
 
   const summary = document.createElement("summary");
   summary.className = "map-layers-summary";
@@ -4116,6 +4196,17 @@ async function initMap(mapAssetsReady) {
     console.warn("[map]", msg || e);
   });
 
+  // The OpenFreeMap Dark style's landcover_wood layer uses a "wood-pattern"
+  // fill image that its sprite doesn't ship, so MapLibre logged a "could not be
+  // loaded" error for EVERY tile that contains woodland (hundreds of lines of
+  // console spam). Supply a 1×1 transparent pixel for any missing style image:
+  // the fill falls back to its base color and the console stays clean.
+  map.on("styleimagemissing", (e) => {
+    const id = e && e.id;
+    if (!id || map.hasImage(id)) return;
+    map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
+  });
+
   // Marker LOD is handled by the pass layers' minzoom (no re-render); zoom
   // only re-layouts the endpoint labels (their overlap layout is pixel-space).
   map.on("zoomend", () => {
@@ -4313,22 +4404,6 @@ function sidebarViewportPadding(size = sidebarVisible ? sidebarFullSize() : 0) {
   return sidebarUsesVerticalDrag()
     ? { top: 0, right: 0, bottom: safeSize, left: 0 }
     : { top: 0, right: 0, bottom: 0, left: safeSize };
-}
-
-function mapPaddingWithSidebar(basePadding = 0) {
-  const base = Math.max(0, Number(basePadding) || 0);
-  const currentSize = sidebarDragState
-    ? sidebarDragState.currentSize
-    : sidebarVisible
-      ? sidebarFullSize()
-      : 0;
-  const sidebarPadding = sidebarViewportPadding(currentSize);
-  return {
-    top: sidebarPadding.top + base,
-    right: sidebarPadding.right + base,
-    bottom: sidebarPadding.bottom + base,
-    left: sidebarPadding.left + base,
-  };
 }
 
 function applySidebarMapPadding(size, durationMs = 0) {
@@ -4531,6 +4606,13 @@ function setActiveWorkspaceTab(tabId, { updateHash = true } = {}) {
     history.replaceState(null, "", "#" + tabId);
   const sidebar = document.getElementById("sidebar");
   if (sidebar) sidebar.scrollTop = 0;
+  // Compute the mileage stats lazily, the first time (and only when) the 統計
+  // tab is actually opened — scheduleMileageStats() otherwise skips while the
+  // panel is hidden, so the 12 MB rail-sections parse it needs never lands on
+  // the boot path. Guarded by typeof because setActiveWorkspaceTab() also runs
+  // at module-parse time, before scheduleMileageStats is defined.
+  if (tabId === "mileage-stats" && typeof scheduleMileageStats === "function")
+    scheduleMileageStats();
 }
 
 let _workspaceTabsReady = false;
@@ -4577,8 +4659,9 @@ function bindEvents() {
       });
       updateFitCurveRebuildButton();
       updateFocusZoomButton();
+      // renderAll() -> renderTrainLayers -> renderTrainMarkers already re-runs
+      // updateEndpointLabels(), so no separate call is needed here.
       renderAll();
-      updateEndpointLabels();
     });
   }
   document
@@ -4726,6 +4809,7 @@ function bindEvents() {
       downloadText("index.html", buildPortableHtml(), "text/html"),
     );
   document.getElementById("reset-defaults").addEventListener("click", () => {
+    if (importBusy()) return;
     trainStore = getDefaultTrainStore();
     selectedTrainId = null;
     focusedTrainId = null;
@@ -4735,6 +4819,7 @@ function bindEvents() {
   document
     .getElementById("clear-storage")
     .addEventListener("click", async () => {
+      if (importBusy()) return;
       try {
         // Cancel any pending autosave so it can't immediately re-create the file.
         clearTimeout(serverStoreSaveTimer);
@@ -4904,39 +4989,6 @@ function statsEdgeKey(a, b) {
 // Built once from rail-sections (the untouched N02-25 data) and reused for
 // every stats refresh: edge key -> index into parallel km/mask arrays.
 let _statsEdgeIndex = null;
-function buildStatsEdgeIndex() {
-  if (_statsEdgeIndex || !railSectionsGeoJson) return _statsEdgeIndex;
-  const map = new Map();
-  const kmArr = [];
-  const maskArr = [];
-  for (const f of railSectionsGeoJson.features) {
-    const coords = f.geometry && f.geometry.coordinates;
-    if (!Array.isArray(coords)) continue;
-    const mask = classifyN02SectionMask(f.properties || {});
-    for (let i = 1; i < coords.length; i += 1) {
-      const a = coords[i - 1];
-      const b = coords[i];
-      const key = statsEdgeKey(a, b);
-      const idx = map.get(key);
-      if (idx === undefined) {
-        map.set(key, kmArr.length);
-        kmArr.push(statsEdgeKm(a[0], a[1], b[0], b[1]));
-        maskArr.push(mask);
-      } else {
-        maskArr[idx] |= mask; // shared track: union the categories
-      }
-    }
-  }
-  const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
-  for (let i = 0; i < kmArr.length; i += 1) {
-    totals.all += kmArr[i];
-    for (const c of STAT_CATEGORIES)
-      if (maskArr[i] & c.mask)
-        totals.byMask.set(c.mask, totals.byMask.get(c.mask) + kmArr[i]);
-  }
-  _statsEdgeIndex = { map, km: kmArr, mask: maskArr, totals };
-  return _statsEdgeIndex;
-}
 
 // ── Per-train ridden-edge cache ─────────────────────────────────────────────
 // Walking every train's route geometry cost ~430 ms with a full store — far
@@ -5160,17 +5212,6 @@ function buildMileageStatsView(idx, trains, entries) {
   return { overall, daily };
 }
 
-// Synchronous compute (manual/testing use; the UI path runs the time-sliced
-// job below instead so it never blocks an interaction).
-function computeMileageStats() {
-  const idx = buildStatsEdgeIndex();
-  if (!idx) return null;
-  pruneStatsTrainCache();
-  const entries = (trainStore.trains || []).map((t) =>
-    collectTrainStatsEntry(t, idx),
-  );
-  return aggregateMileageStats(idx, entries);
-}
 
 // ── Ridden-line category display filter (map layers control) ────────────────
 // Four checkboxes (新幹線 / JR在來線 / 地下鐵 / 私鐵) hide/show RIDDEN route
@@ -5370,16 +5411,6 @@ async function runMileageStatsJob() {
   renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
 }
 
-// Synchronous render (manual/testing): computes in one go, then paints.
-function renderMileageStats() {
-  const idx = buildStatsEdgeIndex();
-  if (!idx) return;
-  pruneStatsTrainCache();
-  const trains = trainStore.trains || [];
-  const entries = trains.map((t) => collectTrainStatsEntry(t, idx));
-  renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
-}
-
 function renderMileageStatsDom(view) {
   const daily = document.getElementById("stats-daily");
   const headline = document.getElementById("stats-headline");
@@ -5473,8 +5504,19 @@ function serviceRowsHtml(services) {
 // Debounced: renderAll fires on every store mutation; the time-sliced job
 // re-runs once things settle. Per-train caching means an unchanged train
 // costs one signature check, so a full refresh is a few ms of merged Sets.
+// The mileage-stats panel lives entirely inside its own workspace tab. When
+// that tab is hidden there is nothing to show, so the job is skipped — which is
+// what keeps the 12 MB rail-sections parse (runMileageStatsJob lazy-loads it)
+// OFF the boot path on the static/iPhone deploy, whose default tab is the 列車
+// list. setActiveWorkspaceTab() re-schedules the moment the 統計 tab is opened,
+// and renderAll() keeps it live while it stays open.
+function mileageStatsTabActive() {
+  const card = document.getElementById("mileage-stats");
+  return Boolean(card) && !card.classList.contains("tab-hidden");
+}
 let _statsRenderTimer = null;
 function scheduleMileageStats() {
+  if (!mileageStatsTabActive()) return;
   if (_statsRenderTimer) clearTimeout(_statsRenderTimer);
   _statsRenderTimer = setTimeout(() => {
     _statsRenderTimer = null;
@@ -5821,7 +5863,7 @@ function fitDateBounds(date) {
   });
   const bounds = featureCollectionBounds(features);
   if (bounds) {
-    smoothFitBounds(bounds, { padding: 90, maxZoom: 11 });
+    smoothFitBounds(bounds, { maxZoom: 11 });
     return;
   }
   const points = [];
@@ -5832,7 +5874,7 @@ function fitDateBounds(date) {
     }),
   );
   const ptBounds = latLngPointsBounds(points);
-  if (ptBounds) smoothFitBounds(ptBounds, { padding: 90, maxZoom: 11 });
+  if (ptBounds) smoothFitBounds(ptBounds, { maxZoom: 11 });
 }
 
 // Render minutes-from-midnight back to "HH:mm" (wrapping next-day times).
@@ -6181,6 +6223,7 @@ function renderStopsTable(train) {
 }
 
 function saveSelectedFields() {
+  if (importBusy()) return;
   const train = getTrain();
   if (!train) return;
   const oldId = train.id;
@@ -6211,6 +6254,7 @@ function saveSelectedFields() {
 }
 
 function addStopToSelected() {
+  if (importBusy()) return;
   const train = getTrain();
   if (!train) return;
   train.stops = train.stops || [];
@@ -6317,6 +6361,7 @@ function applyStationMetadata(stop, train) {
 }
 
 function mutateStop(index, action) {
+  if (importBusy()) return;
   const train = getTrain();
   if (!train || !train.stops?.[index]) return;
   if (action === "delete") train.stops.splice(index, 1);
@@ -6338,6 +6383,7 @@ function mutateStop(index, action) {
 // =========================================================================
 
 function rebuildSelectedRoute() {
+  if (importBusy()) return;
   const train = getTrain();
   if (!train) return;
   const stops = train.stops || [];
@@ -9204,12 +9250,16 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
   return concrete;
 }
 
-// Synchronous solve — used by the render path (getMatchedRouteFeatures), where
-// the train has almost always been pre-warmed so prepareTrainRouteSolve returns
-// a cache hit. During a progressive load (importInProgress) the streaming
-// warm-up owns solving, so a render-time cache MISS deliberately returns []
-// here instead of kicking off a multi-section blocking solve on the render
-// thread — the train draws a frame later, once the warm-up has cached it.
+// Render-path route lookup. The train has almost always been pre-warmed, so
+// prepareTrainRouteSolve() returns a cache hit. On a genuine cache MISS this
+// NEVER solves synchronously on the render/click thread: a cold solve builds
+// ~0.4 s regional graphs per region (~2 s total for a long train) and would
+// freeze the tab — the reported "selecting a rail is slow". Instead it returns
+// [] and hands the train to the background solve queue, which solves it one
+// section at a time (yielding to paint/input) and repaints when done. During a
+// progressive load the streaming warm-up already owns solving, so we simply
+// defer to it. getMatchedRouteFeatures() falls back to any precomputed
+// matched-routes geometry meanwhile, so covered trains still draw instantly.
 function generateMatchedRouteFeaturesForTrain(train) {
   const prep = prepareTrainRouteSolve(train);
   if (prep.done) return prep.result;
@@ -9222,21 +9272,9 @@ function generateMatchedRouteFeaturesForTrain(train) {
     requestSolverThenRerender();
     return [];
   }
-
-  const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
-  const generated = [];
-  const warnings = [];
-  routeSections.forEach((section, segmentIndex) => {
-    solveTrainRouteSection(
-      train,
-      section,
-      segmentIndex,
-      allowedCodes,
-      generated,
-      warnings,
-    );
-  });
-  return commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings);
+  // Cold miss with data ready: solve OFF the render thread, draw a beat later.
+  requestTrainRouteSolve(train);
+  return [];
 }
 
 // Streaming solve — used by the progressive load/import warm-up. Solves the
@@ -9559,9 +9597,6 @@ function getRuntimeRouteGraph() {
   );
   addStationTransferConnectorEdges(graph);
   runtimeRouteGraph = graph;
-  console.info(
-    `Runtime N02 railroad-only route graph built (full network): ${graph.nodes.size} nodes.`,
-  );
   return runtimeRouteGraph;
 }
 
@@ -9632,9 +9667,6 @@ function getRailSectionSpatialIndex() {
     }
   });
   railSectionSpatialIndex = grid;
-  console.info(
-    `Rail-section spatial index built: ${grid.size} cells over ${feats.length} features.`,
-  );
   return grid;
 }
 
@@ -9754,17 +9786,17 @@ function getRegionalRouteGraph(bbox) {
   graph.regionBbox = qbbox;
   regionalGraphCache.set(key, graph);
   regionalGraphNodeCount += graph.nodes.size;
-  // While a load is solving many trains back-to-back, keep regions resident up
-  // to the larger transient budget so an already-built region is reused instead
-  // of evicted-then-rebuilt; finalizeProgressiveLoad() trims back to the steady
-  // budget once the load settles. Interactive (non-load) solves trim immediately.
+  // While a load OR a single interactive solve is building several regions
+  // back-to-back, keep them resident up to the larger transient budget: a train
+  // spanning >REGIONAL_GRAPH_NODE_BUDGET nodes of regions used to evict its OWN
+  // earlier regions and then rebuild them for a later section (each build ~0.4 s
+  // — the biggest chunk of the ~2 s "selecting a rail is slow" freeze). We trim
+  // back to the steady budget once the solve/load settles (see below +
+  // finalizeProgressiveLoad).
   trimRegionalGraphCache(
-    importInProgress
+    importInProgress || _solveInProgress
       ? REGIONAL_GRAPH_LOAD_NODE_BUDGET
       : REGIONAL_GRAPH_NODE_BUDGET,
-  );
-  console.info(
-    `Regional route graph built: ${graph.nodes.size} nodes for ${key} (${regionalGraphCache.size} region(s) cached).`,
   );
   return graph;
 }
@@ -11663,19 +11695,38 @@ function latLngPointsBounds(points) {
     : null;
 }
 
-// Smoothly animate the map to [[w,s],[e,n]] bounds for focus actions.
-// maxZoom follows the MapLibre zoom convention (one lower than the old
-// Leaflet numbers for the same view).
+// Focus / fit the map on [[w,s],[e,n]] bounds, CENTRED in the uncovered part of
+// the viewport (the area not hidden by the sidebar / bottom drawer).
+//
+// The centring is already handled for us: the map carries a RESTING padding
+// equal to the current sidebar footprint (see applySidebarMapPadding — {left:N}
+// on desktop, {bottom:N} on mobile). That resting padding makes getCenter() /
+// fitBounds() position AND centre content in the uncovered viewport for free,
+// and it tracks the menu being expanded/collapsed or dragged.
+//
+// The old code ALSO passed mapPaddingWithSidebar() as an explicit fit padding —
+// MapLibre ADDS that to the resting padding, so the sidebar width was counted
+// twice (~960px). On a normal window that overflowed the canvas: cameraForBounds
+// returned null, fitBounds silently did nothing, and MapLibre logged "Map cannot
+// fit within canvas…". That killed auto-focus (自動聚焦), the 定位 button, the
+// per-date fit AND the Japan boot fit. The fix is to pass ONLY a small uniform
+// margin so the route never hugs an edge; the resting padding does the rest.
+const FOCUS_FIT_MARGIN_PX = 40;
 function smoothFitBounds(bounds, opts) {
   if (!map || !bounds) return;
-  const { maxZoom = 12, padding = 90 } = opts || {};
-  map.fitBounds(bounds, {
-    padding: mapPaddingWithSidebar(padding),
-    maxZoom,
-    duration: 800,
-    essential: true,
-    retainPadding: false,
-  });
+  const { maxZoom = 12, duration = 800 } = opts || {};
+  let padding = FOCUS_FIT_MARGIN_PX;
+  // Safety net for a tiny viewport under a tall drawer (e.g. a landscape phone):
+  // if even the small margin plus the resting padding can't frame the bounds,
+  // drop the margin so the fit still moves instead of silently no-op'ing.
+  if (
+    typeof map.cameraForBounds === "function" &&
+    !map.cameraForBounds(bounds, { padding, maxZoom })
+  ) {
+    if (!map.cameraForBounds(bounds, { padding: 0, maxZoom })) return;
+    padding = 0;
+  }
+  map.fitBounds(bounds, { padding, maxZoom, duration, essential: true });
 }
 
 function fitTrainBounds(train) {
@@ -11683,7 +11734,7 @@ function fitTrainBounds(train) {
   const features = getMatchedRouteFeatures(train);
   const bounds = featureCollectionBounds(features);
   if (bounds) {
-    smoothFitBounds(bounds, { padding: 90, maxZoom: 11 });
+    smoothFitBounds(bounds, { maxZoom: 11 });
     return;
   }
   const points = (train.stops || [])
@@ -11691,7 +11742,7 @@ function fitTrainBounds(train) {
     .filter(Boolean)
     .map(toLatLng);
   const ptBounds = latLngPointsBounds(points);
-  if (ptBounds) smoothFitBounds(ptBounds, { padding: 90, maxZoom: 11 });
+  if (ptBounds) smoothFitBounds(ptBounds, { maxZoom: 11 });
 }
 
 function setImportProgress(count, total, label = "") {
@@ -11719,33 +11770,52 @@ function toLngLatBounds(latLngBounds) {
 
 function fitJapanMainIslands() {
   if (!map) return;
-  map.fitBounds(toLngLatBounds(JAPAN_MAIN_ISLANDS_BOUNDS), {
-    padding: mapPaddingWithSidebar(28),
-    duration: 0,
-    retainPadding: false,
-  });
+  // Instant, sidebar-aware fit through the shared helper (its small-margin +
+  // resting-padding approach; no explicit sidebar padding that would overflow
+  // the canvas and log "Map cannot fit within canvas…" at boot).
+  smoothFitBounds(toLngLatBounds(JAPAN_MAIN_ISLANDS_BOUNDS), { duration: 0 });
 }
 
-// Force the map to stay over Japan. minZoom is roughly whatever makes the
-// full territory fit inside the central ~50% of the viewport; maxBounds stops
-// panning past a padded envelope. Recomputed on resize because the fit zoom
-// depends on the pixel viewport.
+// Keep the map over Japan: minZoom frames the whole territory (beside the
+// sidebar) with a small ocean margin; maxBounds stops panning off into empty
+// world. Recomputed on resize because the fit zoom depends on the pixel
+// viewport.
+//
+// maxBounds MUST stay wider/taller than the full-canvas viewport at minZoom.
+// The old envelope (territory ± 50%) happened to equal the viewport width at the
+// old minZoom, so when fully zoomed out the view was clamped to exactly
+// maxBounds and horizontal panning LOCKED UP. We now size maxBounds from the
+// actual min-zoom viewport span × 1.5, guaranteeing real pan room on both axes.
 function applyJapanMapConstraints() {
   if (!map) return;
-  const [sw, ne] = JAPAN_FULL_TERRITORY_BOUNDS; // [lat,lng] pairs
-  const latPad = (ne[0] - sw[0]) * 0.5;
-  const lngPad = (ne[1] - sw[1]) * 0.5;
-  map.setMaxBounds([
-    [sw[1] - lngPad, Math.max(-85, sw[0] - latPad)],
-    [ne[1] + lngPad, Math.min(85, ne[0] + latPad)],
-  ]);
+  const container = map.getContainer();
+  const cw = container.clientWidth || 0;
+  const ch = container.clientHeight || 0;
+  if (!cw || !ch) return; // transient 0-size during layout; a later resize retries
   const cam = map.cameraForBounds(toLngLatBounds(JAPAN_FULL_TERRITORY_BOUNDS));
   if (!cam || !isFinite(cam.zoom)) return;
-  // Fit-zoom fills the viewport; one level lower leaves the ~25% ocean margin
-  // the old Leaflet half-viewport padding produced.
-  const minZoom = Math.max(2, cam.zoom - 1);
+  // cam.zoom fits the territory in the uncovered viewport; pull back a touch for
+  // a small ocean margin (NOT a whole level — that pulled minZoom so far out that
+  // the full-canvas view exceeded maxBounds and got clamped, killing the pan).
+  const minZoom = Math.max(2, cam.zoom - 0.25);
   map.setMinZoom(minZoom);
   if (map.getZoom() < minZoom) map.setZoom(minZoom);
+  // Envelope centred on the territory, sized to the min-zoom viewport × 1.5 (≈50%
+  // pan room each way), never smaller than the territory itself. Longitude is
+  // linear in web-mercator; latitude uses the scale at the territory's centre.
+  const [sw, ne] = JAPAN_FULL_TERRITORY_BOUNDS; // [lat,lng]
+  const cLng = (sw[1] + ne[1]) / 2;
+  const cLat = (sw[0] + ne[0]) / 2;
+  const degPerPxLng = 360 / (512 * Math.pow(2, minZoom));
+  const halfViewLng = (cw / 2) * degPerPxLng;
+  const halfViewLat = halfViewLng * Math.cos((cLat * Math.PI) / 180) * (ch / cw);
+  const PAN = 1.5;
+  const halfLng = Math.max(halfViewLng * PAN, (ne[1] - sw[1]) / 2 + 3);
+  const halfLat = Math.max(halfViewLat * PAN, (ne[0] - sw[0]) / 2 + 3);
+  map.setMaxBounds([
+    [cLng - halfLng, Math.max(-85, cLat - halfLat)],
+    [cLng + halfLng, Math.min(85, cLat + halfLat)],
+  ]);
 }
 
 // =========================================================================

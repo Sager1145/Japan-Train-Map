@@ -71,7 +71,6 @@
   const UNRIDDEN_OPACITY = 0.48;
   const RIDDEN_WIDTH_SCALE = 1.18;
   const UNRIDDEN_WIDTH_SCALE = 0.65;
-  const CASING_COLOR = tokens.ink;
 
   // Zoom-scaled width for a per-feature base width `w` (px at z9), matching
   // railprint's interpolate stops: ×0.6 at z4, ×1 at z9, ×1.6 at z14.
@@ -227,21 +226,40 @@
       const basemap = normalizeBasemap(await res.json());
       if (basemap) {
         basemap.theme = theme;
-        // The official Dark style currently refers to "circle-11", while the
-        // official shared sprite exposes the matching icon as "circle_11".
-        // Correct that compatibility typo locally to avoid missing city dots.
+        // The upstream OpenFreeMap Dark style has two bugs we patch locally:
+        //   1. icon-image "circle-11" (its sprite exposes it as "circle_11"),
+        //      so city dots go missing.
+        //   2. Label text is near-BLACK on its near-black background — place
+        //      labels are rgb(101,101,101), water_name is pure black — so the
+        //      labels are effectively invisible/illegible (the reported dark-mode
+        //      "labels display wrong"). Force legible light text + a dark halo on
+        //      every symbol layer that draws text, mirroring the light basemap.
         if (theme === "dark") {
+          const DARK_LABEL_COLOR = "rgb(201,201,201)";
+          const DARK_LABEL_HALO = "rgba(12,12,12,0.9)";
           basemap.layers = basemap.layers.map((layer) => {
-            if (!layer.layout || layer.layout["icon-image"] == null) return layer;
-            return Object.assign({}, layer, {
-              layout: Object.assign({}, layer.layout, {
-                "icon-image": replaceStyleLiteral(
-                  layer.layout["icon-image"],
-                  "circle-11",
-                  "circle_11",
-                ),
-              }),
-            });
+            let next = layer;
+            if (layer.layout && layer.layout["icon-image"] != null) {
+              next = Object.assign({}, next, {
+                layout: Object.assign({}, next.layout, {
+                  "icon-image": replaceStyleLiteral(
+                    next.layout["icon-image"],
+                    "circle-11",
+                    "circle_11",
+                  ),
+                }),
+              });
+            }
+            if (layer.layout && layer.layout["text-field"] != null) {
+              next = Object.assign({}, next, {
+                paint: Object.assign({}, next.paint, {
+                  "text-color": DARK_LABEL_COLOR,
+                  "text-halo-color": DARK_LABEL_HALO,
+                  "text-halo-width": 1,
+                }),
+              });
+            }
+            return next;
           });
         }
       }
@@ -2486,7 +2504,11 @@
         : EMPTY_FC;
       const src = this._src(HOVER_REGIONS_SOURCE);
       if (src && this._hoverRegionsVisible) src.setData(fc);
-      if (this._map && this._map.getContainer) {
+      // Diagnostics dataset for the (default-OFF) hover-region debug overlay.
+      // Gated on _hoverRegionsVisible: building this ~18-field object +
+      // JSON.stringify + DOM dataset write ran on EVERY hover frame otherwise,
+      // pure waste when the overlay is off (which it is in production).
+      if (this._hoverRegionsVisible && this._map && this._map.getContainer) {
         const container = this._map.getContainer();
         container.dataset.hoverRegionReport = JSON.stringify({
           visible: this._hoverRegionsVisible,

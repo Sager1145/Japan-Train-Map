@@ -334,6 +334,10 @@
       zh: "已自動保存到伺服器 train-store.json。",
       en: "Auto-saved to server train-store.json.",
     },
+    "status.importBusy": {
+      zh: "資料載入中，請稍候再編輯。",
+      en: "Loading data — please wait before editing.",
+    },
     "status.autosaveFail": {
       zh: "自動保存到伺服器失敗：{msg}",
       en: "Auto-save to server failed: {msg}",
@@ -646,6 +650,7 @@
     "status.restoredAll": "{label} から {total} 本を順次復元しました。",
     "status.savedTo": "{name} に保存しました。",
     "status.imported": "{count} 本をインポートしました：{ids}",
+    "status.importBusy": "データ読み込み中です。完了までお待ちください。",
     "status.exported": "現在の列車データをテキスト欄へ書き出しました。",
     "status.resetDefaults": "内蔵サンプルデータに戻しました。",
     "status.clearedAll": "サーバー保存済みの train-store.json とローカルファイル権限を消去しました。再読み込み時は内蔵初期データを使用します。",
