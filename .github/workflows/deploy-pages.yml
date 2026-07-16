@@ -58,67 +58,11 @@ jobs:
         run: node app/scripts/precompute-train-parts.mjs
 
       - name: Assemble static site
-        run: |
-          set -euo pipefail
-          rm -rf _site
-          mkdir -p _site
-
-          # 1) Frontend, excluding *.gz sidecars. -L resolves any symlinks to
-          #    real files.
-          rsync -rL --exclude='*.gz' app/public/ _site/
-
-          # 2) Datasets — served WITH a .json extension on purpose.
-          #    GitHub Pages sets Content-Type from the file extension and only
-          #    gzips a known type allow-list (text/*, application/json, ...).
-          #    Extensionless files are sent as application/octet-stream, which
-          #    Pages NEVER compresses — so rail-sections went over the wire as
-          #    12 MB raw and stations as 3.3 MB raw, and parsing that much JSON
-          #    at once is what made the browser report the tab as crashed.
-          #    With a .json extension Pages gzips them (~2.4 MB / ~0.46 MB).
-          mkdir -p _site/api
-          cp app/data/rail-sections.json  _site/api/rail-sections.json
-          cp app/data/stations.json       _site/api/stations.json
-          cp app/data/default-trains.json _site/api/default-trains.json
-          cp app/data/matched-routes.json _site/api/matched-routes.json
-          cp app/data/matched-stops.json  _site/api/matched-stops.json
-          cp app/data/station-readings.json _site/api/station-readings.json
-
-          # 3) SEED: publish your saved itinerary as the map's initial data.
-          #    Delete this line to ship only the built-in demo trains instead.
-          [ -f app/data/train-store.json ] && cp app/data/train-store.json _site/api/train-store.json || true
-
-          # 3b) Per-train precomputed route parts from the previous step. The
-          #     frontend prefers these on static deploys (loads/draws one train
-          #     at a time, zero on-device route solving); train-store.json
-          #     above stays as the fallback if the manifest is missing.
-          cp -r app/data/train-parts _site/api/train-parts
-
-          # 4) Point the STATIC frontend copy at the .json dataset URLs. Local
-          #    dev is untouched — app/server.js keeps serving the extensionless
-          #    /api/<name> routes (it gzips them itself). Only this deployed
-          #    _site/ copy is rewritten, by literal string replacement, so the
-          #    source app.js/index.html you edit locally never changes.
-          node -e '
-            const fs = require("fs");
-            let s = fs.readFileSync("_site/app.js", "utf8");
-            s = s.split("`${API_BASE}/${path}`").join("`${API_BASE}/${path}.json`");
-            s = s.split("`${API_BASE}/${TRAIN_STORE_API}`").join("`${API_BASE}/${TRAIN_STORE_API}.json`");
-            // No Node backend on Pages: disable the SSE live-refresh subscription
-            // and the server autosave/clear writes so they do not 404 on load/edit.
-            const before = s;
-            s = s.split("const HAS_BACKEND = true;").join("const HAS_BACKEND = false;");
-            if (s === before) { console.error("HAS_BACKEND flag not found in app.js — refusing to ship a static build that would 404 on /api/events"); process.exit(1); }
-            fs.writeFileSync("_site/app.js", s);
-            let h = fs.readFileSync("_site/index.html", "utf8");
-            h = h.split("href=\"api/stations\"").join("href=\"api/stations.json\"");
-            fs.writeFileSync("_site/index.html", h);
-            console.log("Rewrote static frontend: .json dataset URLs + HAS_BACKEND=false");
-          '
-
-          # 5) Disable Jekyll so every file ships as-is.
-          touch _site/.nojekyll
-
-          echo "Assembled site:"; du -sh _site; find _site/api -maxdepth 1 -type f -printf '  %f\n'
+        # Copies the frontend without local gzip sidecars, publishes datasets
+        # with .json extensions, includes the optional train-store seed and
+        # required precomputed parts, disables backend-only calls, and writes
+        # .nojekyll. The same build is exercised by the local test suite.
+        run: node app/scripts/build-static-site.mjs _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

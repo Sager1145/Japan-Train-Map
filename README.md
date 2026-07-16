@@ -2,7 +2,7 @@
 
 | English | 中文 |
 | --- | --- |
-| A Japanese railway map and JR limited-express / Shinkansen route editor built on "National Land Numerical Information (Railway Data N02)". An Express backend serves the rail and station data; a Leaflet frontend renders train routes, stops and pass-through stations on the map. All train data is auto-saved to and loaded from `train-store.json`. | 基于「国土数値情報（鉄道データ N02）」的日本铁路地图与 JR 特急 / 新干线列车线路编辑器。后端用 Express 提供铁路 / 车站数据，前端用 Leaflet 在地图上渲染列车路线、停靠站与通过站，所有列车数据通过 `train-store.json` 自动保存与载入。 |
+| A Japanese railway map and JR limited-express / Shinkansen route editor built on "National Land Numerical Information (Railway Data N02)". An Express backend serves the rail and station data; a MapLibre frontend renders train routes, stops and pass-through stations on the map. All train data is auto-saved to and loaded from `train-store.json`. | 基于「国土数値情報（鉄道データ N02）」的日本铁路地图与 JR 特急 / 新干线列车线路编辑器。后端用 Express 提供铁路 / 车站数据，前端用 MapLibre 在地图上渲染列车路线、停靠站与通过站，所有列车数据通过 `train-store.json` 自动保存与载入。 |
 
 ---
 
@@ -55,13 +55,19 @@ Japan Train Map/
 │   └── jr_limited_shinkansen_itinerary_*.json
 └── app/                 # the application / 应用本体
     ├── server.js        # Express backend: data API + static frontend / 后端：数据 API + 静态前端
+    ├── server/          # backend modules: routes, files, persistence, SSE / 后端模块：路由、文件、持久化、SSE
     ├── package.json     # dependencies and start scripts / 项目依赖与启动脚本
     ├── package-lock.json
     ├── node_modules/    # dependencies (created by npm install) / 依赖，npm install 生成
     ├── public/          # frontend / 前端
     │   ├── index.html   # page / 页面
-    │   ├── app.js       # map + editor logic (Leaflet) / 地图与编辑器逻辑（Leaflet）
+    │   ├── app-core.js  # shared pure editor helpers / 编辑器共享纯函数
+    │   ├── app.js       # map + editor logic (MapLibre) / 地图与编辑器逻辑（MapLibre）
+    │   ├── rail-network.js # compact rail-package conversion / 紧凑铁路数据转换
+    │   ├── railmap.js   # MapLibre railway rendering / MapLibre 铁路渲染
     │   └── styles.css   # styles / 样式
+    ├── scripts/         # data, route-precompute and static-build tools / 数据、路线预计算与静态构建工具
+    ├── test/            # Node characterization tests / Node 行为特征测试
     └── data/            # data / 数据
         ├── rail-sections.json    # N02 rail section geometry / N02 铁路区间几何
         ├── stations.json         # N02 stations / N02 车站
@@ -71,6 +77,16 @@ Japan Train Map/
         ├── matched-stops.json    # matched stops / 匹配后的停靠站
         ├── train-store.json      # persisted train data (auto save/load) / 列车数据持久化存储（自动保存 / 载入）
         └── N02-25_GML.zip        # raw N02 GML source data / N02 原始 GML 数据源
+```
+
+## Validation / 验证
+
+Run these commands from `app/`. / 请在 `app/` 目录运行：
+
+```bash
+npm test       # characterization tests + rail-package snapshot
+npm run lint   # JavaScript syntax and JSON validity checks
+npm run build  # precompute routes and assemble the static Pages site
 ```
 
 ---

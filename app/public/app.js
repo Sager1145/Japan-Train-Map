@@ -118,6 +118,19 @@ const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
 const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
 const UNDATED = "undated";
+const {
+  compareTrainsByDateAndDeparture,
+  dateSortKey,
+  getTrainDepartureMinutes,
+  inferDateFromTrainId,
+  isValidDateString,
+  makeUniqueTrainId,
+  normalizeDateString,
+  normalizeNullableTime,
+  normalizeTrainDate,
+  parseFeatureCollectionChunked: parseFeatureCollectionTextChunked,
+  parseTimeToMinutes,
+} = window.AppCore;
 const DEFAULT_TRAIN_COLOR = "#d9364f";
 // Single source of truth for the default route style numbers (railprint's
 // glowing-line spec: ridden lines draw from a 4px base, zoom-scaled).
@@ -1186,102 +1199,9 @@ function getRouteLinePairs(feature) {
 // derived from the single `trainStore.trains` array, never stored separately,
 // so the daily lists and the combined list can never drift out of sync.
 // ------------------------------------------------------------------------
-function isValidDateString(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
-    return false;
-  const [y, m, d] = value.split("-").map(Number);
-  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
-  return true;
-}
-
-// Coerce arbitrary input to a canonical "YYYY-MM-DD" string, or null when it
-// is not a usable date. Tolerates surrounding whitespace and "/" separators.
-function normalizeDateString(value) {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().replace(/\//g, "-");
-  return isValidDateString(trimmed) ? trimmed : null;
-}
-
-// Parse a leading YYYYMMDD out of a train id, e.g.
-// "20260703_01_haruka_kix_shinosaka" -> "2026-07-03". Returns null if absent.
-function inferDateFromTrainId(id) {
-  const match = /(?:^|[^0-9])(\d{4})(\d{2})(\d{2})(?:[^0-9]|$)/.exec(
-    String(id || ""),
-  );
-  if (!match) return null;
-  const candidate = `${match[1]}-${match[2]}-${match[3]}`;
-  return isValidDateString(candidate) ? candidate : null;
-}
-
-// Resolve a train's date with the documented precedence:
-//   1. an explicit valid train.date,
-//   2. the caller's fallback (the currently-selected concrete date),
-//   3. a date parsed from the id,
-//   4. UNDATED.
-function normalizeTrainDate(train, fallbackDate = null) {
-  const explicit = normalizeDateString(train && train.date);
-  if (explicit) return explicit;
-  const fallback = normalizeDateString(fallbackDate);
-  if (fallback) return fallback;
-  const inferred = inferDateFromTrainId(train && train.id);
-  if (inferred) return inferred;
-  return UNDATED;
-}
-
 // The date bucket a train currently lives in (defensive re-normalize).
 function getTrainDate(train) {
   return normalizeTrainDate(train);
-}
-
-// Convert "HH:mm" (optionally "HH:mm+1" for a next-day time) to minutes from
-// midnight. Returns null when the value is missing or unparseable so callers
-// can push such trains to the end instead of crashing.
-function parseTimeToMinutes(value) {
-  if (typeof value !== "string") return null;
-  const match = /^(\d{1,2}):(\d{2})(?:\s*\+\s*(\d+))?/.exec(value.trim());
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const dayOffset = match[3] ? Number(match[3]) : 0;
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-  return dayOffset * 24 * 60 + hours * 60 + minutes;
-}
-
-// First meaningful departure time of a train, in minutes, following the
-// documented priority. Returns Infinity when no departure exists so the
-// train sorts last within its date.
-function getTrainDepartureMinutes(train) {
-  const stops = Array.isArray(train && train.stops) ? train.stops : [];
-  if (!stops.length) return Infinity;
-  const firstStopDep = parseTimeToMinutes(stops[0].departure);
-  if (firstStopDep !== null) return firstStopDep;
-  const originStop = stops.find((stop) => stop && stop.stop_type === "origin");
-  if (originStop) {
-    const originDep = parseTimeToMinutes(originStop.departure);
-    if (originDep !== null) return originDep;
-  }
-  for (const stop of stops) {
-    const dep = parseTimeToMinutes(stop && stop.departure);
-    if (dep !== null) return dep;
-  }
-  return Infinity;
-}
-
-// Date sort key: real dates ascending, UNDATED always last.
-function dateSortKey(date) {
-  return date === UNDATED ? "￿" : date;
-}
-
-// Comparator implementing: date ASC, departure ASC (missing last), id ASC.
-function compareTrainsByDateAndDeparture(a, b) {
-  const dateA = dateSortKey(getTrainDate(a));
-  const dateB = dateSortKey(getTrainDate(b));
-  if (dateA < dateB) return -1;
-  if (dateA > dateB) return 1;
-  const depA = getTrainDepartureMinutes(a);
-  const depB = getTrainDepartureMinutes(b);
-  if (depA !== depB) return depA - depB;
-  return String(a.id).localeCompare(String(b.id));
 }
 
 function sortTrainsByDateAndDeparture(trains) {
@@ -1516,56 +1436,10 @@ async function loadAppData() {
 // parsed by native JSON.parse, so the feature objects are byte-for-byte
 // identical to the old path.
 async function parseFeatureCollectionChunked(text) {
-  const n = text.length;
-  const key = text.indexOf('"features"');
-  let i = key === -1 ? -1 : text.indexOf("[", key);
-  if (i === -1) return JSON.parse(text); // unexpected shape: safe fallback
-  i += 1; // step past '['
-  const features = [];
-  let t0 = performance.now();
-  while (i < n) {
-    // Skip inter-element whitespace and commas.
-    let c = text.charCodeAt(i);
-    while (
-      i < n &&
-      (c === 32 || c === 10 || c === 13 || c === 9 || c === 44)
-    ) {
-      i += 1;
-      c = text.charCodeAt(i);
-    }
-    if (i >= n || c === 93 /* ] */) break; // end of features array
-    // Scan one balanced {..} object, respecting strings and escapes.
-    const start = i;
-    let depth = 0,
-      inStr = false,
-      esc = false;
-    for (; i < n; i += 1) {
-      const ch = text.charCodeAt(i);
-      if (inStr) {
-        if (esc) esc = false;
-        else if (ch === 92 /* \ */) esc = true;
-        else if (ch === 34 /* " */) inStr = false;
-      } else if (ch === 34 /* " */) {
-        inStr = true;
-      } else if (ch === 123 /* { */) {
-        depth += 1;
-      } else if (ch === 125 /* } */) {
-        depth -= 1;
-        if (depth === 0) {
-          i += 1;
-          break;
-        }
-      }
-    }
-    features.push(JSON.parse(text.slice(start, i)));
-    // Yield roughly every 8 ms so no single slice blocks the main thread.
-    // (features.length & 255) caps the performance.now() polling overhead.
-    if ((features.length & 255) === 0 && performance.now() - t0 > 8) {
-      await _statsYield();
-      t0 = performance.now();
-    }
-  }
-  return { type: "FeatureCollection", features };
+  return parseFeatureCollectionTextChunked(text, {
+    now: () => performance.now(),
+    yieldControl: _statsYield,
+  });
 }
 
 async function ensureRailSectionsLoaded() {
@@ -3208,11 +3082,6 @@ function exportTrainStore() {
   return JSON.stringify(buildCanonicalTrainStore(), null, 2);
 }
 
-function normalizeNullableTime(value) {
-  if (value === undefined || value === "") return null;
-  return value;
-}
-
 // Canonical shape builders shared by both the export and import paths so the
 // serialized stop/style/route_policy schema has a single definition.
 function canonicalStopShape(stop) {
@@ -3582,19 +3451,6 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
     stops: train.stops.map(normalizeImportedStop),
   };
   return normalized;
-}
-
-function makeUniqueTrainId(baseId, existingIds) {
-  const cleanBase = String(baseId || "train").trim() || "train";
-  let id = cleanBase;
-  let counter = 2;
-
-  while (existingIds.has(id)) {
-    id = `${cleanBase}-${counter}`;
-    counter += 1;
-  }
-
-  return id;
 }
 
 // The concrete date to assign an undated imported train to: the currently
@@ -9111,14 +8967,12 @@ const STATION_TRANSFER_MAX_NODE_GAP_METERS = 900;
 const STATION_TRANSFER_EDGE_PENALTY = 180;
 const STATION_TRANSFER_MAX_NODES_PER_GROUP = 24;
 
-// Shared setup for both the synchronous and the streaming route solvers:
-// resolve the ride sections, the policy/cache key, and short-circuit on a cache
-// hit or a known-unsolvable (negative-cached) train. Returns { done:true, result }
-// when the caller should return immediately, otherwise the fields the section
-// solve needs. Side-effect-free apart from the "Generating…" status line.
-function prepareTrainRouteSolve(train) {
+// Build every input that identifies one deterministic route solve. The
+// precompute exporter calls this same helper inside its VM sandbox, so cache-key
+// construction cannot drift between the browser and the static build.
+function buildTrainRouteSolveContext(train) {
   const routeSections = getRideRouteSectionsForTrain(train);
-  if (!routeSections.length) return { done: true, result: [] };
+  if (!routeSections.length) return null;
 
   const templateKey = getTrainRouteTemplateKey({
     ...train,
@@ -9140,6 +8994,18 @@ function prepareTrainRouteSolve(train) {
     .sort()
     .join("|");
   const cacheKey = `${allowedCodes.join(",")}|${policyKey}|${templateKey}`;
+  return { routeSections, templateKey, allowedCodes, cacheKey };
+}
+
+// Shared setup for both the render lookup and the streaming route solver:
+// resolve the deterministic solve context, then short-circuit on a cache hit or
+// a known-unsolvable (negative-cached) train. Returns { done:true, result } when
+// the caller should return immediately, otherwise the fields the section solve
+// needs. Side-effect-free apart from the "Generating…" status line.
+function prepareTrainRouteSolve(train) {
+  const context = buildTrainRouteSolveContext(train);
+  if (!context) return { done: true, result: [] };
+  const { cacheKey } = context;
   if (runtimeRouteCache.has(cacheKey)) {
     const cached = runtimeRouteCache.get(cacheKey);
     return {
@@ -9161,7 +9027,7 @@ function prepareTrainRouteSolve(train) {
     `Generating N02 railway route for ${train.number || train.id}...`,
     "warn",
   );
-  return { done: false, routeSections, templateKey, allowedCodes, cacheKey };
+  return { done: false, ...context };
 }
 
 // Solve ONE ride section on its on-demand regional subgraph (falling back to the

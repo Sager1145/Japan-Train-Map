@@ -8,9 +8,9 @@
 // context with just enough browser stubs, feeds it the same datasets the
 // browser would fetch, appends each train through the same
 // parseImportedCanonicalStore/appendImportedTrain normalization the boot path
-// uses, and runs the same generateMatchedRouteFeaturesForTrain solve. The
-// cached template features + cache key are then exported per train. At boot
-// the frontend seeds runtimeRouteCache with each part's entry, so
+// uses, and runs the same streaming route solve. The cached template features
+// + cache key are then exported per train. At boot the frontend seeds
+// runtimeRouteCache with each part's entry, so
 // prepareTrainRouteSolve() is a pure cache hit and no graph is ever built.
 //
 // Output (all under app/data/train-parts/):
@@ -164,36 +164,16 @@ const DRIVER_SOURCE = `
     const id = appendImportedTrain(raw, null);
     const train = getTrain(id);
 
-    // Rebuild the cache key EXACTLY as prepareTrainRouteSolve() does. Kept in
-    // lockstep by the assertion below: after solving, prepareTrainRouteSolve
-    // must report a cache hit under this key, or we abort the export.
-    const routeSections = getRideRouteSectionsForTrain(train);
-    let cacheKey = null;
-    if (routeSections.length) {
-      const templateKey = getTrainRouteTemplateKey({
-        ...train,
-        route_sections: routeSections,
-      });
-      const allowedCodes = getAllowedInstitutionTypeCodes(train);
-      const policyKey = [
-        ...(train.route_policy?.preferred_line_names || []).map(
-          (value) => \`line:\${value}\`,
-        ),
-        ...(train.route_policy?.preferred_operator_names || []).map(
-          (value) => \`operator:\${value}\`,
-        ),
-        ...derivedPreferredOperatorNames(train).map(
-          (value) => \`operator:\${value}\`,
-        ),
-        \`institution_filter:\${train.route_policy?.institution_filter_mode || "soft"}\`,
-      ]
-        .sort()
-        .join("|");
-      cacheKey = \`\${allowedCodes.join(",")}|\${policyKey}|\${templateKey}\`;
-    }
+    // Use the browser's exact deterministic solve context. This keeps the
+    // exporter in lockstep if route-policy inputs are added later.
+    const solveContext = buildTrainRouteSolveContext(train);
+    const cacheKey = solveContext ? solveContext.cacheKey : null;
 
     const t0 = performance.now();
-    const features = generateMatchedRouteFeaturesForTrain(train);
+    // The interactive render path intentionally queues cold solves so clicks
+    // never block. Offline export must await that same streaming solver
+    // directly, then verify the render lookup is a pure cache hit.
+    const features = await warmRouteCacheForTrainStreaming(train);
     const ms = Math.round(performance.now() - t0);
 
     let route = null;
@@ -204,7 +184,7 @@ const DRIVER_SOURCE = `
         route = { cache_key: cacheKey, unsolvable: true };
       } else {
         throw new Error(
-          \`Cache-key drift for train \${id}: the solver cached under a different key than this script computed. Update the key assembly in precompute-train-parts.mjs to match prepareTrainRouteSolve().\`,
+          \`Route solve for train \${id} produced neither a positive nor negative cache entry.\`,
         );
       }
       // Belt and braces: the client-side prepare must see this as a pure hit.
@@ -240,7 +220,12 @@ async function main() {
   );
 
   const context = makeSandbox();
+  const appCoreSource = fs.readFileSync(
+    path.join(PUBLIC_DIR, "app-core.js"),
+    "utf8",
+  );
   const appSource = fs.readFileSync(path.join(PUBLIC_DIR, "app.js"), "utf8");
+  vm.runInContext(appCoreSource, context, { filename: "app-core.js" });
   console.log("Evaluating app.js in sandbox...");
   vm.runInContext(appSource, context, { filename: "app.js" });
 

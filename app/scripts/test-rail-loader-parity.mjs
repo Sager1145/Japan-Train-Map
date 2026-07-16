@@ -1,142 +1,181 @@
-// Parity test: OLD loader (legacy flat pkg, logic copied verbatim from git
-// version of railmap.js) vs NEW loader (compact-v1, extracted live from
-// ../public/railmap.js) must produce identical render-relevant output.
-import fs from "fs";
+// Characterization/parity test for the compact rail-package loader.
+//
+// The committed compact package is always checked against a deterministic
+// render-model hash. When a one-off legacy backup exists, the historical
+// old-loader comparison also runs; the backup is optional and untracked.
 
-const src = fs.readFileSync("../public/railmap.js", "utf8");
-function extract(name) {
-  const i = src.indexOf(name);
-  if (i < 0) throw new Error("not found: " + name);
-  const start = src.indexOf("{", i);
-  let d = 0, j = start;
-  for (;; j++) {
-    if (src[j] === "{") d++;
-    else if (src[j] === "}") { d--; if (d === 0) break; }
-  }
-  return src.slice(i, j + 1);
-}
-const prelude =
-  'const DEFAULT_LINE_COLOR = "#7C8A82";\n' +
-  'const RANK_MINZOOM = [3, 4, 5, 6, 7];\n' +
-  'const STATION_DOT_GAP_PX = 22;\n' +
-  'const STATION_LOD_K = (STATION_DOT_GAP_PX * 40075.017) / (256 * Math.cos((35 * Math.PI) / 180));\n' +
-  'const STATION_MINZ_CAP = 14;\n' +
-  extract("function minzForRank") + "\n" +
-  extract("function stationMinzForLine") + "\n";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
-// NEW loader, extracted from the actual shipped file
-const newLoaderSrc = prelude + extract("async function loadNetwork") + "\nreturn loadNetwork;";
-const makeNewLoader = new Function("fetch", newLoaderSrc);
+const require = createRequire(import.meta.url);
+const RailNetwork = require("../public/rail-network.js");
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const RAIL_PACKAGE_PATH = path.join(
+  SCRIPT_DIR,
+  "../public/rail/jp-2025.json",
+);
+const LEGACY_PACKAGE_PATH = `${RAIL_PACKAGE_PATH}.legacy.bak`;
+const EXPECTED_RENDER_HASH =
+  "5501a86e437556287c713d71b0177251f1fd87d0968bdb5531528e919ea4a7cd";
 
-// OLD loader logic (verbatim from the pre-migration railmap.js)
-function oldLoad(pkg, helpers) {
-  const { minzForRank, stationMinzForLine, DEFAULT_LINE_COLOR } = helpers;
-  const lineById = new Map(), colorByLine = new Map(), lineMinzByLine = new Map();
-  for (const l of pkg.lines) {
-    lineById.set(l.lineId, l);
-    colorByLine.set(l.lineId, l.color || DEFAULT_LINE_COLOR);
-    lineMinzByLine.set(l.lineId, minzForRank(l.rank));
-  }
-  const segFeatures = pkg.segments.map((seg) => ({
-    type: "Feature", geometry: seg.geometry,
-    properties: {
-      segmentId: seg.segmentId, lineId: seg.lineId,
-      color: colorByLine.get(seg.lineId) || DEFAULT_LINE_COLOR,
-      minz: lineMinzByLine.get(seg.lineId) || 0,
-    },
-  }));
-  const kmByLine = new Map();
-  for (const s of pkg.segments) kmByLine.set(s.lineId, (kmByLine.get(s.lineId) || 0) + s.km);
-  const dotMinzByLine = new Map(), terminiByLine = new Map();
-  for (const l of pkg.lines) {
-    const lineMinz = lineMinzByLine.get(l.lineId) || 0;
-    const n = (l.stationOrder || []).length;
-    dotMinzByLine.set(l.lineId, stationMinzForLine(lineMinz, kmByLine.get(l.lineId) || 0, n));
-    if (!l.isLoop && n >= 2)
-      terminiByLine.set(l.lineId, new Set([l.stationOrder[0], l.stationOrder[n - 1]]));
-  }
-  const stationById = new Map(), groupMembers = new Map();
-  const stFeatures = pkg.stations.map((st) => {
-    stationById.set(st.stationId, st);
-    const gk = st.stationGroupId || "solo:" + st.stationId;
-    let arr = groupMembers.get(gk);
-    if (!arr) groupMembers.set(gk, (arr = []));
-    arr.push(st);
-    const term = terminiByLine.get(st.lineId);
-    const minz = term && term.has(st.stationId)
-      ? lineMinzByLine.get(st.lineId) || 0 : dotMinzByLine.get(st.lineId) || 0;
-    return {
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [st.lon, st.lat] },
-      properties: {
-        stationId: st.stationId, lineId: st.lineId, name: st.name,
-        nameRoma: st.nameRoma || "", stationGroupId: st.stationGroupId || "", minz,
-      },
-    };
-  });
+function renderRelevantSnapshot(network) {
   return {
-    version: pkg.version,
-    segments: { type: "FeatureCollection", features: segFeatures },
-    stations: { type: "FeatureCollection", features: stFeatures },
-    lineById, stationById, groupMembers,
+    version: network.version,
+    segments: network.segments.features,
+    stations: network.stations.features,
+    lines: [...network.lineById.entries()],
+    stationRows: [...network.stationById.entries()],
+    groups: [...network.groupMembers.entries()].map(([key, rows]) => [
+      key,
+      rows.map((row) => row.stationId),
+    ]),
   };
 }
 
-const helpersSrc = prelude + "return { minzForRank, stationMinzForLine, DEFAULT_LINE_COLOR };";
-const helpers = new Function(helpersSrc)();
+function oldLoad(pkg) {
+  const lineById = new Map();
+  const colorByLine = new Map();
+  const lineMinZoomByLine = new Map();
+  for (const line of pkg.lines) {
+    lineById.set(line.lineId, line);
+    colorByLine.set(
+      line.lineId,
+      line.color || RailNetwork.DEFAULT_LINE_COLOR,
+    );
+    lineMinZoomByLine.set(
+      line.lineId,
+      RailNetwork.minZoomForRank(line.rank),
+    );
+  }
 
-const legacy = JSON.parse(fs.readFileSync("../public/rail/jp-2025.json.legacy.bak", "utf8"));
-const compactRaw = fs.readFileSync("../public/rail/jp-2025.json", "utf8");
-const fetchStub = async () => ({ ok: true, json: async () => JSON.parse(compactRaw) });
+  const segmentFeatures = pkg.segments.map((segment) => ({
+    type: "Feature",
+    geometry: segment.geometry,
+    properties: {
+      segmentId: segment.segmentId,
+      lineId: segment.lineId,
+      color:
+        colorByLine.get(segment.lineId) || RailNetwork.DEFAULT_LINE_COLOR,
+      minz: lineMinZoomByLine.get(segment.lineId) || 0,
+    },
+  }));
 
-const oldNet = oldLoad(legacy, helpers);
-const newNet = await makeNewLoader(fetchStub)();
-if (!newNet) throw new Error("new loader returned null");
+  const kmByLine = new Map();
+  for (const segment of pkg.segments) {
+    kmByLine.set(
+      segment.lineId,
+      (kmByLine.get(segment.lineId) || 0) + segment.km,
+    );
+  }
 
-const J = (x) => JSON.stringify(x);
-let fail = 0;
-const eq = (label, a, b) => {
-  if (J(a) !== J(b)) { fail++; console.log("MISMATCH", label); console.log(" old:", J(a).slice(0, 220)); console.log(" new:", J(b).slice(0, 220)); }
-};
+  const dotMinZoomByLine = new Map();
+  const terminiByLine = new Map();
+  for (const line of pkg.lines) {
+    const lineMinZoom = lineMinZoomByLine.get(line.lineId) || 0;
+    const stationCount = (line.stationOrder || []).length;
+    dotMinZoomByLine.set(
+      line.lineId,
+      RailNetwork.stationMinZoomForLine(
+        lineMinZoom,
+        kmByLine.get(line.lineId) || 0,
+        stationCount,
+      ),
+    );
+    if (!line.isLoop && stationCount >= 2) {
+      terminiByLine.set(
+        line.lineId,
+        new Set([
+          line.stationOrder[0],
+          line.stationOrder[stationCount - 1],
+        ]),
+      );
+    }
+  }
 
-eq("segment count", oldNet.segments.features.length, newNet.segments.features.length);
-eq("station count", oldNet.stations.features.length, newNet.stations.features.length);
-// features may be globally ordered differently; compare keyed by id
-const key = (fc, k) => new Map(fc.features.map((f) => [f.properties[k], f]));
-const so = key(oldNet.segments, "segmentId"), sn = key(newNet.segments, "segmentId");
-for (const [id, f] of so) eq("segment " + id, f, sn.get(id));
-const to = key(oldNet.stations, "stationId"), tn = key(newNet.stations, "stationId");
-for (const [id, f] of to) eq("station " + id, f, tn.get(id));
-// also check global ordering (affects nothing visually, but report)
-const orderSame =
-  J(oldNet.segments.features.map((f) => f.properties.segmentId)) ===
-  J(newNet.segments.features.map((f) => f.properties.segmentId)) &&
-  J(oldNet.stations.features.map((f) => f.properties.stationId)) ===
-  J(newNet.stations.features.map((f) => f.properties.stationId));
-console.log("feature ordering identical:", orderSame);
+  const stationById = new Map();
+  const groupMembers = new Map();
+  const stationFeatures = pkg.stations.map((station) => {
+    stationById.set(station.stationId, station);
+    const groupKey =
+      station.stationGroupId || `solo:${station.stationId}`;
+    let members = groupMembers.get(groupKey);
+    if (!members) {
+      members = [];
+      groupMembers.set(groupKey, members);
+    }
+    members.push(station);
 
-// popup-relevant line fields
-for (const [id, ol] of oldNet.lineById) {
-  const nl = newNet.lineById.get(id);
-  if (!nl) { fail++; console.log("missing line", id); continue; }
-  for (const k of ["lineId","name","operator","isHSR","isLoop","rank","color","stationOrder"])
-    eq("line."+k+" "+id, ol[k], nl[k]);
-  eq("line.logo "+id, ol.logo || null, nl.logo || null);
-  eq("line.nameRoma "+id, ol.nameRoma, nl.nameRoma);
+    const termini = terminiByLine.get(station.lineId);
+    const minZoom =
+      termini && termini.has(station.stationId)
+        ? lineMinZoomByLine.get(station.lineId) || 0
+        : dotMinZoomByLine.get(station.lineId) || 0;
+    return {
+      type: "Feature",
+      geometry: {
+        type: "Point",
+        coordinates: [station.lon, station.lat],
+      },
+      properties: {
+        stationId: station.stationId,
+        lineId: station.lineId,
+        name: station.name,
+        nameRoma: station.nameRoma || "",
+        stationGroupId: station.stationGroupId || "",
+        minz: minZoom,
+      },
+    };
+  });
+
+  return {
+    version: pkg.version,
+    segments: {
+      type: "FeatureCollection",
+      features: segmentFeatures,
+    },
+    stations: {
+      type: "FeatureCollection",
+      features: stationFeatures,
+    },
+    lineById,
+    stationById,
+    groupMembers,
+  };
 }
-eq("lineById size", oldNet.lineById.size, newNet.lineById.size);
-// stationById + groupMembers
-for (const [id, os] of oldNet.stationById) {
-  const ns = newNet.stationById.get(id);
-  if (!ns) { fail++; console.log("missing station", id); continue; }
-  for (const k of ["stationId","name","lineId","seq","lon","lat","stationGroupId","nameRoma","romaSource"])
-    eq("st."+k+" "+id, os[k], ns[k]);
-}
-eq("stationById size", oldNet.stationById.size, newNet.stationById.size);
-eq("groupMembers keys", [...oldNet.groupMembers.keys()].sort(), [...newNet.groupMembers.keys()].sort());
-for (const [gk, arr] of oldNet.groupMembers)
-  eq("group "+gk, arr.map((s)=>s.stationId).sort(), (newNet.groupMembers.get(gk)||[]).map((s)=>s.stationId).sort());
-eq("version", oldNet.version, newNet.version);
 
-console.log(fail === 0 ? "PARITY OK — all render/popup outputs identical" : "FAILURES: " + fail);
-process.exit(fail === 0 ? 0 : 1);
+const compactPackage = JSON.parse(
+  fs.readFileSync(RAIL_PACKAGE_PATH, "utf8"),
+);
+const currentNetwork =
+  RailNetwork.buildNetworkFromCompactPackage(compactPackage);
+assert.ok(currentNetwork, "compact loader returned null");
+
+const digest = crypto
+  .createHash("sha256")
+  .update(JSON.stringify(renderRelevantSnapshot(currentNetwork)))
+  .digest("hex");
+assert.equal(digest, EXPECTED_RENDER_HASH, "render-model snapshot changed");
+console.log(
+  `SNAPSHOT OK — ${currentNetwork.segments.features.length} segments, ` +
+    `${currentNetwork.stations.features.length} stations, ` +
+    `${currentNetwork.lineById.size} lines`,
+);
+
+if (fs.existsSync(LEGACY_PACKAGE_PATH)) {
+  const legacyNetwork = oldLoad(
+    JSON.parse(fs.readFileSync(LEGACY_PACKAGE_PATH, "utf8")),
+  );
+  assert.deepEqual(
+    renderRelevantSnapshot(currentNetwork),
+    renderRelevantSnapshot(legacyNetwork),
+  );
+  console.log("LEGACY PARITY OK — all render/popup outputs identical");
+} else {
+  console.log(
+    "Legacy fixture absent; deterministic snapshot coverage used instead.",
+  );
+}

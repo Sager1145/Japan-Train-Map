@@ -41,31 +41,12 @@
   };
   // Line treatment (railprint DESIGN.md glowing-line spec).
   const stroke = { ridden: 4, unridden: 2 };
-  const DEFAULT_LINE_COLOR = "#7C8A82";
+  const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
 
   const BASEMAP_ATTRIBUTION = "© OpenStreetMap contributors｜OpenFreeMap";
   const RAIL_ATTRIBUTION =
     "出典「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成 (CC BY 4.0)";
   const ROMAJI_ATTRIBUTION = "Romanizations © OpenStreetMap contributors, ODbL";
-
-  // ───────────────────────── C9 zoom-tiered LOD (railprint style.ts) ─────────────────────
-  // rank 0 Shinkansen … 4 minor -> reveal zoom. Lines with no rank ⇒ always visible.
-  const RANK_MINZOOM = [3, 4, 5, 6, 7];
-  function minzForRank(rank) {
-    return rank == null ? 0 : RANK_MINZOOM[rank] != null ? RANK_MINZOOM[rank] : 0;
-  }
-  // C9b — station dot LOD by average spacing: a dot reveals once adjacent dots
-  // would clear ~22px on screen (web-mercator at ~lat 35°).
-  const STATION_DOT_GAP_PX = 22;
-  const STATION_LOD_K =
-    (STATION_DOT_GAP_PX * 40075.017) / (256 * Math.cos((35 * Math.PI) / 180));
-  const STATION_MINZ_CAP = 14;
-  function stationMinzForLine(lineMinz, totalKm, stationCount) {
-    if (stationCount < 2 || totalKm <= 0) return lineMinz;
-    const avgSpacingKm = totalKm / (stationCount - 1);
-    const byDensity = Math.round(Math.log2(STATION_LOD_K / avgSpacingKm));
-    return Math.min(STATION_MINZ_CAP, Math.max(lineMinz, byDensity));
-  }
 
   // ───────────────────── ridden/unridden paint constants (style.ts) ──────────────────────
   const UNRIDDEN_OPACITY = 0.48;
@@ -311,111 +292,7 @@
     try {
       const res = await fetch("./rail/jp-2025.json");
       if (!res.ok) return null;
-      const pkg = await res.json();
-      if (!pkg || pkg.format !== "compact-v1" || !Array.isArray(pkg.lines))
-        return null;
-
-      const ROMA_SOURCE = { 1: "osm", 2: "wikidata" };
-      const lineById = new Map();
-      const stationById = new Map();
-      const groupMembers = new Map(); // groupKey -> [station, ...]
-      const segFeatures = [];
-      const stFeatures = [];
-
-      for (const cl of pkg.lines) {
-        const lid = cl.id;
-        const n = cl.stations.length;
-        const color = cl.color || DEFAULT_LINE_COLOR;
-        const lineMinz = minzForRank(cl.rank);
-        const stationIds = cl.stations.map((row) => lid + ":" + row[0]);
-
-        let km = 0;
-        for (const row of cl.segments) km += row[0];
-
-        lineById.set(lid, {
-          lineId: lid,
-          name: cl.name,
-          operator: cl.operator,
-          nameRoma: cl.nameRoma,
-          isHSR: !!cl.isHSR,
-          isLoop: !!cl.isLoop,
-          rank: cl.rank,
-          color: cl.color,
-          logo: cl.logo ? "/rail/logos/" + lid + ".png" : null,
-          stationOrder: stationIds,
-          km,
-        });
-
-        // Segments — one LineString each, static official `color` + `minz`.
-        // A row's `shared` flag means its first coordinate is the previous
-        // segment's last and was omitted on disk.
-        let prevLast = null;
-        for (let i = 0; i < cl.segments.length; i++) {
-          const row = cl.segments[i];
-          const coords = row[1] ? [prevLast].concat(row[2]) : row[2];
-          prevLast = coords[coords.length - 1];
-          segFeatures.push({
-            type: "Feature",
-            geometry: { type: "LineString", coordinates: coords },
-            properties: {
-              segmentId:
-                lid + ":" + cl.stations[i][0] + "-" + cl.stations[(i + 1) % n][0],
-              lineId: lid,
-              color,
-              minz: lineMinz,
-            },
-          });
-        }
-
-        // Stations — spacing-derived dot reveal zoom, termini anchor at line zoom.
-        const dotMinz = stationMinzForLine(lineMinz, km, n);
-        const termini =
-          !cl.isLoop && n >= 2
-            ? new Set([stationIds[0], stationIds[n - 1]])
-            : null;
-        for (let i = 0; i < n; i++) {
-          const row = cl.stations[i];
-          const st = {
-            stationId: stationIds[i],
-            name: row[1],
-            lineId: lid,
-            seq: i,
-            lon: row[2],
-            lat: row[3],
-            stationGroupId: row[0],
-          };
-          if (row.length > 4) {
-            st.nameRoma = row[4];
-            st.romaSource = ROMA_SOURCE[row[5]];
-          }
-          stationById.set(st.stationId, st);
-          const gk = st.stationGroupId || "solo:" + st.stationId;
-          let arr = groupMembers.get(gk);
-          if (!arr) groupMembers.set(gk, (arr = []));
-          arr.push(st);
-          stFeatures.push({
-            type: "Feature",
-            geometry: { type: "Point", coordinates: [st.lon, st.lat] },
-            properties: {
-              stationId: st.stationId,
-              lineId: lid,
-              name: st.name,
-              nameRoma: st.nameRoma || "",
-              stationGroupId: st.stationGroupId || "",
-              minz: termini && termini.has(st.stationId) ? lineMinz : dotMinz,
-            },
-          });
-        }
-      }
-
-      return {
-        version: pkg.version,
-        segments: { type: "FeatureCollection", features: segFeatures },
-        stations: { type: "FeatureCollection", features: stFeatures },
-        lineById,
-        stationById,
-        groupMembers,
-      };
+      return global.RailNetwork.buildNetworkFromCompactPackage(await res.json());
     } catch (e) {
       console.warn("[railmap] rail package unavailable:", e);
       return null;

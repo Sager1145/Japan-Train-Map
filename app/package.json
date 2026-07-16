@@ -6,7 +6,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test",
+    "lint": "node scripts/check-source.mjs",
+    "precompute": "node scripts/precompute-train-parts.mjs",
+    "build:static": "node scripts/build-static-site.mjs",
+    "build": "npm run precompute && npm run build:static"
   },
   "engines": {
     "node": ">=18"

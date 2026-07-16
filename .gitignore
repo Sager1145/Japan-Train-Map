@@ -21,6 +21,9 @@ app/data/analyze-failures.js
 app/public/**/*.js.gz
 app/public/**/*.css.gz
 
+# Static GitHub Pages build output.
+_site/
+
 # Pre-edit data snapshots (e.g. train-store.pre-readings.bak.json). Working
 # artifacts kept locally for rollback; never committed.
 *.bak.json
