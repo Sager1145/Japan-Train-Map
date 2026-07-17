@@ -1,10 +1,12 @@
 /*
  * railmap-basemap.js — basemap style loading for the RailMap core.
  *
- * Ports railprint's basemap.ts: loads the OpenFreeMap positron (vendored) or
- * dark style JSON, namespaces its sources/layers so the stacks of two themes
- * can coexist during a crossfade, normalizes the style, and probes the remote
- * tile origin so a vendored style is never spliced in while offline.
+ * Ports railprint's basemap.ts: loads the vendored OpenFreeMap positron style
+ * JSON (BOTH themes — dark is positron recolored to a dark palette, see
+ * recolorPositronToDark), namespaces its sources/layers so a freshly staged
+ * stack can coexist with the old one during an install crossfade, normalizes
+ * the style, and probes the remote tile origin so a vendored style is never
+ * spliced in while offline.
  *
  * Publishes the RailMapBasemap global (consumed by railmap-style.js and
  * railmap.js).
@@ -18,9 +20,17 @@
   const LOAD_TIMEOUT_MS = 8000;
   const BASEMAP_CROSSFADE_MS = 460;
   const BASEMAP_STAGE_OPACITY = 0.001;
+  // Both themes load the SAME vendored positron style; dark is positron with
+  // its paint literals remapped (recolorPositronToDark). The upstream
+  // OpenFreeMap Dark style is a different style family — 13 label layers vs
+  // positron's 19, place labels capped at maxzoom 14/15 (city names vanish
+  // when zoomed in), no airport/road-name labels, a mismatched sprite ref —
+  // so its labels can never match the light theme. Deriving dark from
+  // positron keeps every label layer, text field, font and zoom range
+  // identical to light mode, and drops the remote style-JSON dependency.
   const BASEMAP_STYLE_URLS = {
     light: "./basemap/positron.json",
-    dark: "https://tiles.openfreemap.org/styles/dark",
+    dark: "./basemap/positron.json",
   };
   const BASEMAP_LOAD_CACHE = new Map();
   const MAP_SURFACE_COLORS = {
@@ -81,9 +91,21 @@
         };
         if (startTransparent) {
           // A literal zero can let MapLibre skip loading a staged source. This
-          // imperceptible value keeps both theme tile stacks warm from boot.
+          // imperceptible value keeps the staged stack's tiles warm.
           layer.paint[prop] = BASEMAP_STAGE_OPACITY;
         }
+      });
+      // Pre-install color transitions the same way: theme switching recolors
+      // this one stack in place (both themes are the same positron layers, so
+      // a paint crossfade IS the theme crossfade — see railmap.js
+      // _recolorBasemapStack), and it must only write color values at click
+      // time.
+      Object.keys(sourceLayer.paint || {}).forEach((prop) => {
+        if (/-color$/.test(prop))
+          layer.paint[prop + "-transition"] = {
+            duration: BASEMAP_CROSSFADE_MS,
+            delay: 0,
+          };
       });
       opacityTargets.set(layer.id, targets);
       return layer;
@@ -109,10 +131,104 @@
     return out;
   }
 
-  function replaceStyleLiteral(value, from, to) {
+  // ─────────────────── positron → dark recolor (label parity) ───────────────────
+  // The dark basemap is the vendored positron style with every color literal
+  // remapped to a dark palette anchored on MAP_SURFACE_COLORS.dark.background.
+  // Tables are keyed by the EXACT literal spellings in basemap/positron.json
+  // (both "rgb(a, b, c)" and "rgb(a,b,c)" spellings occur there).
+  // Surface hierarchy preserved from light mode: bg < casing < minor < inner.
+  const DARK_SURFACE_COLORS = {
+    "rgb(242,243,240)": "rgb(12,12,12)", // background / piers
+    "rgb(230, 233, 229)": "rgb(22,25,22)", // park
+    "rgb(194, 200, 202)": "rgb(33,39,45)", // water
+    "hsl(0,0%,98%)": "hsl(0,0%,11%)", // ice shelf / glacier
+    "rgb(234, 234, 230)": "rgb(19,19,19)", // residential
+    "rgb(220,224,220)": "rgb(18,22,18)", // wood
+    "hsl(195,17%,78%)": "hsl(195,14%,26%)", // waterway lines
+    "rgb(234, 234, 229)": "rgb(25,25,25)", // building fill
+    "rgb(219, 219, 218)": "rgb(34,34,34)", // building outline
+    "rgb(213, 213, 213)": "rgb(29,29,29)", // motorway / major road casing
+    "rgb(234,234,234)": "rgb(30,30,30)", // tunnel motorway inner
+    "hsl(0,0%,88%)": "hsl(0,0%,13%)", // minor roads / taxiway / runway casing
+    "rgba(255, 255, 255, 1)": "rgba(36,36,36,1)", // aeroway area / runway
+    "rgb(234, 234, 234)": "rgb(28,28,28)", // footpaths
+    "#fff": "rgb(40,40,40)", // major / motorway road inner
+    "hsla(0,0%,85%,0.69)": "hsla(0,0%,14%,0.69)", // subtle major roads
+    "hsla(0,0%,85%,0.53)": "hsla(0,0%,14%,0.53)", // subtle motorways
+    "#dddddd": "rgb(35,35,35)", // railway lines
+    "#fafafa": "rgb(18,18,18)", // railway dashline
+    "hsl(0,0%,70%)": "hsl(0,0%,38%)", // admin boundaries
+  };
+  const DARK_TEXT_COLORS = {
+    "#000": "rgb(230,230,230)", // city / town / village / country labels
+    "#333": "rgb(200,200,200)", // other places / state labels
+    "#666": "rgb(158,158,158)", // road name / airport labels
+    "#495e91": "#8ca2d6", // water name labels
+    // Mid-grays legible on both themes — mapped to themselves so the
+    // unmapped-literal warning below stays exact.
+    "hsl(30,0%,62%)": "hsl(30,0%,62%)", // footpath name labels
+    "hsl(0,0%,66%)": "hsl(0,0%,66%)", // waterway line labels
+  };
+  const DARK_TEXT_HALO_COLORS = {
+    "#fff": "rgba(12,12,12,0.92)",
+    "#ffffff": "rgba(12,12,12,0.92)",
+    "#f8f4f0": "rgba(12,12,12,0.92)",
+    "rgba(255,255,255,0.7)": "rgba(12,12,12,0.7)",
+  };
+  // The shared OFM sprite draws city dots as a black circle; swap in its
+  // light variant (the one the upstream dark style targets) on dark.
+  const DARK_ICON_IMAGES = {
+    circle_11_black: "circle_11",
+  };
+  const COLOR_LITERAL_RE = /^(#|rgba?\(|hsla?\()/i;
+
+  function mapStyleLiterals(value, table, unmapped) {
     if (Array.isArray(value))
-      return value.map((item) => replaceStyleLiteral(item, from, to));
-    return value === from ? to : value;
+      return value.map((item) => mapStyleLiterals(item, table, unmapped));
+    if (typeof value !== "string") return value;
+    if (Object.prototype.hasOwnProperty.call(table, value)) return table[value];
+    if (unmapped && COLOR_LITERAL_RE.test(value)) unmapped.add(value);
+    return value;
+  }
+
+  function recolorPositronToDark(basemap) {
+    const unmapped = new Set();
+    basemap.layers = basemap.layers.map((layer) => {
+      let next = layer;
+      if (layer.paint) {
+        const paint = {};
+        for (const prop of Object.keys(layer.paint)) {
+          let table = null;
+          if (prop === "text-color") table = DARK_TEXT_COLORS;
+          else if (prop === "text-halo-color") table = DARK_TEXT_HALO_COLORS;
+          else if (/-color$/.test(prop)) table = DARK_SURFACE_COLORS;
+          paint[prop] = table
+            ? mapStyleLiterals(layer.paint[prop], table, unmapped)
+            : layer.paint[prop];
+        }
+        next = Object.assign({}, next, { paint });
+      }
+      if (layer.layout && layer.layout["icon-image"] != null) {
+        next = Object.assign({}, next, {
+          layout: Object.assign({}, next.layout, {
+            "icon-image": mapStyleLiterals(
+              next.layout["icon-image"],
+              DARK_ICON_IMAGES,
+              null,
+            ),
+          }),
+        });
+      }
+      return next;
+    });
+    // A regenerated positron.json can change literal spellings; a miss keeps
+    // that property in its light color, so make it visible instead of silent.
+    if (unmapped.size)
+      console.warn(
+        "[basemap] dark recolor: unmapped color literals kept as-is:",
+        Array.from(unmapped).join(", "),
+      );
+    return basemap;
   }
 
   function loadBasemap(theme, force) {
@@ -152,42 +268,7 @@
       const basemap = normalizeBasemap(await res.json());
       if (basemap) {
         basemap.theme = theme;
-        // The upstream OpenFreeMap Dark style has two bugs we patch locally:
-        //   1. icon-image "circle-11" (its sprite exposes it as "circle_11"),
-        //      so city dots go missing.
-        //   2. Label text is near-BLACK on its near-black background — place
-        //      labels are rgb(101,101,101), water_name is pure black — so the
-        //      labels are effectively invisible/illegible (the reported dark-mode
-        //      "labels display wrong"). Force legible light text + a dark halo on
-        //      every symbol layer that draws text, mirroring the light basemap.
-        if (theme === "dark") {
-          const DARK_LABEL_COLOR = "rgb(201,201,201)";
-          const DARK_LABEL_HALO = "rgba(12,12,12,0.9)";
-          basemap.layers = basemap.layers.map((layer) => {
-            let next = layer;
-            if (layer.layout && layer.layout["icon-image"] != null) {
-              next = Object.assign({}, next, {
-                layout: Object.assign({}, next.layout, {
-                  "icon-image": replaceStyleLiteral(
-                    next.layout["icon-image"],
-                    "circle-11",
-                    "circle_11",
-                  ),
-                }),
-              });
-            }
-            if (layer.layout && layer.layout["text-field"] != null) {
-              next = Object.assign({}, next, {
-                paint: Object.assign({}, next.paint, {
-                  "text-color": DARK_LABEL_COLOR,
-                  "text-halo-color": DARK_LABEL_HALO,
-                  "text-halo-width": 1,
-                }),
-              });
-            }
-            return next;
-          });
-        }
+        if (theme === "dark") recolorPositronToDark(basemap);
       }
       return basemap;
     } catch (e) {

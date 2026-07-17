@@ -47,8 +47,12 @@ function sidebarViewportPadding(size = sidebarVisible ? sidebarFullSize() : 0) {
     : { top: 0, right: 0, bottom: 0, left: safeSize };
 }
 
+// Returns the EFFECTIVE animation duration (0 when the padding was applied
+// instantly) so callers know whether to defer padding-dependent work — the
+// Japan zoom/bounds constraints read the resting padding and must recompute
+// only after it lands (see setSidebarVisible).
 function applySidebarMapPadding(size, durationMs = 0) {
-  if (!map) return;
+  if (!map) return 0;
   const padding = sidebarViewportPadding(size);
   const duration =
     REDUCED_MOTION_MEDIA.matches ? 0 : Math.max(0, Number(durationMs) || 0);
@@ -59,11 +63,14 @@ function applySidebarMapPadding(size, durationMs = 0) {
       easing: (t) => 1 - Math.pow(1 - t, 3),
       essential: true,
     });
-  } else if (typeof map.setPadding === "function") {
+    return duration;
+  }
+  if (typeof map.setPadding === "function") {
     map.setPadding(padding);
   } else if (typeof map.jumpTo === "function") {
     map.jumpTo({ padding });
   }
+  return 0;
 }
 
 function scheduleSidebarMapPadding(size) {
@@ -103,6 +110,26 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
     ? "expanded"
     : "collapsed";
   app.style.removeProperty("--sidebar-size");
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) {
+    // pointer-events:none (CSS) only blocks the mouse — a collapsed drawer
+    // must also leave the tab order and the accessibility tree. `inert`
+    // covers both; aria-hidden is kept in sync for engines without inert
+    // support. Rescue focus first so it is never trapped inside an inert
+    // subtree (the edge tab is a SIBLING of #sidebar, so it stays usable).
+    if (!sidebarVisible && sidebar.contains(document.activeElement)) {
+      const tab = document.getElementById("sidebar-edge-tab");
+      if (tab && typeof tab.focus === "function") tab.focus();
+      else if (
+        document.activeElement &&
+        typeof document.activeElement.blur === "function"
+      )
+        document.activeElement.blur();
+    }
+    sidebar.inert = !sidebarVisible;
+    if (sidebarVisible) sidebar.removeAttribute("aria-hidden");
+    else sidebar.setAttribute("aria-hidden", "true");
+  }
   updateSidebarToggleLabel();
   if (persist) {
     try {
@@ -110,10 +137,20 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
     } catch (_) {}
   }
   cancelScheduledSidebarMapPadding();
-  applySidebarMapPadding(
+  const easedMs = applySidebarMapPadding(
     sidebarVisible ? sidebarFullSize() : 0,
     animate ? 320 : 0,
   );
+  // The resting padding (the uncovered viewport) just changed, so the Japan
+  // minZoom/maxBounds envelope is stale — e.g. booting collapsed and then
+  // expanding left minZoom too high to frame Japan beside the sidebar.
+  // Recompute after the padding ease lands (its easeTo ends in a moveend;
+  // an interrupted ease also fires moveend, and the recompute is idempotent).
+  if (map) {
+    if (easedMs > 0 && typeof map.once === "function")
+      map.once("moveend", () => applyJapanMapConstraints());
+    else applyJapanMapConstraints();
+  }
 }
 
 function setupSidebarToggle() {
@@ -151,15 +188,45 @@ function setupSidebarToggle() {
       startSize: sidebarVisible ? fullSize : 0,
       currentSize: sidebarVisible ? fullSize : 0,
       moved: false,
+      detachWindowFallback: null,
     };
     app.classList.add("sidebar-dragging");
     app.style.setProperty("--sidebar-size", `${sidebarDragState.startSize}px`);
+    let captured = false;
     try {
       tab.setPointerCapture(event.pointerId);
+      captured =
+        typeof tab.hasPointerCapture !== "function" ||
+        tab.hasPointerCapture(event.pointerId);
     } catch (_) {}
+    if (!captured) {
+      // Without capture, a release outside the tab never reaches the tab's
+      // own pointerup/pointermove listeners — the drag would keep the
+      // sidebar-dragging class, the inline --sidebar-size and a partial map
+      // padding forever. Drive this drag from window-level events instead.
+      const drag = sidebarDragState;
+      const onWindowMove = (moveEvent) => {
+        if (sidebarDragState !== drag) return;
+        if (moveEvent.pointerId !== drag.pointerId) return;
+        // A mouse released OUTSIDE the window sends no pointerup at all;
+        // the first move back inside arrives with no buttons pressed.
+        if (moveEvent.buttons === 0) return finishDrag(moveEvent);
+        handleDragMove(moveEvent);
+      };
+      const onWindowUp = (upEvent) => finishDrag(upEvent);
+      const onWindowCancel = (cancelEvent) => finishDrag(cancelEvent, true);
+      window.addEventListener("pointermove", onWindowMove);
+      window.addEventListener("pointerup", onWindowUp);
+      window.addEventListener("pointercancel", onWindowCancel);
+      drag.detachWindowFallback = () => {
+        window.removeEventListener("pointermove", onWindowMove);
+        window.removeEventListener("pointerup", onWindowUp);
+        window.removeEventListener("pointercancel", onWindowCancel);
+      };
+    }
   });
 
-  tab.addEventListener("pointermove", (event) => {
+  const handleDragMove = (event) => {
     const drag = sidebarDragState;
     if (!drag || drag.pointerId !== event.pointerId) return;
     const rawDelta = drag.vertical
@@ -174,12 +241,14 @@ function setupSidebarToggle() {
     );
     app.style.setProperty("--sidebar-size", `${drag.currentSize}px`);
     scheduleSidebarMapPadding(drag.currentSize);
-  });
+  };
+  tab.addEventListener("pointermove", handleDragMove);
 
   const finishDrag = (event, cancelled = false) => {
     const drag = sidebarDragState;
     if (!drag || drag.pointerId !== event.pointerId) return;
     sidebarDragState = null;
+    if (drag.detachWindowFallback) drag.detachWindowFallback();
     try {
       if (tab.hasPointerCapture(event.pointerId))
         tab.releasePointerCapture(event.pointerId);
@@ -202,18 +271,31 @@ function setupSidebarToggle() {
   };
   tab.addEventListener("pointerup", (event) => finishDrag(event));
   tab.addEventListener("pointercancel", (event) => finishDrag(event, true));
+  // Fires right after a normal pointerup too — by then finishDrag has already
+  // consumed the state and this is a no-op. It only acts when the browser
+  // takes the capture away mid-drag (element detached, OS gesture, …), where
+  // it restores the pre-drag state instead of leaving the drag stuck.
+  tab.addEventListener("lostpointercapture", (event) =>
+    finishDrag(event, true),
+  );
 
   window.addEventListener("resize", () => {
     if (sidebarDragState) {
+      const drag = sidebarDragState;
       sidebarDragState = null;
+      if (drag.detachWindowFallback) drag.detachWindowFallback();
       app.classList.remove("sidebar-dragging");
       app.style.removeProperty("--sidebar-size");
     }
     clearTimeout(sidebarWindowResizeTimer);
     sidebarWindowResizeTimer = setTimeout(() => {
       sidebarWindowResizeTimer = null;
-      if (map && typeof map.resize === "function") map.resize();
+      // Padding BEFORE resize: crossing the 900px breakpoint flips the drawer
+      // axis (left ↔ bottom padding), and map.resize() fires the 'resize'
+      // handler that recomputes the Japan constraints — it must read the new
+      // footprint, not the stale one.
       applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
+      if (map && typeof map.resize === "function") map.resize();
     }, 80);
   });
 }

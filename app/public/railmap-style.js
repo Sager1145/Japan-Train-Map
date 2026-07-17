@@ -157,28 +157,21 @@
   // ───────────────────────────── the base style (style.ts buildBaseStyle) ────────────────
   function buildBaseStyle(opts) {
     const basemap = opts.basemap || null;
-    const alternateBasemap = opts.alternateBasemap || null;
     const network = opts.network || null;
     const theme = opts.theme === "dark" ? "dark" : "light";
     const themeColors = MAP_SURFACE_COLORS[theme];
     const fadeOpacity = Math.max(0, Math.min(1, Number(opts.fadeOpacity || 0)));
 
+    // ONE basemap stack serves both themes. Light and dark are the same
+    // positron layers differing only in paint colors (railmap-basemap.js), so
+    // theme switching recolors this stack in place with paint transitions.
+    // Never stage a second stack: two identical symbol stacks fight in
+    // MapLibre's global label collision pass, and the staged (invisible) copy
+    // wins placement — the visible theme's labels all vanish.
     const primaryStack = basemap
       ? namespaceBasemap(basemap, "", false)
       : null;
-    const alternateTheme = theme === "dark" ? "light" : "dark";
-    const alternateStack = alternateBasemap
-      ? namespaceBasemap(
-          alternateBasemap,
-          "rp-bm-preload-" + alternateTheme + "-",
-          true,
-        )
-      : null;
-    const sources = Object.assign(
-      {},
-      primaryStack ? primaryStack.sources : {},
-      alternateStack ? alternateStack.sources : {},
-    );
+    const sources = Object.assign({}, primaryStack ? primaryStack.sources : {});
     sources[SEGMENTS_SOURCE] = {
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
@@ -211,10 +204,9 @@
     // ordinary network or any ridden route.
     const bmLayers = primaryStack ? primaryStack.layers : [];
     layers.push(...bmLayers);
-    if (alternateStack) layers.push(...alternateStack.layers);
 
     // Optional map-opacity tint affects only the basemap. Theme switching
-    // cross-fades the basemap stacks themselves; this layer stays unchanged.
+    // recolors the basemap stack in place; this layer stays unchanged.
     layers.push({
       id: FADE_LAYER,
       type: "background",
@@ -537,22 +529,14 @@
     });
 
     const style = { version: 8, sources, layers };
-    const assetBasemap = basemap || alternateBasemap;
-    if (assetBasemap && assetBasemap.glyphs) style.glyphs = assetBasemap.glyphs;
-    if (assetBasemap && assetBasemap.sprite) style.sprite = assetBasemap.sprite;
+    if (basemap && basemap.glyphs) style.glyphs = basemap.glyphs;
+    if (basemap && basemap.sprite) style.sprite = basemap.sprite;
     const stacks = {};
     if (primaryStack) {
       stacks[theme] = {
         layerIds: primaryStack.layers.map((layer) => layer.id),
         sourceIds: Object.keys(primaryStack.sources),
         opacityTargets: primaryStack.opacityTargets,
-      };
-    }
-    if (alternateStack) {
-      stacks[alternateTheme] = {
-        layerIds: alternateStack.layers.map((layer) => layer.id),
-        sourceIds: Object.keys(alternateStack.sources),
-        opacityTargets: alternateStack.opacityTargets,
       };
     }
     // Application-only metadata must not be passed through MapLibre's style

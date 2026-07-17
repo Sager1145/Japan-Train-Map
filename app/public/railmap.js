@@ -19,9 +19,11 @@
  * (src/design/tokens.ts + src/lib/map/basemap.ts + src/lib/map/style.ts +
  * src/lib/map/popup.ts) into dependency-free browser scripts:
  *
- *   - BASEMAP: OpenFreeMap `positron` for the light theme and OpenFreeMap's
- *     official `dark` style for the dark theme. If the online tile source is
- *     unavailable, the rail renders over a theme-matched plain background.
+ *   - BASEMAP: OpenFreeMap `positron` for BOTH themes — dark is positron
+ *     recolored to a dark palette (railmap-basemap.js), so label layers,
+ *     fonts and zoom behavior match light mode exactly. If the online tile
+ *     source is unavailable, the rail renders over a theme-matched plain
+ *     background.
  *   - NETWORK: the full MLIT N02 national network from railprint's rail
  *     package (./rail/jp-2025.json — 594 lines in official color, 9,442
  *     segments, 10,034 stations). Drawn exactly like railprint's "unridden"
@@ -50,7 +52,6 @@
     opacityPropsForLayer,
     MAP_SURFACE_COLORS,
     BASEMAP_CROSSFADE_MS,
-    BASEMAP_STAGE_OPACITY,
   } = global.RailMapBasemap;
   const {
     buildBaseStyle,
@@ -170,7 +171,9 @@
     _groupSwitchAnchor: null,
     _basemapLayerIds: [],
     _basemapSourceIds: [],
-    _basemapStacks: {},
+    // The single installed basemap stack ({layerIds, sourceIds}); both themes
+    // share it and theme switches recolor it in place (_recolorBasemapStack).
+    _basemapStack: null,
     _basemapMode: "none",
     _theme: "light",
     _basemapInstalledTheme: null,
@@ -191,13 +194,13 @@
       this._map = map;
       this._network = network || null;
       this._handlers = handlers || {};
-      this._basemapStacks = basemapStacks || {};
-      const stackValues = Object.values(this._basemapStacks);
-      this._basemapLayerIds = stackValues.length
-        ? stackValues.flatMap((stack) => stack.layerIds || [])
+      const stackValues = Object.values(basemapStacks || {});
+      this._basemapStack = stackValues.length ? stackValues[0] : null;
+      this._basemapLayerIds = this._basemapStack
+        ? (this._basemapStack.layerIds || []).slice()
         : basemapLayerIds || [];
-      this._basemapSourceIds = stackValues.length
-        ? stackValues.flatMap((stack) => stack.sourceIds || [])
+      this._basemapSourceIds = this._basemapStack
+        ? (this._basemapStack.sourceIds || []).slice()
         : basemapSourceIds || [];
       this._basemapMode = this._basemapLayerIds.length ? "positron" : "none";
       this._theme = theme === "dark" ? "dark" : "light";
@@ -555,41 +558,45 @@
     hasBasemap() {
       return this._basemapLayerIds.length > 0;
     },
-    _crossfadeBasemapStacks(theme, duration) {
+    // Theme switch = recolor the ONE installed basemap stack in place. Both
+    // themes are the same positron layers (railmap-basemap.js), so writing the
+    // target theme's color paint values — with the transitions pre-installed
+    // at style build — crossfades every surface AND label smoothly. This
+    // replaced the old dual staged-stack crossfade: two identical symbol
+    // stacks fight in MapLibre's global label collision pass, and the staged
+    // invisible copy won placement, blanking the visible theme's labels.
+    _recolorBasemapStack(basemap, duration) {
       const m = this._map;
-      const targetStack = this._basemapStacks[theme];
-      if (!m || !targetStack) return false;
+      const stack = this._basemapStack;
+      if (!m || !stack || !basemap || !Array.isArray(basemap.layers))
+        return false;
+      const layerIds = stack.layerIds || [];
+      if (layerIds.length !== basemap.layers.length) return false;
       const transition = {
         duration: Math.max(0, Number(duration) || 0),
         delay: 0,
       };
       const updateTransition =
         transition.duration !== this._basemapTransitionDuration;
-      const layerOrder = new Map(
-        m.getStyle().layers.map((layer, index) => [layer.id, index]),
-      );
-      const stacksTopFirst = Object.entries(this._basemapStacks).sort(
-        ([, a], [, b]) =>
-          Math.max(...b.layerIds.map((id) => layerOrder.get(id) ?? -1)) -
-          Math.max(...a.layerIds.map((id) => layerOrder.get(id) ?? -1)),
-      );
-      stacksTopFirst.forEach(([stackTheme, stack]) => {
-        const active = stackTheme === theme;
-        stack.opacityTargets.forEach((targets, id) => {
-          if (!m.getLayer(id)) return;
-          Object.keys(targets).forEach((prop) => {
-            if (updateTransition)
-              m.setPaintProperty(id, prop + "-transition", transition);
-            m.setPaintProperty(
-              id,
-              prop,
-              active ? targets[prop] : BASEMAP_STAGE_OPACITY,
-            );
-          });
+      basemap.layers.forEach((layer, index) => {
+        const id = layerIds[index];
+        if (!m.getLayer(id)) return;
+        Object.keys(layer.paint || {}).forEach((prop) => {
+          if (!/-color$/.test(prop)) return;
+          if (updateTransition)
+            m.setPaintProperty(id, prop + "-transition", transition);
+          m.setPaintProperty(id, prop, layer.paint[prop]);
         });
+        // The city-dot sprite swaps between its black/light variants per
+        // theme (layout, so it snaps — the dot is tiny and position-stable).
+        const icon = layer.layout ? layer.layout["icon-image"] : undefined;
+        if (icon !== undefined) {
+          const current = m.getLayoutProperty(id, "icon-image");
+          if (JSON.stringify(current) !== JSON.stringify(icon))
+            m.setLayoutProperty(id, "icon-image", icon);
+        }
       });
       this._basemapTransitionDuration = transition.duration;
-      this._basemapInstalledTheme = theme;
       return true;
     },
     _applyThemePaint(theme, duration) {
@@ -747,13 +754,13 @@
         this._basemapLayerIds = bmLayers.map((l) => l.id);
         this._basemapSourceIds = Object.keys(staged.sources);
         this._basemapInstalledTheme = basemap.theme || this._theme;
-        this._basemapStacks = {
-          [this._basemapInstalledTheme]: {
-            layerIds: this._basemapLayerIds.slice(),
-            sourceIds: this._basemapSourceIds.slice(),
-            opacityTargets: staged.opacityTargets,
-          },
+        this._basemapStack = {
+          layerIds: this._basemapLayerIds.slice(),
+          sourceIds: this._basemapSourceIds.slice(),
         };
+        // The staged install wrote fresh transitions; future theme recolors
+        // rely on the build-time BASEMAP_CROSSFADE_MS transitions.
+        this._basemapTransitionDuration = BASEMAP_CROSSFADE_MS;
         return true;
       } catch (e) {
         console.warn("[map] failed to install basemap theme", e);
@@ -769,23 +776,31 @@
         return false;
       }
     },
-    // Switches only the basemap stack, preserving all railway overlays and
-    // the current view. OpenFreeMap's official Dark style is used in dark mode.
+    // Switches only the basemap palette, preserving all railway overlays and
+    // the current view. Dark mode uses the recolored positron style
+    // (railmap-basemap.js), keeping labels identical to light mode.
     async setBasemapTheme(theme, options = {}) {
       theme = theme === "dark" ? "dark" : "light";
       this._theme = theme;
       const animate = options.animate !== false;
-      this._applyThemePaint(theme, animate ? BASEMAP_CROSSFADE_MS : 0);
+      const duration = animate ? BASEMAP_CROSSFADE_MS : 0;
+      this._applyThemePaint(theme, duration);
       if (!this._map) return false;
-      if (
-        this._crossfadeBasemapStacks(
-          theme,
-          animate ? BASEMAP_CROSSFADE_MS : 0,
-        )
-      )
-        return true;
       if (this._basemapRetryInflight) await this._basemapRetryInflight;
-      if (this._basemapInstalledTheme === theme) return true;
+      if (this._theme !== theme) return false; // superseded by a newer switch
+      if (this._basemapInstalledTheme === theme && this._basemapStack)
+        return true;
+      if (this._basemapStack) {
+        // The themed style is cache-warm after boot, so this resolves in a
+        // microtask and the recolor starts within the same frame as the click.
+        const basemap = await loadBasemap(theme);
+        if (this._theme !== theme) return false;
+        if (basemap && this._recolorBasemapStack(basemap, duration)) {
+          this._basemapInstalledTheme = theme;
+          return true;
+        }
+        // Recolor impossible (layer-count mismatch) — reinstall wholesale.
+      }
       this._basemapRetryInflight = (async () => {
         try {
           const basemap = await loadBasemap(theme, true);
@@ -804,7 +819,13 @@
     async retryBasemap() {
       const m = this._map;
       if (!m) return false;
-      if (this._basemapStacks[this._theme]) return true; // already present
+      if (this._basemapStack) {
+        // Present but possibly painted for another theme (installed while a
+        // switch raced) — converge via the cheap in-place recolor.
+        if (this._basemapInstalledTheme !== this._theme)
+          return this.setBasemapTheme(this._theme, { animate: false });
+        return true;
+      }
       if (this._basemapRetryInflight) return this._basemapRetryInflight;
       this._basemapRetryInflight = (async () => {
         try {

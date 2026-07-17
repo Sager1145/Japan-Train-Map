@@ -300,7 +300,10 @@ async function initMap(mapAssetsReady) {
   // The theme-selected OpenFreeMap style + railprint's jp-2025 package load in
   // parallel (pre-started at boot, before the /api datasets); either may be
   // null (source unavailable) — the style builder degrades the same way railprint does
-  // (plain background / no network overlay).
+  // (plain background / no network overlay). The alternate theme is loaded
+  // ONLY to warm RailMap.loadBasemap's cache (instant first theme switch);
+  // the style itself stages a single stack that theme switches recolor in
+  // place — a second staged stack would collide-out every basemap label.
   const theme = resolveDisplayTheme();
   const alternateTheme = theme === "dark" ? "light" : "dark";
   const [basemap, alternateBasemap, network] = await (mapAssetsReady ||
@@ -311,7 +314,6 @@ async function initMap(mapAssetsReady) {
     ]));
   const style = RailMap.buildBaseStyle({
     basemap,
-    alternateBasemap,
     network,
     theme,
     fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
