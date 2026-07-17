@@ -25,23 +25,32 @@ async function pathExists(filePath) {
   }
 }
 
-function rewriteStaticApp(source) {
-  let rewritten = source
+// On Pages the API endpoints are plain files, so the ${API_BASE} fetch
+// templates need a `.json` suffix. Applied to EVERY staged app*.js file:
+// the templates have already migrated between app modules once (app.js →
+// app-persistence.js/app-events.js during the frontend split), and rewriting
+// the whole family keeps the contract immune to that drift.
+function rewriteApiTemplates(source) {
+  return source
     .split("`${API_BASE}/${path}`")
     .join("`${API_BASE}/${path}.json`")
     .split("`${API_BASE}/${TRAIN_STORE_API}`")
     .join("`${API_BASE}/${TRAIN_STORE_API}.json`");
+}
 
-  const beforeBackendRewrite = rewritten;
-  rewritten = rewritten
+// app.js additionally carries the HAS_BACKEND flag that gates every
+// backend-only call (SSE live refresh, server autosave/clear).
+function rewriteStaticApp(source) {
+  const rewritten = rewriteApiTemplates(source);
+  const flipped = rewritten
     .split("const HAS_BACKEND = true;")
     .join("const HAS_BACKEND = false;");
-  if (rewritten === beforeBackendRewrite) {
+  if (flipped === rewritten) {
     throw new Error(
       "HAS_BACKEND flag not found in app.js — refusing to ship a static build that would 404 on /api/events",
     );
   }
-  return rewritten;
+  return flipped;
 }
 
 export async function buildStaticSite({
@@ -51,7 +60,7 @@ export async function buildStaticSite({
 } = {}) {
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
-  const trainPartsDir = path.join(dataDir, "train-parts");
+  const sampleDataDir = path.join(dataDir, "sample-data");
   const outputParent = path.dirname(outputDir);
   const outputName = path.basename(outputDir);
   const buildId = `${process.pid}-${Date.now()}`;
@@ -82,24 +91,28 @@ export async function buildStaticSite({
       );
     }
 
-    const trainStorePath = path.join(dataDir, "train-store.json");
-    if (await pathExists(trainStorePath)) {
-      await fs.copyFile(trainStorePath, path.join(apiDir, "train-store.json"));
-    }
-
-    if (!(await pathExists(path.join(trainPartsDir, "manifest.json")))) {
+    // train-store.json is deliberately NOT published: on the static site it is
+    // only the source the sample-data parts are generated from. User data lives
+    // in the browser (IndexedDB); the sample is served from api/sample-data/.
+    if (!(await pathExists(path.join(sampleDataDir, "manifest.json")))) {
       throw new Error(
-        "Precomputed train parts are missing; run scripts/precompute-train-parts.mjs first.",
+        "Precomputed sample data is missing; run scripts/precompute-train-parts.mjs first.",
       );
     }
-    await fs.cp(trainPartsDir, path.join(apiDir, "train-parts"), {
+    await fs.cp(sampleDataDir, path.join(apiDir, "sample-data"), {
       recursive: true,
       dereference: true,
+      filter: (sourcePath) => !sourcePath.endsWith(".gz"),
     });
 
-    const appPath = path.join(stagingDir, "app.js");
-    const appSource = await fs.readFile(appPath, "utf8");
-    await fs.writeFile(appPath, rewriteStaticApp(appSource));
+    for (const name of await fs.readdir(stagingDir)) {
+      if (!(name.startsWith("app") && name.endsWith(".js"))) continue;
+      const filePath = path.join(stagingDir, name);
+      const source = await fs.readFile(filePath, "utf8");
+      const rewritten =
+        name === "app.js" ? rewriteStaticApp(source) : rewriteApiTemplates(source);
+      if (rewritten !== source) await fs.writeFile(filePath, rewritten);
+    }
 
     const indexPath = path.join(stagingDir, "index.html");
     const indexSource = await fs.readFile(indexPath, "utf8");

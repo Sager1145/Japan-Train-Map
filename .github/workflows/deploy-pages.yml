@@ -48,19 +48,21 @@ jobs:
         uses: actions/checkout@v4
 
       # Solve every train's route geometry OFFLINE (the script runs app.js's
-      # own solver inside a Node vm) and emit app/data/train-parts/: a manifest
-      # plus one part-NNN.json per train carrying its precomputed geometry.
-      # The static frontend fetches and draws these ONE TRAIN AT A TIME on
-      # boot, so the phone never builds the 600k-node route graphs nor runs
+      # own solver inside a Node vm) and emit app/data/sample-data/: a manifest
+      # (with a per-date index) plus one part-NNN.json per train carrying its
+      # precomputed geometry. train-store.json is only the SOURCE of this
+      # sample dataset — user data on the static site lives in the browser
+      # (IndexedDB). The frontend fetches and draws parts ONE TRAIN AT A TIME,
+      # so the phone never builds the 600k-node route graphs nor runs
       # Dijkstra — that on-device cold solve (memory, not download size) is
       # what kept crashing iPhone Safari even after the gzip fix above.
-      - name: Precompute per-train route parts
+      - name: Precompute sample data (per-train route parts)
         run: node app/scripts/precompute-train-parts.mjs
 
       - name: Assemble static site
         # Copies the frontend without local gzip sidecars, publishes datasets
-        # with .json extensions, includes the optional train-store seed and
-        # required precomputed parts, disables backend-only calls, and writes
+        # with .json extensions, includes the required precomputed sample data
+        # (api/sample-data/), disables backend-only calls, and writes
         # .nojekyll. The same build is exercised by the local test suite.
         run: node app/scripts/build-static-site.mjs _site
 

@@ -1,0 +1,628 @@
+// =========================================================================
+//  app-import.js — §16: progressive load / import engine (one train at a time, time-budgeted)
+//
+//  Part of the app-*.js family split out of the old single-file app.js:
+//  plain classic scripts sharing one global lexical scope, loaded in the
+//  order defined by index.html (the module map lives in app.js's header).
+// =========================================================================
+
+// =========================================================================
+//  §16.  Progressive load / import engine (one train at a time, time-budgeted)
+// =========================================================================
+
+// Clear the in-memory store and selection before a full progressive reload.
+// Shared by the two "replace" import paths so the reset has one definition.
+function resetTrainStoreForProgressiveLoad() {
+  trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
+  selectedTrainId = null;
+  focusedTrainId = null;
+  // Close any click-opened popup: its train is about to stop existing.
+  closeClickPopup();
+  // Drop the cached route render items so a re-import can't briefly draw the
+  // previous store's segments (the cache is keyed by train data, which is
+  // about to be replaced).
+  cachedRouteItems = null;
+  cachedRouteSignature = "";
+  renderAll();
+}
+
+// Shared per-train progressive append loop. Every import/restore path runs the
+// same append -> yield -> solve route -> draw THIS train -> progress sequence,
+// so a change to that ordering only has to be made once.
+//
+// The map is built up one train at a time: each iteration adds exactly ONE new
+// route line (and its markers) onto the existing layers via appendTrainToLayers
+// — it never clears and re-draws the whole map mid-load. Because each train's
+// route is solved off the render path and only its own line is drawn, the loop
+// stays O(N) and the page keeps responding while lines appear progressively.
+// A single authoritative renderAll() at the end re-renders with the correct
+// cross-train overlap offsets and refreshes the date bar / export textarea.
+// `source` is either a plain array of raw trains, or an async part source
+// ({ total, get(index) → Promise<rawTrain|null> }) that fetches one train per
+// network request (see makeTrainPartsSource). A null from a source means that
+// part could not be fetched/validated — the loop skips it and keeps loading
+// the rest instead of aborting the whole boot on one flaky mobile request.
+async function runProgressiveAppend(
+  source,
+  { persistEachStep = true, onProgress, fallbackDate = null, finalRender = true } = {},
+) {
+  const fromArray = Array.isArray(source);
+  const appendedIds = [];
+  const total = fromArray ? source.length : source.total;
+  // Time-budget chunked scheduling. Keep processing trains until ~FRAME_BUDGET_MS
+  // of work has accumulated, THEN yield one frame — instead of paying a whole
+  // frame per train (which made N trains cost >= N frames regardless of how
+  // cheap each one was). Cached/cheap trains now fly through many per frame; a
+  // heavy solve still yields right after. Wall-clock tracks real work and the
+  // approach scales to any N.
+  const FRAME_BUDGET_MS = 12;
+  const now = () =>
+    typeof performance !== "undefined" ? performance.now() : Date.now();
+  let frameStart = now();
+  // Shared frame-budget yielder. Returns control to the browser (paint + input)
+  // once the current slice has run FRAME_BUDGET_MS, and trims the transient
+  // regional-graph cache on the way out so peak memory stays bounded no matter
+  // how large the import is (GC also gets to run between slices). It is passed
+  // down into the per-section streaming solve, so the yield granularity is a
+  // single route section — even one 60-section itinerary can't freeze the tab.
+  const yieldIfNeeded = async () => {
+    if (now() - frameStart < FRAME_BUDGET_MS) return false;
+    trimRegionalGraphCache(REGIONAL_GRAPH_LOAD_NODE_BUDGET);
+    await waitForImportPaint();
+    frameStart = now();
+    return true;
+  };
+  // One initial yield so the progress UI paints before the first solve runs.
+  await waitForImportPaint();
+  frameStart = now();
+  for (let index = 0; index < total; index += 1) {
+    const rawTrain = fromArray ? source[index] : await source.get(index);
+    if (rawTrain == null) continue; // unfetchable part: already warned, keep going
+    const id = appendImportedTrain(rawTrain, fallbackDate);
+    appendedIds.push(id);
+
+    const appendedTrain = getTrain(id);
+    // Solve this train's route ONE section at a time, yielding within the train
+    // whenever the frame budget is spent. This is the crash fix: the cold solve
+    // of a large store no longer blocks the main thread ("page unresponsive")
+    // and can't pile the whole graph up in one synchronous burst (OOM).
+    await warmRouteCacheForTrain(appendedTrain, { yieldIfNeeded });
+
+    // Draw just this one train incrementally: one more line on the map, one
+    // more card in the list (O(1)). No full-list rebuild, no full-map clear.
+    perfMeasure("appendTrainToLayers", () =>
+      appendTrainToLayers(appendedTrain),
+    );
+    appendTrainListItemIncremental(appendedTrain);
+    if (onProgress) onProgress({ count: appendedIds.length, total, id });
+
+    await yieldIfNeeded();
+  }
+  // Single authoritative repaint: full sorted list + date bar + cross-train
+  // overlap offsets, all once at the end. The two "replace" callers run
+  // finalizeProgressiveLoad() -> renderAll() synchronously the moment this
+  // awaited call returns (no paint in between), so they pass finalRender:false
+  // to skip this duplicate full pass (renderTrainList's 119 item builds + the
+  // whole overlap/offset rebuild). Append mode has no finalize step and keeps
+  // the default repaint so its imported lines settle to final styling.
+  if (finalRender) renderAll();
+  if (persistEachStep) saveTrainStore();
+  return appendedIds;
+}
+
+// Pre-compute (and cache) one train's route geometry without touching the DOM,
+// streaming the solve ONE section at a time and yielding a frame between
+// sections (via the caller's shared frame-budget `yieldIfNeeded`) so the heavy
+// solve is spread across animation frames instead of a single blocking burst.
+// Failures are swallowed — the normal render path surfaces any genuine problem.
+async function warmRouteCacheForTrain(train, { yieldIfNeeded } = {}) {
+  if (!train) return;
+  try {
+    await warmRouteCacheForTrainStreaming(train, { yieldIfNeeded });
+  } catch (err) {
+    console.warn(
+      `Route warm-up failed for ${train?.id}; will retry on render.`,
+      err,
+    );
+  }
+}
+
+// Apply the caller's post-load selection policy, re-validate the canonical
+// store and (optionally) persist. Shared tail of the two "replace" paths.
+function finalizeProgressiveLoad(
+  appendedIds,
+  {
+    finalPersist = true,
+    selectEarliestDate = false,
+    selectFirstTrain = true,
+  } = {},
+) {
+  selectedTrainId = selectFirstTrain ? appendedIds[0] || null : null;
+  focusedTrainId = null;
+  // Cancel any pending batched append-render: the authoritative renderAll()
+  // below supersedes it (otherwise the timer fires ~120 ms later and runs one
+  // redundant full renderTrainLayers after every import).
+  if (_appendRenderTimer) {
+    clearTimeout(_appendRenderTimer);
+    _appendRenderTimer = null;
+  }
+  // A full replace can invalidate the previous date filter. Drop to the
+  // earliest available date (or keep a still-valid one); on first boot we
+  // explicitly prefer the earliest date even when nothing was selected yet.
+  reconcileSelectedDate({ preferEarliestWhenAll: selectEarliestDate });
+  validateTrainStore(buildCanonicalTrainStore());
+  if (finalPersist) saveTrainStore();
+  renderAll();
+  // The load allowed the regional-graph cache to grow to its transient budget to
+  // avoid rebuilding regions mid-pass; settle it back to the steady budget now.
+  trimRegionalGraphCache(REGIONAL_GRAPH_NODE_BUDGET);
+}
+
+async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
+  if (importInProgress) {
+    console.warn(
+      "A progressive load/import is already running; ignoring concurrent replaceTrainStoreFromJsonText.",
+    );
+    return;
+  }
+  importInProgress = true;
+  try {
+    const importedStore = parseImportedCanonicalStore(jsonText);
+    const total = importedStore.trains.length;
+    if (!total) throw new Error(`${sourceLabel} contains no trains.`);
+
+    // Opening one's own local JSON is an explicit "load MY data" action: on
+    // the static deploy it leaves sample mode and persists (to IndexedDB) just
+    // like it persists to the server on the Node deployment.
+    if (!HAS_BACKEND && isSampleMode()) {
+      dataSourceMode = "user";
+      sampleModeDate = null;
+      updateDataSourceUi();
+    }
+
+    resetTrainStoreForProgressiveLoad();
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
+
+    const appendedIds = await runProgressiveAppend(importedStore.trains, {
+      persistEachStep: true,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns, so skip runProgressiveAppend's duplicate
+      // authoritative repaint (full list + overlap rebuild) here.
+      finalRender: false,
+      // Per-item progress lives only in the progress bar's own text. The
+      // status line is left for the final summary so the two don't echo the
+      // same "n/total" message at once.
+      onProgress: ({ count, total: t, id }) => {
+        setImportProgress(
+          count,
+          t,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
+        );
+      },
+    });
+
+    finalizeProgressiveLoad(appendedIds, { finalPersist: true });
+    setStatus(
+      els.importStatus,
+      I18N.t("status.loadedAll", { label: sourceLabel, total }),
+      "ok",
+    );
+    setImportProgress(total, total, I18N.t("prog.done", { count: total }));
+  } finally {
+    importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
+  }
+}
+
+async function replaceTrainStoreFromStoreProgressive(
+  store,
+  sourceLabel = "JSON",
+  options = {},
+) {
+  if (importInProgress) {
+    console.warn(
+      "A progressive load/import is already running; ignoring concurrent replaceTrainStoreFromStoreProgressive.",
+    );
+    return { count: 0, ids: [] };
+  }
+  importInProgress = true;
+  try {
+    // `store` already arrived as a parsed object (server res.json() / defaults /
+    // SSE payload) and is discarded by every caller after this. The old
+    // JSON.stringify()+re-parse round-trip (a full serialize of the whole store
+    // on every boot AND every live reload) bought nothing: parseImportedCanonicalStore
+    // accepts an object directly, and the progressive append only READS from it
+    // (normalizeImportedTrain builds fresh objects — it never mutates the source).
+    const importedStore = parseImportedCanonicalStore(store || { trains: [] });
+    const total = importedStore.trains.length;
+    if (!total) {
+      renderAll();
+      return { count: 0, ids: [] };
+    }
+
+    const persistEachStep = Boolean(options.persistEachStep);
+    const finalPersist = options.finalPersist !== false;
+    const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const selectFirstTrain = options.selectFirstTrain !== false;
+
+    resetTrainStoreForProgressiveLoad();
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
+
+    const appendedIds = await runProgressiveAppend(importedStore.trains, {
+      persistEachStep,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns, so skip runProgressiveAppend's duplicate
+      // authoritative repaint (full list + overlap rebuild) here.
+      finalRender: false,
+      // Per-item progress lives only in the progress bar's own text; the
+      // status line is reserved for the final summary to avoid a duplicate
+      // "正在…n/total" line echoing the same thing.
+      onProgress: ({ count, total: t, id }) => {
+        setImportProgress(
+          count,
+          t,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
+        );
+      },
+    });
+
+    finalizeProgressiveLoad(appendedIds, {
+      finalPersist,
+      selectEarliestDate,
+      selectFirstTrain,
+    });
+    setImportProgress(total, total, I18N.t("prog.done", { count: total }));
+    setStatus(
+      els.importStatus,
+      I18N.t("status.restoredAll", { label: sourceLabel, total }),
+      "ok",
+    );
+    return { count: appendedIds.length, ids: appendedIds };
+  } finally {
+    importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    drainPendingLiveReload();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sample-data parts (static deploys). The deploy pipeline runs the route
+// solver OFFLINE (app/scripts/precompute-train-parts.mjs) and publishes the
+// SAMPLE dataset as api/sample-data/: a manifest plus one part-NNN.json per
+// train, each carrying the raw train AND its solved route geometry keyed by
+// the exact cacheKey prepareTrainRouteSolve() computes. The manifest's `dates`
+// map groups the part names per calendar day, so boot can load a single
+// random day and the full sample loads only on explicit request. Parts are
+// fetched one train at a time, seeding the runtime route cache, appending and
+// drawing that train before the next — so the phone never parses one big
+// store JSON, never builds a route graph and never runs Dijkstra during the
+// initial load (the on-device cold solve is what crashed iPhone Safari).
+// A stale part (train edited without regenerating parts) just misses the cache
+// and falls back to the normal streaming solve for that one train.
+// ---------------------------------------------------------------------------
+let sampleManifestPromise = null;
+async function loadSampleManifest() {
+  if (!sampleManifestPromise) {
+    sampleManifestPromise = (async () => {
+      try {
+        const manifest = await fetchJson(`${SAMPLE_DATA_API}/manifest`);
+        if (
+          !manifest ||
+          manifest.format !== 1 ||
+          !Array.isArray(manifest.parts) ||
+          !manifest.parts.length ||
+          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
+        )
+          return null;
+        return manifest;
+      } catch (err) {
+        // No sample published (or unreachable).
+        return null;
+      }
+    })();
+  }
+  return sampleManifestPromise;
+}
+
+// The manifest's per-day index, defensively filtered to non-empty name lists.
+function sampleManifestDates(manifest) {
+  const dates = manifest && manifest.dates;
+  if (!dates || typeof dates !== "object") return [];
+  return Object.keys(dates)
+    .filter((key) => key && Array.isArray(dates[key]) && dates[key].length)
+    .sort();
+}
+
+// Seed the runtime route cache from one part's precomputed solve so the
+// subsequent warm-up is a pure cache hit. Safe by construction: a mismatched
+// cache_key is simply never looked up, and a known-unsolvable train seeds the
+// negative cache so the doomed graph build is skipped exactly as if this
+// session had already solved (and failed) it.
+function seedRouteCacheFromPart(part) {
+  const route = part && part.route;
+  if (!route || typeof route.cache_key !== "string" || !route.cache_key) return;
+  if (route.unsolvable === true) {
+    runtimeRouteNegativeCache.add(route.cache_key);
+    return;
+  }
+  if (
+    Array.isArray(route.features) &&
+    route.features.length &&
+    !runtimeRouteCache.has(route.cache_key)
+  )
+    runtimeRouteCache.set(route.cache_key, route.features);
+}
+
+// Async train source over the published parts: fetches ONE train per request,
+// keeping a small window of fetches in flight ahead of the append cursor so
+// the per-file network latency overlaps with append/draw work instead of
+// serialising 100+ round-trips. Each part is retried once and then skipped
+// (returns null) so a single flaky mobile request can't abort the whole boot.
+function makeTrainPartsSource(manifest) {
+  const names = manifest.parts;
+  const PREFETCH_WINDOW = 4;
+  const inflight = new Map(); // index -> Promise<part|null>
+  const fetchPart = (index) => {
+    let pending = inflight.get(index);
+    if (!pending) {
+      pending = (async () => {
+        const partPath = `${SAMPLE_DATA_API}/${names[index]}`;
+        try {
+          return await fetchJson(partPath);
+        } catch (err) {
+          try {
+            return await fetchJson(partPath); // one retry for transient failures
+          } catch (retryErr) {
+            console.warn(
+              `Train part ${names[index]} failed to load; skipping this train.`,
+              retryErr,
+            );
+            return null;
+          }
+        }
+      })();
+      inflight.set(index, pending);
+    }
+    return pending;
+  };
+  return {
+    total: names.length,
+    async get(index) {
+      const last = Math.min(index + PREFETCH_WINDOW, names.length - 1);
+      for (let ahead = index; ahead <= last; ahead += 1) fetchPart(ahead);
+      const part = await fetchPart(index);
+      inflight.delete(index); // consumed: let the part JSON be collected
+      if (!part || part.format !== 1 || !part.train) {
+        if (part) console.warn(`Train part ${names[index]} has an unexpected shape; skipping.`);
+        return null;
+      }
+      seedRouteCacheFromPart(part);
+      return part.train;
+    },
+  };
+}
+
+// "Replace" progressive load over the published per-train parts — the static
+// deploy's counterpart of replaceTrainStoreFromStoreProgressive, sharing the
+// same reset/append/finalize machinery and options.
+async function replaceTrainStoreFromPartsProgressive(
+  manifest,
+  sourceLabel = "JSON",
+  options = {},
+) {
+  if (importInProgress) {
+    console.warn(
+      "A progressive load/import is already running; ignoring concurrent replaceTrainStoreFromPartsProgressive.",
+    );
+    return { count: 0, ids: [] };
+  }
+  importInProgress = true;
+  try {
+    const source = makeTrainPartsSource(manifest);
+    const total = source.total;
+
+    const persistEachStep = Boolean(options.persistEachStep);
+    const finalPersist = options.finalPersist !== false;
+    const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const selectFirstTrain = options.selectFirstTrain !== false;
+
+    resetTrainStoreForProgressiveLoad();
+    setImportProgress(0, total, I18N.t("prog.prepare", { label: sourceLabel, total }));
+
+    const appendedIds = await runProgressiveAppend(source, {
+      persistEachStep,
+      // finalizeProgressiveLoad() -> renderAll() runs synchronously after this
+      // awaited call returns; skip the duplicate authoritative repaint.
+      finalRender: false,
+      onProgress: ({ count, total: t, id }) => {
+        setImportProgress(
+          count,
+          t,
+          I18N.t("prog.loading", { label: sourceLabel, count, total: t, id }),
+        );
+      },
+    });
+
+    finalizeProgressiveLoad(appendedIds, {
+      finalPersist,
+      selectEarliestDate,
+      selectFirstTrain,
+    });
+    const skipped = total - appendedIds.length;
+    setImportProgress(total, total, I18N.t("prog.done", { count: appendedIds.length }));
+    setStatus(
+      els.importStatus,
+      I18N.t("status.restoredAll", { label: sourceLabel, total: appendedIds.length }),
+      skipped ? "warn" : "ok",
+    );
+    return { count: appendedIds.length, ids: appendedIds };
+  } finally {
+    importInProgress = false;
+    drainPendingLiveReload();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Static-deploy data sources: sample data (ephemeral) vs the user's own store
+// (IndexedDB). These four functions own the dataSourceMode transitions.
+// ---------------------------------------------------------------------------
+
+// Load the published sample — one day (date given) or all of it (date null).
+// Sample data has NO memory: persistence is disabled for the whole session
+// until the user restores their own data or explicitly saves the view.
+async function loadSampleData({ date = null, bootLoadOptions = null } = {}) {
+  const manifest = await loadSampleManifest();
+  if (!manifest) throw new Error(I18N.t("err.noSampleData"));
+  const names =
+    date && manifest.dates && Array.isArray(manifest.dates[date])
+      ? manifest.dates[date]
+      : manifest.parts;
+  // Flip the mode BEFORE the progressive load so any save triggered while the
+  // sample streams in is dropped, never written over the user's store.
+  dataSourceMode = date ? "sample-single" : "sample-all";
+  sampleModeDate = date;
+  sampleEditHintShown = false;
+  updateDataSourceUi();
+  const label = date
+    ? I18N.t("src.sampleDay", { date })
+    : I18N.t("src.sampleAll");
+  const options = {
+    ...(bootLoadOptions || { selectEarliestDate: true, selectFirstTrain: false }),
+    persistEachStep: false,
+    finalPersist: false,
+  };
+  const result = await replaceTrainStoreFromPartsProgressive(
+    { ...manifest, parts: names },
+    label,
+    options,
+  );
+  updateDataSourceUi();
+  setStatus(
+    els.importStatus,
+    date
+      ? I18N.t("status.sampleSingleLoaded", { date, count: result.count })
+      : I18N.t("status.sampleAllLoaded", { count: result.count }),
+    "ok",
+  );
+  return result;
+}
+
+// Bring the user's own saved data back on screen (leaves sample mode). The
+// sample view is discarded; the IndexedDB store was never touched by it.
+async function restoreUserStore({ bootLoadOptions = null } = {}) {
+  const userData = await readUserStoreAll();
+  if (!userData) {
+    userStoreAvailable = false;
+    updateDataSourceUi();
+    setStatus(els.importStatus, I18N.t("status.noUserStore"), "warn");
+    return false;
+  }
+  seedRouteCacheEntries(userData.routes);
+  dataSourceMode = "user";
+  sampleModeDate = null;
+  userStoreAvailable = true;
+  await replaceTrainStoreFromStoreProgressive(
+    userData.store,
+    I18N.t("src.userStore"),
+    {
+      ...(bootLoadOptions || { selectEarliestDate: true, selectFirstTrain: false }),
+      persistEachStep: false,
+      // Data just came FROM storage; no need to immediately write it back.
+      finalPersist: false,
+    },
+  );
+  updateDataSourceUi();
+  return true;
+}
+
+// Persist whatever is currently on screen (typically a sample the user played
+// with) as the user's own data, then switch to user mode with autosave on.
+async function saveCurrentAsUserStore() {
+  const canonical = buildCanonicalTrainStore();
+  await writeUserStoreChunks(canonical, { force: true });
+  userStoreAvailable = canonical.trains.length > 0;
+  dataSourceMode = "user";
+  sampleModeDate = null;
+  storeSaveDirty = false;
+  updateDataSourceUi();
+  setStatus(
+    els.jsonStatus,
+    I18N.t("status.savedAsMine", { count: canonical.trains.length }),
+    "ok",
+  );
+}
+
+// Static-deploy boot: the user's own data wins; otherwise ONE RANDOM sample
+// day; built-in defaults only if the sample is unreachable.
+async function bootStaticData(bootLoadOptions) {
+  const userData = await readUserStoreAll();
+  if (userData) {
+    seedRouteCacheEntries(userData.routes);
+    dataSourceMode = "user";
+    userStoreAvailable = true;
+    await replaceTrainStoreFromStoreProgressive(
+      userData.store,
+      I18N.t("src.userStore"),
+      bootLoadOptions,
+    );
+    updateDataSourceUi();
+    return;
+  }
+  userStoreAvailable = false;
+  try {
+    const manifest = await loadSampleManifest();
+    if (manifest) {
+      const dates = sampleManifestDates(manifest);
+      const date = dates.length
+        ? dates[Math.floor(Math.random() * dates.length)]
+        : null;
+      await loadSampleData({ date, bootLoadOptions });
+      return;
+    }
+  } catch (err) {
+    console.warn("Sample data boot failed; falling back to defaults.", err);
+  }
+  // No sample published/reachable: show the built-in defaults, still ephemeral.
+  dataSourceMode = "sample-all";
+  sampleModeDate = null;
+  updateDataSourceUi();
+  await replaceTrainStoreFromStoreProgressive(
+    getDefaultTrainStore(),
+    I18N.t("src.builtinDefault"),
+    { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
+  );
+  updateDataSourceUi();
+}
+
+// Reflect dataSourceMode in the 資料 card: the mode line, and which of the
+// source buttons are visible/enabled. Safe to call before the DOM listeners
+// are bound and on the Node deployment (where the block is hidden entirely).
+function updateDataSourceUi() {
+  const statusEl = document.getElementById("data-source-status");
+  const sourceBlock = document.getElementById("data-source-block");
+  if (!statusEl || !sourceBlock) return;
+  if (HAS_BACKEND) {
+    // Node deployment: server autosave, no sample/user-store switching.
+    sourceBlock.hidden = true;
+    return;
+  }
+  sourceBlock.hidden = false;
+  let key = "mode.user";
+  if (dataSourceMode === "sample-single") key = "mode.sampleSingle";
+  else if (dataSourceMode === "sample-all") key = "mode.sampleAll";
+  statusEl.textContent = I18N.t(key, { date: sampleModeDate || "" });
+  statusEl.classList.toggle("sample-active", isSampleMode());
+  const loadAllBtn = document.getElementById("load-sample-all");
+  const saveMineBtn = document.getElementById("save-as-user-store");
+  const restoreBtn = document.getElementById("restore-user-store");
+  if (loadAllBtn) loadAllBtn.disabled = dataSourceMode === "sample-all";
+  if (saveMineBtn) saveMineBtn.hidden = !isSampleMode();
+  if (restoreBtn) {
+    restoreBtn.hidden = !isSampleMode();
+    restoreBtn.disabled = !userStoreAvailable;
+  }
+}
+

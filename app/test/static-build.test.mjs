@@ -13,7 +13,7 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const appDir = path.join(root, "app");
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
-  const partsDir = path.join(dataDir, "train-parts");
+  const partsDir = path.join(dataDir, "sample-data");
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
@@ -25,6 +25,16 @@ async function createFixture({ includeTrainStore = true } = {}) {
       "fetch(`${API_BASE}/${path}`);",
       "fetch(`${API_BASE}/${TRAIN_STORE_API}`);",
     ].join("\n"),
+  );
+  // The API templates live in several files of the app*.js family; every one
+  // of them must get the .json rewrite. Non-app scripts must stay untouched.
+  await fs.writeFile(
+    path.join(publicDir, "app-persistence.js"),
+    "fetch(`${API_BASE}/${TRAIN_STORE_API}`);\n",
+  );
+  await fs.writeFile(
+    path.join(publicDir, "railmap.js"),
+    "// not part of the app family: `${API_BASE}/${path}` stays as-is\n",
   );
   await fs.writeFile(
     path.join(publicDir, "index.html"),
@@ -47,8 +57,14 @@ async function createFixture({ includeTrainStore = true } = {}) {
   }
   await fs.writeFile(
     path.join(partsDir, "manifest.json"),
-    JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
+    JSON.stringify({
+      format: 1,
+      total: 1,
+      parts: ["part-000"],
+      dates: { "2026-07-03": ["part-000"] },
+    }),
   );
+  await fs.writeFile(path.join(partsDir, "part-000.json.gz"), "ignored");
   await fs.writeFile(
     path.join(partsDir, "part-000.json"),
     JSON.stringify({ format: 1, train: {}, route: null }),
@@ -73,6 +89,17 @@ test("static build preserves the Pages file and rewrite contract", async () => {
     assert.match(app, /const HAS_BACKEND = false;/);
     assert.match(app, /`\$\{API_BASE\}\/\$\{path\}\.json`/);
     assert.match(app, /`\$\{API_BASE\}\/\$\{TRAIN_STORE_API\}\.json`/);
+    assert.match(
+      await fs.readFile(
+        path.join(fixture.outputDir, "app-persistence.js"),
+        "utf8",
+      ),
+      /`\$\{API_BASE\}\/\$\{TRAIN_STORE_API\}\.json`/,
+    );
+    assert.match(
+      await fs.readFile(path.join(fixture.outputDir, "railmap.js"), "utf8"),
+      /`\$\{API_BASE\}\/\$\{path\}`/,
+    );
     assert.equal(
       await fs.readFile(path.join(fixture.outputDir, "index.html"), "utf8"),
       '<link rel="preload" href="api/stations.json">',
@@ -89,9 +116,22 @@ test("static build preserves the Pages file and rewrite contract", async () => {
         { name },
       );
     }
-    await fs.access(path.join(fixture.outputDir, "api", "train-store.json"));
+    // train-store.json must NOT be published: it is only the sample source.
+    await assert.rejects(
+      fs.access(path.join(fixture.outputDir, "api", "train-store.json")),
+      { code: "ENOENT" },
+    );
     await fs.access(
-      path.join(fixture.outputDir, "api", "train-parts", "manifest.json"),
+      path.join(fixture.outputDir, "api", "sample-data", "manifest.json"),
+    );
+    await fs.access(
+      path.join(fixture.outputDir, "api", "sample-data", "part-000.json"),
+    );
+    await assert.rejects(
+      fs.access(
+        path.join(fixture.outputDir, "api", "sample-data", "part-000.json.gz"),
+      ),
+      { code: "ENOENT" },
     );
     await fs.access(path.join(fixture.outputDir, ".nojekyll"));
     await assert.rejects(
@@ -114,7 +154,7 @@ test("static build preserves the Pages file and rewrite contract", async () => {
   }
 });
 
-test("static build keeps the train-store seed optional", async () => {
+test("static build works without a train-store.json present", async () => {
   const fixture = await createFixture({ includeTrainStore: false });
   try {
     await buildStaticSite({

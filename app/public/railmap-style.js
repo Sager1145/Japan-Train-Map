@@ -1,0 +1,609 @@
+/*
+ * railmap-style.js — the visual style layer of the RailMap core.
+ *
+ * railprint's design tokens (tokens.ts), the shared MapLibre source/layer
+ * ids, the hover/selection spotlight constants, the marker circle paint
+ * builders, and buildBaseStyle (style.ts): the full map style with the N02
+ * network in official line colors, the ridden-train and selection layers,
+ * and the fit-curve / hover-region debug layers, optionally over a
+ * namespaced basemap.
+ *
+ * Publishes the RailMapStyle global (consumed by railmap-geometry.js,
+ * railmap.js and railmap-interactions.js).
+ */
+(function (global) {
+  "use strict";
+
+  const { MAP_SURFACE_COLORS, namespaceBasemap } = global.RailMapBasemap;
+
+  // ───────────────────────── design tokens (railprint tokens.ts) ─────────────────────────
+  const tokens = {
+    railLit: "#00A040",
+    railText: "#006B2D",
+    railDim: "#D7DEDA", // unridden network lines + unridden station dots
+    railBg: "#EAF4EE",
+    ink: "#1A1A1A", // primary text / selection casing / ridden station dots
+    inkMuted: "#6B756F",
+    white: "#FFFFFF",
+  };
+  // Line treatment (railprint DESIGN.md glowing-line spec).
+  const stroke = { ridden: 4, unridden: 2 };
+  const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
+
+  const RAIL_ATTRIBUTION =
+    "出典「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成 (CC BY 4.0)";
+  const ROMAJI_ATTRIBUTION = "Romanizations © OpenStreetMap contributors, ODbL";
+
+  // ───────────────────── ridden/unridden paint constants (style.ts) ──────────────────────
+  const UNRIDDEN_OPACITY = 0.48;
+  const RIDDEN_WIDTH_SCALE = 1.18;
+  const UNRIDDEN_WIDTH_SCALE = 0.65;
+
+  // Zoom-scaled width for a per-feature base width `w` (px at z9), matching
+  // railprint's interpolate stops: ×0.6 at z4, ×1 at z9, ×1.6 at z14.
+  function zoomScaledWidth(wExpr) {
+    return [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      4,
+      ["*", wExpr, 0.6],
+      9,
+      wExpr,
+      14,
+      ["*", wExpr, 1.6],
+    ];
+  }
+
+  // ───────────────────────────── source / layer ids ─────────────────────────────
+  const SEGMENTS_SOURCE = "rn-segments";
+  const STATIONS_SOURCE = "rn-stations";
+  const SEGMENTS_LAYER = "rn-segments-line";
+  const STATIONS_LAYER = "rn-stations-dot";
+  const FADE_LAYER = "rp-fade";
+  const TRAIN_ROUTES_SOURCE = "train-routes";
+  const TRAIN_PICK_SOURCE = "train-routes-pick";
+  const TRAIN_EXPAND_SOURCE = "train-routes-expand-src";
+  const TRAIN_MARKERS_SOURCE = "train-markers-base";
+  const FIT_CURVES_SOURCE = "train-fit-curves-src";
+  const HOVER_REGIONS_SOURCE = "train-hover-regions-src";
+  const TRAIN_ROUTES_LAYER = "train-routes-line";
+  const TRAIN_PICK_LAYER = "train-routes-pick-line";
+  const TRAIN_EXPAND_LAYER = "train-routes-expand";
+  const TRAIN_EXPAND_HOVER_LAYER = "train-routes-expand-hover";
+  const TRAIN_HOVER_LAYER = "train-routes-hover";
+  const TRAIN_SEL_CASING_LAYER = "train-routes-sel-casing";
+  const TRAIN_SEL_LAYER = "train-routes-sel";
+  const TRAIN_PASS_LAYER = "train-pass-dot";
+  const TRAIN_STOPS_LAYER = "train-stops-dot";
+  const TRAIN_SEL_PASS_LAYER = "train-sel-pass-dot";
+  const TRAIN_SEL_STOPS_LAYER = "train-sel-stops-dot";
+  const FIT_CURVES_CASING_LAYER = "train-fit-curves-casing";
+  const FIT_CURVES_LAYER = "train-fit-curves-line";
+  const HOVER_REGIONS_FILL_LAYER = "train-hover-regions-fill";
+  const HOVER_REGIONS_LINE_LAYER = "train-hover-regions-line";
+
+  const EMPTY_FC = { type: "FeatureCollection", features: [] };
+  const NO_TRAIN = "__none__";
+  // A filter that can never match (empty tid whitelist).
+  const MATCH_NONE = ["in", ["get", "tid"], ["literal", []]];
+  // HOVER SPOTLIGHT: while a route (or an expanded parallel group) is
+  // hovered, every OTHER train's lines and station dots fade to this opacity
+  // multiplier. Applied purely via paint expressions (no source updates).
+  const HOVER_DIM = 0.15;
+  // Hover hit geometry in SCREEN pixels. Fresh entry stays forgiving at 6px,
+  // but an active hover now releases after roughly 8–9px instead of the old
+  // 16–30px magnetic zone that forced a long mouse excursion to cancel.
+  const HOVER_PICK_PAD_PX = 6;
+  const HOVER_STICKY_PAD_PX = 4;
+  const HOVER_FAN_HOLD_PX = 8;
+  const HOVER_GROUP_SWITCH_PX = 6;
+  // SELECTION SPOTLIGHT: while a single train is SELECTED, every other train
+  // still drawn (its same-day siblings — other dates are removed upstream)
+  // fades to this multiplier, station dots included. Softer than the hover
+  // dim so a hover can still deepen the spotlight on top of a selection.
+  const SELECT_DIM = 0.25;
+  // (Opacity fades are rAF-driven — see the animated dim engine
+  // `_applyDimPaint`; per-mode durations live in `_dimSpeedMs`.)
+
+  // Marker circle paint shared by the four dot layers: per-feature fill/stroke
+  // (rgb strings; alpha rides circle-opacity so the SEL layers can override
+  // it) + railprint's zoom-scaled radius (r at z12, ×~0.48 at z5 — matching
+  // stationRadiusExpression's 2.4/5 & 1.4/3 ratios). `radiusBoost` widens the
+  // SEL layers' dots (focus emphasis without any record rebuild); `sel` layers
+  // also force full opacity so a selected off-date train's dots un-dim.
+  function markerRadiusExpr(radiusBoost) {
+    const r = radiusBoost
+      ? ["+", ["get", "radius"], radiusBoost]
+      : ["get", "radius"];
+    return ["interpolate", ["linear"], ["zoom"], 5, ["*", r, 0.48], 12, r];
+  }
+
+  // Selected marker growth stays role-aware: a terminal keeps the full focus
+  // boost, while an intermediate stop grows by exactly the same amount as a
+  // pass-through marker. The small black center dot scales proportionally but
+  // never expands to cover its white outer circle.
+  function selectedStopRadiusExpr(focusBoost) {
+    const boost = Math.max(0, Number(focusBoost) || 0);
+    return markerRadiusExpr([
+      "*",
+      boost,
+      ["coalesce", ["get", "focusScale"], 0.5],
+    ]);
+  }
+
+  const SELECTED_STOP_STROKE_SCALE = [
+    "case",
+    ["==", ["get", "role"], "terminal"],
+    2,
+    1,
+  ];
+
+  function markerCirclePaint(opts) {
+    const sel = !!(opts && opts.sel);
+    return {
+      "circle-color": ["get", "fill"],
+      "circle-opacity": sel ? 1 : ["get", "alpha"],
+      "circle-radius": markerRadiusExpr(0),
+      "circle-stroke-color": ["get", "stroke"],
+      "circle-stroke-opacity": sel ? 1 : ["get", "alpha"],
+      "circle-stroke-width": sel
+        ? ["*", ["get", "lineWidth"], opts.strokeScale || 1]
+        : ["get", "lineWidth"],
+      "circle-pitch-alignment": "map",
+    };
+  }
+
+  // ───────────────────────────── the base style (style.ts buildBaseStyle) ────────────────
+  function buildBaseStyle(opts) {
+    const basemap = opts.basemap || null;
+    const alternateBasemap = opts.alternateBasemap || null;
+    const network = opts.network || null;
+    const theme = opts.theme === "dark" ? "dark" : "light";
+    const themeColors = MAP_SURFACE_COLORS[theme];
+    const fadeOpacity = Math.max(0, Math.min(1, Number(opts.fadeOpacity || 0)));
+
+    const primaryStack = basemap
+      ? namespaceBasemap(basemap, "", false)
+      : null;
+    const alternateTheme = theme === "dark" ? "light" : "dark";
+    const alternateStack = alternateBasemap
+      ? namespaceBasemap(
+          alternateBasemap,
+          "rp-bm-preload-" + alternateTheme + "-",
+          true,
+        )
+      : null;
+    const sources = Object.assign(
+      {},
+      primaryStack ? primaryStack.sources : {},
+      alternateStack ? alternateStack.sources : {},
+    );
+    sources[SEGMENTS_SOURCE] = {
+      type: "geojson",
+      data: network ? network.segments : EMPTY_FC,
+      attribution: RAIL_ATTRIBUTION + "｜" + ROMAJI_ATTRIBUTION,
+    };
+    sources[STATIONS_SOURCE] = {
+      type: "geojson",
+      data: network ? network.stations : EMPTY_FC,
+    };
+    sources[TRAIN_ROUTES_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_EXPAND_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_MARKERS_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[FIT_CURVES_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[HOVER_REGIONS_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    // Pass-through dot LOD: below this zoom the (numerous) white dots simply
+    // don't draw — a layer property, so crossing it re-renders nothing.
+    const passMinzoom = Math.max(0, Number(opts.passMinzoom || 0));
+
+    const layers = [];
+    // Plain background used for the explicit no-basemap mode and graceful
+    // degradation when the online style is unavailable.
+    layers.push({
+      id: "rp-bg",
+      type: "background",
+      paint: { "background-color": themeColors.background },
+    });
+    // Keep the complete basemap stack below the fade and every railway layer.
+    // This guarantees that roads, labels and theme masks can never cover the
+    // ordinary network or any ridden route.
+    const bmLayers = primaryStack ? primaryStack.layers : [];
+    layers.push(...bmLayers);
+    if (alternateStack) layers.push(...alternateStack.layers);
+
+    // Optional map-opacity tint affects only the basemap. Theme switching
+    // cross-fades the basemap stacks themselves; this layer stays unchanged.
+    layers.push({
+      id: FADE_LAYER,
+      type: "background",
+      paint: {
+        "background-color": themeColors.fade,
+        "background-opacity": fadeOpacity,
+        "background-opacity-transition": { duration: 0, delay: 0 },
+      },
+    });
+
+    // ── the full national network — railprint's "unridden field" ──
+    // Hidden by default: the network is opt-in via the layers-control switch.
+    layers.push({
+      id: SEGMENTS_LAYER,
+      type: "line",
+      source: SEGMENTS_SOURCE,
+      filter: [">=", ["zoom"], ["get", "minz"]],
+      layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
+        "line-opacity": UNRIDDEN_OPACITY,
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4,
+          stroke.unridden * 0.6 * UNRIDDEN_WIDTH_SCALE,
+          9,
+          stroke.unridden * 1 * UNRIDDEN_WIDTH_SCALE,
+          14,
+          stroke.unridden * 1.25 * UNRIDDEN_WIDTH_SCALE,
+        ],
+      },
+    });
+    layers.push({
+      id: STATIONS_LAYER,
+      type: "circle",
+      source: STATIONS_SOURCE,
+      filter: [">=", ["zoom"], ["get", "minz"]],
+      layout: { visibility: "none" },
+      paint: {
+        "circle-color": tokens.railDim,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.4, 12, 3],
+        "circle-stroke-color": tokens.white,
+        "circle-stroke-width": 1,
+      },
+    });
+
+    // ── the trains ("ridden") — full-color line (glow removed by request) ──
+    layers.push({
+      id: TRAIN_ROUTES_LAYER,
+      type: "line",
+      source: TRAIN_ROUTES_SOURCE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-opacity": ["get", "alpha"],
+        "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+      },
+    });
+    // Invisible PICK layer: when several trains share the same track, each
+    // train's pick geometry is offset sideways into its own parallel lane
+    // (earliest date = left/top lane), so sliding the pointer across an
+    // overlapped stretch hovers/selects each train in date order. Zero
+    // opacity — queryRenderedFeatures still hit-tests against line-width.
+    layers.push({
+      id: TRAIN_PICK_LAYER,
+      type: "line",
+      source: TRAIN_PICK_SOURCE,
+      // nopick records (off-date trains while a concrete day is active) are
+      // excluded from hit-testing entirely: no hover, no tooltip, no click.
+      filter: ["!=", ["get", "nopick"], 1],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#000",
+        "line-opacity": 0,
+        "line-width": ["get", "pickWidth"],
+      },
+    });
+    // Whole hovered route lights up (full opacity, a touch wider).
+    layers.push({
+      id: TRAIN_HOVER_LAYER,
+      type: "line",
+      source: TRAIN_ROUTES_SOURCE,
+      filter: ["==", ["get", "tid"], NO_TRAIN],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-opacity": 1,
+        "line-width": zoomScaledWidth([
+          "+",
+          ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
+          2,
+        ]),
+      },
+    });
+    // Other trains' station dots sit UNDER the selected route. ONE marker
+    // source feeds all four dot layers; the selected train's dots move to the
+    // SEL layers purely via tid filters (selection = 4 setFilter calls, zero
+    // setData).
+    layers.push({
+      id: TRAIN_PASS_LAYER,
+      type: "circle",
+      source: TRAIN_MARKERS_SOURCE,
+      minzoom: passMinzoom,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "pass"],
+        ["!=", ["get", "tid"], NO_TRAIN],
+      ],
+      paint: markerCirclePaint(),
+    });
+    layers.push({
+      id: TRAIN_STOPS_LAYER,
+      type: "circle",
+      source: TRAIN_MARKERS_SOURCE,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "stop"],
+        ["!=", ["get", "tid"], NO_TRAIN],
+      ],
+      layout: {
+        "circle-sort-key": [
+          "case",
+          ["==", ["get", "role"], "stop-center"],
+          2,
+          1,
+        ],
+      },
+      paint: markerCirclePaint(),
+    });
+    // C3 — DARK selection casing UNDER the selected line, the line's own hue on
+    // top; the dark halo peeking out reads as "selected" on the light basemap.
+    layers.push({
+      id: TRAIN_SEL_CASING_LAYER,
+      type: "line",
+      source: TRAIN_ROUTES_SOURCE,
+      filter: ["==", ["get", "tid"], NO_TRAIN],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": themeColors.casing,
+        "line-opacity": 0.9,
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4,
+          stroke.ridden * 1.4,
+          9,
+          stroke.ridden * 2,
+          14,
+          stroke.ridden * 2.6,
+        ],
+      },
+    });
+    layers.push({
+      id: TRAIN_SEL_LAYER,
+      type: "line",
+      source: TRAIN_ROUTES_SOURCE,
+      filter: ["==", ["get", "tid"], NO_TRAIN],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-opacity": 1,
+        "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+      },
+    });
+    // HOVER-EXPAND: while the pointer is on an overlapped stretch, that
+    // group's trains draw temporarily fanned into date-ordered parallel
+    // lanes. Each expand feature is the member train's COMPLETE course,
+    // RIGIDLY translated by the group's constant shift vector — corners,
+    // radii and lengths untouched, one intact copy of the whole line, never
+    // broken into pieces mid-route. The source is group-scoped (filled on
+    // hover). Opacity is animated 0→1 in JS; per-record alpha is baked into
+    // colorA so the layer-level line-opacity acts as a pure fade multiplier.
+    layers.push({
+      id: TRAIN_EXPAND_LAYER,
+      type: "line",
+      source: TRAIN_EXPAND_SOURCE,
+      filter: MATCH_NONE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "colorA"],
+        "line-opacity": 0,
+        "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+      },
+    });
+    // The hovered train's own lane lights up a touch wider, mirroring the
+    // whole-route hover layer.
+    layers.push({
+      id: TRAIN_EXPAND_HOVER_LAYER,
+      type: "line",
+      source: TRAIN_EXPAND_SOURCE,
+      filter: MATCH_NONE,
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "colorA"],
+        "line-opacity": 0,
+        "line-width": zoomScaledWidth([
+          "+",
+          ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
+          2,
+        ]),
+      },
+    });
+    // The selected train's own dots above its raised route (same source,
+    // tid-filtered; full opacity + focus-boost radius via paint).
+    layers.push({
+      id: TRAIN_SEL_PASS_LAYER,
+      type: "circle",
+      source: TRAIN_MARKERS_SOURCE,
+      minzoom: passMinzoom,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "pass"],
+        ["==", ["get", "tid"], NO_TRAIN],
+      ],
+      paint: markerCirclePaint({ sel: true, strokeScale: 1 }),
+    });
+    layers.push({
+      id: TRAIN_SEL_STOPS_LAYER,
+      type: "circle",
+      source: TRAIN_MARKERS_SOURCE,
+      filter: [
+        "all",
+        ["==", ["get", "category"], "stop"],
+        ["==", ["get", "tid"], NO_TRAIN],
+      ],
+      layout: {
+        "circle-sort-key": [
+          "case",
+          ["==", ["get", "role"], "stop-center"],
+          2,
+          1,
+        ],
+      },
+      paint: markerCirclePaint({
+        sel: true,
+        strokeScale: SELECTED_STOP_STROKE_SCALE,
+      }),
+    });
+
+    // Direction-fit debug overlay. These are intentionally the LAST style
+    // layers so the exact curve used by hover direction remains visible above
+    // routes, expanded lanes, markers and basemap labels. A black casing plus
+    // white dashed core gives an inverse/high-contrast read on every colour.
+    layers.push({
+      id: FIT_CURVES_CASING_LAYER,
+      type: "line",
+      source: FIT_CURVES_SOURCE,
+      layout: {
+        visibility: "none",
+        "line-cap": "round",
+        "line-join": "round",
+      },
+      paint: {
+        "line-color": "#000000",
+        "line-opacity": 0.92,
+        "line-width": 6,
+        "line-dasharray": [2.2, 1.8],
+      },
+    });
+    layers.push({
+      id: FIT_CURVES_LAYER,
+      type: "line",
+      source: FIT_CURVES_SOURCE,
+      layout: {
+        visibility: "none",
+        "line-cap": "round",
+        "line-join": "round",
+      },
+      paint: {
+        "line-color": "#ffffff",
+        "line-opacity": 1,
+        "line-width": 2.5,
+        "line-dasharray": [2.2, 1.8],
+      },
+    });
+
+    // Screen-space hover diagnostics, converted to geographic polygons on
+    // each pointer frame. Cyan = active route query box, orange = temporary
+    // fan hold radius, magenta = overlap-group switch deadzone. These remain
+    // last in the style so the real monitored area is never hidden by labels.
+    const hoverRegionColor = [
+      "match",
+      ["get", "kind"],
+      "pick",
+      "#00d5ff",
+      "hold",
+      "#ff9800",
+      "switch",
+      "#ff2db2",
+      "#ffffff",
+    ];
+    layers.push({
+      id: HOVER_REGIONS_FILL_LAYER,
+      type: "fill",
+      source: HOVER_REGIONS_SOURCE,
+      layout: { visibility: "none" },
+      paint: {
+        "fill-color": hoverRegionColor,
+        "fill-opacity": 0.14,
+      },
+    });
+    layers.push({
+      id: HOVER_REGIONS_LINE_LAYER,
+      type: "line",
+      source: HOVER_REGIONS_SOURCE,
+      layout: {
+        visibility: "none",
+        "line-cap": "round",
+        "line-join": "round",
+      },
+      paint: {
+        "line-color": hoverRegionColor,
+        "line-opacity": 0.95,
+        "line-width": 2.5,
+        "line-dasharray": [2, 1.2],
+      },
+    });
+
+    const style = { version: 8, sources, layers };
+    const assetBasemap = basemap || alternateBasemap;
+    if (assetBasemap && assetBasemap.glyphs) style.glyphs = assetBasemap.glyphs;
+    if (assetBasemap && assetBasemap.sprite) style.sprite = assetBasemap.sprite;
+    const stacks = {};
+    if (primaryStack) {
+      stacks[theme] = {
+        layerIds: primaryStack.layers.map((layer) => layer.id),
+        sourceIds: Object.keys(primaryStack.sources),
+        opacityTargets: primaryStack.opacityTargets,
+      };
+    }
+    if (alternateStack) {
+      stacks[alternateTheme] = {
+        layerIds: alternateStack.layers.map((layer) => layer.id),
+        sourceIds: Object.keys(alternateStack.sources),
+        opacityTargets: alternateStack.opacityTargets,
+      };
+    }
+    // Application-only metadata must not be passed through MapLibre's style
+    // validator, so keep it non-enumerable and hand it directly to attach().
+    Object.defineProperty(style, "__railMapBasemapStacks", {
+      value: stacks,
+      enumerable: false,
+    });
+    return style;
+  }
+
+  global.RailMapStyle = {
+    buildBaseStyle,
+    zoomScaledWidth,
+    RIDDEN_WIDTH_SCALE,
+    markerRadiusExpr,
+    selectedStopRadiusExpr,
+    EMPTY_FC,
+    NO_TRAIN,
+    MATCH_NONE,
+    HOVER_DIM,
+    HOVER_PICK_PAD_PX,
+    HOVER_STICKY_PAD_PX,
+    HOVER_FAN_HOLD_PX,
+    HOVER_GROUP_SWITCH_PX,
+    SELECT_DIM,
+    SEGMENTS_SOURCE,
+    STATIONS_SOURCE,
+    SEGMENTS_LAYER,
+    STATIONS_LAYER,
+    FADE_LAYER,
+    TRAIN_ROUTES_SOURCE,
+    TRAIN_PICK_SOURCE,
+    TRAIN_EXPAND_SOURCE,
+    TRAIN_MARKERS_SOURCE,
+    FIT_CURVES_SOURCE,
+    HOVER_REGIONS_SOURCE,
+    TRAIN_ROUTES_LAYER,
+    TRAIN_PICK_LAYER,
+    TRAIN_EXPAND_LAYER,
+    TRAIN_EXPAND_HOVER_LAYER,
+    TRAIN_HOVER_LAYER,
+    TRAIN_SEL_CASING_LAYER,
+    TRAIN_SEL_LAYER,
+    TRAIN_PASS_LAYER,
+    TRAIN_STOPS_LAYER,
+    TRAIN_SEL_PASS_LAYER,
+    TRAIN_SEL_STOPS_LAYER,
+    FIT_CURVES_CASING_LAYER,
+    FIT_CURVES_LAYER,
+    HOVER_REGIONS_FILL_LAYER,
+    HOVER_REGIONS_LINE_LAYER,
+  };
+})(window);

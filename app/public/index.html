@@ -38,7 +38,7 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260716-sidebar-drawer2" />
+    <link rel="stylesheet" href="styles.css?v=20260717-sample-userstore" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -189,9 +189,24 @@
           </div>
         </section>
 
-        <!-- ============ Card 4: 資料管理 — import / export / danger zone ============ -->
+        <!-- ============ Card 4: 資料管理 — data source / import / export / danger zone ============ -->
         <section class="card" id="data-manager">
           <div class="card-body">
+            <!-- 資料來源：目前顯示的是「我的資料」還是「示例資料」。僅靜態
+                 部署（GitHub Pages）顯示；Node 版由伺服器自動保存，無此區塊。 -->
+            <div id="data-source-block" hidden>
+              <h3 class="subhead" data-i18n="sec.dataSource">資料來源</h3>
+              <div class="data-source-status" id="data-source-status"></div>
+              <div class="toolbar">
+                <button id="load-sample-all" data-i18n="btn.loadSampleAll">載入全部示例資料</button>
+                <button id="restore-user-store" data-i18n="btn.restoreMine" hidden>恢復我的資料</button>
+                <button class="primary" id="save-as-user-store" data-i18n="btn.saveAsMine" hidden>保存為我的資料</button>
+              </div>
+              <p class="hint" data-i18n="hint.dataSource">
+                示例資料僅供瀏覽，任何更改都不會保存；你的資料保存在此瀏覽器中，編輯時自動保存。
+              </p>
+              <div class="divider"></div>
+            </div>
             <h3 class="subhead" data-i18n="sec.import">JSON 匯入／本地資料</h3>
             <textarea
               class="import-json-area"
@@ -280,12 +295,51 @@
     </div>
     <!-- Vendored MapLibre GL runtime + the railprint-style map core:
      OpenFreeMap Positron/Dark basemaps, the full N02 national network in
-     official line colors, and railprint's ridden-line / station-dot styling. -->
+     official line colors, and railprint's ridden-line / station-dot styling.
+     The map core is the ordered railmap-*.js family (module map in
+     railmap.js's header): basemap loader → popup → style → geometry →
+     RailMap manager → its interaction methods. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="app-core.js"></script>
-    <script src="i18n.js?v=20260716-theme-dropdown"></script>
+    <script src="i18n-strings.js?v=20260717-split"></script>
+    <script src="i18n.js?v=20260717-split"></script>
     <script src="rail-network.js"></script>
-    <script src="railmap.js?v=20260716-lazy-network"></script>
-    <script src="app.js?v=20260716-chunked-load"></script>
+    <script src="railmap-basemap.js?v=20260717-split"></script>
+    <script src="railmap-popup.js?v=20260717-split"></script>
+    <script src="railmap-style.js?v=20260717-split"></script>
+    <script src="railmap-geometry.js?v=20260717-split"></script>
+    <script src="railmap.js?v=20260717-split"></script>
+    <script src="railmap-interactions.js?v=20260717-split"></script>
+    <!-- The app itself: ordered plain classic scripts sharing one global
+         lexical scope (split of the old single-file app.js — the module map
+         lives in app.js's header). ORDER MATTERS: top-level initializers may
+         reference bindings from earlier files, and the precompute exporter
+         (scripts/precompute-train-parts.mjs) replays this exact list minus
+         the stubbed modules inside its Node vm sandbox. -->
+    <script src="app-config.js?v=20260717-split"></script>
+    <script src="app-display-settings.js?v=20260717-split"></script>
+    <script src="app-display-features.js?v=20260717-split"></script>
+    <script src="app-route-simplify.js?v=20260717-split"></script>
+    <script src="app-dates.js?v=20260717-split"></script>
+    <script src="app.js?v=20260717-split"></script>
+    <script src="app-stations.js?v=20260717-split"></script>
+    <script src="app-persistence.js?v=20260717-split"></script>
+    <script src="app-import.js?v=20260717-split"></script>
+    <script src="app-store-ops.js?v=20260717-split"></script>
+    <script src="app-map-init.js?v=20260717-split"></script>
+    <script src="app-events.js?v=20260717-split"></script>
+    <script src="app-stats.js?v=20260717-split"></script>
+    <script src="app-render.js?v=20260717-split"></script>
+    <script src="app-editor.js?v=20260717-split"></script>
+    <script src="app-route-render.js?v=20260717-split"></script>
+    <script src="app-overlap-lanes.js?v=20260717-split"></script>
+    <script src="app-deck-records.js?v=20260717-split"></script>
+    <script src="app-route-graph.js?v=20260717-split"></script>
+    <script src="app-route-solver.js?v=20260717-split"></script>
+    <script src="app-route-features.js?v=20260717-split"></script>
+    <script src="app-style.js?v=20260717-split"></script>
+    <script src="app-map-fit.js?v=20260717-split"></script>
+    <script src="app-validation.js?v=20260717-split"></script>
+    <script src="app-ui-utils.js?v=20260717-split"></script>
   </body>
 </html>

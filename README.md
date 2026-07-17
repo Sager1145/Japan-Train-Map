@@ -60,11 +60,12 @@ Japan Train Map/
     ├── package-lock.json
     ├── node_modules/    # dependencies (created by npm install) / 依赖，npm install 生成
     ├── public/          # frontend / 前端
-    │   ├── index.html   # page / 页面
+    │   ├── index.html   # page (also the script load order) / 页面（亦即脚本加载顺序）
     │   ├── app-core.js  # shared pure editor helpers / 编辑器共享纯函数
-    │   ├── app.js       # map + editor logic (MapLibre) / 地图与编辑器逻辑（MapLibre）
+    │   ├── app.js, app-*.js # app module family; map in app.js's header / 应用模块族，模块表见 app.js 头部
+    │   ├── i18n-strings.js, i18n.js # UI string catalogs + i18n runtime / UI 文案目录与多语言运行时
     │   ├── rail-network.js # compact rail-package conversion / 紧凑铁路数据转换
-    │   ├── railmap.js   # MapLibre railway rendering / MapLibre 铁路渲染
+    │   ├── railmap.js, railmap-*.js # MapLibre map core family; map in railmap.js's header / MapLibre 地图核心模块族，模块表见 railmap.js 头部
     │   └── styles.css   # styles / 样式
     ├── scripts/         # data, route-precompute and static-build tools / 数据、路线预计算与静态构建工具
     ├── test/            # Node characterization tests / Node 行为特征测试
@@ -114,6 +115,7 @@ Once the server is running it exposes the following endpoints. / 服务器启动
 | --- | --- |
 | The frontend loads from the train-store endpoint on boot and auto-saves edits back via `PUT` — no manual action needed. API calls resolve relative to `index.html` (so the app also works when served under a sub-path). | 前端启动时从 train-store 接口载入数据，编辑后自动通过 `PUT` 保存，无需手动操作。API 调用相对于 `index.html` 解析（因此部署在子路径下也能正常工作）。 |
 | **AI agents** can drive the app directly: `POST` a rail plan to `/api/agent/import` and every open map live-refreshes via `/api/events` (Server-Sent Events) — re-solving and re-rendering the route with no manual reload. See [`AGENT.md`](./AGENT.md) for the full agent guide. | **AI 代理**可直接操作本应用：将行程 `POST` 到 `/api/agent/import`，所有已打开的地图通过 `/api/events`（SSE）实时刷新——自动重算并重绘路线，无需手动刷新。完整代理指南见 [`AGENT.md`](./AGENT.md)。 |
+| **Static (GitHub Pages) deploy:** there is no backend, so `train-store.json` is published only as read-only **sample data** (chunked per day under `api/sample-data/`). Visitors' own data is stored in their browser (IndexedDB, one record per day) and auto-saves as they edit; with no saved data the site boots with one random sample day, and the Data tab offers "Load Full Sample Data" / "Save as My Data" / "Restore My Data". See [`DEPLOY-GITHUB-PAGES.md`](./DEPLOY-GITHUB-PAGES.md). | **静态（GitHub Pages）部署：**没有后端，`train-store.json` 仅作为只读**示例数据**发布（按日期拆分在 `api/sample-data/`）。访客自己的数据保存在其浏览器中（IndexedDB，一天一条记录），编辑时自动保存；没有已保存数据时，开站随机加载一天示例，「资料」页签提供「载入全部示例资料 / 保存为我的资料 / 恢复我的资料」。详见 [`DEPLOY-GITHUB-PAGES.md`](./DEPLOY-GITHUB-PAGES.md)。 |
 
 ---
 

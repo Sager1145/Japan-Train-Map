@@ -870,6 +870,19 @@ button:disabled {
   color: var(--err);
 }
 
+/* ---- 資料來源 mode line (static deploy) --------------------------------- */
+/* "My data" (green, autosaved) vs "sample data" (amber, nothing persists). */
+.data-source-status {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ok);
+  margin-bottom: 6px;
+}
+.data-source-status.sample-active {
+  color: var(--warn);
+}
+
 /* ---- Import target / progress ------------------------------------------ */
 .import-target {
   color: var(--ink-muted);

@@ -14,7 +14,7 @@ async function createFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-server-"));
   const dataDir = path.join(root, "data");
   const publicDir = path.join(root, "public");
-  await fs.mkdir(path.join(dataDir, "train-parts"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "sample-data"), { recursive: true });
   await fs.mkdir(publicDir, { recursive: true });
 
   for (const file of Object.values(DATA_FILES)) {
@@ -24,7 +24,7 @@ async function createFixture() {
     );
   }
   await fs.writeFile(
-    path.join(dataDir, "train-parts", "part-000.json"),
+    path.join(dataDir, "sample-data", "part-000.json"),
     JSON.stringify({ format: 1, train: { id: "sample" }, route: null }),
   );
   await fs.writeFile(
@@ -291,15 +291,15 @@ test("agent append import preserves upsert order and response counts", async () 
   });
 });
 
-test("train parts and static assets preserve validation and delivery headers", async () => {
+test("sample data and static assets preserve validation and delivery headers", async () => {
   await withServer(async ({ baseUrl }) => {
-    const invalid = await rawRequest(baseUrl, "/api/train-parts/%2e%2e");
+    const invalid = await rawRequest(baseUrl, "/api/sample-data/%2e%2e");
     assert.equal(invalid.status, 400);
     assert.deepEqual(JSON.parse(invalid.body), {
-      error: "Invalid train part name.",
+      error: "Invalid sample data name.",
     });
 
-    const part = await fetch(`${baseUrl}/api/train-parts/part-000.json`);
+    const part = await fetch(`${baseUrl}/api/sample-data/part-000.json`);
     assert.equal(part.status, 200);
     assert.equal(part.headers.get("cache-control"), "no-cache");
     assert.deepEqual(await responseJson(part), {

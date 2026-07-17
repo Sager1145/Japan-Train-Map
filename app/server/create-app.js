@@ -36,7 +36,7 @@ function createApp({
 } = {}) {
   const app = express();
   const trainStore = createTrainStore(path.join(dataDir, "train-store.json"));
-  const trainPartsDir = path.join(dataDir, "train-parts");
+  const sampleDataDir = path.join(dataDir, "sample-data");
   const { serveGzippable } = createFileDelivery({ logger });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
@@ -60,20 +60,20 @@ function createApp({
     });
   }
 
-  app.get("/api/train-parts/:name", async (req, res) => {
+  app.get("/api/sample-data/:name", async (req, res) => {
     const name = String(req.params.name || "").replace(/\.json$/, "");
     if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      return res.status(400).json({ error: "Invalid train part name." });
+      return res.status(400).json({ error: "Invalid sample data name." });
     }
 
-    const filePath = path.join(trainPartsDir, `${name}.json`);
+    const filePath = path.join(sampleDataDir, `${name}.json`);
     let stat;
     try {
       stat = await fs.promises.stat(filePath);
     } catch (err) {
       return res
         .status(404)
-        .json({ error: `Train part not found: ${name}` });
+        .json({ error: `Sample data file not found: ${name}` });
     }
     await serveGzippable(
       req,
@@ -81,7 +81,7 @@ function createApp({
       filePath,
       stat,
       "no-cache",
-      `train-parts/${name}.json`,
+      `sample-data/${name}.json`,
     );
   });
 

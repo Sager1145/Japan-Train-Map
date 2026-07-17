@@ -4,7 +4,8 @@
 // graphs or run Dijkstra during the initial page load.
 //
 // How it stays byte-identical to the client: instead of reimplementing the
-// solver, this script evaluates the REAL app/public/app.js inside a Node `vm`
+// solver, this script evaluates the REAL frontend scripts (the ordered
+// app-*.js family listed in app/public/index.html) inside a Node `vm`
 // context with just enough browser stubs, feeds it the same datasets the
 // browser would fetch, appends each train through the same
 // parseImportedCanonicalStore/appendImportedTrain normalization the boot path
@@ -13,10 +14,16 @@
 // runtimeRouteCache with each part's entry, so
 // prepareTrainRouteSolve() is a pure cache hit and no graph is ever built.
 //
-// Output (all under app/data/train-parts/):
-//   manifest.json  { format, schema_version, total, parts: ["part-000", ...] }
+// Output (all under app/data/sample-data/ — the published SAMPLE dataset):
+//   manifest.json  { format, schema_version, total, parts: ["part-000", ...],
+//                    dates: { "2026-07-03": ["part-000", ...], ... } }
 //   part-NNN.json  { format, train: <raw train from train-store.json>,
 //                    route: null | { cache_key, features } | { cache_key, unsolvable: true } }
+//
+// Every train is its own file, and the manifest's `dates` map groups the part
+// names by calendar day (trains without a date land under ""), so the static
+// frontend can load a single random day's sample on boot and the full sample
+// only on explicit request.
 //
 // Run:  node app/scripts/precompute-train-parts.mjs
 // (No dependencies; used by the GitHub Pages deploy workflow on every push.)
@@ -32,9 +39,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.join(__dirname, "..");
 const DATA_DIR = path.join(APP_DIR, "data");
 const PUBLIC_DIR = path.join(APP_DIR, "public");
-const OUT_DIR = path.join(DATA_DIR, "train-parts");
+const OUT_DIR = path.join(DATA_DIR, "sample-data");
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
+
+// The frontend is a family of ordered classic scripts sharing one global
+// lexical scope. Replay EXACTLY the <script src> list from index.html — the
+// single source of truth for load order — keeping app-core.js and the
+// app-*.js family and skipping the browser-only libraries the sandbox stubs
+// instead (vendor/maplibre, i18n*.js, rail-network.js, railmap*.js). Reading
+// the list from index.html keeps this exporter in lockstep when app modules
+// are added, removed, or reordered.
+function readOrderedAppScripts() {
+  const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
+  const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) =>
+    m[1].split(/[?#]/, 1)[0],
+  );
+  const appScripts = scripts.filter(
+    (src) => !src.includes("/") && src.startsWith("app") && src.endsWith(".js"),
+  );
+  if (!appScripts.includes("app-core.js") || !appScripts.includes("app.js")) {
+    throw new Error(
+      "index.html's script list is missing app-core.js/app.js — cannot replay the app module family.",
+    );
+  }
+  return appScripts;
+}
 
 // ---------------------------------------------------------------------------
 // Browser stubs — the minimum surface app.js touches at module-eval time and
@@ -208,32 +238,120 @@ const DRIVER_SOURCE = `
 })()
 `;
 
+// Assemble manifest.json from already-emitted part files (used after sliced
+// runs; see PRECOMPUTE_RANGE below). Validates that every train in the store
+// has its part on disk, in order.
+function finalizeManifestFromParts() {
+  const store = JSON.parse(
+    fs.readFileSync(path.join(DATA_DIR, "train-store.json"), "utf8"),
+  );
+  const partNames = [];
+  const partsByDate = new Map();
+  let solvedCount = 0;
+  let unsolvableCount = 0;
+  let noRouteCount = 0;
+  for (let i = 0; i < store.trains.length; i += 1) {
+    const name = `part-${String(i).padStart(3, "0")}`;
+    const part = JSON.parse(
+      fs.readFileSync(path.join(OUT_DIR, `${name}.json`), "utf8"),
+    );
+    partNames.push(name);
+    const dateKey =
+      part.train && typeof part.train.date === "string" ? part.train.date : "";
+    if (!partsByDate.has(dateKey)) partsByDate.set(dateKey, []);
+    partsByDate.get(dateKey).push(name);
+    if (!part.route) noRouteCount += 1;
+    else if (part.route.unsolvable) unsolvableCount += 1;
+    else solvedCount += 1;
+  }
+  if (solvedCount === 0)
+    throw new Error("No train solved — refusing to publish empty parts.");
+  const manifest = {
+    format: 1,
+    schema_version: store.schema_version || "1.3",
+    generated_at: new Date().toISOString(),
+    total: store.trains.length,
+    solved: solvedCount,
+    unsolvable: unsolvableCount,
+    no_route: noRouteCount,
+    parts: partNames,
+    full: "sample-full",
+    dates: Object.fromEntries(
+      [...partsByDate.entries()].sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  };
+  fs.writeFileSync(
+    path.join(OUT_DIR, "manifest.json"),
+    JSON.stringify(manifest, null, 2),
+  );
+  // Keep one combined big JSON of the whole sample next to the chunks.
+  fs.writeFileSync(
+    path.join(OUT_DIR, "sample-full.json"),
+    fs.readFileSync(path.join(DATA_DIR, "train-store.json")),
+  );
+  console.log(
+    `Finalized manifest for ${store.trains.length} parts (${solvedCount} solved, ${unsolvableCount} unsolvable, ${noRouteCount} without route sections).`,
+  );
+}
+
 async function main() {
+  // Finalize-only mode: build the manifest from parts emitted by sliced runs.
+  if (process.env.PRECOMPUTE_FINALIZE) {
+    finalizeManifestFromParts();
+    return;
+  }
+
   const started = performance.now();
   console.log("Loading datasets...");
   const railSections = readJson(path.join(DATA_DIR, "rail-sections.json"));
   const stations = readJson(path.join(DATA_DIR, "stations.json"));
   const matchedStops = readJson(path.join(DATA_DIR, "matched-stops.json"));
-  const trainStoreText = fs.readFileSync(
+  let trainStoreText = fs.readFileSync(
     path.join(DATA_DIR, "train-store.json"),
     "utf8",
   );
 
-  const context = makeSandbox();
-  const appCoreSource = fs.readFileSync(
-    path.join(PUBLIC_DIR, "app-core.js"),
-    "utf8",
-  );
-  const appSource = fs.readFileSync(path.join(PUBLIC_DIR, "app.js"), "utf8");
-  vm.runInContext(appCoreSource, context, { filename: "app-core.js" });
-  console.log("Evaluating app.js in sandbox...");
-  vm.runInContext(appSource, context, { filename: "app.js" });
+  // Optional slice mode: PRECOMPUTE_RANGE="start:end" (end-exclusive train
+  // indexes) solves only that window and APPENDS its parts into OUT_DIR
+  // without touching the rest. Useful for memory/time-boxed environments;
+  // run PRECOMPUTE_FINALIZE=1 once afterwards to write the manifest. The
+  // default (no env) behaviour — fresh dir, full store, manifest — is
+  // unchanged, and is what CI uses.
+  const rangeEnv = process.env.PRECOMPUTE_RANGE || "";
+  let sliceStart = 0;
+  if (rangeEnv) {
+    const match = rangeEnv.match(/^(\d+):(\d+)$/);
+    if (!match)
+      throw new Error('PRECOMPUTE_RANGE must look like "0:20" (end-exclusive).');
+    sliceStart = Number(match[1]);
+    const sliceEnd = Number(match[2]);
+    const full = JSON.parse(trainStoreText);
+    trainStoreText = JSON.stringify({
+      ...full,
+      trains: full.trains.slice(sliceStart, sliceEnd),
+    });
+    console.log(
+      `Slice mode: trains ${sliceStart}..${Math.min(sliceEnd, full.trains.length)} of ${full.trains.length}.`,
+    );
+  }
 
-  // Fresh output dir.
-  fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  const context = makeSandbox();
+  const appScripts = readOrderedAppScripts();
+  console.log(
+    `Evaluating the app script family in sandbox (${appScripts.length} files)...`,
+  );
+  for (const name of appScripts) {
+    const source = fs.readFileSync(path.join(PUBLIC_DIR, name), "utf8");
+    vm.runInContext(source, context, { filename: name });
+  }
+
+  // Fresh output dir (slice mode appends into the existing one instead).
+  if (!rangeEnv) fs.rmSync(OUT_DIR, { recursive: true, force: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   const partNames = [];
+  // date string ("" for undated trains) -> part names for that day, in store order.
+  const partsByDate = new Map();
   let solvedCount = 0;
   let unsolvableCount = 0;
   let noRouteCount = 0;
@@ -244,8 +362,11 @@ async function main() {
     matchedStops,
     trainStoreText,
     onTrainSolved({ index, id, raw, route, featureCount, ms }) {
-      const name = `part-${String(index).padStart(3, "0")}`;
+      const name = `part-${String(sliceStart + index).padStart(3, "0")}`;
       partNames.push(name);
+      const dateKey = typeof raw.date === "string" ? raw.date : "";
+      if (!partsByDate.has(dateKey)) partsByDate.set(dateKey, []);
+      partsByDate.get(dateKey).push(name);
       if (!route) noRouteCount += 1;
       else if (route.unsolvable) unsolvableCount += 1;
       else solvedCount += 1;
@@ -272,20 +393,30 @@ async function main() {
     );
   }
 
-  const manifest = {
-    format: 1,
-    schema_version: summary.schemaVersion || "1.3",
-    generated_at: new Date().toISOString(),
-    total: summary.total,
-    solved: solvedCount,
-    unsolvable: unsolvableCount,
-    no_route: noRouteCount,
-    parts: partNames,
-  };
-  fs.writeFileSync(
-    path.join(OUT_DIR, "manifest.json"),
-    JSON.stringify(manifest, null, 2),
-  );
+  if (!rangeEnv) {
+    const manifest = {
+      format: 1,
+      schema_version: summary.schemaVersion || "1.3",
+      generated_at: new Date().toISOString(),
+      total: summary.total,
+      solved: solvedCount,
+      unsolvable: unsolvableCount,
+      no_route: noRouteCount,
+      parts: partNames,
+      full: "sample-full",
+      dates: Object.fromEntries(
+        [...partsByDate.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    };
+    fs.writeFileSync(
+      path.join(OUT_DIR, "manifest.json"),
+      JSON.stringify(manifest, null, 2),
+    );
+    // Alongside the per-train chunks, keep ONE combined file with the whole
+    // sample store (no geometry — same shape a user would import/export), so
+    // the complete sample also exists as a single big JSON.
+    fs.writeFileSync(path.join(OUT_DIR, "sample-full.json"), trainStoreText);
+  }
 
   const bytes = partNames.reduce(
     (sum, name) => sum + fs.statSync(path.join(OUT_DIR, `${name}.json`)).size,
