@@ -23,6 +23,9 @@ function resetTrainStoreForProgressiveLoad() {
   // about to be replaced).
   cachedRouteItems = null;
   cachedRouteSignature = "";
+  // The whole store is being replaced: drop every scope's cached build.
+  if (typeof invalidateDeckRouteCaches === "function")
+    invalidateDeckRouteCaches();
   renderAll();
 }
 

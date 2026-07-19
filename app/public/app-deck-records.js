@@ -418,12 +418,14 @@ function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx(items);
   const spacingDeg = overlapOffsetDeg(spacingPx);
-  // Fast path (zoom/pan): geometry, styles, runs, shift vectors and lane
-  // multipliers are unchanged — only re-express the pixel lane spacing in
-  // degrees and re-translate the pick lanes.
-  if (_cachedDeckRecords && sig && _cachedDeckRecordsSig === sig) {
-    if (spacingDeg !== _lastOverlapSpacingDeg) {
-      _cachedDeckRecords.records.forEach((r) => {
+  // Fast path (zoom/pan OR returning to an already-built scope): geometry,
+  // styles, runs, shift vectors and lane multipliers are unchanged — only
+  // re-express the pixel lane spacing in degrees and re-translate the pick
+  // lanes if the zoom drifted since this scope was last shown.
+  const cachedBundle = sig ? _deckRecordsCacheBySig.get(sig) : null;
+  if (cachedBundle) {
+    if (spacingDeg !== cachedBundle.spacingDeg) {
+      cachedBundle.records.forEach((r) => {
         if (r.overlapCount > 1) {
           r.pickPath = applyLaneShift(
             r.path,
@@ -434,10 +436,13 @@ function buildDeckRouteRecords(items) {
           r.pickWidth = Math.max(spacingPx, 6);
         }
       });
-      _lastOverlapSpacingDeg = spacingDeg;
-      _cachedDeckRecords.spacingDeg = spacingDeg;
+      cachedBundle.spacingDeg = spacingDeg;
     }
-    return _cachedDeckRecords;
+    // Per-scope flags must be restored on a cross-scope cache hit (they are
+    // module-level state written by the build below).
+    _deckHasOverlaps = cachedBundle.hasOverlaps;
+    _lastOverlapSpacingDeg = spacingDeg;
+    return cachedBundle;
   }
   const overlap = getDeckOverlapMapCached(items);
   _deckHasOverlaps = false;
@@ -927,10 +932,16 @@ function buildDeckRouteRecords(items) {
     smoothCurveStationJoins(groupInfo);
   }
 
-  _cachedDeckRecords = { records, expandRecords, groupInfo, spacingDeg };
-  _cachedDeckRecordsSig = sig;
+  const bundle = {
+    records,
+    expandRecords,
+    groupInfo,
+    spacingDeg,
+    hasOverlaps: _deckHasOverlaps,
+  };
+  if (sig) _deckCachePut(_deckRecordsCacheBySig, sig, bundle);
   _lastOverlapSpacingDeg = spacingDeg;
-  return _cachedDeckRecords;
+  return bundle;
 }
 
 

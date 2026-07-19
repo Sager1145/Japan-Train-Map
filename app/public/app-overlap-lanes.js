@@ -26,21 +26,33 @@ let _deckHasOverlaps = false;
 // so view changes refresh pickPath on the cached records instead of re-walking
 // every segment. DISPLAY slider changes bypass the signature (it does not
 // encode DISPLAY), so applyDisplaySettings() clears these explicitly.
-let _cachedOverlap = null;
-let _cachedOverlapSig = null;
-let _cachedDeckRecords = null;
-let _cachedDeckRecordsSig = null;
+// MULTI-ENTRY: the caches keep the last few signatures (typically the "全部"
+// scope plus a couple of concrete dates) instead of a single entry, so
+// toggling 日期 ⇄ 全部 is a lookup, not a full overlap/record/marker rebuild.
+// The first render of each scope pays the build cost once; every return to an
+// already-rendered scope only re-uploads the cached records to the GPU.
+const DECK_SCOPE_CACHE_MAX = 4;
+let _overlapCacheBySig = new Map(); // overlapSig → overlap map
+let _deckRecordsCacheBySig = new Map(); // recordSig → built record bundle
 let _lastOverlapSpacingDeg = 0;
 
+// Insert with FIFO eviction so long sessions flipping through many dates
+// don't grow the caches without bound.
+function _deckCachePut(cache, key, value) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > DECK_SCOPE_CACHE_MAX)
+    cache.delete(cache.keys().next().value);
+}
+
 function invalidateDeckRouteCaches() {
-  _cachedOverlap = null;
-  _cachedOverlapSig = null;
-  _cachedDeckRecords = null;
-  _cachedDeckRecordsSig = null;
+  _overlapCacheBySig.clear();
+  _deckRecordsCacheBySig.clear();
+  _routeItemsCacheBySig.clear();
   _lastPushedBuilt = null;
   // Marker records bake DISPLAY radii/strokes, so they drop with the rest.
-  _cachedMarkerRecords = null;
-  _cachedMarkerSig = null;
+  _markerRecordsCacheBySig.clear();
+  _lastPushedMarkerRecords = null;
 }
 
 // Selection-free style scope for ROUTE RECORDS: the record cache must not
@@ -76,11 +88,13 @@ function getDeckOverlapMapCached(items) {
   // Keyed on the OVERLAP signature (geometry/visibility/date only), so
   // style-only edits rebuild the records but keep the corridor graph.
   const sig = cachedRouteOverlapSignature;
-  if (!_cachedOverlap || !sig || _cachedOverlapSig !== sig) {
-    _cachedOverlap = buildDeckOverlapMap(items);
-    _cachedOverlapSig = sig;
+  if (!sig) return buildDeckOverlapMap(items);
+  let overlap = _overlapCacheBySig.get(sig);
+  if (!overlap) {
+    overlap = buildDeckOverlapMap(items);
+    _deckCachePut(_overlapCacheBySig, sig, overlap);
   }
-  return _cachedOverlap;
+  return overlap;
 }
 
 // zoomend/moveend hook: rebuild lane offsets only when the px→degree factor

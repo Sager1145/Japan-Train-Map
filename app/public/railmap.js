@@ -75,12 +75,14 @@
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
+    TRAIN_PICK_FAN_SOURCE,
     TRAIN_EXPAND_SOURCE,
     TRAIN_MARKERS_SOURCE,
     FIT_CURVES_SOURCE,
     HOVER_REGIONS_SOURCE,
     TRAIN_ROUTES_LAYER,
     TRAIN_PICK_LAYER,
+    TRAIN_PICK_FAN_LAYER,
     TRAIN_EXPAND_LAYER,
     TRAIN_EXPAND_HOVER_LAYER,
     TRAIN_HOVER_LAYER,
@@ -98,6 +100,7 @@
   const {
     routeRecordsToFC,
     routePickRecordsToFC,
+    routePickFanFC,
     routeExpandFC,
     routeExpandTransitionFC,
     transitionOffsetForTid,
@@ -324,7 +327,7 @@
       this._animGroup = null;
       this._setExpandOpacity(0);
       this._pushExpandFC(null, 0);
-      this._pushPick();
+      this._pushPickFan();
       const m = this._map;
       if (m && m.getLayer(TRAIN_EXPAND_LAYER))
         m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
@@ -340,7 +343,9 @@
     updateLaneSpacing(laneSpacingDeg) {
       this._laneSpacingDeg = laneSpacingDeg || 0;
       this._laneSpacingZoom = this._map ? this._map.getZoom() : null;
-      this._pushPick();
+      // The static pick source sits on the true track (spacing-independent);
+      // only the fan-scoped lanes move with the spacing.
+      this._pushPickFan();
       if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
       return this;
     },
@@ -455,6 +460,7 @@
       [
         TRAIN_ROUTES_LAYER,
         TRAIN_PICK_LAYER,
+        TRAIN_PICK_FAN_LAYER,
         TRAIN_EXPAND_LAYER,
         TRAIN_EXPAND_HOVER_LAYER,
         TRAIN_HOVER_LAYER,
@@ -935,8 +941,10 @@
       }
       return this._fitCurveDiagnostics;
     },
-    // Re-upload the pick source for the CURRENT fan state: true-track hit
-    // areas while collapsed, per-lane hit areas for the open group's members.
+    // Re-upload the STATIC pick source: every record's true-track hit area.
+    // Depends only on the record set (never on fan state or lane spacing), so
+    // it uploads on data changes alone — fan open/close touches only the
+    // small fan-scoped source below.
     _pushPick() {
       const pick = this._src(TRAIN_PICK_SOURCE);
       if (pick)
@@ -944,12 +952,42 @@
           routePickRecordsToFC(
             this._visible ? this._records : [],
             this._groupInfo,
-            this._expandedGroup,
-            this._fanDirGroup === this._expandedGroup ? this._fanDirVec() : null,
-            this._currentLaneSpacingDeg(),
-            this._groupTransition,
+            null,
+            null,
+            0,
+            null,
           ),
         );
+      // The fan source mirrors the current fan state against the NEW records.
+      this._pushPickFan();
+    },
+    // Re-upload the FAN pick source: only the open (or transitioning) group's
+    // member records, translated into their per-lane hit paths. Empty while
+    // collapsed. Orders of magnitude smaller than the static source, so the
+    // per-hover re-tile cost no longer scales with the whole dataset.
+    _pickFanEmpty: true,
+    _pushPickFan() {
+      const src = this._src(TRAIN_PICK_FAN_SOURCE);
+      if (!src) return;
+      const group = this._expandedGroup;
+      const transition = this._groupTransition;
+      if (!this._visible || (!group && !transition)) {
+        if (!this._pickFanEmpty) {
+          src.setData(EMPTY_FC);
+          this._pickFanEmpty = true;
+        }
+        return;
+      }
+      const fc = routePickFanFC(
+        this._records,
+        this._groupInfo,
+        group,
+        this._fanDirGroup === group ? this._fanDirVec() : null,
+        this._currentLaneSpacingDeg(),
+        transition,
+      );
+      src.setData(fc);
+      this._pickFanEmpty = fc.features.length === 0;
     },
     // The expand source is GROUP-SCOPED: it only ever holds the hovered
     // group's translated member courses (or nothing when collapsed).
@@ -958,7 +996,29 @@
     // lanes SLIDE out/in instead of appearing at their final position.
     // Defaults to the current animation progress so settled states (open fan
     // during zoom / data refresh) keep their full offset.
+    // Coalesce animated expand-source uploads to AT MOST ONE per frame. The
+    // slide (_animateExpand), the fan-direction easing (_ensureFanDirAnim)
+    // and a group transition can all run in the same frame; each used to
+    // issue its own setData (a worker re-tile), so a single frame could pay
+    // for two or three. The scheduled push reads the freshest state when it
+    // fires; any synchronous (authoritative) push cancels what's pending.
+    _scheduleExpandPush(group, factor) {
+      this._pendingExpandPush = { group, factor };
+      if (this._expandPushRaf != null) return;
+      this._expandPushRaf = requestAnimationFrame(() => {
+        this._expandPushRaf = null;
+        const p = this._pendingExpandPush;
+        this._pendingExpandPush = null;
+        if (p) this._pushExpandFC(p.group, p.factor);
+      });
+    },
     _pushExpandFC(group, factor) {
+      // A synchronous push is the latest truth — drop any stale queued frame.
+      if (this._expandPushRaf != null) {
+        cancelAnimationFrame(this._expandPushRaf);
+        this._expandPushRaf = null;
+        this._pendingExpandPush = null;
+      }
       const exp = this._src(TRAIN_EXPAND_SOURCE);
       if (!exp) return;
       const f =
@@ -1099,11 +1159,15 @@
         }
         const g = this._expandedGroup || this._animGroup;
         if (g && this._fanDirGroup === g) {
-          this._pushExpandFC(g);
+          // Mid-ease frames go through the per-frame coalescer (the slide
+          // animation may want the same frame's upload); the settled angle
+          // commits synchronously so the final geometry is exact.
+          if (settled) this._pushExpandFC(g);
+          else this._scheduleExpandPush(g);
           // The sticky hit box safely covers the few-pixel angular drift. A
           // full pick-source upload every animation frame caused needless
           // main-thread stalls; commit hit geometry once at the settled angle.
-          if (settled) this._pushPick();
+          if (settled) this._pushPickFan();
         }
       };
       this._fanDirRaf = requestAnimationFrame(step);
@@ -1134,6 +1198,15 @@
       if (!m) return;
       if (m.getLayer(TRAIN_ROUTES_LAYER))
         m.setFilter(TRAIN_ROUTES_LAYER, this._notExpanded());
+      // Engaged trains' TRUE-TRACK hit areas leave the static pick layer while
+      // their fan lanes (in the fan pick source) replace them — otherwise the
+      // emptied corridor centre would still hit-test as the member trains.
+      if (m.getLayer(TRAIN_PICK_LAYER))
+        m.setFilter(TRAIN_PICK_LAYER, [
+          "all",
+          ["!=", ["get", "nopick"], 1],
+          this._notExpanded(),
+        ]);
       this._applySelectionFilters();
       this._applyHoverFilter();
     },
@@ -1231,7 +1304,14 @@
           this._dimVals[k] = next;
           if (next !== target) moving = true;
         });
-        this._applyDimPaint();
+        // Rebuilding the data-driven opacity expressions forces MapLibre to
+        // re-evaluate paint for EVERY feature on up to nine layers — doing
+        // that at 60–120 Hz for a 250–400 ms fade is the single biggest
+        // main-thread cost while a hover engages. ~30 Hz is visually
+        // indistinguishable for an opacity ramp; the final (settled) frame
+        // always applies so end states are exact.
+        if (!moving || now - (this._dimPaintAt || 0) >= 30)
+          this._applyDimPaint();
         if (moving) {
           this._dimRaf = requestAnimationFrame(step);
         } else {
@@ -1244,6 +1324,7 @@
     _applyDimPaint() {
       const m = this._map;
       if (!m || !this._dimVals) return;
+      this._dimPaintAt = performance.now();
       const v = this._dimVals;
       const easeS = (s) => 1 - Math.pow(1 - s, 2); // gentle ease-out
       const sDate = easeS(v.date);
@@ -1415,7 +1496,7 @@
           this._applyBaseFilters();
           this._applyHoverFilter();
           this._pushExpandFC(next, 1);
-          this._pushPick();
+          this._pushPickFan();
           this._animateGroupTransition(next, nextTids);
           return;
         }
@@ -1429,7 +1510,7 @@
         this._expandFilterTids = nextTids;
         // The open group's hit areas move from the true track out to the
         // per-lane paths (they only exist there while the fan is open).
-        this._pushPick();
+        this._pushPickFan();
         if (m.getLayer(TRAIN_EXPAND_LAYER))
           m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(nextTids));
         this._applyHoverFilter();
@@ -1457,7 +1538,7 @@
         this._expandedTids = [];
         // Hit areas snap back to the true track right away (the fan is
         // closing; hovering the line itself may legitimately re-open it).
-        this._pushPick();
+        this._pushPickFan();
         // Slide the lanes home first; only then swap the twins back for the
         // (identical) true-track lines and empty the expand source.
         this._animateExpand(0, () => {
@@ -1492,8 +1573,8 @@
         // smoothstep has zero velocity at both ends, eliminating the small
         // arrival kick that ease-out produced at overlap boundaries.
         transition.progress = k * k * (3 - 2 * k);
-        this._pushExpandFC(targetGroup, 1);
         if (k < 1) {
+          this._scheduleExpandPush(targetGroup, 1);
           this._groupTransitionRaf = requestAnimationFrame(step);
           return;
         }
@@ -1508,7 +1589,7 @@
         this._applyBaseFilters();
         this._applyHoverFilter();
         this._pushExpandFC(targetGroup, 1);
-        this._pushPick();
+        this._pushPickFan();
       };
       this._groupTransitionRaf = requestAnimationFrame(step);
     },
@@ -1537,11 +1618,14 @@
         const v = from + (target - from) * e;
         this._expandT = v;
         // Slide the fan: re-translate the group's lanes at this frame's
-        // progress so the lines physically move out/in.
-        if (this._animGroup) this._pushExpandFC(this._animGroup, v);
+        // progress so the lines physically move out/in. Mid-animation frames
+        // coalesce with any same-frame fan-direction push; the final frame
+        // commits synchronously so the settled position is exact.
         if (k < 1) {
+          if (this._animGroup) this._scheduleExpandPush(this._animGroup, v);
           this._expandAnimId = requestAnimationFrame(step);
         } else {
+          if (this._animGroup) this._pushExpandFC(this._animGroup, v);
           this._expandAnimId = null;
           if (done) done();
         }

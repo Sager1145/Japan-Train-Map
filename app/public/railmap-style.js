@@ -63,12 +63,14 @@
   const FADE_LAYER = "rp-fade";
   const TRAIN_ROUTES_SOURCE = "train-routes";
   const TRAIN_PICK_SOURCE = "train-routes-pick";
+  const TRAIN_PICK_FAN_SOURCE = "train-routes-pick-fan";
   const TRAIN_EXPAND_SOURCE = "train-routes-expand-src";
   const TRAIN_MARKERS_SOURCE = "train-markers-base";
   const FIT_CURVES_SOURCE = "train-fit-curves-src";
   const HOVER_REGIONS_SOURCE = "train-hover-regions-src";
   const TRAIN_ROUTES_LAYER = "train-routes-line";
   const TRAIN_PICK_LAYER = "train-routes-pick-line";
+  const TRAIN_PICK_FAN_LAYER = "train-routes-pick-fan-line";
   const TRAIN_EXPAND_LAYER = "train-routes-expand";
   const TRAIN_EXPAND_HOVER_LAYER = "train-routes-expand-hover";
   const TRAIN_HOVER_LAYER = "train-routes-hover";
@@ -183,6 +185,7 @@
     };
     sources[TRAIN_ROUTES_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[TRAIN_PICK_FAN_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_EXPAND_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_MARKERS_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[FIT_CURVES_SOURCE] = { type: "geojson", data: EMPTY_FC };
@@ -278,6 +281,22 @@
       source: TRAIN_PICK_SOURCE,
       // nopick records (off-date trains while a concrete day is active) are
       // excluded from hit-testing entirely: no hover, no tooltip, no click.
+      filter: ["!=", ["get", "nopick"], 1],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#000",
+        "line-opacity": 0,
+        "line-width": ["get", "pickWidth"],
+      },
+    });
+    // FAN-SCOPED pick lanes: while a hover fan is open, only the open group's
+    // per-lane hit areas live here. Splitting them out of the (whole-dataset)
+    // static pick source means opening/closing a fan re-uploads a handful of
+    // lane features instead of re-tiling every train's pick geometry.
+    layers.push({
+      id: TRAIN_PICK_FAN_LAYER,
+      type: "line",
+      source: TRAIN_PICK_FAN_SOURCE,
       filter: ["!=", ["get", "nopick"], 1],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
@@ -570,12 +589,14 @@
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
+    TRAIN_PICK_FAN_SOURCE,
     TRAIN_EXPAND_SOURCE,
     TRAIN_MARKERS_SOURCE,
     FIT_CURVES_SOURCE,
     HOVER_REGIONS_SOURCE,
     TRAIN_ROUTES_LAYER,
     TRAIN_PICK_LAYER,
+    TRAIN_PICK_FAN_LAYER,
     TRAIN_EXPAND_LAYER,
     TRAIN_EXPAND_HOVER_LAYER,
     TRAIN_HOVER_LAYER,

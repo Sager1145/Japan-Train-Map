@@ -15,6 +15,7 @@
   const {
     STATIONS_LAYER,
     TRAIN_PICK_LAYER,
+    TRAIN_PICK_FAN_LAYER,
     TRAIN_PASS_LAYER,
     TRAIN_STOPS_LAYER,
     TRAIN_SEL_PASS_LAYER,
@@ -67,7 +68,11 @@
           TRAIN_STOPS_LAYER,
           TRAIN_PASS_LAYER,
         ].filter((id) => map.getLayer(id));
-        const pickLayers = [TRAIN_PICK_LAYER].filter((id) => map.getLayer(id));
+        // Fan lanes first: while a fan is open its per-lane hit paths (small
+        // dedicated source) take precedence over the static true-track areas.
+        const pickLayers = [TRAIN_PICK_FAN_LAYER, TRAIN_PICK_LAYER].filter(
+          (id) => map.getLayer(id),
+        );
         const bbox = [
           [point.x - HOVER_PICK_PAD_PX, point.y - HOVER_PICK_PAD_PX],
           [point.x + HOVER_PICK_PAD_PX, point.y + HOVER_PICK_PAD_PX],

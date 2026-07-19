@@ -47,6 +47,10 @@ function appendTrainToLayers(train) {
   // styling.
   cachedRouteItems = null;
   cachedRouteSignature = "";
+  // Train DATA changed: every scope's cached items/records are stale, not
+  // just the current signature's.
+  if (typeof invalidateDeckRouteCaches === "function")
+    invalidateDeckRouteCaches();
   if (_appendRenderTimer || !map) return;
   _appendRenderTimer = setTimeout(() => {
     _appendRenderTimer = null;
@@ -123,7 +127,12 @@ function renderTrainLayers() {
   // view moves all reuse the caches.
   const signature = computeRouteSignature(orderedTrains, dateActive);
   if (!cachedRouteItems || signature.records !== cachedRouteSignature) {
-    cachedRouteItems = buildRouteItems(orderedTrains);
+    // Scope-keyed: switching back to an already-rendered scope (e.g. a date
+    // ⇄ 全部 round trip) reuses that scope's item list instead of rebuilding.
+    cachedRouteItems =
+      _routeItemsCacheBySig.get(signature.records) ||
+      buildRouteItems(orderedTrains);
+    _deckCachePut(_routeItemsCacheBySig, signature.records, cachedRouteItems);
     cachedRouteSignature = signature.records;
     cachedRouteOverlapSignature = signature.overlap;
   }
@@ -143,15 +152,25 @@ function renderTrainLayers() {
 //   - the pass-through LOD lives in the pass layers' `minzoom` (set from
 //     PASSTHROUGH_MIN_ZOOM), so crossing the threshold re-renders nothing —
 //     MapLibre just starts/stops drawing the already-uploaded circles.
-let _cachedMarkerRecords = null;
-let _cachedMarkerSig = null;
+let _markerRecordsCacheBySig = new Map(); // recordSig → marker records
+let _routeItemsCacheBySig = new Map(); // recordSig → route items
+let _lastPushedMarkerRecords = null;
 function renderTrainMarkers() {
   updateEndpointLabels();
   if (window.RailMap && map) {
-    if (!_cachedMarkerRecords || _cachedMarkerSig !== cachedRouteSignature) {
-      _cachedMarkerRecords = buildDeckMarkerRecords(cachedOrderedTrains);
-      _cachedMarkerSig = cachedRouteSignature;
-      RailMap.setMarkers(_cachedMarkerRecords);
+    let records = cachedRouteSignature
+      ? _markerRecordsCacheBySig.get(cachedRouteSignature)
+      : null;
+    if (!records) {
+      records = buildDeckMarkerRecords(cachedOrderedTrains);
+      if (cachedRouteSignature)
+        _deckCachePut(_markerRecordsCacheBySig, cachedRouteSignature, records);
+    }
+    // Push only when the record set actually changed (identity check works
+    // because cache hits return the same array).
+    if (records !== _lastPushedMarkerRecords) {
+      RailMap.setMarkers(records);
+      _lastPushedMarkerRecords = records;
     }
   }
 }

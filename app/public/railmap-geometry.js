@@ -158,6 +158,139 @@
     return { type: "FeatureCollection", features };
   }
 
+  // FAN-ONLY pick geometry: just the open group's (or the transitioning
+  // groups') member records, translated into their per-lane paths — the
+  // dynamic complement of routePickRecordsToFC(records, groupInfo, null, ...).
+  // Uploaded into its own small source so opening/closing a fan never
+  // re-tiles the whole static pick dataset. `idx` still indexes _records.
+  function routePickFanFC(records, groupInfo, openGroup, fanDir, fanSpacingDeg, transition) {
+    if (!openGroup && !transition) return EMPTY_FC;
+    const features = [];
+    records.forEach((r, i) => {
+      const transitioning = Boolean(
+        transition &&
+          (r.groupKey === transition.fromGroup ||
+            r.groupKey === transition.toGroup),
+      );
+      if (!transitioning && !(openGroup && r.groupKey === openGroup)) return;
+      const tid = (r.train && r.train.id) || "";
+      let coords;
+      if (transitioning) {
+        const off = transitionOffsetForTid(transition, tid, fanSpacingDeg, fanDir);
+        coords = r.path.map((p) => [p[0] + off.dx, p[1] + off.dy]);
+      } else if (fanDir && r.laneMult != null && fanSpacingDeg) {
+        const dx = fanDir.sx * r.laneMult * fanSpacingDeg;
+        const dy = fanDir.sy * r.laneMult * fanSpacingDeg;
+        coords = r.path.map((p) => [p[0] + dx, p[1] + dy]);
+      } else {
+        coords = r.pickPath || r.path;
+      }
+      features.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: coords },
+        properties: {
+          idx: i,
+          tid,
+          pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 8, 14),
+          nopick: r.nopick ? 1 : 0,
+        },
+      });
+    });
+    if (groupInfo)
+      groupInfo.forEach((gi, groupKey) => {
+        const transitioning = Boolean(
+          transition &&
+            (groupKey === transition.fromGroup ||
+              groupKey === transition.toGroup),
+        );
+        if (!transitioning && !(openGroup && groupKey === openGroup)) return;
+        (gi.pickBridges || []).forEach((bridge) => {
+          let dx;
+          let dy;
+          if (transitioning) {
+            const off = transitionOffsetForTid(
+              transition,
+              bridge.tid,
+              fanSpacingDeg,
+              fanDir,
+            );
+            dx = off.dx;
+            dy = off.dy;
+          } else {
+            const d = fanDir || gi;
+            dx = d.sx * bridge.laneMult * fanSpacingDeg;
+            dy = d.sy * bridge.laneMult * fanSpacingDeg;
+          }
+          features.push({
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: bridge.path.map((p) => [p[0] + dx, p[1] + dy]),
+            },
+            properties: {
+              idx: bridge.idx,
+              tid: bridge.tid,
+              pickWidth: bridge.pickWidth,
+              nopick: 0,
+            },
+          });
+        });
+      });
+    return { type: "FeatureCollection", features };
+  }
+
+  // ── expand-FC template cache ──────────────────────────────────────────
+  // The expand slide / fan-direction ease / group transition all re-emit the
+  // SAME member courses every animation frame with only the (dx, dy) offsets
+  // changed. Allocating a fresh FeatureCollection — thousands of tiny [x, y]
+  // arrays — per frame produced constant GC churn during the hover slide.
+  // Instead, build the feature skeletons (properties + coordinate buffers)
+  // once per (expandRecords, membership) pair and MUTATE the coordinates in
+  // place each frame. Safe because MapLibre's geojson setData serializes the
+  // data when it is handed over; later mutations only ever feed newer frames.
+  let _expandTpl = { records: null, key: "", features: null, indices: null };
+  function _expandTemplate(expandRecords, memberOf) {
+    const indices = [];
+    for (let i = 0; i < expandRecords.length; i += 1) {
+      const r = expandRecords[i];
+      if (memberOf((r.train && r.train.id) || "")) indices.push(i);
+    }
+    const key = indices.join(",");
+    if (_expandTpl.records === expandRecords && _expandTpl.key === key)
+      return _expandTpl;
+    const features = indices.map((i) => {
+      const r = expandRecords[i];
+      return {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: r.path.map((p) => [p[0], p[1]]),
+        },
+        properties: {
+          idx: i,
+          tid: (r.train && r.train.id) || "",
+          colorA: rgbaCss(r.color),
+          width: r.width,
+        },
+      };
+    });
+    _expandTpl = { records: expandRecords, key, features, indices };
+    return _expandTpl;
+  }
+  function _writeOffsets(tpl, expandRecords, offsetFor) {
+    for (let k = 0; k < tpl.features.length; k += 1) {
+      const i = tpl.indices[k];
+      const src = expandRecords[i].path;
+      const dst = tpl.features[k].geometry.coordinates;
+      const off = offsetFor(tpl.features[k].properties.tid);
+      for (let j = 0; j < src.length; j += 1) {
+        dst[j][0] = src[j][0] + off.dx;
+        dst[j][1] = src[j][1] + off.dy;
+      }
+    }
+    return { type: "FeatureCollection", features: tpl.features };
+  }
+
   // HOVER-EXPAND geometry for ONE hovered group: every member train's
   // complete course (all its lines), RIGIDLY translated into its lane by the
   // group's constant shift vector — corners, radii and lengths untouched
@@ -166,28 +299,17 @@
   function routeExpandFC(expandRecords, gi, spacingDeg, dir) {
     if (!gi) return EMPTY_FC;
     const d = dir || gi; // dynamic hover direction, else the static vector
-    const features = [];
-    expandRecords.forEach((r, i) => {
-      const tid = (r.train && r.train.id) || "";
+    const tpl = _expandTemplate(
+      expandRecords,
+      (tid) => gi.mults[tid] !== undefined,
+    );
+    return _writeOffsets(tpl, expandRecords, (tid) => {
       const mult = gi.mults[tid];
-      if (mult === undefined) return; // not a member of the hovered group
-      const dx = d.sx * mult * spacingDeg;
-      const dy = d.sy * mult * spacingDeg;
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: r.path.map((p) => [p[0] + dx, p[1] + dy]),
-        },
-        properties: {
-          idx: i,
-          tid,
-          colorA: rgbaCss(r.color),
-          width: r.width,
-        },
-      });
+      return {
+        dx: d.sx * mult * spacingDeg,
+        dy: d.sy * mult * spacingDeg,
+      };
     });
-    return { type: "FeatureCollection", features };
   }
 
   function transitionOffsetForTid(transition, tid, spacingDeg, toDir) {
@@ -230,39 +352,15 @@
     toDir,
   ) {
     if (!transition || !transition.fromGi || !transition.toGi) return EMPTY_FC;
-    const features = [];
-    expandRecords.forEach((r, i) => {
-      const tid = (r.train && r.train.id) || "";
-      if (
-        !(
-          transition.fromOffsets &&
-          Object.prototype.hasOwnProperty.call(transition.fromOffsets, tid)
-        ) &&
-        !Object.prototype.hasOwnProperty.call(transition.fromGi.mults, tid) &&
-        !Object.prototype.hasOwnProperty.call(transition.toGi.mults, tid)
-      )
-        return;
-      const off = transitionOffsetForTid(
-        transition,
-        tid,
-        spacingDeg,
-        toDir,
-      );
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: r.path.map((p) => [p[0] + off.dx, p[1] + off.dy]),
-        },
-        properties: {
-          idx: i,
-          tid,
-          colorA: rgbaCss(r.color),
-          width: r.width,
-        },
-      });
-    });
-    return { type: "FeatureCollection", features };
+    const isMember = (tid) =>
+      (transition.fromOffsets &&
+        Object.prototype.hasOwnProperty.call(transition.fromOffsets, tid)) ||
+      Object.prototype.hasOwnProperty.call(transition.fromGi.mults, tid) ||
+      Object.prototype.hasOwnProperty.call(transition.toGi.mults, tid);
+    const tpl = _expandTemplate(expandRecords, isMember);
+    return _writeOffsets(tpl, expandRecords, (tid) =>
+      transitionOffsetForTid(transition, tid, spacingDeg, toDir),
+    );
   }
 
   function curvePointAt(curve, metres) {
@@ -727,6 +825,7 @@
   global.RailMapGeometry = {
     routeRecordsToFC,
     routePickRecordsToFC,
+    routePickFanFC,
     routeExpandFC,
     routeExpandTransitionFC,
     transitionOffsetForTid,
