@@ -389,6 +389,14 @@
       zh: "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。",
       en: "No saved train-store.json yet; loaded built-in defaults. Edits auto-save to the server.",
     },
+    "status.recoveryEntered": {
+      zh: "已保存資料載入失敗：{msg}。已切換到唯讀恢復模式：自動保存停用，原始 JSON 已放入「JSON 匯出」框；可修正後重新匯入，或用「重置示例／清除保存資料」重新開始。",
+      en: "Saved data failed to load: {msg}. Read-only recovery mode: autosave is off and the raw JSON is in the Export box — fix and re-import it, or use Reset Sample / Clear Saved Data to start over.",
+    },
+    "status.recoveryNoSave": {
+      zh: "唯讀恢復模式：自動保存已停用（原保存資料載入失敗）。",
+      en: "Read-only recovery mode: autosave is disabled (the saved store failed to load).",
+    },
     "status.serverClearedFallback": {
       zh: "伺服器端的資料已被清除，已回退到內建預設。",
       en: "Server data was cleared; fell back to built-in defaults.",
@@ -736,6 +744,8 @@
     "src.localJson": "ローカル JSON：{name}",
     "status.loadFailed": "データの読み込みに失敗しました：{msg}",
     "status.noSavedStore": "保存済みの train-store.json がないため、内蔵初期データを読み込みました。編集内容はサーバーへ自動保存されます。",
+    "status.recoveryEntered": "保存データの読み込みに失敗しました：{msg}。読み取り専用の復旧モードに切り替えました：自動保存は無効化され、元の JSON は「JSON エクスポート」欄にあります。修正して再読み込みするか、「サンプルへリセット／保存データを消去」でやり直してください。",
+    "status.recoveryNoSave": "読み取り専用の復旧モード：自動保存は無効です（保存データの読み込みに失敗）。",
     "status.serverClearedFallback": "サーバー上のデータが消去されたため、内蔵初期データに戻しました。",
     "status.autoLoaded": "{label} を自動読み込みしました：{count} 本。",
     "status.autosaveOk": "サーバーの train-store.json に自動保存しました。",

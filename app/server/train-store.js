@@ -39,8 +39,28 @@ function coerceStore(body, { lenient = false } = {}) {
 }
 
 function createTrainStore(filePath) {
-  async function write(store) {
-    const tmpFile = `${filePath}.${process.pid}.tmp`;
+  // All writes flow through ONE FIFO queue. Concurrent writes used to share a
+  // single per-process tmp path (`.<pid>.tmp`), so two overlapping multi-MB
+  // writeFile calls could interleave on the same file and rename corrupted
+  // JSON into place. The queue also makes update()'s read-modify-write (agent
+  // append) atomic with respect to other writes. A failed task never blocks
+  // the queue: the chain continues via the swallowed branch below, while the
+  // caller still receives the rejection.
+  let queue = Promise.resolve();
+  let writeCounter = 0;
+
+  function enqueue(task) {
+    const run = queue.then(task);
+    queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  async function writeNow(store) {
+    writeCounter += 1;
+    const tmpFile = `${filePath}.${process.pid}.${writeCounter}.tmp`;
     try {
       await fs.promises.writeFile(tmpFile, JSON.stringify(store), "utf8");
       await fs.promises.rename(tmpFile, filePath);
@@ -60,10 +80,27 @@ function createTrainStore(filePath) {
     }
   }
 
+  function write(store) {
+    return enqueue(() => writeNow(store));
+  }
+
+  // Atomic read-modify-write: `mutator` receives the current store (null when
+  // none is saved yet) and returns the store to persist. Runs inside the
+  // write queue so no other write can land between the read and the write.
+  function update(mutator) {
+    return enqueue(async () => {
+      const current = await read();
+      const next = await mutator(current);
+      await writeNow(next);
+      return next;
+    });
+  }
+
   return {
     filePath,
     read,
     write,
+    update,
   };
 }
 

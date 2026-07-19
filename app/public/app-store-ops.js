@@ -559,11 +559,19 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
     // Undated trains fall back to the currently-selected date (spec 3.1);
     // trains carrying their own `date` keep it (spec 3.2), and when "全部"
     // is active the date is inferred from the id instead.
+    const wasRecovery = storeRecoveryMode;
     const appendedIds = await runProgressiveAppend(importedStore.trains, {
       persistEachStep: true,
       onProgress,
       fallbackDate: currentImportFallbackDate(),
     });
+    if (wasRecovery) {
+      // The user explicitly imported data over the recovery view and every
+      // train loaded. Resume saving — and re-issue the persist that the
+      // recovery guard swallowed during the append above.
+      exitStoreRecoveryMode();
+      saveTrainStore();
+    }
 
     return {
       count: appendedIds.length,

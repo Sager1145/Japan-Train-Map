@@ -29,7 +29,43 @@ let pendingServerStoreText = null;
 // pays one — let alone two — full serializations on the synchronous path.
 let storeSaveDirty = false;
 
+// --- Read-only recovery mode -----------------------------------------------
+// Entered when a SAVED store exists but cannot be loaded (fails validation,
+// corrupt JSON, or an unreadable backend). The old behavior fell back to the
+// built-in defaults with autosave still armed, so the user's next edit
+// silently overwrote their unreadable-but-recoverable data with the defaults.
+// In recovery mode autosave is disabled and the raw saved JSON is pinned into
+// the export textarea for rescue; only an explicit, successful data action
+// (import / open local JSON / restore / reset / clear) leaves the mode.
+let storeRecoveryMode = false;
+
+function enterStoreRecoveryMode({ message = "", rawText = null } = {}) {
+  storeRecoveryMode = true;
+  // Cancel anything the autosave debounce queued before the failure was known.
+  clearTimeout(serverStoreSaveTimer);
+  clearTimeout(exportTextareaTimer);
+  pendingServerStoreText = null;
+  storeSaveDirty = false;
+  if (rawText && els.json) els.json.value = rawText;
+  if (els.importStatus)
+    setStatus(
+      els.importStatus,
+      I18N.t("status.recoveryEntered", { msg: message }),
+      "err",
+    );
+}
+
+function exitStoreRecoveryMode() {
+  storeRecoveryMode = false;
+}
+
 function saveTrainStore() {
+  // Recovery mode: the saved store failed to load, so what is on screen is a
+  // fallback view — persisting it would destroy the recoverable original.
+  if (storeRecoveryMode) {
+    setStatus(els.jsonStatus, I18N.t("status.recoveryNoSave"), "warn");
+    return;
+  }
   // Sample data has no memory: while a sample is on screen NOTHING persists,
   // so browsing/editing the sample can never overwrite the user's saved data.
   if (!HAS_BACKEND && isSampleMode()) {
@@ -143,6 +179,9 @@ async function flushUserStoreSave() {
 // a single serialization once the user pauses, off the interaction's hot path.
 let exportTextareaTimer = null;
 function scheduleExportTextareaRefresh() {
+  // Recovery mode pins the broken store's raw JSON in the export box for
+  // rescue; routine renders must not overwrite it with the fallback view.
+  if (storeRecoveryMode) return;
   clearTimeout(exportTextareaTimer);
   exportTextareaTimer = setTimeout(() => {
     if (els.json)
@@ -150,25 +189,47 @@ function scheduleExportTextareaRefresh() {
   }, 300);
 }
 
-// Load the saved store from the server. Returns null when nothing has been
-// saved yet (HTTP 404) or the saved data is unreadable, so the caller can
-// fall back to the built-in defaults.
+// Load the saved store from the server. Returns:
+//   - the parsed, validated store;
+//   - null when nothing has been saved yet (HTTP 404) — defaults are safe;
+//   - { recovery: true, rawText, message } when a store EXISTS but cannot be
+//     loaded (network/HTTP failure, corrupt JSON, or validation failure).
+// Callers must treat the recovery sentinel as read-only: falling back to
+// writable defaults here is what used to let the next autosave overwrite the
+// user's recoverable data.
 async function loadTrainStoreFromServer() {
+  let res;
   try {
-    const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+    res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
       cache: "no-store",
     });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    const parsed = await res.json();
+  } catch (error) {
+    // Network failure: we cannot know whether a saved store exists, so do NOT
+    // hand back writable defaults.
+    console.warn("Could not reach the server train-store endpoint.", error);
+    return { recovery: true, rawText: null, message: error.message };
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    console.warn(`Server train-store read failed: ${res.status}.`);
+    return {
+      recovery: true,
+      rawText: null,
+      message: `${res.status} ${res.statusText}`,
+    };
+  }
+  let text = "";
+  try {
+    text = await res.text();
+    const parsed = JSON.parse(text);
     validateTrainStore(parsed);
     return parsed;
   } catch (error) {
     console.warn(
-      "Could not load saved train store from server; using defaults.",
+      "Saved train store failed to parse/validate; entering read-only recovery mode instead of overwritable defaults.",
       error,
     );
-    return null;
+    return { recovery: true, rawText: text, message: error.message };
   }
 }
 
@@ -292,6 +353,10 @@ function buildUserStoreChunks(canonicalStore) {
 // Write the canonical store to IndexedDB, one record per day, diffed against
 // the previous write. `force` bypasses the diff (used by "save as my data").
 async function writeUserStoreChunks(canonicalStore, { force = false } = {}) {
+  // Belt-and-braces: in recovery mode the on-screen store is a fallback view,
+  // and the per-day diff would DELETE days missing from it. Only an explicit,
+  // confirmed force-save (保存為我的資料) may write.
+  if (storeRecoveryMode && !force) return;
   const chunks = buildUserStoreChunks(canonicalStore);
   const serialized = new Map();
   for (const [dateKey, record] of chunks)

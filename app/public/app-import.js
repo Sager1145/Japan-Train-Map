@@ -204,6 +204,10 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
       },
     });
 
+    // The user explicitly replaced the store and every train loaded — if this
+    // session was in read-only recovery, autosave may resume (finalize below
+    // persists this replacement).
+    exitStoreRecoveryMode();
     finalizeProgressiveLoad(appendedIds, { finalPersist: true });
     setStatus(
       els.importStatus,
@@ -537,6 +541,8 @@ async function restoreUserStore({ bootLoadOptions = null } = {}) {
       finalPersist: false,
     },
   );
+  // The stored data restored cleanly — recovery mode (if any) is over.
+  exitStoreRecoveryMode();
   updateDataSourceUi();
   return true;
 }
@@ -546,6 +552,9 @@ async function restoreUserStore({ bootLoadOptions = null } = {}) {
 async function saveCurrentAsUserStore() {
   const canonical = buildCanonicalTrainStore();
   await writeUserStoreChunks(canonical, { force: true });
+  // An explicit, confirmed overwrite of the user store supersedes whatever
+  // failed to load — recovery mode (if any) ends here.
+  exitStoreRecoveryMode();
   userStoreAvailable = canonical.trains.length > 0;
   dataSourceMode = "user";
   sampleModeDate = null;

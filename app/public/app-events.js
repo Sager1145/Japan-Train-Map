@@ -599,6 +599,9 @@ function bindEvents() {
   if (!HAS_BACKEND) resetDefaultsBtn.hidden = true;
   resetDefaultsBtn.addEventListener("click", () => {
     if (importBusy()) return;
+    // Explicit reset: the user is deliberately abandoning whatever failed to
+    // load, so read-only recovery (if active) ends and the reset persists.
+    exitStoreRecoveryMode();
     trainStore = getDefaultTrainStore();
     selectedTrainId = null;
     focusedTrainId = null;
@@ -633,6 +636,9 @@ function bindEvents() {
           updateDataSourceUi();
         }
         await deleteStoredFileHandle();
+        // The stored data is gone by explicit request — nothing left for
+        // read-only recovery to protect.
+        exitStoreRecoveryMode();
         setStatus(
           els.jsonStatus,
           I18N.t("status.clearedAll"),

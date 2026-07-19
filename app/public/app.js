@@ -509,23 +509,54 @@ document.addEventListener("DOMContentLoaded", async () => {
     // full sample loads only via the explicit 資料 card button. Parts are
     // fetched, seeded and DRAWN one train at a time, so the phone never
     // parses one big store JSON and never runs the route solver on boot.
-    await bootStaticData(bootLoadOptions);
+    try {
+      await bootStaticData(bootLoadOptions);
+    } catch (err) {
+      // The saved user store exists but failed to load (e.g. a stop the
+      // validator rejects). Do NOT continue with autosave armed: a later
+      // edit's per-day diff would delete every day missing from the partial
+      // load. Enter read-only recovery with the raw JSON pinned for rescue.
+      console.error("Static boot failed; entering read-only recovery mode.", err);
+      let rawText = null;
+      try {
+        const userData = await readUserStoreAll();
+        if (userData && userData.store)
+          rawText = JSON.stringify(userData.store, null, 2);
+      } catch (_) {
+        /* rescue text is best-effort */
+      }
+      enterStoreRecoveryMode({ message: (err && err.message) || "", rawText });
+      renderAll({ updateJsonTextarea: false });
+      updateDataSourceUi();
+    }
   } else {
     // Node deployment: the live server store is the source of truth; if
     // nothing has been saved yet, fall back to the built-in defaults (and do
     // not persist them until edited).
     const savedStore = await loadTrainStoreFromServer();
-    await replaceTrainStoreFromStoreProgressive(
-      savedStore || getDefaultTrainStore(),
-      savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
-      bootLoadOptions,
-    );
-    if (!savedStore) {
-      setStatus(
-        els.importStatus,
-        I18N.t("status.noSavedStore"),
-        "warn",
+    if (savedStore && savedStore.recovery) {
+      // A saved store EXISTS but cannot be loaded. Show the defaults
+      // read-only: recovery mode keeps autosave off so the recoverable file
+      // is never overwritten by a casual edit.
+      await replaceTrainStoreFromStoreProgressive(
+        getDefaultTrainStore(),
+        I18N.t("src.builtinDefault"),
+        bootLoadOptions,
       );
+      enterStoreRecoveryMode(savedStore);
+    } else {
+      await replaceTrainStoreFromStoreProgressive(
+        savedStore || getDefaultTrainStore(),
+        savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
+        bootLoadOptions,
+      );
+      if (!savedStore) {
+        setStatus(
+          els.importStatus,
+          I18N.t("status.noSavedStore"),
+          "warn",
+        );
+      }
     }
     updateDataSourceUi();
   }
@@ -625,7 +656,10 @@ async function handleExternalStoreChange(detail) {
   }
   try {
     if (detail && detail.cleared) {
-      // Store was cleared on the server: fall back to built-in defaults.
+      // Store was cleared on the server: fall back to built-in defaults. A
+      // recovery-mode session has nothing left to protect once the broken
+      // store is gone, so normal (writable) behavior resumes.
+      exitStoreRecoveryMode();
       await replaceTrainStoreFromStoreProgressive(
         getDefaultTrainStore(),
         I18N.t("src.serverCleared"),
@@ -635,7 +669,9 @@ async function handleExternalStoreChange(detail) {
       return;
     }
     const savedStore = await loadTrainStoreFromServer();
-    if (!savedStore) return;
+    // A recovery sentinel means the store on disk is (still) unloadable —
+    // keep showing what we have rather than reloading a broken view.
+    if (!savedStore || savedStore.recovery) return;
     const sourceLabel =
       detail && detail.source === "agent"
         ? I18N.t("src.agentImport")
@@ -646,6 +682,9 @@ async function handleExternalStoreChange(detail) {
       persistEachStep: false,
       finalPersist: false,
     });
+    // Another source produced a store that loads cleanly — if this tab was in
+    // read-only recovery, the danger has passed.
+    exitStoreRecoveryMode();
     setStatus(
       els.importStatus,
       I18N.t("status.autoLoaded", { label: sourceLabel, count: savedStore.trains.length }),
@@ -684,4 +723,3 @@ function scheduleRouteGraphPrebuild() {
     setTimeout(prebuild, 0);
   }
 }
-

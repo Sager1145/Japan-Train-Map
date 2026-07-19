@@ -71,7 +71,13 @@ function renderDateButtons() {
   });
 
   els.dateBar.appendChild(fragment);
-  if (els.mapDateFilter) els.mapDateFilter.checked = mapFollowsSelectedDate;
+  if (els.mapDateFilter) {
+    els.mapDateFilter.checked = mapFollowsSelectedDate;
+    // The hard-hide toggle only has an effect while a CONCRETE date is
+    // selected ("全部" has no "current date" to restrict the map to).
+    // Disable it there so it can't look broken.
+    els.mapDateFilter.disabled = selectedDate === ALL_DATES;
+  }
 }
 
 // Switch the sidebar date filter. Does NOT reload the basemap or drop any

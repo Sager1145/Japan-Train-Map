@@ -164,33 +164,32 @@ function createApp({
       let added = incoming.trains.length;
       let replaced = 0;
 
-      if (mode === "append") {
-        let existing;
-        try {
-          existing = await trainStore.read();
-        } catch (err) {
-          logger.error("Error reading train-store.json for append:", err);
-          return res
-            .status(500)
-            .json({ error: "Failed to read existing train store." });
-        }
-        const base =
-          existing && Array.isArray(existing.trains) ? existing.trains : [];
-        const byId = new Map(base.map((train) => [train && train.id, train]));
-        added = 0;
-        for (const train of incoming.trains) {
-          if (train && train.id && byId.has(train.id)) replaced++;
-          else added++;
-          byId.set(train && train.id, train);
-        }
-        finalStore = {
-          schema_version: DEFAULT_SCHEMA_VERSION,
-          trains: Array.from(byId.values()),
-        };
-      }
-
       try {
-        await trainStore.write(finalStore);
+        if (mode === "append") {
+          // The read-modify-write runs inside the store's write queue, so a
+          // concurrent PUT or a second append can never interleave between
+          // the read and the write (lost update).
+          finalStore = await trainStore.update((existing) => {
+            const base =
+              existing && Array.isArray(existing.trains) ? existing.trains : [];
+            const byId = new Map(
+              base.map((train) => [train && train.id, train]),
+            );
+            added = 0;
+            replaced = 0;
+            for (const train of incoming.trains) {
+              if (train && train.id && byId.has(train.id)) replaced++;
+              else added++;
+              byId.set(train && train.id, train);
+            }
+            return {
+              schema_version: DEFAULT_SCHEMA_VERSION,
+              trains: Array.from(byId.values()),
+            };
+          });
+        } else {
+          await trainStore.write(finalStore);
+        }
         liveEvents.broadcastStoreChanged({
           origin: req.get("X-Client-Id") || null,
           source: "agent",

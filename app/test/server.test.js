@@ -291,6 +291,75 @@ test("agent append import preserves upsert order and response counts", async () 
   });
 });
 
+test("concurrent train-store writes are serialized and never corrupt the file", async () => {
+  await withServer(async ({ baseUrl, dataDir }) => {
+    // Multi-hundred-KB bodies force writeFile into several write syscalls —
+    // the regime where the old shared per-process tmp path interleaved.
+    const bodies = Array.from({ length: 8 }, (_, index) => ({
+      schema_version: "1.3",
+      trains: [
+        { id: `writer-${index}`, stops: [], payload: "x".repeat(200000 + index) },
+      ],
+    }));
+    const responses = await Promise.all(
+      bodies.map((store) =>
+        fetch(`${baseUrl}/api/train-store`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(store),
+        }),
+      ),
+    );
+    for (const response of responses) assert.equal(response.status, 200);
+
+    const text = await fs.readFile(
+      path.join(dataDir, "train-store.json"),
+      "utf8",
+    );
+    JSON.parse(text); // must parse: no interleaved/truncated content
+    assert.ok(
+      bodies.some((store) => JSON.stringify(store) === text),
+      "final file must equal exactly one of the written stores",
+    );
+    const leftovers = (await fs.readdir(dataDir)).filter((name) =>
+      name.includes(".tmp"),
+    );
+    assert.deepEqual(leftovers, [], "no tmp files may be left behind");
+  });
+});
+
+test("parallel agent appends lose no trains (atomic read-modify-write)", async () => {
+  await withServer(async ({ baseUrl, dataDir }) => {
+    await fs.writeFile(
+      path.join(dataDir, "train-store.json"),
+      JSON.stringify({
+        schema_version: "1.3",
+        trains: [{ id: "base", stops: [] }],
+      }),
+    );
+    const ids = Array.from({ length: 6 }, (_, index) => `agent-${index}`);
+    const responses = await Promise.all(
+      ids.map((id) =>
+        fetch(`${baseUrl}/api/agent/import?mode=append`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify([{ id, stops: [] }]),
+        }),
+      ),
+    );
+    for (const response of responses) assert.equal(response.status, 200);
+
+    const stored = JSON.parse(
+      await fs.readFile(path.join(dataDir, "train-store.json"), "utf8"),
+    );
+    assert.deepEqual(
+      stored.trains.map((train) => train.id).sort(),
+      ["agent-0", "agent-1", "agent-2", "agent-3", "agent-4", "agent-5", "base"],
+      "every parallel append must survive (no lost update)",
+    );
+  });
+});
+
 test("sample data and static assets preserve validation and delivery headers", async () => {
   await withServer(async ({ baseUrl }) => {
     const invalid = await rawRequest(baseUrl, "/api/sample-data/%2e%2e");
