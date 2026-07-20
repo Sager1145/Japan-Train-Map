@@ -197,19 +197,59 @@ function nearParallelSegmentSeparation(a0, a1, b0, b1, maxMeters) {
   const overlapB =
     Math.min(bl, Math.max(aProj0, aProj1)) -
     Math.max(0, Math.min(aProj0, aProj1));
-  const requiredOverlap = Math.max(
-    0.75,
-    Math.min(6, Math.min(al, bl) * 0.15),
-  );
+  const requiredOverlap = Math.max(20, Math.min(al, bl) * 0.2);
   if (overlapA < requiredOverlap || overlapB < requiredOverlap) return null;
 
-  const separation = Math.min(
-    pointSegmentDistanceXY(ax, ay, cx, cy, dx, dy),
-    pointSegmentDistanceXY(bx, by, cx, cy, dx, dy),
-    pointSegmentDistanceXY(cx, cy, ax, ay, bx, by),
-    pointSegmentDistanceXY(dx, dy, ax, ay, bx, by),
+  // Endpoint minima classify a shallow fork as "parallel" because the two
+  // segments touch at the junction.  Measure the shared longitudinal span at
+  // several interior positions instead, in both segment frames.  A real
+  // side-by-side pair stays close throughout the overlap; a diverging pair
+  // quickly fails the maximum/median tests even if its minimum separation is
+  // exactly zero.
+  const separations = [];
+  const sampleOverlap = (ox, oy, ux, uy, lo, hi, p0x, p0y, p1x, p1y) => {
+    [0.25, 0.5, 0.75].forEach((f) => {
+      const s = lo + (hi - lo) * f;
+      separations.push(
+        pointSegmentDistanceXY(
+          ox + ux * s,
+          oy + uy * s,
+          p0x,
+          p0y,
+          p1x,
+          p1y,
+        ),
+      );
+    });
+  };
+  sampleOverlap(
+    ax,
+    ay,
+    aux,
+    auy,
+    Math.max(0, Math.min(bProj0, bProj1)),
+    Math.min(al, Math.max(bProj0, bProj1)),
+    cx,
+    cy,
+    dx,
+    dy,
   );
-  return separation <= maxMeters ? separation : null;
+  sampleOverlap(
+    cx,
+    cy,
+    bux,
+    buy,
+    Math.max(0, Math.min(aProj0, aProj1)),
+    Math.min(bl, Math.max(aProj0, aProj1)),
+    ax,
+    ay,
+    bx,
+    by,
+  );
+  separations.sort((a, b) => a - b);
+  const median = separations[(separations.length / 2) | 0];
+  const maximum = separations[separations.length - 1];
+  return median <= maxMeters && maximum <= maxMeters * 1.3 ? median : null;
 }
 
 // Shared vertex canonicaliser, rebuilt per overlap pass (refreshRouteVertexSnap
@@ -339,4 +379,3 @@ function getRouteLinePairs(feature) {
   _routeLinePairCache.set(feature, cached);
   return cached;
 }
-

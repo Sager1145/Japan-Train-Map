@@ -146,6 +146,154 @@ function applyLaneShift(path, sx, sy, offsetDeg) {
   return out;
 }
 
+// Exact-enough local metric distance used by final fit validation.  Unlike the
+// solver's convenient single-latitude plane, each query gets its own longitude
+// scale, so a long north/south corridor does not accumulate projection error.
+function fittedPointSegmentDistanceMeters(p, a, b) {
+  const coslat =
+    Math.cos((((p[1] + a[1] + b[1]) / 3) * Math.PI) / 180) || 1e-6;
+  const ax = (a[0] - p[0]) * 111320 * coslat;
+  const ay = (a[1] - p[1]) * 110540;
+  const bx = (b[0] - p[0]) * 111320 * coslat;
+  const by = (b[1] - p[1]) * 110540;
+  const vx = bx - ax;
+  const vy = by - ay;
+  const den = vx * vx + vy * vy;
+  const t = den ? Math.max(0, Math.min(1, -(ax * vx + ay * vy) / den)) : 0;
+  return Math.hypot(ax + vx * t, ay + vy * t);
+}
+
+// Final deviation is always measured against raw railway geometry, never
+// against a previous fitted stage.  A degree grid keeps the usual query local;
+// the distance calculation itself remains in metres and latitude-aware.
+function validateFittedCurveDeviation(points, sourceLines, budgetMeters) {
+  const lines = (sourceLines || []).filter((line) => line && line.length >= 2);
+  if (!points || points.length < 2 || !lines.length || !(budgetMeters > 0))
+    return { valid: false, maxDeviationMeters: Infinity };
+  const cellDeg = Math.max(0.005, Math.min(0.05, budgetMeters / 110540));
+  const cells = new Map();
+  const segments = [];
+  lines.forEach((line) => {
+    for (let i = 0; i < line.length - 1; i += 1) {
+      const a = line[i];
+      const b = line[i + 1];
+      const index = segments.length;
+      segments.push([a, b]);
+      const x0 = Math.floor(Math.min(a[0], b[0]) / cellDeg);
+      const x1 = Math.floor(Math.max(a[0], b[0]) / cellDeg);
+      const y0 = Math.floor(Math.min(a[1], b[1]) / cellDeg);
+      const y1 = Math.floor(Math.max(a[1], b[1]) / cellDeg);
+      for (let x = x0; x <= x1; x += 1)
+        for (let y = y0; y <= y1; y += 1) {
+          const key = x + "," + y;
+          let bucket = cells.get(key);
+          if (!bucket) cells.set(key, (bucket = []));
+          bucket.push(index);
+        }
+    }
+  });
+  const nearest = (p) => {
+    const coslat = Math.cos((p[1] * Math.PI) / 180) || 1e-6;
+    const lonRadius = budgetMeters / (111320 * coslat);
+    const latRadius = budgetMeters / 110540;
+    const x0 = Math.floor((p[0] - lonRadius) / cellDeg) - 1;
+    const x1 = Math.floor((p[0] + lonRadius) / cellDeg) + 1;
+    const y0 = Math.floor((p[1] - latRadius) / cellDeg) - 1;
+    const y1 = Math.floor((p[1] + latRadius) / cellDeg) + 1;
+    const seen = new Set();
+    let best = Infinity;
+    for (let x = x0; x <= x1; x += 1)
+      for (let y = y0; y <= y1; y += 1) {
+        const bucket = cells.get(x + "," + y);
+        if (!bucket) continue;
+        for (let i = 0; i < bucket.length; i += 1) {
+          const index = bucket[i];
+          if (seen.has(index)) continue;
+          seen.add(index);
+          const segment = segments[index];
+          best = Math.min(
+            best,
+            fittedPointSegmentDistanceMeters(p, segment[0], segment[1]),
+          );
+        }
+      }
+    return best;
+  };
+
+  let maximum = 0;
+  const distances = points.map((p) => {
+    const d = nearest(p);
+    maximum = Math.max(maximum, d);
+    return d;
+  });
+  if (maximum > budgetMeters)
+    return { valid: false, maxDeviationMeters: maximum };
+
+  // Distance-to-a-set is 1-Lipschitz.  This bound proves whole output
+  // segments, not just their vertices; only spans too close to the budget are
+  // subdivided.  At the depth cap we reject conservatively.
+  const verifySpan = (a, b, da, db, depth) => {
+    const length = distanceMeters(a, b);
+    const upper = Math.max(da, db, (da + db + length) / 2);
+    if (upper <= budgetMeters) return true;
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const dm = nearest(mid);
+    maximum = Math.max(maximum, dm);
+    if (dm > budgetMeters) return false;
+    if (depth >= 9) return false;
+    return (
+      verifySpan(a, mid, da, dm, depth + 1) &&
+      verifySpan(mid, b, dm, db, depth + 1)
+    );
+  };
+  for (let i = 0; i < points.length - 1; i += 1)
+    if (!verifySpan(points[i], points[i + 1], distances[i], distances[i + 1], 0))
+      return { valid: false, maxDeviationMeters: maximum };
+  return { valid: true, maxDeviationMeters: maximum };
+}
+
+// Both corridor stitching layers deliberately build paths, not branch graphs.
+// Once one endpoint wins a candidate, no second curve may attach to it.
+function selectOneToOneEndpointPairs(sortedCandidates, ambiguityMargin = 0) {
+  const candidatesByEnd = new Map();
+  (sortedCandidates || []).forEach((candidate) => {
+    if (!candidate || !candidate.a || !candidate.b) return;
+    [candidate.a.id, candidate.b.id].forEach((id) => {
+      let list = candidatesByEnd.get(id);
+      if (!list) candidatesByEnd.set(id, (list = []));
+      list.push(candidate);
+    });
+  });
+  const ambiguousEnds = new Set();
+  if (ambiguityMargin > 0)
+    candidatesByEnd.forEach((list, id) => {
+      list.sort((a, b) => a.score - b.score);
+      if (
+        list.length > 1 &&
+        list[1].score - list[0].score <= ambiguityMargin
+      )
+        ambiguousEnds.add(id);
+    });
+  const usedEnds = new Set();
+  const selected = [];
+  (sortedCandidates || []).forEach((candidate) => {
+    if (
+      !candidate ||
+      !candidate.a ||
+      !candidate.b ||
+      ambiguousEnds.has(candidate.a.id) ||
+      ambiguousEnds.has(candidate.b.id) ||
+      usedEnds.has(candidate.a.id) ||
+      usedEnds.has(candidate.b.id)
+    )
+      return;
+    usedEnds.add(candidate.a.id);
+    usedEnds.add(candidate.b.id);
+    selected.push(candidate);
+  });
+  return selected;
+}
+
 function corridorEndpointOutward(gi, side) {
   const line = gi && gi._line;
   if (!line || line.length < 2) return null;
@@ -166,7 +314,14 @@ function corridorEndpointPair(a, b) {
   if (!a || !b || a.key === b.key || a.sig !== b.sig) return null;
   const metres = distanceMeters(a.p, b.p);
   if (metres > OVERLAP_CORRIDOR_JOIN_METERS) return null;
-  if (metres <= OVERLAP_SNAP_METERS) return { metres, score: metres };
+  const facing = -(a.out[0] * b.out[0] + a.out[1] * b.out[1]);
+  // A shared coordinate is not sufficient at a junction: several branches
+  // can snap to the same station node.  Keep a relaxed tangent check even at
+  // zero gap so greedy pairing cannot connect perpendicular platform throats.
+  if (metres <= OVERLAP_SNAP_METERS) {
+    if (facing < 0.35) return null;
+    return { metres, score: metres + (1 - facing) * 40 };
+  }
   const lat = (a.p[1] + b.p[1]) / 2;
   const cs = Math.cos((lat * Math.PI) / 180) || 1e-6;
   const gx = (b.p[0] - a.p[0]) * cs;
@@ -176,7 +331,6 @@ function corridorEndpointPair(a, b) {
   const uy = gy / gl;
   const aAlong = a.out[0] * ux + a.out[1] * uy;
   const bAlong = b.out[0] * ux + b.out[1] * uy;
-  const facing = -(a.out[0] * b.out[0] + a.out[1] * b.out[1]);
   if (aAlong < 0.35 || bAlong > -0.35 || facing < 0.55) return null;
   return {
     metres,
@@ -229,6 +383,140 @@ function buildCorridorChain(c, groupInfo, joins) {
     fromSide = nextEnd.side;
   }
   return chain.length >= 2 ? chain : null;
+}
+
+// One near-parallel interaction key may be encountered on several physical
+// runs. Join only unambiguous end-to-end continuations, choose the longest
+// resulting representative chain, and rebuild every direction-dependent field
+// together. Parallel alternatives remain alternatives; sequential fragments
+// become one complete anchor instead of being silently discarded.
+function rebuildGroupRepresentativeGeometry(gi) {
+  const lines = (gi && gi._lines || []).filter(
+    (line) => line && line.length >= 2,
+  );
+  if (!gi || !lines.length) return null;
+  const tempInfo = new Map();
+  const endpoints = [];
+  lines.forEach((line, index) => {
+    const key = "representative:" + index;
+    const item = { _line: line };
+    tempInfo.set(key, item);
+    [0, 1].forEach((side) => {
+      const out = corridorEndpointOutward(item, side);
+      if (!out) return;
+      endpoints.push({
+        id: key + "::" + side,
+        key,
+        side,
+        p: side === 0 ? line[0] : line[line.length - 1],
+        out,
+        sig: "representative",
+      });
+    });
+  });
+  const candidates = [];
+  for (let i = 0; i < endpoints.length; i += 1)
+    for (let j = i + 1; j < endpoints.length; j += 1) {
+      const match = corridorEndpointPair(endpoints[i], endpoints[j]);
+      if (match)
+        candidates.push({ a: endpoints[i], b: endpoints[j], ...match });
+    }
+  candidates.sort((a, b) => a.score - b.score);
+  const joins = selectOneToOneEndpointPairs(candidates, 8);
+  const parent = new Map([...tempInfo.keys()].map((key) => [key, key]));
+  const find = (key) => {
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root);
+    let current = key;
+    while (parent.get(current) !== current) {
+      const next = parent.get(current);
+      parent.set(current, root);
+      current = next;
+    }
+    return root;
+  };
+  joins.forEach((join) => parent.set(find(join.b.key), find(join.a.key)));
+  const components = new Map();
+  tempInfo.forEach((_, key) => {
+    const root = find(key);
+    let keys = components.get(root);
+    if (!keys) components.set(root, (keys = []));
+    keys.push(key);
+  });
+  const lineLength = (line) => {
+    let length = 0;
+    for (let i = 1; i < line.length; i += 1)
+      length += distanceMeters(line[i - 1], line[i]);
+    return length;
+  };
+  let representative = lines[0];
+  let representativeLength = lineLength(representative);
+  components.forEach((keys) => {
+    const keySet = new Set(keys);
+    const componentJoins = joins.filter(
+      (join) => keySet.has(join.a.key) && keySet.has(join.b.key),
+    );
+    let candidate = null;
+    if (keys.length > 1 && componentJoins.length < keys.length)
+      candidate = buildCorridorChain(
+        { keys, keySet },
+        tempInfo,
+        componentJoins,
+      );
+    if (!candidate)
+      keys.forEach((key) => {
+        const line = tempInfo.get(key)._line;
+        if (!candidate || lineLength(line) > lineLength(candidate)) candidate = line;
+      });
+    const length = lineLength(candidate);
+    if (length > representativeLength) {
+      representative = candidate;
+      representativeLength = length;
+    }
+  });
+
+  let latitudeSum = 0;
+  let latitudeCount = 0;
+  for (let i = 1; i < representative.length; i += 1) {
+    latitudeSum += (representative[i - 1][1] + representative[i][1]) / 2;
+    latitudeCount += 1;
+  }
+  const latRef = latitudeCount ? latitudeSum / latitudeCount : representative[0][1];
+  const coslat = Math.cos((latRef * Math.PI) / 180) || 1e-6;
+  let pa = representative[0];
+  let pb = representative[representative.length - 1];
+  if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
+    const swap = pa;
+    pa = pb;
+    pb = swap;
+  }
+  let dx = (pb[0] - pa[0]) * coslat;
+  let dy = pb[1] - pa[1];
+  let length = Math.hypot(dx, dy);
+  if (length < 1e-9) {
+    let longest = 0;
+    for (let i = 1; i < representative.length; i += 1) {
+      let sx = (representative[i][0] - representative[i - 1][0]) * coslat;
+      let sy = representative[i][1] - representative[i - 1][1];
+      const segmentLength = Math.hypot(sx, sy);
+      if (segmentLength <= longest) continue;
+      if (sx < 0 || (sx === 0 && sy < 0)) {
+        sx = -sx;
+        sy = -sy;
+      }
+      longest = segmentLength;
+      dx = sx;
+      dy = sy;
+    }
+    length = Math.hypot(dx, dy) || 1;
+  }
+  gi._line = representative;
+  gi._pa = representative[0];
+  gi._pb = representative[representative.length - 1];
+  gi._latRef = latRef;
+  gi.sx = dy / length / coslat;
+  gi.sy = -dx / length;
+  return representative;
 }
 
 // Build a genuinely smooth physical-distance fit for the hover fan. The source
@@ -507,14 +795,17 @@ function smoothCorridorCurve(line) {
       }
     return d[degree];
   };
-  const outputN = Math.max(
+  // Candidate solving/validation uses one fixed physical resolution.  The
+  // user's precision setting is applied only when the accepted curve is
+  // resampled below, so it cannot trigger a different fallback or shape.
+  const solveN = Math.max(
     20,
-    Math.min(3200, Math.ceil(total / (30 / precision)) + 1),
+    Math.min(3200, Math.ceil(total / 30) + 1),
   );
   const evaluateSpline = () => {
-    const out = new Array(outputN);
-    for (let i = 0; i < outputN; i += 1)
-      out[i] = splinePoint(i / (outputN - 1));
+    const out = new Array(solveN);
+    for (let i = 0; i < solveN; i += 1)
+      out[i] = splinePoint(i / (solveN - 1));
     return out;
   };
   const measuredSplineRadius = (points) => {
@@ -637,9 +928,9 @@ function smoothCorridorCurve(line) {
         [shortSweep, shortSweep > 0 ? shortSweep - 2 * Math.PI : shortSweep + 2 * Math.PI]
           .forEach((sweep) => {
             if (Math.abs(sweep) < 1e-6) return;
-            const candidate = new Array(outputN);
-            for (let i = 0; i < outputN; i += 1) {
-              const t = i / (outputN - 1);
+            const candidate = new Array(solveN);
+            for (let i = 0; i < solveN; i += 1) {
+              const t = i / (solveN - 1);
               const a = startAngle + sweep * t;
               candidate[i] = [
                 center[0] + Math.cos(a) * radius,
@@ -649,8 +940,8 @@ function smoothCorridorCurve(line) {
             let sampledDeviation = 0;
             let maxNearestDeviation = 0;
             let sampledCount = 0;
-            const stride = Math.max(1, Math.floor(outputN / 96));
-            for (let i = 0; i < outputN; i += stride) {
+            const stride = Math.max(1, Math.floor(solveN / 96));
+            for (let i = 0; i < solveN; i += stride) {
               const p = candidate[i];
               const px = p[0];
               const py = p[1];
@@ -823,64 +1114,100 @@ function smoothCorridorCurve(line) {
     smoothTotal = smoothCum[smoothCum.length - 1];
     outputStep = smoothTotal / Math.max(1, cur.length - 1);
   }
-  const dirs = angles.map((a) => [Math.cos(a), Math.sin(a)]);
-  let maxDirectionTurn = 0;
-  for (let i = 1; i < angles.length; i += 1)
-    maxDirectionTurn = Math.max(
-      maxDirectionTurn,
-      Math.abs(angles[i] - angles[i - 1]),
-    );
-  const achievedDirectionRadius = maxDirectionTurn > 1e-9
-    ? outputStep / maxDirectionTurn
-    : Infinity;
-
-  let actualMaxDeviation = 0;
-  const pointSegmentDistanceSq = (p, a, b) => {
-    const vx = b[0] - a[0];
-    const vy = b[1] - a[1];
-    const den = vx * vx + vy * vy;
-    const t = den
-      ? Math.max(
-          0,
-          Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / den),
-        )
-      : 0;
-    // Squared distance: the caller only takes a running minimum, so defer the
-    // sqrt to a single call per sampled point. Result is fp-identical and this
-    // value feeds only the diagnostic actualMaxDeviation.
-    const ex = p[0] - (a[0] + vx * t);
-    const ey = p[1] - (a[1] + vy * t);
-    return ex * ex + ey * ey;
-  };
-  // Measure against the source polyline itself, not a same-index anchor.
-  // B-spline parameterisation is not exactly arc-length parameterisation, so
-  // the old same-index diagnostic could falsely report a deviation overrun.
-  const deviationSearch = Math.max(
-    12,
-    Math.ceil((maxDeviation + sigmaM * 2) / Math.max(1, workStep)),
-  );
-  for (let i = 0; i < splineMetric.length; i += 1) {
-    const ai = Math.round(((anchorMetric.length - 1) * i) / (splineMetric.length - 1));
-    const from = usedCircularArc ? 0 : Math.max(0, ai - deviationSearch);
-    const to = usedCircularArc
-      ? anchorMetric.length - 2
-      : Math.min(anchorMetric.length - 2, ai + deviationSearch);
-    let nearestSq = Infinity;
-    for (let j = from; j <= to; j += 1) {
-      const dSq = pointSegmentDistanceSq(
-        splineMetric[i],
-        anchorMetric[j],
-        anchorMetric[j + 1],
+  let achievedDirectionRadius = Infinity;
+  for (let i = 1; i < angles.length; i += 1) {
+    const turn = Math.abs(angles[i] - angles[i - 1]);
+    if (turn > 1e-9)
+      achievedDirectionRadius = Math.min(
+        achievedDirectionRadius,
+        (smoothCum[i] - smoothCum[i - 1]) / turn,
       );
-      if (dSq < nearestSq) nearestSq = dSq;
-    }
-    actualMaxDeviation = Math.max(actualMaxDeviation, Math.sqrt(nearestSq));
   }
+  const deviation = validateFittedCurveDeviation(cur, [line], maxDeviation);
+  if (
+    !deviation.valid ||
+    achievedMinRadius < requestedMinRadius * 0.999 ||
+    achievedDirectionRadius < requestedMinRadius * 0.999
+  )
+    return null;
+
+  // Precision affects only this final representation.  All solving, fallback
+  // decisions and hard validation above used the fixed `solveN` geometry.
+  const displayN = Math.max(
+    20,
+    Math.min(3200, Math.ceil(smoothTotal / (30 / precision)) + 1),
+  );
+  let outputPoints = cur;
+  let outputAngles = angles;
+  let outputCum = smoothCum;
+  if (displayN !== cur.length) {
+    outputPoints = new Array(displayN);
+    outputAngles = new Array(displayN);
+    let sourceIndex = 0;
+    for (let i = 0; i < displayN; i += 1) {
+      const target = (smoothTotal * i) / (displayN - 1);
+      while (
+        sourceIndex + 1 < smoothCum.length - 1 &&
+        smoothCum[sourceIndex + 1] < target
+      )
+        sourceIndex += 1;
+      const span = smoothCum[sourceIndex + 1] - smoothCum[sourceIndex] || 1;
+      const t = Math.max(0, Math.min(1, (target - smoothCum[sourceIndex]) / span));
+      const a = cur[sourceIndex];
+      const b = cur[sourceIndex + 1];
+      outputPoints[i] = [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+      ];
+      outputAngles[i] =
+        angles[sourceIndex] + (angles[sourceIndex + 1] - angles[sourceIndex]) * t;
+    }
+    outputCum = [0];
+    for (let i = 1; i < outputPoints.length; i += 1)
+      outputCum.push(
+        outputCum[i - 1] + distanceMeters(outputPoints[i - 1], outputPoints[i]),
+      );
+  }
+  let finalDeviation = validateFittedCurveDeviation(
+    outputPoints,
+    [line],
+    maxDeviation,
+  );
+  const outputMetric = outputPoints.map((p) => [
+    (p[0] - origin[0]) * mx,
+    (p[1] - origin[1]) * my,
+  ]);
+  let finalAchievedMinRadius = measuredSplineRadius(outputMetric);
+  let finalAchievedDirectionRadius = Infinity;
+  for (let i = 1; i < outputAngles.length; i += 1) {
+    const turn = Math.abs(outputAngles[i] - outputAngles[i - 1]);
+    if (turn > 1e-9)
+      finalAchievedDirectionRadius = Math.min(
+        finalAchievedDirectionRadius,
+        (outputCum[i] - outputCum[i - 1]) / turn,
+      );
+  }
+  if (
+    !finalDeviation.valid ||
+    finalAchievedMinRadius < requestedMinRadius * 0.999 ||
+    finalAchievedDirectionRadius < requestedMinRadius * 0.999
+  ) {
+    // A low-density representation may replace a validated bend with a chord.
+    // Hard invariants win over the requested debug/output density: retain the
+    // fixed-resolution solution instead of publishing an invalid polyline.
+    outputPoints = cur;
+    outputAngles = angles;
+    outputCum = smoothCum;
+    finalDeviation = deviation;
+    finalAchievedMinRadius = achievedMinRadius;
+    finalAchievedDirectionRadius = achievedDirectionRadius;
+  }
+  const dirs = outputAngles.map((a) => [Math.cos(a), Math.sin(a)]);
   return {
-    pts: cur,
-    cum: smoothCum,
+    pts: outputPoints,
+    cum: outputCum,
     dirs,
-    totalMeters: smoothTotal,
+    totalMeters: outputCum[outputCum.length - 1],
     sourceTotalMeters: total,
     endpointChordMeters: Math.hypot(
       anchorMetric[anchorMetric.length - 1][0] - anchorMetric[0][0],
@@ -890,19 +1217,24 @@ function smoothCorridorCurve(line) {
     smoothingSigmaMeters: sigmaM,
     directionSigmaMeters: directionSigmaM,
     requestedMinRadiusMeters: requestedMinRadius,
-    achievedMinRadiusMeters: isFinite(achievedMinRadius)
-      ? achievedMinRadius
+    achievedMinRadiusMeters: isFinite(finalAchievedMinRadius)
+      ? finalAchievedMinRadius
       : null,
-    achievedDirectionRadiusMeters: isFinite(achievedDirectionRadius)
-      ? achievedDirectionRadius
+    achievedDirectionRadiusMeters: isFinite(finalAchievedDirectionRadius)
+      ? finalAchievedDirectionRadius
       : null,
     minDetailMeters: minDetail,
     maxDeviationMeters: maxDeviation,
-    actualMaxDeviationMeters: actualMaxDeviation,
+    actualMaxDeviationMeters: finalDeviation.maxDeviationMeters,
     samplingPrecision: precision,
-    fitType: "cubic-bspline-c2",
+    fitType: usedCircularArc ? "circular-arc" : "cubic-bspline-c2",
     coslat,
+    _sourceLines: [line],
   };
+}
+
+function smoothStandaloneCorridorRun(line, isClosed) {
+  return isClosed ? null : smoothCorridorCurve(line);
 }
 
 function fittedCurvePointAt(curve, metres) {
@@ -1000,6 +1332,95 @@ function refreshFittedCurveGeometry(curve) {
   curve.achievedDirectionRadiusMeters = maxTurn > 1e-9 ? step / maxTurn : null;
 }
 
+// Station smoothing changes geometry after the original direction solve.  Run
+// the same essential angle pipeline again so `dirs` remains a hard-validated
+// output rather than an unchecked finite-difference diagnostic.
+function rebuildLimitedDirectionField(curve) {
+  const pts = curve && curve.pts;
+  if (!pts || pts.length < 2) return false;
+  const cum = curve.cum;
+  const total = curve.totalMeters || 0;
+  const step = total / Math.max(1, pts.length - 1);
+  const minRadius = Math.max(100, curve.requestedMinRadiusMeters || 3100);
+  const minDetail = Math.max(20, curve.minDetailMeters || 3300);
+  const half = Math.max(
+    1,
+    Math.min(
+      Math.floor((pts.length - 1) / 5),
+      Math.round(Math.max(60, minDetail * 0.18) / Math.max(1, step)),
+    ),
+  );
+  const cs = curve.coslat || 1;
+  let angles = pts.map((_, i) => {
+    const a = pts[Math.max(0, i - half)];
+    const b = pts[Math.min(pts.length - 1, i + half)];
+    return Math.atan2(b[1] - a[1], (b[0] - a[0]) * cs);
+  });
+  for (let i = 1; i < angles.length; i += 1) {
+    while (angles[i] - angles[i - 1] > Math.PI) angles[i] -= 2 * Math.PI;
+    while (angles[i] - angles[i - 1] < -Math.PI) angles[i] += 2 * Math.PI;
+  }
+  const smooth = (input, sigma) => {
+    const radius = Math.max(
+      2,
+      Math.min(
+        300,
+        input.length - 1,
+        Math.ceil((sigma * 3) / Math.max(1, step)),
+      ),
+    );
+    const weights = new Array(radius + 1);
+    for (let k = 0; k <= radius; k += 1)
+      weights[k] = Math.exp(-0.5 * Math.pow((k * step) / sigma, 2));
+    return input.map((_, i) => {
+      let sum = 0;
+      let weight = 0;
+      for (let k = -radius; k <= radius; k += 1) {
+        const w = weights[Math.abs(k)];
+        sum += input[Math.max(0, Math.min(input.length - 1, i + k))] * w;
+        weight += w;
+      }
+      return sum / weight;
+    });
+  };
+  const sigma = Math.max(80, minDetail * 0.45, minRadius * 0.12);
+  angles = smooth(angles, sigma);
+  angles = smooth(angles, sigma * 0.65);
+  const limitedRadius = minRadius * 1.03;
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let i = 1; i < angles.length; i += 1) {
+      const maxTurn = Math.min(
+        0.045,
+        Math.max(1e-6, (cum[i] - cum[i - 1]) / limitedRadius),
+      );
+      angles[i] = Math.max(
+        angles[i - 1] - maxTurn,
+        Math.min(angles[i - 1] + maxTurn, angles[i]),
+      );
+    }
+    for (let i = angles.length - 2; i >= 0; i -= 1) {
+      const maxTurn = Math.min(
+        0.045,
+        Math.max(1e-6, (cum[i + 1] - cum[i]) / limitedRadius),
+      );
+      angles[i] = Math.max(
+        angles[i + 1] - maxTurn,
+        Math.min(angles[i + 1] + maxTurn, angles[i]),
+      );
+    }
+  }
+  let achieved = Infinity;
+  for (let i = 1; i < angles.length; i += 1) {
+    const turn = Math.abs(angles[i] - angles[i - 1]);
+    if (turn > 1e-9)
+      achieved = Math.min(achieved, (cum[i] - cum[i - 1]) / turn);
+  }
+  curve.dirs = angles.map((a) => [Math.cos(a), Math.sin(a)]);
+  curve.directionSigmaMeters = sigma;
+  curve.achievedDirectionRadiusMeters = isFinite(achieved) ? achieved : null;
+  return !isFinite(achieved) || achieved >= minRadius * 0.999;
+}
+
 // Different overlap memberships often end at the same station as separate
 // fitted curves.  Even though each curve is C2 internally, pinning both ends
 // to that station leaves a hard change of tangent between them.  Pair the
@@ -1011,7 +1432,7 @@ function refreshFittedCurveGeometry(curve) {
 // physical Gaussian pass over their concatenated points is enough to remove
 // only the new station seams, and is much cheaper than running the complete
 // source-fitting solver again over a corridor hundreds of kilometres long.
-function smoothJoinedStationCurve(source, template) {
+function smoothJoinedStationCurve(source, template, sourceLines) {
   if (!source || source.length < 4) return null;
   const lat0 = source.reduce((sum, p) => sum + p[1], 0) / source.length;
   const coslat = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
@@ -1096,18 +1517,13 @@ function smoothJoinedStationCurve(source, template) {
   // the new overlap membership.
   let passCount = 3;
   while (true) {
+    // Whole-chain smoothing must never move the two physical terminal ends.
+    metric[0] = metricSource[0].slice();
+    metric[metric.length - 1] = metricSource[metricSource.length - 1].slice();
     curve.pts = metric.map((p) => [
       origin[0] + p[0] / mx,
       origin[1] + p[1] / my,
     ]);
-    let maxDeviation = 0;
-    metric.forEach((p, i) => {
-      maxDeviation = Math.max(
-        maxDeviation,
-        Math.hypot(p[0] - metricSource[i][0], p[1] - metricSource[i][1]),
-      );
-    });
-    curve.actualMaxDeviationMeters = maxDeviation;
     refreshFittedCurveGeometry(curve);
     if (
       curve.achievedMinRadiusMeters == null ||
@@ -1118,6 +1534,16 @@ function smoothJoinedStationCurve(source, template) {
     metric = boxPass(metric, boxRadius);
     passCount += 1;
   }
+  const rawSources = (sourceLines || template._sourceLines || []).filter(Boolean);
+  const deviation = validateFittedCurveDeviation(
+    curve.pts,
+    rawSources,
+    curve.maxDeviationMeters,
+  );
+  curve.actualMaxDeviationMeters = deviation.maxDeviationMeters;
+  curve._sourceLines = rawSources;
+  curve._finalDeviationValid = deviation.valid;
+  curve._finalDirectionValid = rebuildLimitedDirectionField(curve);
   curve.stationSmoothingPasses = passCount;
   return curve;
 }
@@ -1141,6 +1567,10 @@ function smoothCurveStationJoins(groupInfo) {
   const curves = [...owners.keys()];
   const ends = [];
   curves.forEach((curve, curveIndex) => {
+    const trainIds = new Set();
+    (owners.get(curve) || []).forEach(({ gi }) => {
+      Object.keys((gi && gi.mults) || {}).forEach((id) => trainIds.add(id));
+    });
     [0, 1].forEach((side) => {
       const p = side === 0 ? curve.pts[0] : curve.pts[curve.pts.length - 1];
       const probeM = Math.min(450, Math.max(100, curve.totalMeters * 0.03));
@@ -1161,6 +1591,7 @@ function smoothCurveStationJoins(groupInfo) {
         side,
         p,
         outward: [dx / len, dy / len],
+        trainIds,
       });
     });
   });
@@ -1171,28 +1602,40 @@ function smoothCurveStationJoins(groupInfo) {
       const a = ends[i];
       const b = ends[j];
       if (a.curve === b.curve) continue;
+      let sharedTrains = 0;
+      a.trainIds.forEach((id) => {
+        if (b.trainIds.has(id)) sharedTrains += 1;
+      });
+      if (!sharedTrains) continue;
       const metres = distanceMeters(a.p, b.p);
-      if (metres > 220) continue;
+      // Geometry-only station matching is a fallback (the fitted curves do
+      // not carry stable station ids), so keep it deliberately conservative.
+      // Long gaps are accepted only when the continuation is almost straight.
+      if (metres > 120) continue;
       const continuationDot = Math.max(
         -1,
         Math.min(1, -(a.outward[0] * b.outward[0] + a.outward[1] * b.outward[1])),
       );
       const turn = Math.acos(continuationDot);
-      if (turn > (145 * Math.PI) / 180) continue;
-      candidates.push({ a, b, metres, turn, score: turn * 1200 + metres });
-    }
+      if (turn > (60 * Math.PI) / 180) continue;
+      if (metres > 40 && turn > (25 * Math.PI) / 180) continue;
+      candidates.push({
+        a,
+        b,
+        metres,
+        turn,
+        sharedTrains,
+        score: turn * 1200 + metres - Math.min(5, sharedTrains) * 4,
+      });
+  }
   candidates.sort((a, b) => a.score - b.score);
-  const usedEnds = new Set();
   const connections = new Map();
   const connect = (end, other, meta) => {
     let sides = connections.get(end.curve);
     if (!sides) connections.set(end.curve, (sides = new Map()));
     sides.set(end.side, { end: other, meta });
   };
-  candidates.forEach((candidate) => {
-    if (usedEnds.has(candidate.a.id) || usedEnds.has(candidate.b.id)) return;
-    usedEnds.add(candidate.a.id);
-    usedEnds.add(candidate.b.id);
+  selectOneToOneEndpointPairs(candidates, 50).forEach((candidate) => {
     connect(candidate.a, candidate.b, candidate);
     connect(candidate.b, candidate.a, candidate);
   });
@@ -1224,9 +1667,10 @@ function smoothCurveStationJoins(groupInfo) {
     const connectedSide = [...sides.keys()][0];
     walk(curve, connectedSide === 0);
   });
-  // Closed chains have no degree-1 start.
+  // A cycle needs a periodic solver.  Do not silently cut it at an arbitrary
+  // edge and feed it to the open-chain station smoother.
   curves.forEach((curve) => {
-    if (!visited.has(curve) && connections.has(curve)) walk(curve, false);
+    if (!visited.has(curve) && connections.has(curve)) visited.add(curve);
   });
 
   components.forEach((component) => {
@@ -1249,7 +1693,15 @@ function smoothCurveStationJoins(groupInfo) {
       }
     });
     if (source.length < 4) return;
-    const fitted = smoothJoinedStationCurve(source, component[0].curve);
+    const rawSources = [];
+    component.forEach(({ curve }) => {
+      (curve._sourceLines || []).forEach((line) => rawSources.push(line));
+    });
+    const fitted = smoothJoinedStationCurve(
+      source,
+      component[0].curve,
+      rawSources,
+    );
     if (!fitted) return;
     // A folded/looping component can be geometrically unable to satisfy both
     // the requested radius and deviation budget as one station-continuous
@@ -1261,7 +1713,12 @@ function smoothCurveStationJoins(groupInfo) {
         fitted.achievedMinRadiusMeters <
           fitted.requestedMinRadiusMeters * 0.999) ||
       (fitted.maxDeviationMeters > 0 &&
-        fitted.actualMaxDeviationMeters > fitted.maxDeviationMeters * 1.02)
+        (!fitted._finalDeviationValid ||
+          fitted.actualMaxDeviationMeters > fitted.maxDeviationMeters)) ||
+      !fitted._finalDirectionValid ||
+      (fitted.achievedDirectionRadiusMeters != null &&
+        fitted.achievedDirectionRadiusMeters <
+          fitted.requestedMinRadiusMeters * 0.999)
     )
       return;
     fitted.stationJoinCount = component.length - 1;
@@ -1280,4 +1737,3 @@ function smoothCurveStationJoins(groupInfo) {
   });
   return roundedJoins;
 }
-

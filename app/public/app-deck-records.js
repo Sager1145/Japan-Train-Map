@@ -176,6 +176,7 @@ function buildDeckOverlapMap(items) {
         (pair) => expandedSig.get(pair.a) === expandedSig.get(pair.b),
       );
       const parent = new Map();
+      const componentTrainIds = new Map();
       const find = (key) => {
         let root = key;
         while (parent.get(root) !== root) root = parent.get(root);
@@ -188,15 +189,39 @@ function buildDeckOverlapMap(items) {
         return root;
       };
       const union = (a, b) => {
-        if (!parent.has(a)) parent.set(a, a);
-        if (!parent.has(b)) parent.set(b, b);
+        if (!parent.has(a)) {
+          parent.set(a, a);
+          componentTrainIds.set(a, new Set(seg.get(a) || []));
+        }
+        if (!parent.has(b)) {
+          parent.set(b, b);
+          componentTrainIds.set(b, new Set(seg.get(b) || []));
+        }
         const ar = find(a);
         const br = find(b);
-        if (ar !== br) parent.set(br, ar);
+        if (ar === br) return true;
+        const aIds = componentTrainIds.get(ar) || new Set();
+        const bIds = componentTrainIds.get(br) || new Set();
+        // The direct pair check above prevents a route overlapping itself,
+        // but a plain DSU can reintroduce that bug transitively: A↔B and B↔C
+        // would merge A with C even when A/C are two branches of one train.
+        // A physical interaction component may contain each train only once.
+        for (const id of aIds) if (bIds.has(id)) return false;
+        parent.set(br, ar);
+        bIds.forEach((id) => aIds.add(id));
+        componentTrainIds.set(ar, aIds);
+        componentTrainIds.delete(br);
+        return true;
       };
-      validPairs.forEach((pair) => union(pair.a, pair.b));
+      const acyclicPairs = validPairs.filter((pair) => union(pair.a, pair.b));
+      const acceptedKeys = new Set();
+      acyclicPairs.forEach((pair) => {
+        acceptedKeys.add(pair.a);
+        acceptedKeys.add(pair.b);
+      });
       const components = new Map();
       parent.forEach((_, key) => {
+        if (!acceptedKeys.has(key)) return;
         const root = find(key);
         let keys = components.get(root);
         if (!keys) components.set(root, (keys = []));
@@ -209,7 +234,7 @@ function buildDeckOverlapMap(items) {
           nearGroupByKey.set(key, canonical);
         });
       });
-      validPairs.forEach((pair) => {
+      acyclicPairs.forEach((pair) => {
         const group = nearGroupByKey.get(pair.a);
         if (!group) return;
         nearMaxByGroup.set(
@@ -217,7 +242,7 @@ function buildDeckOverlapMap(items) {
           Math.max(nearMaxByGroup.get(group) || 0, pair.separation),
         );
       });
-      nearPairCount = validPairs.length;
+      nearPairCount = acyclicPairs.length;
     }
   }
 
@@ -655,10 +680,28 @@ function buildDeckRouteRecords(items) {
               _pa: orig[ra],
               _pb: orig[rb],
               _line: runLine,
+              _lines: [runLine],
               _latRef: latRef,
               _nearParallel: overlap.nearGroupInfo(groupKey),
             };
             groupInfo.set(groupKey, gi);
+          } else {
+            // A near-parallel interaction key can be encountered on more than
+            // one physical run. Keep distinct geometry here; after every
+            // record has been seen, rebuildGroupRepresentativeGeometry joins
+            // compatible sequential fragments and recomputes the whole axis.
+            if (!gi._lines) gi._lines = [gi._line];
+            const duplicate = gi._lines.some((other) => {
+              const same =
+                distanceMeters(other[0], runLine[0]) <= 0.05 &&
+                distanceMeters(other[other.length - 1], runLine[runLine.length - 1]) <=
+                  0.05;
+              const reverse =
+                distanceMeters(other[0], runLine[runLine.length - 1]) <= 0.05 &&
+                distanceMeters(other[other.length - 1], runLine[0]) <= 0.05;
+              return same || reverse;
+            });
+            if (!duplicate) gi._lines.push(runLine);
           }
         }
         records.push({
@@ -700,6 +743,7 @@ function buildDeckRouteRecords(items) {
   // corridor's overall start and end points. Hovering anywhere along the
   // corridor now fans along the same axis.
   if (groupInfo.size > 0) {
+    groupInfo.forEach((gi) => rebuildGroupRepresentativeGeometry(gi));
     const parent = new Map();
     const find = (k) => {
       let r = k;
@@ -759,13 +803,8 @@ function buildDeckRouteRecords(items) {
       list.push(end);
     });
     candidates.sort((a, b) => a.score - b.score);
-    const usedEnds = new Set();
-    const joins = [];
-    candidates.forEach((join) => {
-      if (usedEnds.has(join.a.id) || usedEnds.has(join.b.id)) return;
-      usedEnds.add(join.a.id);
-      usedEnds.add(join.b.id);
-      joins.push(join);
+    const joins = selectOneToOneEndpointPairs(candidates, 8);
+    joins.forEach((join) => {
       union(join.a.key, join.b.key);
     });
     // Per component: endpoint degrees, so the corridor's global start/end
@@ -793,6 +832,39 @@ function buildDeckRouteRecords(items) {
     const corridorAliases = new Map();
     const corridorMasters = new Set();
     comps.forEach((c) => {
+      const componentJoins = joins.filter(
+        (j) => c.keySet.has(j.a.key) && c.keySet.has(j.b.key),
+      );
+      const usePerRunCurves = () => {
+        c.keys.forEach((k) => {
+          const g = groupInfo.get(k);
+          corridorAliases.set(k, k);
+          corridorMasters.add(k);
+          g._corridorJoins = [];
+          g.curve = smoothStandaloneCorridorRun(g._line, false);
+        });
+      };
+      const lone = c.keys.length === 1 ? groupInfo.get(c.keys[0]) : null;
+      const isClosed =
+        (c.keys.length > 1 && componentJoins.length === c.keys.length) ||
+        (lone &&
+          lone._line &&
+          lone._line.length > 3 &&
+          distanceMeters(lone._pa, lone._pb) <= OVERLAP_SNAP_METERS);
+      if (isClosed) {
+        // An open B-spline would insert an arbitrary seam into this cycle.
+        // A multi-run cycle can keep its open member runs independently. A
+        // single self-closing run has no safe seam at all, so use only its
+        // static group vector until a periodic solver is available.
+        if (lone) {
+          const key = c.keys[0];
+          corridorAliases.set(key, key);
+          corridorMasters.add(key);
+          lone._corridorJoins = [];
+          lone.curve = smoothStandaloneCorridorRun(lone._line, true);
+        } else usePerRunCurves();
+        return;
+      }
       // Smoothed corridor centerline: chain the member runs end-to-end and
       // normalize into a very smooth curve. railmap.js derives the fan's
       // shift direction from this curve's LOCAL perpendicular under the
@@ -816,31 +888,16 @@ function buildDeckRouteRecords(items) {
           ),
         };
       }
-      const curveCannotMeetRadius =
-        curve &&
-        curve.requestedMinRadiusMeters > 0 &&
-        curve.achievedMinRadiusMeters != null &&
-        curve.achievedMinRadiusMeters <
-          curve.requestedMinRadiusMeters * 0.999;
-      if (curveCannotMeetRadius && c.keys.length > 1) {
-        // A proximity graph can occasionally close a very long folded loop.
-        // Such a component has no single centreline that can satisfy both the
-        // radius and deviation limits. Keep its locally valid interaction runs
-        // instead of collapsing them onto one impossible fitted curve.
-        c.keys.forEach((k) => {
-          const g = groupInfo.get(k);
-          corridorAliases.set(k, k);
-          corridorMasters.add(k);
-          g._corridorJoins = [];
-          g.curve = smoothCorridorCurve(g._line);
-        });
+      if (!curve && c.keys.length > 1) {
+        // The unified candidate failed at least one final hard constraint.
+        // Preserve independently validated runs instead of publishing a
+        // geometrically invalid shared direction field.
+        usePerRunCurves();
         return;
       }
       corridorMasters.add(canonicalKey);
       c.keys.forEach((k) => corridorAliases.set(k, canonicalKey));
-      master._corridorJoins = joins.filter(
-        (j) => c.keySet.has(j.a.key) && c.keySet.has(j.b.key) && j.metres > 0.05,
-      );
+      master._corridorJoins = componentJoins.filter((j) => j.metres > 0.05);
       if (curve)
         c.keys.forEach((k) => {
           groupInfo.get(k).curve = curve;
@@ -1172,4 +1229,3 @@ function getComputedPassThroughFeatures(train) {
   });
   return computed;
 }
-
