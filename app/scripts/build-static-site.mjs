@@ -25,6 +25,28 @@ async function pathExists(filePath) {
   }
 }
 
+async function copyPrecomputedDataDir(sourceDir, destinationDir) {
+  const manifestPath = path.join(sourceDir, "manifest.json");
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  const dataNames = new Set([
+    ...(manifest.full ? [manifest.full] : []),
+    ...(manifest.parts || []),
+  ]);
+
+  if (![...dataNames].every((name) => typeof name === "string" && name)) {
+    throw new Error(`Invalid precomputed-data manifest at ${manifestPath}`);
+  }
+
+  await fs.mkdir(destinationDir, { recursive: true });
+  await fs.copyFile(manifestPath, path.join(destinationDir, "manifest.json"));
+  for (const name of dataNames) {
+    await fs.copyFile(
+      path.join(sourceDir, `${name}.json`),
+      path.join(destinationDir, `${name}.json`),
+    );
+  }
+}
+
 // On Pages the API endpoints are plain files, so the ${API_BASE} fetch
 // templates need a `.json` suffix. Applied to EVERY staged app*.js file:
 // the templates have already migrated between app modules once (app.js →
@@ -61,6 +83,14 @@ export async function buildStaticSite({
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
   const sampleDataDir = path.join(dataDir, "sample-data");
+  const newYearGrandLoopDataDir = path.join(
+    dataDir,
+    "new-year-grand-loop-data",
+  );
+  const tokyoLimitedExpressLoopDataDir = path.join(
+    dataDir,
+    "tokyo-limited-express-loop-data",
+  );
   const outputParent = path.dirname(outputDir);
   const outputName = path.basename(outputDir);
   const buildId = `${process.pid}-${Date.now()}`;
@@ -99,11 +129,32 @@ export async function buildStaticSite({
         "Precomputed sample data is missing; run scripts/precompute-train-parts.mjs first.",
       );
     }
-    await fs.cp(sampleDataDir, path.join(apiDir, "sample-data"), {
-      recursive: true,
-      dereference: true,
-      filter: (sourcePath) => !sourcePath.endsWith(".gz"),
-    });
+    await copyPrecomputedDataDir(
+      sampleDataDir,
+      path.join(apiDir, "sample-data"),
+    );
+    if (!(await pathExists(path.join(newYearGrandLoopDataDir, "manifest.json")))) {
+      throw new Error(
+        "Precomputed New Year grand-loop data is missing; run npm run precompute:new-year-grand-loop first.",
+      );
+    }
+    await copyPrecomputedDataDir(
+      newYearGrandLoopDataDir,
+      path.join(apiDir, "new-year-grand-loop-data"),
+    );
+    if (
+      !(await pathExists(
+        path.join(tokyoLimitedExpressLoopDataDir, "manifest.json"),
+      ))
+    ) {
+      throw new Error(
+        "Precomputed Tokyo limited-express loop data is missing; run npm run precompute:tokyo-limited-express-loop first.",
+      );
+    }
+    await copyPrecomputedDataDir(
+      tokyoLimitedExpressLoopDataDir,
+      path.join(apiDir, "tokyo-limited-express-loop-data"),
+    );
 
     for (const name of await fs.readdir(stagingDir)) {
       if (!(name.startsWith("app") && name.endsWith(".js"))) continue;

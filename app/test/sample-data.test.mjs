@@ -11,6 +11,18 @@ const SAMPLE_FILE = path.join(
   "samples",
   "jr_limited_shinkansen_itinerary_20260703_20260727_n02_v1_3_expanded_pass_through.json",
 );
+const NEW_YEAR_GRAND_LOOP_FILE = path.join(
+  APP_DIR,
+  "data",
+  "special-samples",
+  "new-year-grand-loop.json",
+);
+const TOKYO_LIMITED_EXPRESS_LOOP_FILE = path.join(
+  APP_DIR,
+  "data",
+  "special-samples",
+  "tokyo-limited-express-loop.json",
+);
 
 const TRAIN_KEYS = [
   "id",
@@ -91,6 +103,178 @@ test("importable sample is the complete canonical train store", async () => {
   }
 });
 
+test("New Year grand loop is an independent canonical 1.3 store", async () => {
+  const store = await readJson(NEW_YEAR_GRAND_LOOP_FILE);
+  assert.equal(store.schema_version, "1.3");
+  assert.equal(store.trains.length, 39);
+  assert.deepEqual(
+    [...new Set(store.trains.map((train) => train.date))],
+    ["2025-12-31", "2026-01-01"],
+  );
+
+  const ids = new Set();
+  for (const train of store.trains) {
+    assert.deepEqual(Object.keys(train).sort(), [...TRAIN_KEYS].sort());
+    assert.match(train.id, /^[a-zA-Z0-9_-]+$/);
+    assert.equal(ids.has(train.id), false, `duplicate train id: ${train.id}`);
+    ids.add(train.id);
+    assert.equal(train.company, "JR東日本");
+    assert.equal(train.stops.length, 2);
+    assert.equal(train.stops[0].stop_type, "origin");
+    assert.equal(train.stops[1].stop_type, "destination");
+    assert.equal(train.route_sections.length, 1);
+    assert.equal(
+      train.route_sections[0].from_n02_station_code,
+      train.stops[0].n02_station_code,
+    );
+    assert.equal(
+      train.route_sections[0].to_n02_station_code,
+      train.stops[1].n02_station_code,
+    );
+  }
+
+  assert.equal(store.trains.some((train) => train.number.includes("13:49")), false);
+  assert.equal(store.trains.some((train) => train.number.includes("21:03")), false);
+  assert.ok(store.trains.some((train) => train.number.includes("14:14")));
+  assert.ok(store.trains.some((train) => train.number.includes("21:18")));
+});
+
+test("New Year grand-loop parts are separate, complete and fully solved", async () => {
+  const [store, manifest, regularManifest] = await Promise.all([
+    readJson(NEW_YEAR_GRAND_LOOP_FILE),
+    readJson(
+      path.join(APP_DIR, "data", "new-year-grand-loop-data", "manifest.json"),
+    ),
+    readJson(path.join(APP_DIR, "data", "sample-data", "manifest.json")),
+  ]);
+  assert.equal(manifest.total, 39);
+  assert.equal(manifest.solved, 39);
+  assert.equal(manifest.unsolvable, 0);
+  assert.equal(manifest.no_route, 0);
+  assert.deepEqual(Object.keys(manifest.dates), ["2025-12-31", "2026-01-01"]);
+  assert.equal(
+    regularManifest.parts.some((part) => manifest.parts.includes(part)),
+    true,
+    "part filenames may repeat across independent directories",
+  );
+  assert.equal(
+    Object.keys(regularManifest.dates).some((date) => date.startsWith("2025-12-31")),
+    false,
+    "the regular random-sample manifest must not index the grand loop",
+  );
+  const parts = await Promise.all(
+    manifest.parts.map((name) =>
+      readJson(
+        path.join(APP_DIR, "data", "new-year-grand-loop-data", `${name}.json`),
+      ),
+    ),
+  );
+  assert.deepEqual(
+    parts.map((part) => part.train.id),
+    store.trains.map((train) => train.id),
+  );
+  parts.forEach((part) => {
+    assert.equal(typeof part.route?.cache_key, "string");
+    assert.ok(part.route.cache_key.length > 0);
+    assert.ok(Array.isArray(part.route.features));
+    assert.ok(part.route.features.length > 0);
+  });
+});
+
+test("Tokyo limited-express loop follows the TripIt booking times and revised ending", async () => {
+  const store = await readJson(TOKYO_LIMITED_EXPRESS_LOOP_FILE);
+  assert.equal(store.schema_version, "1.3");
+  assert.equal(store.trains.length, 16);
+  assert.deepEqual([...new Set(store.trains.map((train) => train.date))], [
+    "2026-05-29",
+  ]);
+
+  const booked = [
+    ["千葉", "08:10", "成東", "08:48"],
+    ["大網", "09:47", "東京", "10:37"],
+    ["東京", "11:43", "品川", "11:51"],
+    ["品川", "12:08", "大船", "12:36"],
+    ["八王子", "15:34", "立川", "15:42"],
+    ["大宮", "17:44", "浦和", "17:50"],
+    ["浦和", "18:11", "新宿", "18:35"],
+    ["新宿", "20:11", "船橋", "20:38"],
+  ];
+  for (const [origin, departure, destination, arrival] of booked) {
+    assert.ok(
+      store.trains.some(
+        (train) =>
+          train.origin === origin &&
+          train.destination === destination &&
+          train.stops[0].departure === departure &&
+          train.stops.at(-1).arrival === arrival,
+      ),
+      `missing booked segment ${origin} ${departure} -> ${destination} ${arrival}`,
+    );
+  }
+
+  const tokyoToShinagawa = store.trains.find(
+    (train) => train.origin === "東京" && train.destination === "品川",
+  );
+  assert.equal(tokyoToShinagawa?.number, "ひたち8号（8M・予約区間）");
+  const omiyaToUrawa = store.trains.find(
+    (train) => train.origin === "大宮" && train.destination === "浦和",
+  );
+  assert.equal(omiyaToUrawa?.number, "草津・四万4号（予約区間）");
+  assert.equal(
+    store.trains.some((train) =>
+      /ときわ58号|草津・四万82号/.test(train.number),
+    ),
+    false,
+  );
+
+  const finalTrain = store.trains.at(-1);
+  assert.equal(finalTrain.origin, "船橋");
+  assert.equal(finalTrain.stops[0].departure, "20:41");
+  assert.equal(finalTrain.destination, "西千葉");
+  assert.equal(finalTrain.stops.at(-1).arrival, "21:00");
+  assert.equal(store.trains.some((train) => train.destination === "千葉"), false);
+});
+
+test("Tokyo limited-express loop parts are independent and fully solved", async () => {
+  const [store, manifest, regularManifest] = await Promise.all([
+    readJson(TOKYO_LIMITED_EXPRESS_LOOP_FILE),
+    readJson(
+      path.join(
+        APP_DIR,
+        "data",
+        "tokyo-limited-express-loop-data",
+        "manifest.json",
+      ),
+    ),
+    readJson(path.join(APP_DIR, "data", "sample-data", "manifest.json")),
+  ]);
+  assert.equal(manifest.total, 16);
+  assert.equal(manifest.solved, 16);
+  assert.equal(manifest.unsolvable, 0);
+  assert.equal(manifest.no_route, 0);
+  assert.equal(regularManifest.dates["2026-05-29"], undefined);
+  const parts = await Promise.all(
+    manifest.parts.map((name) =>
+      readJson(
+        path.join(
+          APP_DIR,
+          "data",
+          "tokyo-limited-express-loop-data",
+          `${name}.json`,
+        ),
+      ),
+    ),
+  );
+  assert.deepEqual(
+    parts.map((part) => part.train.id),
+    store.trains.map((train) => train.id),
+  );
+  parts.forEach((part) => {
+    assert.equal(typeof part.route?.cache_key, "string");
+    assert.ok(part.route.features.length > 0);
+  });
+});
+
 test("Kumamoto weekday tram sample uses the official 2026 timetable minutes", async () => {
   const sample = await readJson(SAMPLE_FILE);
   const byId = new Map(sample.trains.map((train) => [train.id, train]));
@@ -119,6 +303,40 @@ test("Kumamoto weekday tram sample uses the official 2026 timetable minutes", as
     "17:37",
   );
   assert.equal(toSuidocho.stops.at(-1).arrival, "17:43");
+});
+
+test("Kagoshima weekday tram sample uses the official 2026 timetable minutes", async () => {
+  const sample = await readJson(SAMPLE_FILE);
+  const tram = sample.trains.find(
+    (train) =>
+      train.id ===
+      "20260722_03a_kagoshima_tram_kagoshimachuoeki_miyakodori",
+  );
+
+  assert.ok(tram);
+  assert.equal(tram.origin, "鹿児島中央駅前");
+  assert.equal(tram.destination, "都通");
+  assert.equal(tram.stops[0].departure, "09:24");
+  assert.equal(tram.stops.at(-1).arrival, "09:25");
+});
+
+test("Kagoshima return sample transfers from local 1326D to rapid Nanohana 3328D", async () => {
+  const sample = await readJson(SAMPLE_FILE);
+  const byId = new Map(sample.trains.map((train) => [train.id, train]));
+  const local = byId.get(
+    "20260722_03_ibusuki_1326d_nishioyama_minamikagoshima",
+  );
+  const rapid = byId.get(
+    "20260722_03b_nanohana3328d_minamikagoshima_kagoshima",
+  );
+
+  assert.ok(local);
+  assert.equal(local.stops.at(-1).name, "南鹿児島");
+  assert.equal(local.stops.at(-1).arrival, "08:37");
+  assert.ok(rapid);
+  assert.equal(rapid.train_type, "快速");
+  assert.equal(rapid.stops[0].departure, "09:01");
+  assert.equal(rapid.stops.at(-1).arrival, "09:07");
 });
 
 test("precomputed sample parts cover every canonical train with solved geometry", async (t) => {
@@ -212,4 +430,17 @@ test("Hiroden line 1 precomputed route stays on the main-line Hatchobori stop", 
       `Hatchobori endpoint jumped off the main line: ${JSON.stringify(gaps)}`,
     );
   });
+
+  const orderedSegments = [...part.route.features].sort(
+    (a, b) => a.properties.segment_index - b.properties.segment_index,
+  );
+  for (let index = 0; index < orderedSegments.length - 1; index += 1) {
+    const currentCoordinates = orderedSegments[index].geometry.coordinates;
+    const nextCoordinates = orderedSegments[index + 1].geometry.coordinates;
+    assert.deepEqual(
+      currentCoordinates.at(-1),
+      nextCoordinates[0],
+      `Hiroden route breaks between segment ${index} and ${index + 1}`,
+    );
+  }
 });

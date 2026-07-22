@@ -332,14 +332,14 @@ test("route cache keys include the solver version", () => {
     }).cacheKey`,
     context,
   );
-  assert.match(key, /^solver:2\|/);
+  assert.match(key, /^solver:3\|/);
 });
 
 test("precomputed sample geometry replaces stale warmed geometry", () => {
   const { context } = loadAppFamily();
   const result = vm.runInContext(
     `(() => {
-      const key = "solver:2|hiroden-test";
+      const key = "solver:3|hiroden-test";
       runtimeRouteCache.set(key, [{ geometry: { coordinates: [[0, 0], [9, 9]] } }]);
       runtimeRouteNegativeCache.add(key);
       seedRouteCacheFromPart({ route: {

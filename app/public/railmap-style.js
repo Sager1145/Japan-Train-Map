@@ -69,6 +69,12 @@
   const FIT_CURVES_SOURCE = "train-fit-curves-src";
   const HOVER_REGIONS_SOURCE = "train-hover-regions-src";
   const TRAIN_ROUTES_LAYER = "train-routes-line";
+  // Cross-day continuation: the half of an overnight train that belongs to the
+  // OTHER calendar day draws dashed instead of solid (same source, same
+  // colour/width — only the stroke pattern says "not this day").
+  const TRAIN_XDAY_LAYER = "train-routes-xday";
+  const TRAIN_XDAY_STOP_LAYER = "train-xday-stop";
+  const XDAY_ICON_ID = "railmap-xday-diamond";
   const TRAIN_PICK_LAYER = "train-routes-pick-line";
   const TRAIN_PICK_FAN_LAYER = "train-routes-pick-fan-line";
   const TRAIN_EXPAND_LAYER = "train-routes-expand";
@@ -132,6 +138,15 @@
       boost,
       ["coalesce", ["get", "focusScale"], 0.5],
     ]);
+  }
+
+  // The cross-day diamond is rasterized at XDAY_ICON_BASE_RADIUS CSS px (see
+  // RailMap._ensureXDayIcon), so icon-size only has to scale it to the record's
+  // own radius — on the same zoom ramp as every circle marker.
+  const XDAY_ICON_BASE_RADIUS = 10;
+  function xdayIconSizeExpr() {
+    const scale = ["/", ["get", "radius"], XDAY_ICON_BASE_RADIUS];
+    return ["interpolate", ["linear"], ["zoom"], 5, ["*", scale, 0.48], 12, scale];
   }
 
   const SELECTED_STOP_STROKE_SCALE = [
@@ -270,6 +285,24 @@
         "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
       },
     });
+    // Cross-day continuation of an overnight train, dashed. Filter-driven and
+    // empty by default: RailMap.setDateScope decides, per selected day, which
+    // records move here from the solid layer above (and the toggle
+    // "顯示完整跨天行程" empties it again). Butt caps keep the dashes crisp —
+    // round caps at this width read as a dotted line.
+    layers.push({
+      id: TRAIN_XDAY_LAYER,
+      type: "line",
+      source: TRAIN_ROUTES_SOURCE,
+      filter: MATCH_NONE,
+      layout: { "line-cap": "butt", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-opacity": ["get", "alpha"],
+        "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+        "line-dasharray": [1.6, 1.4],
+      },
+    });
     // Invisible PICK layer: when several trains share the same track, each
     // train's pick geometry is offset sideways into its own parallel lane
     // (earliest date = left/top lane), so sliding the pointer across an
@@ -356,6 +389,26 @@
         ],
       },
       paint: markerCirclePaint(),
+    });
+    // Cross-day break station: the last station of the outgoing day, drawn as
+    // a diamond so it never reads as an ordinary stop. Symbol layers paint
+    // above every line/circle layer, so the diamond always sits on top of the
+    // route it interrupts. Overlap-allowed: this one must never be dropped by
+    // label collision.
+    layers.push({
+      id: TRAIN_XDAY_STOP_LAYER,
+      type: "symbol",
+      source: TRAIN_MARKERS_SOURCE,
+      filter: ["==", ["get", "category"], "xday"],
+      layout: {
+        "icon-image": XDAY_ICON_ID,
+        "icon-size": xdayIconSizeExpr(),
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-pitch-alignment": "map",
+        "icon-rotation-alignment": "map",
+      },
+      paint: { "icon-opacity": ["get", "alpha"] },
     });
     // C3 — DARK selection casing UNDER the selected line, the line's own hue on
     // top; the dark halo peeking out reads as "selected" on the light basemap.
@@ -595,6 +648,10 @@
     FIT_CURVES_SOURCE,
     HOVER_REGIONS_SOURCE,
     TRAIN_ROUTES_LAYER,
+    TRAIN_XDAY_LAYER,
+    TRAIN_XDAY_STOP_LAYER,
+    XDAY_ICON_ID,
+    XDAY_ICON_BASE_RADIUS,
     TRAIN_PICK_LAYER,
     TRAIN_PICK_FAN_LAYER,
     TRAIN_EXPAND_LAYER,

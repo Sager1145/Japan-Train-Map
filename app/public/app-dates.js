@@ -45,6 +45,56 @@ function getTrainsForDate(trains, date) {
   return (trains || []).filter((train) => getTrainDate(train) === date);
 }
 
+// ---- cross-day (overnight) itineraries ----------------------------------
+// A train whose stop times run past midnight (25:10 = 01:10 the next day, see
+// jsonspec §10.5) physically covers more than one calendar date while still
+// living in ONE date bucket — its own `date`. Everything the map needs is
+// derived here:
+//   breaks — where the itinerary rolls into the next day (see trainDayBreaks)
+//   dates  — the calendar dates it touches, day 0 first
+//   key    — "|d0|d1|" span string; the GPU layers filter and dim on it, so a
+//            cross-day train stays in scope on BOTH of its days.
+//   sig    — key + break positions, for the record-cache signature (moving the
+//            break re-splits the drawn segments even when the dates hold).
+// Single-day trains (all of them, unless an overnight run is logged) share one
+// cached object per date, so the hot render path allocates nothing.
+const _singleDaySpanCache = new Map();
+function getTrainDaySpan(train) {
+  const date = getTrainDate(train);
+  if (date !== UNDATED && trainHasCrossDayTimes(train)) {
+    const breaks = trainDayBreaks(train);
+    if (breaks.length) {
+      const dates = [date];
+      for (let day = 1; day <= breaks[breaks.length - 1].day; day += 1)
+        dates.push(addDaysToDateString(date, day) || date);
+      const key = `|${dates.join("|")}|`;
+      const sig = `${key}${breaks.map((b) => `${b.index}>${b.day}`).join(",")}`;
+      return { date, breaks, dates, key, sig };
+    }
+  }
+  let span = _singleDaySpanCache.get(date);
+  if (!span) {
+    const key = `|${date}|`;
+    span = { date, breaks: [], dates: [date], key, sig: key };
+    _singleDaySpanCache.set(date, span);
+  }
+  return span;
+}
+
+// Does this train run on `date` at all — its own bucket, or a day it crosses
+// into? Drives which trains a selected day keeps solid / interactive.
+function trainSpansDate(train, date) {
+  if (!date || date === ALL_DATES) return true;
+  const span = getTrainDaySpan(train);
+  return span.dates.indexOf(date) !== -1;
+}
+
+// The date a single route segment actually runs on (its far end's day).
+function segmentDateForTrain(span, segmentIndex) {
+  if (span.dates.length < 2) return span.date;
+  return span.dates[dayIndexForSegment(span.breaks, segmentIndex)] || span.date;
+}
+
 // ---- selectedDate / manualDates persistence (pure UI state) -------------
 // Kept in localStorage (not the train store) so the canonical store schema
 // stays exactly { schema_version, trains:[...] } as required.
@@ -66,8 +116,8 @@ function persistUiDateState() {
   }
 }
 
-// Returns true when a previously-saved selectedDate was restored, so the
-// boot path knows whether to apply the "earliest date" first-run default.
+// Returns true when a previously-saved selectedDate was restored (a first run
+// with no saved filter simply keeps the "全部" default).
 function restoreUiDateState() {
   try {
     const raw = localStorage.getItem(UI_STATE_STORAGE_KEY);
@@ -97,12 +147,11 @@ function restoreUiDateState() {
 // Ensure selectedDate still points at something renderable after the train
 // set changes (import / delete / boot). Never force-switches to the *last*
 // date: keeps a still-valid selection, otherwise falls back to earliest.
-function reconcileSelectedDate({ preferEarliestWhenAll = false } = {}) {
+// "全部" is always renderable, so it is never narrowed to a single day here —
+// a load that ends on the combined view stays on the combined view.
+function reconcileSelectedDate() {
   const dates = getAvailableDates(trainStore.trains);
-  if (selectedDate === ALL_DATES) {
-    if (preferEarliestWhenAll && dates.length) selectedDate = dates[0];
-    return;
-  }
+  if (selectedDate === ALL_DATES) return;
   if (!dates.includes(selectedDate)) {
     selectedDate = dates.length ? dates[0] : ALL_DATES;
   }

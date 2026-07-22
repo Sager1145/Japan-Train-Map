@@ -296,6 +296,7 @@ function solveRouteSectionOnN02Graph(
   train,
   graph,
   allowedCodes,
+  continuityAnchor = null,
 ) {
   const { fromStations, toStations } = resolveSectionEndpoints(
     section,
@@ -324,12 +325,25 @@ function solveRouteSectionOnN02Graph(
   let lastCandidateFailure = false;
 
   for (const segmentHints of solveAttempts) {
-    const fromCandidates = collectStationCandidateGraphNodes(
+    let fromCandidates = collectStationCandidateGraphNodes(
       fromStations,
       graph,
       segmentHints,
       allowedCodes,
     ).slice(0, 12);
+    if (continuityAnchor) {
+      const continuousCandidates = fromCandidates.filter((candidate) => {
+        const stationCoord = getFeatureDisplayCoordinate(
+          candidate.stationFeature,
+        );
+        return (
+          stationCoord &&
+          distanceMeters(stationCoord, continuityAnchor) <=
+            ROUTE_SECTION_CONTINUITY_STATION_METERS
+        );
+      });
+      if (continuousCandidates.length) fromCandidates = continuousCandidates;
+    }
     const toCandidates = collectStationCandidateGraphNodes(
       toStations,
       graph,

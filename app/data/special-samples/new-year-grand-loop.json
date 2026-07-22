@@ -1,0 +1,2357 @@
+{
+  "schema_version": "1.3",
+  "trains": [
+    {
+      "id": "new_year_grand_loop_20251231_01",
+      "date": "2025-12-31",
+      "number": "普通（08:05 我孫子行・東京メトロ千代田線から直通）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "北小金",
+      "destination": "我孫子",
+      "direction": "我孫子",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "常磐線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003032",
+          "to_n02_station_code": "002965",
+          "line_names": [
+            "常磐線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "北小金",
+          "n02_station_code": "003032",
+          "arrival": null,
+          "departure": "08:05",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "我孫子",
+          "n02_station_code": "002965",
+          "arrival": "08:17",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_02",
+      "date": "2025-12-31",
+      "number": "普通（08:48 友部方面）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "我孫子",
+      "destination": "友部",
+      "direction": "友部",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "常磐線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002965",
+          "to_n02_station_code": "002350",
+          "line_names": [
+            "常磐線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "我孫子",
+          "n02_station_code": "002965",
+          "arrival": null,
+          "departure": "08:48",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "友部",
+          "n02_station_code": "002350",
+          "arrival": "10:08",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_03",
+      "date": "2025-12-31",
+      "number": "普通（10:21 小山行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "友部",
+      "destination": "小山",
+      "direction": "小山",
+      "visible": true,
+      "style": {
+        "color": "#333f48"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "水戸線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002351",
+          "to_n02_station_code": "002410",
+          "line_names": [
+            "水戸線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "友部",
+          "n02_station_code": "002351",
+          "arrival": null,
+          "departure": "10:21",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "小山",
+          "n02_station_code": "002410",
+          "arrival": "11:25",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_04",
+      "date": "2025-12-31",
+      "number": "普通（12:02 高崎行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "小山",
+      "destination": "高崎",
+      "direction": "高崎",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "両毛線",
+          "上越線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002411",
+          "to_n02_station_code": "002390",
+          "line_names": [
+            "両毛線",
+            "上越線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "小山",
+          "n02_station_code": "002411",
+          "arrival": null,
+          "departure": "12:02",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "高崎",
+          "n02_station_code": "002390",
+          "arrival": "13:47",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_05",
+      "date": "2025-12-31",
+      "number": "特別快速（14:14 小田原行）",
+      "train_type": "特別快速",
+      "company": "JR東日本",
+      "origin": "高崎",
+      "destination": "大宮",
+      "direction": "大宮",
+      "visible": true,
+      "style": {
+        "color": "#f68b1e"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "高崎線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002389",
+          "to_n02_station_code": "002913",
+          "line_names": [
+            "高崎線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "高崎",
+          "n02_station_code": "002389",
+          "arrival": null,
+          "departure": "14:14",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大宮",
+          "n02_station_code": "002913",
+          "arrival": "15:24",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_06",
+      "date": "2025-12-31",
+      "number": "快速（15:31 川越行・埼京線から直通）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "大宮",
+      "destination": "川越",
+      "direction": "川越",
+      "visible": true,
+      "style": {
+        "color": "#00ac9a"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "川越線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002916",
+          "to_n02_station_code": "002910",
+          "line_names": [
+            "川越線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大宮",
+          "n02_station_code": "002916",
+          "arrival": null,
+          "departure": "15:31",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "川越",
+          "n02_station_code": "002910",
+          "arrival": "15:54",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_07",
+      "date": "2025-12-31",
+      "number": "普通（16:07 八王子行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "川越",
+      "destination": "八王子",
+      "direction": "八王子",
+      "visible": true,
+      "style": {
+        "color": "#a8a39d"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "川越線",
+          "八高線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002910",
+          "to_n02_station_code": "003948",
+          "line_names": [
+            "川越線",
+            "八高線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "川越",
+          "n02_station_code": "002910",
+          "arrival": null,
+          "departure": "16:07",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "八王子",
+          "n02_station_code": "003948",
+          "arrival": "17:08",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_08",
+      "date": "2025-12-31",
+      "number": "普通（17:20 東神奈川方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "八王子",
+      "destination": "橋本",
+      "direction": "橋本",
+      "visible": true,
+      "style": {
+        "color": "#9acd32"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "横浜線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003953",
+          "to_n02_station_code": "004253",
+          "line_names": [
+            "横浜線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "八王子",
+          "n02_station_code": "003953",
+          "arrival": null,
+          "departure": "17:20",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "橋本",
+          "n02_station_code": "004253",
+          "arrival": "17:32",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_09",
+      "date": "2025-12-31",
+      "number": "普通（17:35 茅ケ崎行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "橋本",
+      "destination": "茅ヶ崎",
+      "direction": "茅ヶ崎",
+      "visible": true,
+      "style": {
+        "color": "#009793"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "相模線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004254",
+          "to_n02_station_code": "005023",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "橋本",
+          "n02_station_code": "004254",
+          "arrival": null,
+          "departure": "17:35",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "茅ヶ崎",
+          "n02_station_code": "005023",
+          "arrival": "18:39",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_10",
+      "date": "2025-12-31",
+      "number": "普通（18:51 東京方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "茅ヶ崎",
+      "destination": "大船",
+      "direction": "大船",
+      "visible": true,
+      "style": {
+        "color": "#f68b1e"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "005024",
+          "to_n02_station_code": "004959",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "茅ヶ崎",
+          "n02_station_code": "005024",
+          "arrival": null,
+          "departure": "18:51",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大船",
+          "n02_station_code": "004959",
+          "arrival": "19:02",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_11",
+      "date": "2025-12-31",
+      "number": "普通（19:14 大宮方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "大船",
+      "destination": "鶴見",
+      "direction": "鶴見",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "根岸線",
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004960",
+          "to_n02_station_code": "004496",
+          "line_names": [
+            "根岸線",
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大船",
+          "n02_station_code": "004960",
+          "arrival": null,
+          "departure": "19:14",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "鶴見",
+          "n02_station_code": "004496",
+          "arrival": "19:52",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_12",
+      "date": "2025-12-31",
+      "number": "普通（20:00 浜川崎方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "鶴見",
+      "destination": "浜川崎",
+      "direction": "浜川崎",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "鶴見線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004499",
+          "to_n02_station_code": "004489",
+          "line_names": [
+            "鶴見線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "鶴見",
+          "n02_station_code": "004499",
+          "arrival": null,
+          "departure": "20:00",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "浜川崎",
+          "n02_station_code": "004489",
+          "arrival": "20:13",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_13",
+      "date": "2025-12-31",
+      "number": "普通 2001H（20:17 尻手行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "浜川崎",
+      "destination": "尻手",
+      "direction": "尻手",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "南武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004488",
+          "to_n02_station_code": "004435",
+          "line_names": [
+            "南武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "浜川崎",
+          "n02_station_code": "004488",
+          "arrival": null,
+          "departure": "20:17",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "尻手",
+          "n02_station_code": "004435",
+          "arrival": "20:24",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_14",
+      "date": "2025-12-31",
+      "number": "普通（20:26 川崎行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "尻手",
+      "destination": "川崎",
+      "direction": "川崎",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "南武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004435",
+          "to_n02_station_code": "004433",
+          "line_names": [
+            "南武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "尻手",
+          "n02_station_code": "004435",
+          "arrival": null,
+          "departure": "20:26",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "川崎",
+          "n02_station_code": "004433",
+          "arrival": "20:28",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_15",
+      "date": "2025-12-31",
+      "number": "普通（20:31 東京方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "川崎",
+      "destination": "品川",
+      "direction": "品川",
+      "visible": true,
+      "style": {
+        "color": "#f68b1e"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004432",
+          "to_n02_station_code": "004095",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "川崎",
+          "n02_station_code": "004432",
+          "arrival": null,
+          "departure": "20:31",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "品川",
+          "n02_station_code": "004095",
+          "arrival": "20:40",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_16",
+      "date": "2025-12-31",
+      "number": "普通（20:47 千葉方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "品川",
+      "destination": "武蔵小杉",
+      "direction": "武蔵小杉",
+      "visible": true,
+      "style": {
+        "color": "#0067c0"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004095",
+          "to_n02_station_code": "004301",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "品川",
+          "n02_station_code": "004095",
+          "arrival": null,
+          "departure": "20:47",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "武蔵小杉",
+          "n02_station_code": "004301",
+          "arrival": "20:57",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_17",
+      "date": "2025-12-31",
+      "number": "普通（21:18 立川行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "武蔵小杉",
+      "destination": "立川",
+      "direction": "立川",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "南武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004297",
+          "to_n02_station_code": "003637",
+          "line_names": [
+            "南武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "武蔵小杉",
+          "n02_station_code": "004297",
+          "arrival": null,
+          "departure": "21:18",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "立川",
+          "n02_station_code": "003637",
+          "arrival": "22:00",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_18",
+      "date": "2025-12-31",
+      "number": "快速（22:08 東京行）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "立川",
+      "destination": "西国分寺",
+      "direction": "西国分寺",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "中央線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003634",
+          "to_n02_station_code": "003614",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "立川",
+          "n02_station_code": "003634",
+          "arrival": null,
+          "departure": "22:08",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "西国分寺",
+          "n02_station_code": "003614",
+          "arrival": "22:14",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_19",
+      "date": "2025-12-31",
+      "number": "普通（22:24 南船橋行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "西国分寺",
+      "destination": "武蔵浦和",
+      "direction": "武蔵浦和",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "武蔵野線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003611",
+          "to_n02_station_code": "003006",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "西国分寺",
+          "n02_station_code": "003611",
+          "arrival": null,
+          "departure": "22:24",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "武蔵浦和",
+          "n02_station_code": "003006",
+          "arrival": "22:46",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_20",
+      "date": "2025-12-31",
+      "number": "普通（22:52 新宿行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "武蔵浦和",
+      "destination": "赤羽",
+      "direction": "赤羽",
+      "visible": true,
+      "style": {
+        "color": "#00ac9a"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線",
+          "赤羽線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003008",
+          "to_n02_station_code": "003155",
+          "line_names": [
+            "東北線",
+            "赤羽線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "武蔵浦和",
+          "n02_station_code": "003008",
+          "arrival": null,
+          "departure": "22:52",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "赤羽",
+          "n02_station_code": "003155",
+          "arrival": "23:05",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_21",
+      "date": "2025-12-31",
+      "number": "普通（23:08 大宮行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "赤羽",
+      "destination": "南浦和",
+      "direction": "南浦和",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003157",
+          "to_n02_station_code": "003004",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "赤羽",
+          "n02_station_code": "003157",
+          "arrival": null,
+          "departure": "23:08",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "南浦和",
+          "n02_station_code": "003004",
+          "arrival": "23:20",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20251231_22",
+      "date": "2025-12-31",
+      "number": "普通（23:38 新習志野行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "南浦和",
+      "destination": "西船橋",
+      "direction": "西船橋",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "武蔵野線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003005",
+          "to_n02_station_code": "003554",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "南浦和",
+          "n02_station_code": "003005",
+          "arrival": null,
+          "departure": "23:38",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "西船橋",
+          "n02_station_code": "003554",
+          "arrival": "00:29",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_23",
+      "date": "2026-01-01",
+      "number": "普通（00:36 千葉行・終夜運転）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "西船橋",
+      "destination": "千葉",
+      "direction": "千葉",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003547",
+          "to_n02_station_code": "004165",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "西船橋",
+          "n02_station_code": "003547",
+          "arrival": null,
+          "departure": "00:36",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "千葉",
+          "n02_station_code": "004165",
+          "arrival": "01:11",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_24",
+      "date": "2026-01-01",
+      "number": "普通（01:20 成田行・終夜臨時列車）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "千葉",
+      "destination": "成田",
+      "direction": "成田",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線",
+          "成田線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004165",
+          "to_n02_station_code": "003161",
+          "line_names": [
+            "総武線",
+            "成田線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "千葉",
+          "n02_station_code": "004165",
+          "arrival": null,
+          "departure": "01:20",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "成田",
+          "n02_station_code": "003161",
+          "arrival": "02:11",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_25",
+      "date": "2026-01-01",
+      "number": "普通（05:21 銚子行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "成田",
+      "destination": "松岸",
+      "direction": "松岸",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "成田線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003161",
+          "to_n02_station_code": "003317",
+          "line_names": [
+            "成田線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "成田",
+          "n02_station_code": "003161",
+          "arrival": null,
+          "departure": "05:21",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "松岸",
+          "n02_station_code": "003317",
+          "arrival": "06:42",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_26",
+      "date": "2026-01-01",
+      "number": "普通（06:53 千葉方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "松岸",
+      "destination": "成東",
+      "direction": "成東",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003318",
+          "to_n02_station_code": "004189",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "松岸",
+          "n02_station_code": "003318",
+          "arrival": null,
+          "departure": "06:53",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "成東",
+          "n02_station_code": "004189",
+          "arrival": "08:49",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_27",
+      "date": "2026-01-01",
+      "number": "普通（09:02 大網方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "成東",
+      "destination": "大網",
+      "direction": "大網",
+      "visible": true,
+      "style": {
+        "color": "#e9a900"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東金線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004190",
+          "to_n02_station_code": "004450",
+          "line_names": [
+            "東金線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "成東",
+          "n02_station_code": "004190",
+          "arrival": null,
+          "departure": "09:02",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大網",
+          "n02_station_code": "004450",
+          "arrival": "09:19",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_28",
+      "date": "2026-01-01",
+      "number": "普通（09:24 上総一ノ宮行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "大網",
+      "destination": "上総一ノ宮",
+      "direction": "上総一ノ宮",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "外房線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004451",
+          "to_n02_station_code": "004901",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大網",
+          "n02_station_code": "004451",
+          "arrival": null,
+          "departure": "09:24",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "上総一ノ宮",
+          "n02_station_code": "004901",
+          "arrival": "09:47",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_29",
+      "date": "2026-01-01",
+      "number": "普通（10:32 安房鴨川行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "上総一ノ宮",
+      "destination": "安房鴨川",
+      "direction": "安房鴨川",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "外房線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004901",
+          "to_n02_station_code": "005673",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "上総一ノ宮",
+          "n02_station_code": "004901",
+          "arrival": null,
+          "departure": "10:32",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "安房鴨川",
+          "n02_station_code": "005673",
+          "arrival": "11:48",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_30",
+      "date": "2026-01-01",
+      "number": "普通（12:02 君津行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "安房鴨川",
+      "destination": "君津",
+      "direction": "君津",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "内房線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "005674",
+          "to_n02_station_code": "005014",
+          "line_names": [
+            "内房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "安房鴨川",
+          "n02_station_code": "005674",
+          "arrival": null,
+          "departure": "12:02",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "君津",
+          "n02_station_code": "005014",
+          "arrival": "13:37",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_31",
+      "date": "2026-01-01",
+      "number": "普通（13:50 千葉方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "君津",
+      "destination": "蘇我",
+      "direction": "蘇我",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "内房線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "005014",
+          "to_n02_station_code": "004283",
+          "line_names": [
+            "内房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "君津",
+          "n02_station_code": "005014",
+          "arrival": null,
+          "departure": "13:50",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "蘇我",
+          "n02_station_code": "004283",
+          "arrival": "14:28",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_32",
+      "date": "2026-01-01",
+      "number": "快速（14:35 東京行）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "蘇我",
+      "destination": "東京",
+      "direction": "東京",
+      "visible": true,
+      "style": {
+        "color": "#c9252f"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "京葉線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004282",
+          "to_n02_station_code": "003785",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "蘇我",
+          "n02_station_code": "004282",
+          "arrival": null,
+          "departure": "14:35",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "東京",
+          "n02_station_code": "003785",
+          "arrival": "15:24",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_33",
+      "date": "2026-01-01",
+      "number": "快速（15:36 千葉方面）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "東京",
+      "destination": "錦糸町",
+      "direction": "錦糸町",
+      "visible": true,
+      "style": {
+        "color": "#0067c0"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003760",
+          "to_n02_station_code": "003647",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "東京",
+          "n02_station_code": "003760",
+          "arrival": null,
+          "departure": "15:36",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "錦糸町",
+          "n02_station_code": "003647",
+          "arrival": "15:44",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_34",
+      "date": "2026-01-01",
+      "number": "普通（15:50 三鷹方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "錦糸町",
+      "destination": "秋葉原",
+      "direction": "秋葉原",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003647",
+          "to_n02_station_code": "003626",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "錦糸町",
+          "n02_station_code": "003647",
+          "arrival": null,
+          "departure": "15:50",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "秋葉原",
+          "n02_station_code": "003626",
+          "arrival": "15:57",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_35",
+      "date": "2026-01-01",
+      "number": "普通（15:59 東京方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "秋葉原",
+      "destination": "神田",
+      "direction": "神田",
+      "visible": true,
+      "style": {
+        "color": "#9acd32"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003625",
+          "to_n02_station_code": "003678",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "秋葉原",
+          "n02_station_code": "003625",
+          "arrival": null,
+          "departure": "15:59",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "神田",
+          "n02_station_code": "003678",
+          "arrival": "16:01",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_36",
+      "date": "2026-01-01",
+      "number": "快速（16:06 高尾方面）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "神田",
+      "destination": "新宿",
+      "direction": "新宿",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "中央線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003677",
+          "to_n02_station_code": "003693",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "神田",
+          "n02_station_code": "003677",
+          "arrival": null,
+          "departure": "16:06",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "新宿",
+          "n02_station_code": "003693",
+          "arrival": "16:17",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_37",
+      "date": "2026-01-01",
+      "number": "普通（16:20 池袋方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "新宿",
+      "destination": "日暮里",
+      "direction": "日暮里",
+      "visible": true,
+      "style": {
+        "color": "#9acd32"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "山手線",
+          "東北線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003701",
+          "to_n02_station_code": "003420",
+          "line_names": [
+            "山手線",
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "新宿",
+          "n02_station_code": "003701",
+          "arrival": null,
+          "departure": "16:20",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "日暮里",
+          "n02_station_code": "003420",
+          "arrival": "16:40",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_38",
+      "date": "2026-01-01",
+      "number": "快速（16:45 取手方面）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "日暮里",
+      "destination": "松戸",
+      "direction": "松戸",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "常磐線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003417",
+          "to_n02_station_code": "003136",
+          "line_names": [
+            "常磐線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "日暮里",
+          "n02_station_code": "003417",
+          "arrival": null,
+          "departure": "16:45",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "松戸",
+          "n02_station_code": "003136",
+          "arrival": "17:02",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "new_year_grand_loop_20260101_39",
+      "date": "2026-01-01",
+      "number": "普通（17:10 我孫子方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "松戸",
+      "destination": "馬橋",
+      "direction": "馬橋",
+      "visible": true,
+      "style": {
+        "color": "#00b261"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "常磐線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003136",
+          "to_n02_station_code": "003066",
+          "line_names": [
+            "常磐線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "松戸",
+          "n02_station_code": "003136",
+          "arrival": null,
+          "departure": "17:10",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "馬橋",
+          "n02_station_code": "003066",
+          "arrival": "17:14",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    }
+  ]
+}

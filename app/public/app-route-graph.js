@@ -73,6 +73,13 @@ const STATION_TRANSFER_MAX_SNAP_METERS = 520;
 const STATION_TRANSFER_MAX_NODE_GAP_METERS = 900;
 const STATION_TRANSFER_EDGE_PENALTY = 180;
 const STATION_TRANSFER_MAX_NODES_PER_GROUP = 24;
+// When adjacent route_sections share the same explicit station code, keep the
+// next solve on the same physical station record chosen by the previous solve.
+// N02 can assign an old and a relocated platform to one station name/group
+// (Hiroden Inaricho is one example); solving the sections independently can
+// otherwise end one feature at the new platform and start the next at the old
+// one, leaving a visible gap even though connecting rail geometry exists.
+const ROUTE_SECTION_CONTINUITY_STATION_METERS = 60;
 
 // Build every input that identifies one deterministic route solve. The
 // precompute exporter calls this same helper inside its VM sandbox, so cache-key
@@ -168,12 +175,14 @@ function solveTrainRouteSection(
   allowedCodes,
   generated,
   warnings,
+  continuityAnchor = null,
 ) {
   const result = solveRouteSectionOnDemand(
     section,
     segmentIndex,
     train,
     allowedCodes,
+    continuityAnchor,
   );
   if (!result) {
     warnings.push(
@@ -182,6 +191,25 @@ function solveTrainRouteSection(
     return;
   }
   generated.push(result);
+}
+
+function routeSectionBoundarySharesExplicitStop(previousSection, section) {
+  if (!previousSection || !section) return false;
+  const previousCode = String(
+    previousSection.to_n02_station_code || "",
+  ).trim();
+  const nextCode = String(section.from_n02_station_code || "").trim();
+  if (previousCode && nextCode) return previousCode === nextCode;
+  const previousName = normalizeStationName(previousSection.to || "");
+  const nextName = normalizeStationName(section.from || "");
+  return Boolean(previousName && nextName && previousName === nextName);
+}
+
+function routeFeatureEndCoordinate(feature) {
+  const lines = iterateGeometryLines(feature?.geometry);
+  return lines.length && lines[lines.length - 1].length
+    ? lines[lines.length - 1][lines[lines.length - 1].length - 1]
+    : null;
 }
 
 // Shared tail for both solvers: cache the solved template geometry, persist it,
@@ -296,6 +324,16 @@ async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
     segmentIndex < routeSections.length;
     segmentIndex += 1
   ) {
+    const previousFeature = generated[generated.length - 1];
+    const continuityAnchor =
+      segmentIndex > 0 &&
+      previousFeature?.properties?.segment_index === segmentIndex - 1 &&
+      routeSectionBoundarySharesExplicitStop(
+        routeSections[segmentIndex - 1],
+        routeSections[segmentIndex],
+      )
+        ? routeFeatureEndCoordinate(previousFeature)
+        : null;
     solveTrainRouteSection(
       train,
       routeSections[segmentIndex],
@@ -303,6 +341,7 @@ async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
       allowedCodes,
       generated,
       warnings,
+      continuityAnchor,
     );
     if (yieldIfNeeded) await yieldIfNeeded();
   }
@@ -857,7 +896,13 @@ function pathTouchesRegionEdge(feature, regionBbox, marginDeg) {
 // subgraph; widens it (and finally falls back to the full graph) if the
 // solved path reaches the region edge, so the result matches the all-Japan
 // graph while keeping resident graph memory bounded.
-function solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes) {
+function solveRouteSectionOnDemand(
+  section,
+  segmentIndex,
+  train,
+  allowedCodes,
+  continuityAnchor = null,
+) {
   const endpointBbox = sectionEndpointBbox(section, train, allowedCodes);
   if (!endpointBbox) {
     return solveRouteSectionOnN02Graph(
@@ -866,6 +911,7 @@ function solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes) {
       train,
       getRuntimeRouteGraph(),
       allowedCodes,
+      continuityAnchor,
     );
   }
   const straight = bboxDiagonalMeters(endpointBbox);
@@ -882,6 +928,7 @@ function solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes) {
       train,
       graph,
       allowedCodes,
+      continuityAnchor,
     );
     if (result) {
       lastResult = result;
@@ -896,6 +943,7 @@ function solveRouteSectionOnDemand(section, segmentIndex, train, allowedCodes) {
     train,
     getRuntimeRouteGraph(),
     allowedCodes,
+    continuityAnchor,
   );
   return full || lastResult;
 }

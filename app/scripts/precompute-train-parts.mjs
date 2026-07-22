@@ -26,6 +26,9 @@
 // only on explicit request.
 //
 // Run:  node app/scripts/precompute-train-parts.mjs
+// Alternate store/output:
+//   PRECOMPUTE_STORE=data/special-samples/example.json
+//   PRECOMPUTE_OUT_DIR=data/example-parts node scripts/precompute-train-parts.mjs
 // (No dependencies; used by the GitHub Pages deploy workflow on every push.)
 
 import fs from "node:fs";
@@ -39,7 +42,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.join(__dirname, "..");
 const DATA_DIR = path.join(APP_DIR, "data");
 const PUBLIC_DIR = path.join(APP_DIR, "public");
-const OUT_DIR = path.join(DATA_DIR, "sample-data");
+const STORE_PATH = process.env.PRECOMPUTE_STORE
+  ? path.resolve(process.cwd(), process.env.PRECOMPUTE_STORE)
+  : path.join(DATA_DIR, "train-store.json");
+const OUT_DIR = process.env.PRECOMPUTE_OUT_DIR
+  ? path.resolve(process.cwd(), process.env.PRECOMPUTE_OUT_DIR)
+  : path.join(DATA_DIR, "sample-data");
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
@@ -243,7 +251,7 @@ const DRIVER_SOURCE = `
 // has its part on disk, in order.
 function finalizeManifestFromParts() {
   const store = JSON.parse(
-    fs.readFileSync(path.join(DATA_DIR, "train-store.json"), "utf8"),
+    fs.readFileSync(STORE_PATH, "utf8"),
   );
   const partNames = [];
   const partsByDate = new Map();
@@ -287,7 +295,7 @@ function finalizeManifestFromParts() {
   // Keep one combined big JSON of the whole sample next to the chunks.
   fs.writeFileSync(
     path.join(OUT_DIR, "sample-full.json"),
-    fs.readFileSync(path.join(DATA_DIR, "train-store.json")),
+    fs.readFileSync(STORE_PATH),
   );
   console.log(
     `Finalized manifest for ${store.trains.length} parts (${solvedCount} solved, ${unsolvableCount} unsolvable, ${noRouteCount} without route sections).`,
@@ -307,7 +315,7 @@ async function main() {
   const stations = readJson(path.join(DATA_DIR, "stations.json"));
   const matchedStops = readJson(path.join(DATA_DIR, "matched-stops.json"));
   let trainStoreText = fs.readFileSync(
-    path.join(DATA_DIR, "train-store.json"),
+    STORE_PATH,
     "utf8",
   );
 

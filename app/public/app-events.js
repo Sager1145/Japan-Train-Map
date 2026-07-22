@@ -565,6 +565,40 @@ function bindEvents() {
         updateDataSourceUi();
       }
     });
+  const loadNewYearGrandLoopBtn = document.getElementById(
+    "load-new-year-grand-loop",
+  );
+  if (loadNewYearGrandLoopBtn)
+    loadNewYearGrandLoopBtn.addEventListener("click", async () => {
+      if (importInProgress) return;
+      if (!confirm(I18N.t("confirm.loadNewYearGrandLoop"))) return;
+      loadNewYearGrandLoopBtn.disabled = true;
+      try {
+        fitJapanMainIslands();
+        await loadNewYearGrandLoopData();
+      } catch (error) {
+        setStatus(els.importStatus, error.message, "err");
+      } finally {
+        updateDataSourceUi();
+      }
+    });
+  const loadTokyoLimitedExpressLoopBtn = document.getElementById(
+    "load-tokyo-limited-express-loop",
+  );
+  if (loadTokyoLimitedExpressLoopBtn)
+    loadTokyoLimitedExpressLoopBtn.addEventListener("click", async () => {
+      if (importInProgress) return;
+      if (!confirm(I18N.t("confirm.loadTokyoLimitedExpressLoop"))) return;
+      loadTokyoLimitedExpressLoopBtn.disabled = true;
+      try {
+        fitJapanMainIslands();
+        await loadTokyoLimitedExpressLoopData();
+      } catch (error) {
+        setStatus(els.importStatus, error.message, "err");
+      } finally {
+        updateDataSourceUi();
+      }
+    });
   const restoreUserStoreBtn = document.getElementById("restore-user-store");
   if (restoreUserStoreBtn)
     restoreUserStoreBtn.addEventListener("click", async () => {
@@ -684,4 +718,3 @@ function bindEvents() {
   }
   updateFocusZoomButton();
 }
-

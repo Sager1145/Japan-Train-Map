@@ -43,6 +43,10 @@ const DISPLAY_DEFAULTS = {
   fitCurveMinRadius: 3100, // requested minimum geometric/direction radius, metres
   fitCurveMinDetail: 3300, // source details below this physical scale are removed
   fitCurveMaxDeviation: 4200, // how far fit controls may leave the source, metres
+  // Cross-day (overnight) trains: OFF draws the half that runs on the other
+  // calendar day dashed while a day is selected; ON draws the whole itinerary
+  // solid, exactly like every other train.
+  showFullCrossDay: false,
   showFitCurves: false, // topmost black/white dashed fitted-curve debug overlay
   showHoverRegions: false, // topmost hover pick / hysteresis region debug overlay
 };
@@ -81,6 +85,7 @@ const DISPLAY_CONTROLS = [
 ];
 // Checkbox toggles for the submenu (booleans, rendered under the sliders).
 const DISPLAY_TOGGLES = [
+  { key: "showFullCrossDay", labelKey: "disp.fullCrossDay", rebuild: false },
   { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false },
   { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false },
 ];
@@ -210,6 +215,9 @@ function applyDisplaySettings({ rebuild = true } = {}) {
     RailMap.setFitCurvesVisible(DISPLAY.showFitCurves);
   if (window.RailMap && RailMap.setHoverRegionsVisible)
     RailMap.setHoverRegionsVisible(DISPLAY.showHoverRegions);
+  // Solid ⇄ dashed for cross-day halves is two layer filters, not a rebuild.
+  if (window.RailMap && RailMap.setCrossDayDash)
+    RailMap.setCrossDayDash(!DISPLAY.showFullCrossDay);
   if (!rebuild) return;
   cachedRouteItems = null;
   cachedRouteSignature = "";

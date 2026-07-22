@@ -15,6 +15,12 @@ async function createFixture() {
   const dataDir = path.join(root, "data");
   const publicDir = path.join(root, "public");
   await fs.mkdir(path.join(dataDir, "sample-data"), { recursive: true });
+  await fs.mkdir(path.join(dataDir, "new-year-grand-loop-data"), {
+    recursive: true,
+  });
+  await fs.mkdir(path.join(dataDir, "tokyo-limited-express-loop-data"), {
+    recursive: true,
+  });
   await fs.mkdir(publicDir, { recursive: true });
 
   for (const file of Object.values(DATA_FILES)) {
@@ -26,6 +32,22 @@ async function createFixture() {
   await fs.writeFile(
     path.join(dataDir, "sample-data", "part-000.json"),
     JSON.stringify({ format: 1, train: { id: "sample" }, route: null }),
+  );
+  await fs.writeFile(
+    path.join(dataDir, "new-year-grand-loop-data", "part-000.json"),
+    JSON.stringify({
+      format: 1,
+      train: { id: "new-year-grand-loop" },
+      route: null,
+    }),
+  );
+  await fs.writeFile(
+    path.join(dataDir, "tokyo-limited-express-loop-data", "part-000.json"),
+    JSON.stringify({
+      format: 1,
+      train: { id: "tokyo-limited-express-loop" },
+      route: null,
+    }),
   );
   await fs.writeFile(
     path.join(publicDir, "index.html"),
@@ -376,6 +398,25 @@ test("sample data and static assets preserve validation and delivery headers", a
       train: { id: "sample" },
       route: null,
     });
+
+    const grandLoopPart = await fetch(
+      `${baseUrl}/api/new-year-grand-loop-data/part-000.json`,
+    );
+    assert.equal(grandLoopPart.status, 200);
+    assert.equal(grandLoopPart.headers.get("cache-control"), "no-cache");
+    assert.equal(
+      (await responseJson(grandLoopPart)).train.id,
+      "new-year-grand-loop",
+    );
+    const tokyoLoopPart = await fetch(
+      `${baseUrl}/api/tokyo-limited-express-loop-data/part-000.json`,
+    );
+    assert.equal(tokyoLoopPart.status, 200);
+    assert.equal(tokyoLoopPart.headers.get("cache-control"), "no-cache");
+    assert.equal(
+      (await responseJson(tokyoLoopPart)).train.id,
+      "tokyo-limited-express-loop",
+    );
 
     const staticJson = await fetch(`${baseUrl}/asset.json`, {
       headers: { "Accept-Encoding": "gzip" },

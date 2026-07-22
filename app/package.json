@@ -10,8 +10,12 @@
     "test": "node --test",
     "lint": "node scripts/check-source.mjs",
     "precompute": "node scripts/precompute-train-parts.mjs",
+    "generate:new-year-grand-loop": "node scripts/generate-new-year-grand-loop.mjs",
+    "precompute:new-year-grand-loop": "npm run generate:new-year-grand-loop && PRECOMPUTE_STORE=data/special-samples/new-year-grand-loop.json PRECOMPUTE_OUT_DIR=data/new-year-grand-loop-data node scripts/precompute-train-parts.mjs",
+    "generate:tokyo-limited-express-loop": "node scripts/generate-tokyo-limited-express-loop.mjs",
+    "precompute:tokyo-limited-express-loop": "npm run generate:tokyo-limited-express-loop && PRECOMPUTE_STORE=data/special-samples/tokyo-limited-express-loop.json PRECOMPUTE_OUT_DIR=data/tokyo-limited-express-loop-data node scripts/precompute-train-parts.mjs",
     "build:static": "node scripts/build-static-site.mjs",
-    "build": "npm run precompute && npm run build:static"
+    "build": "npm run precompute && npm run precompute:new-year-grand-loop && npm run precompute:tokyo-limited-express-loop && npm run build:static"
   },
   "engines": {
     "node": ">=18"

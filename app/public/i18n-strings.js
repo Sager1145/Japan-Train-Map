@@ -81,6 +81,10 @@
     "disp.fitCurveMinRadius": { zh: "最小曲線半徑", en: "Minimum curve radius" },
     "disp.fitCurveMinDetail": { zh: "最小細節尺度", en: "Minimum detail scale" },
     "disp.fitCurveMaxDeviation": { zh: "最大允許偏離原線", en: "Maximum source deviation" },
+    "disp.fullCrossDay": {
+      zh: "顯示完整跨天行程（不使用虛線）",
+      en: "Show Full Cross-Day Runs (No Dashes)",
+    },
     "disp.fitCurves": { zh: "顯示擬合曲線（除錯）", en: "Show Fitted Curves (Debug)" },
     "disp.rebuildFitCurves": { zh: "重建擬合曲線", en: "Rebuild Fitted Curves" },
     "disp.hoverRegions": { zh: "顯示 Hover 監測範圍（除錯）", en: "Show Hover Regions (Debug)" },
@@ -103,6 +107,14 @@
       en: "Sample data is for browsing only — changes to it are never saved. Your own data is stored in this browser and auto-saves as you edit.",
     },
     "btn.loadSampleAll": { zh: "載入全部示例資料", en: "Load Full Sample Data" },
+    "btn.loadNewYearGrandLoop": {
+      zh: "載入跨年大回行程",
+      en: "Load New Year Grand Loop",
+    },
+    "btn.loadTokyoLimitedExpressLoop": {
+      zh: "載入東京特急大回行程",
+      en: "Load Tokyo Limited-Express Loop",
+    },
     "btn.restoreMine": { zh: "恢復我的資料", en: "Restore My Data" },
     "btn.saveAsMine": { zh: "保存為我的資料", en: "Save as My Data" },
     "mode.user": {
@@ -117,9 +129,25 @@
       zh: "目前顯示：全部示例資料（更改不會保存）",
       en: "Showing: full sample data (changes are not saved)",
     },
+    "mode.newYearGrandLoop": {
+      zh: "目前顯示：跨年大回行程（更改不會保存）",
+      en: "Showing: New Year grand loop (changes are not saved)",
+    },
+    "mode.tokyoLimitedExpressLoop": {
+      zh: "目前顯示：東京特急大回行程（更改不會保存）",
+      en: "Showing: Tokyo limited-express loop (changes are not saved)",
+    },
     "confirm.loadSampleAll": {
       zh: "載入全部示例資料？目前畫面上的內容會被示例取代（你保存的資料不受影響，可隨時恢復）。",
       en: "Load the full sample data? What is on screen will be replaced by the sample (your saved data is untouched and can be restored anytime).",
+    },
+    "confirm.loadNewYearGrandLoop": {
+      zh: "載入跨年大回行程？目前畫面上的內容會被這套獨立行程取代（你保存的資料不受影響，可隨時恢復）。",
+      en: "Load the New Year grand loop? What is on screen will be replaced by this separate itinerary (your saved data is untouched and can be restored anytime).",
+    },
+    "confirm.loadTokyoLimitedExpressLoop": {
+      zh: "載入東京特急大回行程？目前畫面上的內容會被這套獨立行程取代（你保存的資料不受影響，可隨時恢復）。",
+      en: "Load the Tokyo limited-express loop? What is on screen will be replaced by this separate itinerary (your saved data is untouched and can be restored anytime).",
     },
     "confirm.restoreMine": {
       zh: "恢復我的資料？目前顯示的示例（包含未保存的更改）會被捨棄。",
@@ -149,6 +177,14 @@
       zh: "已載入全部示例資料（{count} 趟列車）。示例僅供瀏覽，更改不會保存。",
       en: "Loaded the full sample data ({count} trains). The sample is view-only; changes are not saved.",
     },
+    "status.newYearGrandLoopLoaded": {
+      zh: "已載入跨年大回行程（{count} 趟列車）。此行程與一般示例分開，僅供瀏覽，更改不會保存。",
+      en: "Loaded the New Year grand loop ({count} trains). It is separate from the regular sample and is view-only; changes are not saved.",
+    },
+    "status.tokyoLimitedExpressLoopLoaded": {
+      zh: "已載入東京特急大回行程（{count} 趟列車）。此行程與其他示例分開，僅供瀏覽，更改不會保存。",
+      en: "Loaded the Tokyo limited-express loop ({count} trains). It is separate from the other samples and is view-only; changes are not saved.",
+    },
     "status.savedAsMine": {
       zh: "已保存為我的資料（{count} 趟列車），之後的編輯會自動保存在此瀏覽器。",
       en: "Saved as my data ({count} trains). Future edits auto-save in this browser.",
@@ -168,9 +204,25 @@
     "src.userStore": { zh: "我的資料（此瀏覽器保存）", en: "my data (saved in this browser)" },
     "src.sampleDay": { zh: "示例資料 {date}", en: "sample data {date}" },
     "src.sampleAll": { zh: "全部示例資料", en: "full sample data" },
+    "src.newYearGrandLoop": {
+      zh: "跨年大回行程",
+      en: "New Year grand loop",
+    },
+    "src.tokyoLimitedExpressLoop": {
+      zh: "東京特急大回行程",
+      en: "Tokyo limited-express loop",
+    },
     "err.noSampleData": {
       zh: "示例資料目前無法載入，請稍後再試。",
       en: "Sample data is unavailable right now; please try again later.",
+    },
+    "err.noNewYearGrandLoopData": {
+      zh: "跨年大回行程目前無法載入，請稍後再試。",
+      en: "The New Year grand loop is unavailable right now; please try again later.",
+    },
+    "err.noTokyoLimitedExpressLoopData": {
+      zh: "東京特急大回行程目前無法載入，請稍後再試。",
+      en: "The Tokyo limited-express loop is unavailable right now; please try again later.",
     },
 
     // card / group titles (railprint-style folder-tab cards)
@@ -572,6 +624,7 @@
     "disp.fitCurveMinRadius": "最小曲線半径",
     "disp.fitCurveMinDetail": "最小ディテール尺度",
     "disp.fitCurveMaxDeviation": "元線からの最大許容偏差",
+    "disp.fullCrossDay": "日をまたぐ行程を全区間実線で表示",
     "disp.fitCurves": "フィッティング曲線を表示（デバッグ）",
     "disp.rebuildFitCurves": "フィッティング曲線を再構築",
     "disp.hoverRegions": "Hover 監視範囲を表示（デバッグ）",
@@ -585,13 +638,22 @@
     "hint.dataSource":
       "サンプルデータは閲覧専用で、変更は保存されません。自分のデータはこのブラウザに保存され、編集すると自動保存されます。",
     "btn.loadSampleAll": "サンプルデータを全て読み込む",
+    "btn.loadNewYearGrandLoop": "年越し大回り行程を読み込む",
+    "btn.loadTokyoLimitedExpressLoop": "東京特急大回り行程を読み込む",
     "btn.restoreMine": "自分のデータを復元",
     "btn.saveAsMine": "自分のデータとして保存",
     "mode.user": "表示中：自分のデータ（このブラウザに自動保存）",
     "mode.sampleSingle": "表示中：サンプルデータ {date}（変更は保存されません）",
     "mode.sampleAll": "表示中：サンプルデータ全件（変更は保存されません）",
+    "mode.newYearGrandLoop": "表示中：年越し大回り行程（変更は保存されません）",
+    "mode.tokyoLimitedExpressLoop":
+      "表示中：東京特急大回り行程（変更は保存されません）",
     "confirm.loadSampleAll":
       "サンプルデータを全て読み込みますか？画面の内容はサンプルに置き換わります（保存済みデータは影響を受けず、いつでも復元できます）。",
+    "confirm.loadNewYearGrandLoop":
+      "年越し大回り行程を読み込みますか？画面の内容はこの独立した行程に置き換わります（保存済みデータには影響しません）。",
+    "confirm.loadTokyoLimitedExpressLoop":
+      "東京特急大回り行程を読み込みますか？画面の内容はこの独立した行程に置き換わります（保存済みデータには影響しません）。",
     "confirm.restoreMine":
       "自分のデータを復元しますか？表示中のサンプル（未保存の変更を含む）は破棄されます。",
     "confirm.saveAsMine":
@@ -606,6 +668,10 @@
       "サンプルデータ {date}（{count} 本）を読み込みました。サンプルは閲覧専用で保存されません。「サンプルデータを全て読み込む」で全日付を表示できます。",
     "status.sampleAllLoaded":
       "サンプルデータ全件（{count} 本）を読み込みました。閲覧専用のため変更は保存されません。",
+    "status.newYearGrandLoopLoaded":
+      "年越し大回り行程（{count} 本）を読み込みました。通常のサンプルとは別の閲覧専用データです。",
+    "status.tokyoLimitedExpressLoopLoaded":
+      "東京特急大回り行程（{count} 本）を読み込みました。他のサンプルとは別の閲覧専用データです。",
     "status.savedAsMine":
       "自分のデータとして保存しました（{count} 本）。以後の編集はこのブラウザに自動保存されます。",
     "status.noUserStore": "このブラウザに保存済みのデータはありません。",
@@ -615,7 +681,13 @@
     "src.userStore": "自分のデータ（このブラウザ保存）",
     "src.sampleDay": "サンプルデータ {date}",
     "src.sampleAll": "サンプルデータ全件",
+    "src.newYearGrandLoop": "年越し大回り行程",
+    "src.tokyoLimitedExpressLoop": "東京特急大回り行程",
     "err.noSampleData": "サンプルデータを読み込めません。しばらくしてからもう一度お試しください。",
+    "err.noNewYearGrandLoopData":
+      "年越し大回り行程を読み込めません。しばらくしてからもう一度お試しください。",
+    "err.noTokyoLimitedExpressLoopData":
+      "東京特急大回り行程を読み込めません。しばらくしてからもう一度お試しください。",
     "grp.edit": "選択中の列車を編集",
     "grp.dates": "日付と絞り込み",
     "grp.trainResults": "この日の列車",

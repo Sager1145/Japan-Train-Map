@@ -136,7 +136,7 @@ function finalizeProgressiveLoad(
   appendedIds,
   {
     finalPersist = true,
-    selectEarliestDate = false,
+    showAllDates = false,
     selectFirstTrain = true,
   } = {},
 ) {
@@ -149,10 +149,13 @@ function finalizeProgressiveLoad(
     clearTimeout(_appendRenderTimer);
     _appendRenderTimer = null;
   }
-  // A full replace can invalidate the previous date filter. Drop to the
-  // earliest available date (or keep a still-valid one); on first boot we
-  // explicitly prefer the earliest date even when nothing was selected yet.
-  reconcileSelectedDate({ preferEarliestWhenAll: selectEarliestDate });
+  // A full replace can invalidate the previous date filter: keep a still-valid
+  // selection, otherwise drop to the earliest available date. A "load
+  // everything" caller passes showAllDates so the result lands on the combined
+  // 全部 view — the user asked for every trip, so auto-selecting a single day
+  // of what just loaded would hide most of it.
+  if (showAllDates) selectedDate = ALL_DATES;
+  reconcileSelectedDate();
   validateTrainStore(buildCanonicalTrainStore());
   if (finalPersist) saveTrainStore();
   renderAll();
@@ -251,7 +254,7 @@ async function replaceTrainStoreFromStoreProgressive(
 
     const persistEachStep = Boolean(options.persistEachStep);
     const finalPersist = options.finalPersist !== false;
-    const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const showAllDates = Boolean(options.showAllDates);
     const selectFirstTrain = options.selectFirstTrain !== false;
 
     resetTrainStoreForProgressiveLoad();
@@ -277,7 +280,7 @@ async function replaceTrainStoreFromStoreProgressive(
 
     finalizeProgressiveLoad(appendedIds, {
       finalPersist,
-      selectEarliestDate,
+      showAllDates,
       selectFirstTrain,
     });
     setImportProgress(total, total, I18N.t("prog.done", { count: total }));
@@ -378,13 +381,14 @@ function seedRouteCacheFromPart(part) {
 // (returns null) so a single flaky mobile request can't abort the whole boot.
 function makeTrainPartsSource(manifest) {
   const names = manifest.parts;
+  const partsApi = manifest.parts_api || SAMPLE_DATA_API;
   const PREFETCH_WINDOW = 4;
   const inflight = new Map(); // index -> Promise<part|null>
   const fetchPart = (index) => {
     let pending = inflight.get(index);
     if (!pending) {
       pending = (async () => {
-        const partPath = `${SAMPLE_DATA_API}/${names[index]}`;
+        const partPath = `${partsApi}/${names[index]}`;
         try {
           return await fetchJson(partPath, { cache: "no-cache" });
         } catch (err) {
@@ -441,7 +445,7 @@ async function replaceTrainStoreFromPartsProgressive(
 
     const persistEachStep = Boolean(options.persistEachStep);
     const finalPersist = options.finalPersist !== false;
-    const selectEarliestDate = Boolean(options.selectEarliestDate);
+    const showAllDates = Boolean(options.showAllDates);
     const selectFirstTrain = options.selectFirstTrain !== false;
 
     resetTrainStoreForProgressiveLoad();
@@ -463,7 +467,7 @@ async function replaceTrainStoreFromPartsProgressive(
 
     finalizeProgressiveLoad(appendedIds, {
       finalPersist,
-      selectEarliestDate,
+      showAllDates,
       selectFirstTrain,
     });
     const skipped = total - appendedIds.length;
@@ -505,7 +509,9 @@ async function loadSampleData({ date = null, bootLoadOptions = null } = {}) {
     ? I18N.t("src.sampleDay", { date })
     : I18N.t("src.sampleAll");
   const options = {
-    ...(bootLoadOptions || { selectEarliestDate: true, selectFirstTrain: false }),
+    // Explicit 「載入全部示例資料」click (no boot options): show the whole thing
+    // on the combined 全部 view instead of dropping to one of its days.
+    ...(bootLoadOptions || { showAllDates: !date, selectFirstTrain: false }),
     persistEachStep: false,
     finalPersist: false,
   };
@@ -520,6 +526,115 @@ async function loadSampleData({ date = null, bootLoadOptions = null } = {}) {
     date
       ? I18N.t("status.sampleSingleLoaded", { date, count: result.count })
       : I18N.t("status.sampleAllLoaded", { count: result.count }),
+    "ok",
+  );
+  return result;
+}
+
+// Load the independent 2025-12-31 → 2026-01-01 New Year grand loop. Its
+// manifest lives outside SAMPLE_DATA_API, so bootStaticData's random-day
+// selection can never include it.
+let newYearGrandLoopManifestPromise = null;
+async function loadNewYearGrandLoopManifest() {
+  if (!newYearGrandLoopManifestPromise) {
+    newYearGrandLoopManifestPromise = (async () => {
+      try {
+        const manifest = await fetchJson(`${NEW_YEAR_GRAND_LOOP_API}/manifest`, {
+          cache: "no-cache",
+        });
+        if (
+          !manifest ||
+          manifest.format !== 1 ||
+          !Array.isArray(manifest.parts) ||
+          !manifest.parts.length ||
+          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
+        )
+          return null;
+        return { ...manifest, parts_api: NEW_YEAR_GRAND_LOOP_API };
+      } catch (err) {
+        return null;
+      }
+    })();
+  }
+  return newYearGrandLoopManifestPromise;
+}
+
+async function loadNewYearGrandLoopData() {
+  const manifest = await loadNewYearGrandLoopManifest();
+  if (!manifest) throw new Error(I18N.t("err.noNewYearGrandLoopData"));
+  dataSourceMode = "sample-new-year-grand-loop";
+  sampleModeDate = null;
+  sampleEditHintShown = false;
+  updateDataSourceUi();
+  const result = await replaceTrainStoreFromPartsProgressive(
+    manifest,
+    I18N.t("src.newYearGrandLoop"),
+    {
+      showAllDates: true,
+      selectFirstTrain: false,
+      persistEachStep: false,
+      finalPersist: false,
+    },
+  );
+  updateDataSourceUi();
+  setStatus(
+    els.importStatus,
+    I18N.t("status.newYearGrandLoopLoaded", { count: result.count }),
+    "ok",
+  );
+  return result;
+}
+
+let tokyoLimitedExpressLoopManifestPromise = null;
+async function loadTokyoLimitedExpressLoopManifest() {
+  if (!tokyoLimitedExpressLoopManifestPromise) {
+    tokyoLimitedExpressLoopManifestPromise = (async () => {
+      try {
+        const manifest = await fetchJson(
+          `${TOKYO_LIMITED_EXPRESS_LOOP_API}/manifest`,
+          { cache: "no-cache" },
+        );
+        if (
+          !manifest ||
+          manifest.format !== 1 ||
+          !Array.isArray(manifest.parts) ||
+          !manifest.parts.length ||
+          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
+        )
+          return null;
+        return {
+          ...manifest,
+          parts_api: TOKYO_LIMITED_EXPRESS_LOOP_API,
+        };
+      } catch (err) {
+        return null;
+      }
+    })();
+  }
+  return tokyoLimitedExpressLoopManifestPromise;
+}
+
+async function loadTokyoLimitedExpressLoopData() {
+  const manifest = await loadTokyoLimitedExpressLoopManifest();
+  if (!manifest) throw new Error(I18N.t("err.noTokyoLimitedExpressLoopData"));
+  dataSourceMode = "sample-tokyo-limited-express-loop";
+  sampleModeDate = null;
+  sampleEditHintShown = false;
+  updateDataSourceUi();
+  const result = await replaceTrainStoreFromPartsProgressive(
+    manifest,
+    I18N.t("src.tokyoLimitedExpressLoop"),
+    {
+      showAllDates: true,
+      selectFirstTrain: false,
+      persistEachStep: false,
+      finalPersist: false,
+    },
+  );
+  updateDataSourceUi();
+  setStatus(
+    els.importStatus,
+    I18N.t("status.tokyoLimitedExpressLoopLoaded", { count: result.count }),
     "ok",
   );
   return result;
@@ -543,7 +658,7 @@ async function restoreUserStore({ bootLoadOptions = null } = {}) {
     userData.store,
     I18N.t("src.userStore"),
     {
-      ...(bootLoadOptions || { selectEarliestDate: true, selectFirstTrain: false }),
+      ...(bootLoadOptions || { selectFirstTrain: false }),
       persistEachStep: false,
       // Data just came FROM storage; no need to immediately write it back.
       finalPersist: false,
@@ -633,12 +748,25 @@ function updateDataSourceUi() {
   let key = "mode.user";
   if (dataSourceMode === "sample-single") key = "mode.sampleSingle";
   else if (dataSourceMode === "sample-all") key = "mode.sampleAll";
+  else if (dataSourceMode === "sample-new-year-grand-loop")
+    key = "mode.newYearGrandLoop";
+  else if (dataSourceMode === "sample-tokyo-limited-express-loop")
+    key = "mode.tokyoLimitedExpressLoop";
   statusEl.textContent = I18N.t(key, { date: sampleModeDate || "" });
   statusEl.classList.toggle("sample-active", isSampleMode());
   const loadAllBtn = document.getElementById("load-sample-all");
+  const loadNewYearBtn = document.getElementById("load-new-year-grand-loop");
+  const loadTokyoLtdExpBtn = document.getElementById(
+    "load-tokyo-limited-express-loop",
+  );
   const saveMineBtn = document.getElementById("save-as-user-store");
   const restoreBtn = document.getElementById("restore-user-store");
   if (loadAllBtn) loadAllBtn.disabled = dataSourceMode === "sample-all";
+  if (loadNewYearBtn)
+    loadNewYearBtn.disabled = dataSourceMode === "sample-new-year-grand-loop";
+  if (loadTokyoLtdExpBtn)
+    loadTokyoLtdExpBtn.disabled =
+      dataSourceMode === "sample-tokyo-limited-express-loop";
   if (saveMineBtn) saveMineBtn.hidden = !isSampleMode();
   if (restoreBtn) {
     restoreBtn.hidden = !isSampleMode();

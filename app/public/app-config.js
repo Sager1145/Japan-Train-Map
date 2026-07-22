@@ -62,6 +62,8 @@ const TRAIN_STORE_API = "train-store";
 // USER_STORE_DB_NAME below), chunked ONE RECORD PER CALENDAR DAY so each edit
 // rewrites only the day(s) it touched, never one monolithic blob.
 const SAMPLE_DATA_API = "sample-data";
+const NEW_YEAR_GRAND_LOOP_API = "new-year-grand-loop-data";
+const TOKYO_LIMITED_EXPRESS_LOOP_API = "tokyo-limited-express-loop-data";
 const USER_STORE_DB_NAME = "n02-user-train-store-db";
 const USER_STORE_DATES_STORE = "dates";
 const USER_STORE_META_STORE = "meta";
@@ -75,7 +77,7 @@ const ROUTE_CACHE_STORE_NAME = "routes";
 // Bump whenever route-solver semantics change. The value is part of every
 // route cache key, so geometry produced by an older solver can never shadow a
 // corrected precomputed sample route after a deployment.
-const ROUTE_SOLVER_CACHE_VERSION = "2";
+const ROUTE_SOLVER_CACHE_VERSION = "3";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],
@@ -108,8 +110,11 @@ const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
 const UNDATED = "undated";
 const {
+  addDaysToDateString,
   compareTrainsByDateAndDeparture,
   dateSortKey,
+  dayIndexForSegment,
+  dayIndexForStop,
   getTrainDepartureMinutes,
   inferDateFromTrainId,
   isValidDateString,
@@ -119,6 +124,8 @@ const {
   normalizeTrainDate,
   parseFeatureCollectionChunked: parseFeatureCollectionTextChunked,
   parseTimeToMinutes,
+  trainDayBreaks,
+  trainHasCrossDayTimes,
 } = window.AppCore;
 const DEFAULT_TRAIN_COLOR = "#d9364f";
 // Single source of truth for the default route style numbers (railprint's

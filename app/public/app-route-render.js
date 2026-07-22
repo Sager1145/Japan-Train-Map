@@ -37,7 +37,9 @@ let _appendRenderTimer = null;
 function appendTrainToLayers(train) {
   if (!train || train.visible === false) return;
   const dateScoped = mapFollowsSelectedDate && selectedDate !== ALL_DATES;
-  if (dateScoped && getTrainDate(train) !== selectedDate) return;
+  // Same scope rule as renderTrainLayers: a cross-day train belongs to both of
+  // its days, so "only show the current date" still draws it on either one.
+  if (dateScoped && !trainSpansDate(train, selectedDate)) return;
 
   // GL mode: incremental feedback = drop the route-item cache and re-issue
   // the layers for the trains loaded so far. Rebuilding the overlap map is
@@ -70,7 +72,9 @@ function appendTrainToLayers(train) {
 function trainEmphasisLevel(train) {
   if (selectedTrainId && train.id === selectedTrainId) return 2;
   if (selectedDate === ALL_DATES) return 1;
-  return getTrainDate(train) === selectedDate ? 1 : 0;
+  // A cross-day train counts as "this day" on BOTH of its dates: the half that
+  // runs on another date draws dashed, never dimmed (jsonspec §13.6).
+  return trainSpansDate(train, selectedDate) ? 1 : 0;
 }
 
 // (trainScopeFlags was removed: route/marker RECORDS use the selection-free
@@ -94,12 +98,16 @@ function renderTrainLayers() {
   // (the record rebuild below re-uploads features with identical per-train
   // paint inputs, so the transition continues seamlessly across it).
   if (window.RailMap && map) {
-    RailMap.setDateScope(dateActive ? selectedDate : null, DISPLAY.dimOpacity);
+    RailMap.setDateScope(
+      dateActive ? selectedDate : null,
+      DISPLAY.dimOpacity,
+      !DISPLAY.showFullCrossDay,
+    );
   }
   const visibleTrains = trainStore.trains.filter(
     (train) =>
       train.visible !== false &&
-      (!hardHide || getTrainDate(train) === selectedDate),
+      (!hardHide || trainSpansDate(train, selectedDate)),
   );
   const focusActive = Boolean(
     selectedTrainId &&
@@ -188,7 +196,10 @@ function computeRouteSignature(orderedTrains, dateActive) {
   const overlapPart = [];
   const trainPart = orderedTrains
     .map((train) => {
-      const base = `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}`;
+      // The day span belongs in the key: editing a stop time into (or out of)
+      // 25:xx changes which records draw dashed, and nothing else in the key
+      // sees stop TIMES at all.
+      const base = `${train.id}:${getTrainRouteTemplateKey(train)}:${(train.stops || []).map((s) => (s.ride_segment ? 1 : 0)).join("")}:${getTrainDaySpan(train).sig}`;
       const vis = train.visible === false ? 0 : 1;
       overlapPart.push(`${base}:${vis}`);
       const s = train.style || {};

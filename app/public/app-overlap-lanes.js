@@ -62,7 +62,9 @@ function invalidateDeckRouteCaches() {
 function routeRecordScopeFlags(train) {
   return {
     focused: false,
-    dimmed: cachedRouteDateActive && getTrainDate(train) !== selectedDate,
+    // Cross-day trains run on two dates, so both of their days keep them in
+    // scope (undimmed and interactive) — see trainSpansDate.
+    dimmed: cachedRouteDateActive && !trainSpansDate(train, selectedDate),
   };
 }
 

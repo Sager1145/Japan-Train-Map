@@ -388,6 +388,8 @@ let importInProgress = false;
 //   "sample-single" one random sample day (static deploy boot with no user
 //                   data). Ephemeral: nothing persists.
 //   "sample-all"    the full sample, loaded on explicit request. Ephemeral.
+//   "sample-new-year-grand-loop" the independent New Year grand-loop sample.
+//   "sample-tokyo-limited-express-loop" the independent Tokyo ltd-exp loop.
 // The Node deployment always runs in "user" mode. Sample modes never write to
 // the user's IndexedDB store — the user's saved data survives untouched and
 // can be brought back with the "restore my data" button.
@@ -396,7 +398,12 @@ let sampleModeDate = null; // the day shown while in "sample-single"
 let userStoreAvailable = false; // last known "IndexedDB holds user data" state
 let sampleEditHintShown = false; // one hint per sample session, not per edit
 function isSampleMode() {
-  return dataSourceMode === "sample-single" || dataSourceMode === "sample-all";
+  return (
+    dataSourceMode === "sample-single" ||
+    dataSourceMode === "sample-all" ||
+    dataSourceMode === "sample-new-year-grand-loop" ||
+    dataSourceMode === "sample-tokyo-limited-express-loop"
+  );
 }
 
 // Cached DOM references. app.js is loaded at the END of <body> (no `defer`),
@@ -481,7 +488,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   // Restore the saved date filter (selectedDate / manual dates) before the
   // first render so the date bar reflects the user's last choice.
-  const restoredSelectedDate = restoreUiDateState();
+  restoreUiDateState();
   await initMap(mapAssetsReady);
   applyMapOpacity();
   bindEvents();
@@ -496,9 +503,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const bootLoadOptions = {
     persistEachStep: false,
     finalPersist: false,
-    // First run (no saved filter): default to the earliest date per spec 1.1.
-    // Returning user: keep their restored selection if it is still valid.
-    selectEarliestDate: !restoredSelectedDate,
+    // No date is auto-selected once the load finishes: a returning user keeps
+    // their restored selection if it is still valid, and a first run stays on
+    // the combined "全部" view rather than jumping to one day of the data.
     // A freshly opened page starts as an overview. The user can choose a
     // train deliberately instead of the progressive loader selecting one.
     selectFirstTrain: false,

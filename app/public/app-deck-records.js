@@ -489,6 +489,15 @@ function buildDeckRouteRecords(items) {
         : DEFAULT_TRAIN_COLOR,
     );
     const scopeFlags = routeRecordScopeFlags(train);
+    // Which calendar day THIS piece of the itinerary runs on. Identical to the
+    // train's own date unless the train crosses midnight, in which case the
+    // stretch past the day break carries the next date and draws dashed while
+    // the neighbouring day is selected (see RailMap.setDateScope).
+    const daySpan = getTrainDaySpan(train);
+    const edate = segmentDateForTrain(
+      daySpan,
+      Number(feature.properties?.segment_index ?? 0),
+    );
     const { opacity, width } = routeSegmentStyleValues(
       train,
       ridden,
@@ -724,6 +733,8 @@ function buildDeckRouteRecords(items) {
           groupKey,
           nopick: noPick,
           tdate: getTrainDate(train),
+          edate,
+          dspan: daySpan.key,
         });
       });
 
@@ -1056,6 +1067,7 @@ function deckMarkerRecord(feature, train, opts, kind) {
     // hover/click targets.
     nopick: dimmed === true,
     tdate: getTrainDate(train),
+    dspan: getTrainDaySpan(train).key,
   };
 }
 
@@ -1105,6 +1117,13 @@ function buildDeckMarkerRecords(orderedTrains) {
     const boundarySet = new Set(
       ridden.length ? [ridden[0], ridden[ridden.length - 1]] : [],
     );
+    // Cross-day break stations (jsonspec §13.6): the last station of each
+    // outgoing day gets ONE diamond instead of its ordinary dot — the same
+    // station reads as "day D ends here" and "day D+1 starts here".
+    const daySpan = getTrainDaySpan(train);
+    const xdayStops = daySpan.breaks.length
+      ? new Set(daySpan.breaks.map((b) => b.index))
+      : null;
     // Category filter (新幹線/JR在來線/地下鐵/私鐵): only resolved when at
     // least one toggle is off, so the default path pays nothing extra.
     const catFilterOn = anyRiddenCategoryHidden();
@@ -1128,6 +1147,18 @@ function buildDeckMarkerRecords(orderedTrains) {
         opts,
         isPass ? "pass" : "stop",
       );
+      if (rec && xdayStops && xdayStops.has(idx)) {
+        // The diamond REPLACES this station's dot (a dot underneath would
+        // only peek out around the icon). Its own symbol layer draws it, so
+        // only category/role and the radius the icon scales from matter.
+        rec.category = "xday";
+        rec.role = "xday";
+        // A diamond of half-diagonal r covers half the area of a circle of the
+        // same r, so match the terminal dot's visual weight by growing it.
+        rec.radius = Math.max(rec.radius, DISPLAY.terminalRadius) * 1.35;
+        records.push(rec);
+        return;
+      }
       if (rec) records.push(rec);
       // 中途停靠站: pass-through-sized circle + BLACK center dot (the black
       // core is a second record on the same layer, drawn on top).

@@ -37,6 +37,14 @@ function createApp({
   const app = express();
   const trainStore = createTrainStore(path.join(dataDir, "train-store.json"));
   const sampleDataDir = path.join(dataDir, "sample-data");
+  const newYearGrandLoopDataDir = path.join(
+    dataDir,
+    "new-year-grand-loop-data",
+  );
+  const tokyoLimitedExpressLoopDataDir = path.join(
+    dataDir,
+    "tokyo-limited-express-loop-data",
+  );
   const { serveGzippable } = createFileDelivery({ logger });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
@@ -82,6 +90,54 @@ function createApp({
       stat,
       "no-cache",
       `sample-data/${name}.json`,
+    );
+  });
+
+  app.get("/api/new-year-grand-loop-data/:name", async (req, res) => {
+    const name = String(req.params.name || "").replace(/\.json$/, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      return res.status(400).json({ error: "Invalid grand-loop data name." });
+    }
+    const filePath = path.join(newYearGrandLoopDataDir, `${name}.json`);
+    let stat;
+    try {
+      stat = await fs.promises.stat(filePath);
+    } catch (err) {
+      return res
+        .status(404)
+        .json({ error: `Grand-loop data file not found: ${name}` });
+    }
+    await serveGzippable(
+      req,
+      res,
+      filePath,
+      stat,
+      "no-cache",
+      `new-year-grand-loop-data/${name}.json`,
+    );
+  });
+
+  app.get("/api/tokyo-limited-express-loop-data/:name", async (req, res) => {
+    const name = String(req.params.name || "").replace(/\.json$/, "");
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      return res.status(400).json({ error: "Invalid Tokyo loop data name." });
+    }
+    const filePath = path.join(tokyoLimitedExpressLoopDataDir, `${name}.json`);
+    let stat;
+    try {
+      stat = await fs.promises.stat(filePath);
+    } catch (err) {
+      return res
+        .status(404)
+        .json({ error: `Tokyo loop data file not found: ${name}` });
+    }
+    await serveGzippable(
+      req,
+      res,
+      filePath,
+      stat,
+      "no-cache",
+      `tokyo-limited-express-loop-data/${name}.json`,
     );
   });
 

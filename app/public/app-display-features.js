@@ -157,10 +157,12 @@ function updateEndpointLabels() {
     const train = trainStore.trains.find((t) => t.id === id);
     if (train && train.visible !== false) {
       const dateActive = selectedDate !== ALL_DATES;
+      // A cross-day train is on-date for both of the days it runs on, so its
+      // endpoint labels must not vanish while its line is still drawn.
       const offDate =
         mapFollowsSelectedDate &&
         dateActive &&
-        getTrainDate(train) !== selectedDate;
+        !trainSpansDate(train, selectedDate);
       if (!offDate) {
         add(buildEndpointLabelSpec(train, "origin"));
         add(buildEndpointLabelSpec(train, "destination"));

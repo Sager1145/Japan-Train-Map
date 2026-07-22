@@ -14,9 +14,16 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
   const partsDir = path.join(dataDir, "sample-data");
+  const newYearPartsDir = path.join(dataDir, "new-year-grand-loop-data");
+  const tokyoLoopPartsDir = path.join(
+    dataDir,
+    "tokyo-limited-express-loop-data",
+  );
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
+  await fs.mkdir(newYearPartsDir, { recursive: true });
+  await fs.mkdir(tokyoLoopPartsDir, { recursive: true });
 
   await fs.writeFile(
     path.join(publicDir, "app.js"),
@@ -65,9 +72,26 @@ async function createFixture({ includeTrainStore = true } = {}) {
     }),
   );
   await fs.writeFile(path.join(partsDir, "part-000.json.gz"), "ignored");
+  await fs.writeFile(path.join(partsDir, "part-000 2.json"), "stray copy");
   await fs.writeFile(
     path.join(partsDir, "part-000.json"),
     JSON.stringify({ format: 1, train: {}, route: null }),
+  );
+  await fs.writeFile(
+    path.join(newYearPartsDir, "manifest.json"),
+    JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
+  );
+  await fs.writeFile(
+    path.join(newYearPartsDir, "part-000.json"),
+    JSON.stringify({ format: 1, train: { id: "new-year" }, route: null }),
+  );
+  await fs.writeFile(
+    path.join(tokyoLoopPartsDir, "manifest.json"),
+    JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
+  );
+  await fs.writeFile(
+    path.join(tokyoLoopPartsDir, "part-000.json"),
+    JSON.stringify({ format: 1, train: { id: "tokyo-loop" }, route: null }),
   );
 
   return { root, appDir, outputDir };
@@ -127,9 +151,31 @@ test("static build preserves the Pages file and rewrite contract", async () => {
     await fs.access(
       path.join(fixture.outputDir, "api", "sample-data", "part-000.json"),
     );
+    await fs.access(
+      path.join(
+        fixture.outputDir,
+        "api",
+        "new-year-grand-loop-data",
+        "manifest.json",
+      ),
+    );
+    await fs.access(
+      path.join(
+        fixture.outputDir,
+        "api",
+        "tokyo-limited-express-loop-data",
+        "manifest.json",
+      ),
+    );
     await assert.rejects(
       fs.access(
         path.join(fixture.outputDir, "api", "sample-data", "part-000.json.gz"),
+      ),
+      { code: "ENOENT" },
+    );
+    await assert.rejects(
+      fs.access(
+        path.join(fixture.outputDir, "api", "sample-data", "part-000 2.json"),
       ),
       { code: "ENOENT" },
     );

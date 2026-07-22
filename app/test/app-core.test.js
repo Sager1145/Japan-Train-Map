@@ -128,3 +128,73 @@ test("chunked parser yields on large collections and falls back for other JSON",
     plain,
   );
 });
+
+test("cross-day breaks land on the last station timed before midnight", () => {
+  // jsonspec §10.5: 25:xx is the next day, untimed pass-throughs inherit the
+  // previous timed stop's day, so the break falls on 姫路 — the last station
+  // whose recorded time is still before 24:00.
+  const sunrise = {
+    id: "20260726_sunrise",
+    date: "2026-07-26",
+    stops: [
+      { name: "高松", departure: "21:26" },
+      { name: "児島", arrival: "22:12", departure: "22:14" },
+      { name: "岡山", arrival: "22:34", departure: "22:40" },
+      { name: "姫路", arrival: "23:34", departure: "23:36" },
+      { name: "西明石", arrival: null, departure: null },
+      { name: "三ノ宮", arrival: "25:11", departure: "25:12" },
+      { name: "東京", arrival: "31:08" },
+    ],
+  };
+  assert.equal(AppCore.trainHasCrossDayTimes(sunrise), true);
+  assert.deepEqual(AppCore.trainDayBreaks(sunrise), [{ index: 3, day: 1 }]);
+
+  const breaks = AppCore.trainDayBreaks(sunrise);
+  // The break station closes the outgoing day and opens the next one, so ONE
+  // symbol serves both directions.
+  assert.equal(AppCore.dayIndexForStop(breaks, 3), 0);
+  assert.equal(AppCore.dayIndexForStop(breaks, 4), 1);
+  // …while the segment LEAVING it is already next-day (that is the dashed one).
+  assert.equal(AppCore.dayIndexForSegment(breaks, 2), 0);
+  assert.equal(AppCore.dayIndexForSegment(breaks, 3), 1);
+});
+
+test("only the documented cross-day notations count as cross-day", () => {
+  const wrapped = {
+    stops: [{ departure: "23:50" }, { arrival: "00:10" }],
+  };
+  // A bare wrap is NOT read as next-day (jsonspec §10.1) — no guessing.
+  assert.equal(AppCore.trainHasCrossDayTimes(wrapped), false);
+  assert.deepEqual(AppCore.trainDayBreaks(wrapped), []);
+
+  // The legacy "+N" suffix still parses.
+  assert.deepEqual(
+    AppCore.trainDayBreaks({
+      stops: [{ departure: "23:50" }, { arrival: "00:10+1" }],
+    }),
+    [{ index: 0, day: 1 }],
+  );
+
+  // Ordinary same-day trains never allocate breaks.
+  assert.deepEqual(
+    AppCore.trainDayBreaks({
+      stops: [{ departure: "09:00" }, { arrival: "10:30" }],
+    }),
+    [],
+  );
+
+  // A train whose FIRST timed stop already reads 25:xx is mis-dated, not
+  // cross-day: there is no earlier station to break away from.
+  assert.deepEqual(
+    AppCore.trainDayBreaks({ stops: [{ departure: "25:00" }, { arrival: "26:00" }] }),
+    [],
+  );
+});
+
+test("date arithmetic rolls month ends without touching the local timezone", () => {
+  assert.equal(AppCore.addDaysToDateString("2026-07-26", 1), "2026-07-27");
+  assert.equal(AppCore.addDaysToDateString("2026-07-31", 1), "2026-08-01");
+  assert.equal(AppCore.addDaysToDateString("2026-12-31", 2), "2027-01-02");
+  assert.equal(AppCore.addDaysToDateString("2026-07-26", 0), "2026-07-26");
+  assert.equal(AppCore.addDaysToDateString("undated", 1), null);
+});

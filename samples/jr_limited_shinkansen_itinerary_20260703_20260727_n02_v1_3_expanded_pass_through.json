@@ -25836,13 +25836,13 @@
       ]
     },
     {
-      "id": "20260722_03_ibusuki_1326d_nishioyama_kagoshima",
+      "id": "20260722_03_ibusuki_1326d_nishioyama_minamikagoshima",
       "date": "2026-07-22",
       "number": "普通1326D（指宿枕崎線）",
       "train_type": "普通",
       "company": "JR九州",
       "origin": "西大山",
-      "destination": "鹿児島中央",
+      "destination": "南鹿児島",
       "direction": "鹿児島中央",
       "visible": true,
       "style": {
@@ -25985,20 +25985,6 @@
         {
           "from_n02_station_code": "010078",
           "to_n02_station_code": "010073",
-          "line_names": [
-            "指宿枕崎線"
-          ]
-        },
-        {
-          "from_n02_station_code": "010073",
-          "to_n02_station_code": "010066",
-          "line_names": [
-            "指宿枕崎線"
-          ]
-        },
-        {
-          "from_n02_station_code": "010066",
-          "to_n02_station_code": "010047",
           "line_names": [
             "指宿枕崎線"
           ]
@@ -26152,23 +26138,137 @@
         {
           "name": "南鹿児島",
           "n02_station_code": "010073",
-          "arrival": null,
+          "arrival": "08:37",
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260722_03b_nanohana3328d_minamikagoshima_kagoshima",
+      "date": "2026-07-22",
+      "number": "快速なのはな（3328D）",
+      "train_type": "快速",
+      "company": "JR九州",
+      "origin": "南鹿児島",
+      "destination": "鹿児島中央",
+      "direction": "鹿児島中央",
+      "visible": true,
+      "style": {
+        "color": "#d4a900"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "指宿枕崎線"
+        ],
+        "preferred_operator_names": [],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010073",
+          "to_n02_station_code": "010066",
+          "line_names": [
+            "指宿枕崎線"
+          ]
+        },
+        {
+          "from_n02_station_code": "010066",
+          "to_n02_station_code": "010047",
+          "line_names": [
+            "指宿枕崎線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "南鹿児島",
+          "n02_station_code": "010073",
+          "arrival": null,
+          "departure": "09:01",
+          "stop_type": "origin",
           "ride_segment": true
         },
         {
           "name": "郡元",
           "n02_station_code": "010066",
-          "arrival": null,
-          "departure": null,
+          "arrival": "09:03",
+          "departure": "09:03",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
           "name": "鹿児島中央",
           "n02_station_code": "010047",
-          "arrival": "08:51",
+          "arrival": "09:07",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260722_03a_kagoshima_tram_kagoshimachuoeki_miyakodori",
+      "date": "2026-07-22",
+      "number": "鹿児島市電2系統（鹿児島中央駅前→都通）",
+      "train_type": "路面電車",
+      "company": "鹿児島市交通局",
+      "origin": "鹿児島中央駅前",
+      "destination": "都通",
+      "direction": "郡元",
+      "visible": true,
+      "style": {
+        "color": "#009944"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "3"
+        ],
+        "preferred_line_names": [
+          "唐湊線"
+        ],
+        "preferred_operator_names": [
+          "鹿児島市"
+        ],
+        "institution_filter_mode": "hard"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010051",
+          "to_n02_station_code": "010053",
+          "line_names": [
+            "唐湊線"
+          ],
+          "operator_names": [
+            "鹿児島市"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "鹿児島中央駅前",
+          "n02_station_code": "010051",
+          "arrival": null,
+          "departure": "09:24",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "都通",
+          "n02_station_code": "010053",
+          "arrival": "09:25",
           "departure": null,
           "stop_type": "destination",
           "ride_segment": true

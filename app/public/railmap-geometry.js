@@ -35,6 +35,12 @@
           idx: i,
           tid: (r.train && r.train.id) || "",
           tdate: r.tdate || "",
+          // Cross-day scoping: `edate` is the date THIS segment runs on and
+          // `dspan` lists every date its train touches ("|d0|d1|"). Equal to
+          // tdate for an ordinary train, so the defaults keep old records
+          // behaving exactly as before.
+          edate: r.edate || r.tdate || "",
+          dspan: r.dspan || "|" + (r.tdate || "") + "|",
           color: "rgb(" + r.color[0] + "," + r.color[1] + "," + r.color[2] + ")",
           alpha: r.color.length > 3 ? r.color[3] / 255 : 1,
           width: r.width,
@@ -809,6 +815,7 @@
           idx: i,
           tid: (m.train && m.train.id) || "",
           tdate: m.tdate || "",
+          dspan: m.dspan || "|" + (m.tdate || "") + "|",
           category: m.category,
           role: m.role || m.category,
           focusScale: m.focusScale == null ? 0.5 : m.focusScale,

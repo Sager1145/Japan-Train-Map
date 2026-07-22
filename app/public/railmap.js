@@ -81,6 +81,10 @@
     FIT_CURVES_SOURCE,
     HOVER_REGIONS_SOURCE,
     TRAIN_ROUTES_LAYER,
+    TRAIN_XDAY_LAYER,
+    TRAIN_XDAY_STOP_LAYER,
+    XDAY_ICON_ID,
+    XDAY_ICON_BASE_RADIUS,
     TRAIN_PICK_LAYER,
     TRAIN_PICK_FAN_LAYER,
     TRAIN_EXPAND_LAYER,
@@ -181,6 +185,10 @@
     _theme: "light",
     _basemapInstalledTheme: null,
     _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
+    // Cross-day: draw an overnight train's other-day half dashed. The app's
+    // "顯示完整跨天行程" toggle flips this to false, which makes that half draw
+    // exactly like any other line.
+    _crossDayDash: true,
     _basemapGeneration: 0,
     _basemapTransitionDuration: BASEMAP_CROSSFADE_MS,
     _fadeOpacity: 0,
@@ -221,9 +229,18 @@
       // default 300 ms transition on CONSTANT values would trail the rAF
       // frames. Pin every animated opacity prop to zero so the rAF loop is
       // the single source of animation truth.
+      this._ensureXDayIcon();
+      // A basemap/theme swap installs a fresh style, which drops runtime
+      // images; MapLibre asks for the missing one instead of silently drawing
+      // nothing, so re-rasterize on demand.
+      map.on("styleimagemissing", (e) => {
+        if (e && e.id === XDAY_ICON_ID) this._ensureXDayIcon();
+      });
       const ZERO_T = { duration: 0, delay: 0 };
       [
         [TRAIN_ROUTES_LAYER, ["line-opacity"]],
+        [TRAIN_XDAY_LAYER, ["line-opacity"]],
+        [TRAIN_XDAY_STOP_LAYER, ["icon-opacity"]],
         [TRAIN_SEL_CASING_LAYER, ["line-opacity"]],
         [TRAIN_SEL_LAYER, ["line-opacity"]],
         [TRAIN_EXPAND_LAYER, ["line-opacity"]],
@@ -238,6 +255,10 @@
           map.setPaintProperty(id, prop + "-transition", ZERO_T),
         );
       });
+      // Pin the solid/dashed cross-day split from the start: a setDateScope
+      // that landed before attach() only stored state (no map to filter yet),
+      // and setData never re-applies these filters.
+      this._applyBaseFilters();
       return this;
     },
 
@@ -378,14 +399,111 @@
     // Changing scope therefore FADES (the rAF dim engine ramps the `date`
     // strength) instead of waiting for the record rebuild, whose re-uploaded
     // features carry the same per-train paint inputs mid-fade.
-    setDateScope(activeDate, dimOpacity) {
+    setDateScope(activeDate, dimOpacity, crossDayDash) {
       const next = activeDate || null;
       const dim = Math.max(0, Math.min(1, Number(dimOpacity ?? 0.18)));
-      if (next === this._activeDate && dim === this._dateDim) return this;
+      const dash =
+        crossDayDash === undefined ? this._crossDayDash : Boolean(crossDayDash);
+      if (
+        next === this._activeDate &&
+        dim === this._dateDim &&
+        dash === this._crossDayDash
+      )
+        return this;
       this._activeDate = next;
       this._dateDim = dim;
+      this._crossDayDash = dash;
+      // Every train-line layer filters on the cross-day split, so re-apply the
+      // whole base/selection/hover set rather than just the two line layers.
+      this._applyBaseFilters();
       this._applyHoverDim();
       return this;
+    },
+    // Toggle-only entry point ("顯示完整跨天行程"): re-splits the solid/dashed
+    // layers without touching the date scope.
+    setCrossDayDash(enabled) {
+      const dash = Boolean(enabled);
+      if (dash === this._crossDayDash) return this;
+      this._crossDayDash = dash;
+      this._applyBaseFilters();
+      return this;
+    },
+    // Which records belong to the DASHED layer right now: the parts of a
+    // cross-day train that run on a different date than the selected one,
+    // while that train also runs on the selected date (`dspan` holds every
+    // date it touches). With no day selected — the 全部 view — nothing is
+    // dashed: there is no "other day" to contrast against.
+    _xDaySelector() {
+      const date = this._activeDate;
+      if (!date || !this._crossDayDash) return MATCH_NONE;
+      return [
+        "all",
+        ["!=", ["get", "edate"], date],
+        ["in", "|" + date + "|", ["get", "dspan"]],
+      ];
+    },
+    _applyXDayFilters() {
+      const m = this._map;
+      if (!m) return;
+      if (m.getLayer(TRAIN_ROUTES_LAYER))
+        m.setFilter(TRAIN_ROUTES_LAYER, [
+          "all",
+          this._notExpanded(),
+          ["!", this._xDaySelector()],
+        ]);
+      if (m.getLayer(TRAIN_XDAY_LAYER))
+        m.setFilter(TRAIN_XDAY_LAYER, [
+          "all",
+          this._notExpanded(),
+          this._xDaySelector(),
+        ]);
+    },
+    // The cross-day diamond, rasterized once per style: an ink lozenge with a
+    // white rim, matching the ride-boundary dot's colour pair but never its
+    // shape. Drawn at 2× so it stays crisp on retina.
+    _ensureXDayIcon() {
+      const m = this._map;
+      if (!m || typeof m.addImage !== "function") return;
+      if (m.hasImage && m.hasImage(XDAY_ICON_ID)) return;
+      const ratio = 2;
+      const r = XDAY_ICON_BASE_RADIUS;
+      const size = Math.round(r * 2 * ratio);
+      const canvas =
+        typeof document !== "undefined"
+          ? document.createElement("canvas")
+          : null;
+      if (!canvas) return;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const c = size / 2;
+      const rim = 2 * ratio;
+      const half = c - rim / 2 - ratio * 0.5;
+      const diamond = (radius) => {
+        ctx.beginPath();
+        ctx.moveTo(c, c - radius);
+        ctx.lineTo(c + radius, c);
+        ctx.lineTo(c, c + radius);
+        ctx.lineTo(c - radius, c);
+        ctx.closePath();
+      };
+      diamond(half);
+      ctx.fillStyle = "rgb(26,26,26)";
+      ctx.fill();
+      ctx.lineJoin = "miter";
+      ctx.lineWidth = rim;
+      ctx.strokeStyle = "rgb(255,255,255)";
+      ctx.stroke();
+      try {
+        m.addImage(
+          XDAY_ICON_ID,
+          ctx.getImageData(0, 0, size, size),
+          { pixelRatio: ratio },
+        );
+      } catch (e) {
+        // A concurrent styleimagemissing can add it first; that is fine.
+      }
     },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
@@ -458,7 +576,10 @@
       this._visible = !!v;
       const vis = this._visible ? "visible" : "none";
       [
+        // Route lines only — station dots (the cross-day diamond included)
+        // belong to setMarkerVisibility, not to the 路線 layer switch.
         TRAIN_ROUTES_LAYER,
+        TRAIN_XDAY_LAYER,
         TRAIN_PICK_LAYER,
         TRAIN_PICK_FAN_LAYER,
         TRAIN_EXPAND_LAYER,
@@ -500,6 +621,9 @@
         const vis = anyStops ? "visible" : "none";
         this._setVisibility(TRAIN_STOPS_LAYER, vis);
         this._setVisibility(TRAIN_SEL_STOPS_LAYER, vis);
+        // The cross-day diamond stands in for a station dot, so it follows the
+        // same "are station markers shown at all" switch.
+        this._setVisibility(TRAIN_XDAY_STOP_LAYER, vis);
         this._applyMarkerSelectionFilters();
       } else if (category === "pass") {
         const vis = v ? "visible" : "none";
@@ -1196,8 +1320,9 @@
     _applyBaseFilters() {
       const m = this._map;
       if (!m) return;
-      if (m.getLayer(TRAIN_ROUTES_LAYER))
-        m.setFilter(TRAIN_ROUTES_LAYER, this._notExpanded());
+      // Owns the base layer's filter: solid lines are "not expanded AND not
+      // the cross-day half", the dashed layer takes the remainder.
+      this._applyXDayFilters();
       // Engaged trains' TRUE-TRACK hit areas leave the static pick layer while
       // their fan lanes (in the fan pick source) replace them — otherwise the
       // emptied corridor centre would still hit-test as the member trains.
@@ -1214,7 +1339,14 @@
       const m = this._map;
       if (!m) return;
       const id = this._selectedTrainId || NO_TRAIN;
-      const f = ["all", ["==", ["get", "tid"], id], this._notExpanded()];
+      // The dashed cross-day half stays dashed even when its train is picked:
+      // the SEL layers would redraw it solid (and wider) on top otherwise.
+      const f = [
+        "all",
+        ["==", ["get", "tid"], id],
+        this._notExpanded(),
+        ["!", this._xDaySelector()],
+      ];
       if (m.getLayer(TRAIN_SEL_CASING_LAYER)) m.setFilter(TRAIN_SEL_CASING_LAYER, f);
       if (m.getLayer(TRAIN_SEL_LAYER)) m.setFilter(TRAIN_SEL_LAYER, f);
     },
@@ -1226,6 +1358,9 @@
           "all",
           ["==", ["get", "tid"], this._hoverTrainId || NO_TRAIN],
           this._notExpanded(),
+          // Same reason as the SEL layers: hovering must not un-dash the
+          // cross-day half by drawing it solid on top.
+          ["!", this._xDaySelector()],
         ]);
       // The expanded fan mirrors the hover: the hovered train's LANE widens.
       if (m.getLayer(TRAIN_EXPAND_HOVER_LAYER))
@@ -1337,11 +1472,15 @@
       const lerpExpr = (a, b, s) =>
         s >= 1 ? b : s <= 0 ? a : ["+", ["*", a, 1 - s], ["*", b, s]];
       const dateDim = this._dateDim ?? 0.18;
+      // In scope = the feature's train RUNS on the selected day. `dspan` lists
+      // every date the train touches, so an overnight train stays undimmed on
+      // both of its days (its off-day half is told apart by the dash, not by
+      // fading it into the background).
       const dateWrap = (own) =>
         sDate > 0 && this._dimDate
           ? [
               "case",
-              ["==", ["get", "tdate"], this._dimDate],
+              ["in", "|" + this._dimDate + "|", ["get", "dspan"]],
               own,
               lerpNum(own, dateDim, sDate),
             ]
@@ -1383,6 +1522,8 @@
       // only the hover spotlight can dim them.
       const selLayerVal = hoverActive ? ["case", inHover, 1, hoverMul] : 1;
       set(TRAIN_ROUTES_LAYER, "line-opacity", baseOpacity);
+      set(TRAIN_XDAY_LAYER, "line-opacity", baseOpacity);
+      set(TRAIN_XDAY_STOP_LAYER, "icon-opacity", baseOpacity);
       set(
         TRAIN_SEL_CASING_LAYER,
         "line-opacity",

@@ -18,6 +18,7 @@
     TRAIN_PICK_FAN_LAYER,
     TRAIN_PASS_LAYER,
     TRAIN_STOPS_LAYER,
+    TRAIN_XDAY_STOP_LAYER,
     TRAIN_SEL_PASS_LAYER,
     TRAIN_SEL_STOPS_LAYER,
     HOVER_PICK_PAD_PX,
@@ -67,6 +68,9 @@
           TRAIN_SEL_PASS_LAYER,
           TRAIN_STOPS_LAYER,
           TRAIN_PASS_LAYER,
+          // The cross-day diamond replaces its station's dot, so it has to
+          // stay hoverable/clickable in that dot's place.
+          TRAIN_XDAY_STOP_LAYER,
         ].filter((id) => map.getLayer(id));
         // Fan lanes first: while a fan is open its per-lane hit paths (small
         // dedicated source) take precedence over the static true-track areas.

@@ -1,0 +1,973 @@
+{
+  "schema_version": "1.3",
+  "trains": [
+    {
+      "id": "tokyo_limited_express_loop_20260529_01",
+      "date": "2026-05-29",
+      "number": "しおさい1号（4001M）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "千葉",
+      "destination": "成東",
+      "direction": "成東",
+      "visible": true,
+      "style": {
+        "color": "#0067c0"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004165",
+          "to_n02_station_code": "004189",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "千葉",
+          "n02_station_code": "004165",
+          "arrival": null,
+          "departure": "08:10",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "成東",
+          "n02_station_code": "004189",
+          "arrival": "08:48",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_02",
+      "date": "2026-05-29",
+      "number": "普通 1634M",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "成東",
+      "destination": "大網",
+      "direction": "大網",
+      "visible": true,
+      "style": {
+        "color": "#e9a900"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東金線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004190",
+          "to_n02_station_code": "004450",
+          "line_names": [
+            "東金線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "成東",
+          "n02_station_code": "004190",
+          "arrival": null,
+          "departure": "09:02",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大網",
+          "n02_station_code": "004450",
+          "arrival": "09:19",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_03",
+      "date": "2026-05-29",
+      "number": "わかしお10号（1060M）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "大網",
+      "destination": "東京",
+      "direction": "東京",
+      "visible": true,
+      "style": {
+        "color": "#00b2e5"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "外房線",
+          "京葉線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004451",
+          "to_n02_station_code": "003785",
+          "line_names": [
+            "外房線",
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大網",
+          "n02_station_code": "004451",
+          "arrival": null,
+          "departure": "09:47",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "東京",
+          "n02_station_code": "003785",
+          "arrival": "10:37",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_04",
+      "date": "2026-05-29",
+      "number": "ひたち8号（8M・予約区間）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "東京",
+      "destination": "品川",
+      "direction": "品川",
+      "visible": true,
+      "style": {
+        "color": "#e60012"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003770",
+          "to_n02_station_code": "004095",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "東京",
+          "n02_station_code": "003770",
+          "arrival": null,
+          "departure": "11:43",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "品川",
+          "n02_station_code": "004095",
+          "arrival": "11:51",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_05",
+      "date": "2026-05-29",
+      "number": "踊り子9号（3029M）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "品川",
+      "destination": "大船",
+      "direction": "大船",
+      "visible": true,
+      "style": {
+        "color": "#f68b1e"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004095",
+          "to_n02_station_code": "004959",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "品川",
+          "n02_station_code": "004095",
+          "arrival": null,
+          "departure": "12:08",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大船",
+          "n02_station_code": "004959",
+          "arrival": "12:36",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_06",
+      "date": "2026-05-29",
+      "number": "普通（12:41 熱海方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "大船",
+      "destination": "茅ヶ崎",
+      "direction": "茅ヶ崎",
+      "visible": true,
+      "style": {
+        "color": "#f68b1e"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004959",
+          "to_n02_station_code": "005024",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大船",
+          "n02_station_code": "004959",
+          "arrival": null,
+          "departure": "12:41",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "茅ヶ崎",
+          "n02_station_code": "005024",
+          "arrival": "12:52",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_07",
+      "date": "2026-05-29",
+      "number": "普通 1261F（橋本行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "茅ヶ崎",
+      "destination": "橋本",
+      "direction": "橋本",
+      "visible": true,
+      "style": {
+        "color": "#009793"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "相模線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "005023",
+          "to_n02_station_code": "004254",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "茅ヶ崎",
+          "n02_station_code": "005023",
+          "arrival": null,
+          "departure": "12:59",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "橋本",
+          "n02_station_code": "004254",
+          "arrival": "14:20",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_08",
+      "date": "2026-05-29",
+      "number": "快速（14:25 八王子行）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "橋本",
+      "destination": "八王子",
+      "direction": "八王子",
+      "visible": true,
+      "style": {
+        "color": "#9acd32"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "横浜線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "004253",
+          "to_n02_station_code": "003953",
+          "line_names": [
+            "横浜線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "橋本",
+          "n02_station_code": "004253",
+          "arrival": null,
+          "departure": "14:25",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "八王子",
+          "n02_station_code": "003953",
+          "arrival": "14:36",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_09",
+      "date": "2026-05-29",
+      "number": "かいじ32号（3132M）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "八王子",
+      "destination": "立川",
+      "direction": "立川",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "中央線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003947",
+          "to_n02_station_code": "003634",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "八王子",
+          "n02_station_code": "003947",
+          "arrival": null,
+          "departure": "15:34",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "立川",
+          "n02_station_code": "003634",
+          "arrival": "15:42",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_10",
+      "date": "2026-05-29",
+      "number": "中央線快速（15:46 東京方面）",
+      "train_type": "快速",
+      "company": "JR東日本",
+      "origin": "立川",
+      "destination": "西国分寺",
+      "direction": "西国分寺",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "中央線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003634",
+          "to_n02_station_code": "003614",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "立川",
+          "n02_station_code": "003634",
+          "arrival": null,
+          "departure": "15:46",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "西国分寺",
+          "n02_station_code": "003614",
+          "arrival": "15:51",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_11",
+      "date": "2026-05-29",
+      "number": "普通（15:59 東京方面）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "西国分寺",
+      "destination": "武蔵浦和",
+      "direction": "武蔵浦和",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "武蔵野線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003611",
+          "to_n02_station_code": "003006",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "西国分寺",
+          "n02_station_code": "003611",
+          "arrival": null,
+          "departure": "15:59",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "武蔵浦和",
+          "n02_station_code": "003006",
+          "arrival": "16:25",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_12",
+      "date": "2026-05-29",
+      "number": "普通（16:28 大宮行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "武蔵浦和",
+      "destination": "大宮",
+      "direction": "大宮",
+      "visible": true,
+      "style": {
+        "color": "#00ac9a"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003008",
+          "to_n02_station_code": "002912",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "武蔵浦和",
+          "n02_station_code": "003008",
+          "arrival": null,
+          "departure": "16:28",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大宮",
+          "n02_station_code": "002912",
+          "arrival": "16:40",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_13",
+      "date": "2026-05-29",
+      "number": "草津・四万4号（予約区間）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "大宮",
+      "destination": "浦和",
+      "direction": "浦和",
+      "visible": true,
+      "style": {
+        "color": "#e60012"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002912",
+          "to_n02_station_code": "002989",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大宮",
+          "n02_station_code": "002912",
+          "arrival": null,
+          "departure": "17:44",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "浦和",
+          "n02_station_code": "002989",
+          "arrival": "17:50",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_14",
+      "date": "2026-05-29",
+      "number": "スペーシア日光4号（予約区間）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "浦和",
+      "destination": "新宿",
+      "direction": "新宿",
+      "visible": true,
+      "style": {
+        "color": "#e60012"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "東北線",
+          "赤羽線",
+          "山手線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "002989",
+          "to_n02_station_code": "003701",
+          "line_names": [
+            "東北線",
+            "赤羽線",
+            "山手線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "浦和",
+          "n02_station_code": "002989",
+          "arrival": null,
+          "departure": "18:11",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "新宿",
+          "n02_station_code": "003701",
+          "arrival": "18:35",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_15",
+      "date": "2026-05-29",
+      "number": "あずさ50号（5050M）",
+      "train_type": "特急",
+      "company": "JR東日本",
+      "origin": "新宿",
+      "destination": "船橋",
+      "direction": "船橋",
+      "visible": true,
+      "style": {
+        "color": "#f15a22"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "中央線",
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003693",
+          "to_n02_station_code": "003593",
+          "line_names": [
+            "中央線",
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "新宿",
+          "n02_station_code": "003693",
+          "arrival": null,
+          "departure": "20:11",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "船橋",
+          "n02_station_code": "003593",
+          "arrival": "20:38",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "tokyo_limited_express_loop_20260529_16",
+      "date": "2026-05-29",
+      "number": "中央・総武線各駅停車 1904Y（千葉行）",
+      "train_type": "普通",
+      "company": "JR東日本",
+      "origin": "船橋",
+      "destination": "西千葉",
+      "direction": "西千葉",
+      "visible": true,
+      "style": {
+        "color": "#ffd400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "preferred_line_names": [
+          "総武線"
+        ],
+        "preferred_operator_names": [
+          "東日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "003593",
+          "to_n02_station_code": "004124",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "船橋",
+          "n02_station_code": "003593",
+          "arrival": null,
+          "departure": "20:41",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "西千葉",
+          "n02_station_code": "004124",
+          "arrival": "21:00",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    }
+  ]
+}

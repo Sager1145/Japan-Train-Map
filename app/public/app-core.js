@@ -56,6 +56,99 @@
     return dayOffset * 24 * 60 + hours * 60 + minutes;
   }
 
+  // ---- cross-day (overnight) itineraries ---------------------------------
+  // jsonspec §10.1/§10.5: a train that runs past midnight keeps counting up —
+  // 25:10 means 01:10 the NEXT day. (The legacy "10:00+1" suffix parses the
+  // same way, so old JSON keeps working.) Everything below turns those times
+  // into "which calendar day is this part of the itinerary on".
+  //
+  // Cheap pre-test so the common case — no cross-day time anywhere — costs a
+  // couple of string compares per stop instead of a regex per time.
+  function isCrossDayTimeString(value) {
+    if (typeof value !== "string") return false;
+    const text = value.trim();
+    if (text.includes("+")) return true;
+    const colon = text.indexOf(":");
+    return colon > 0 && Number(text.slice(0, colon)) >= 24;
+  }
+
+  function trainHasCrossDayTimes(train) {
+    const stops = Array.isArray(train && train.stops) ? train.stops : [];
+    for (let i = 0; i < stops.length; i += 1) {
+      const stop = stops[i];
+      if (!stop) continue;
+      if (isCrossDayTimeString(stop.arrival)) return true;
+      if (isCrossDayTimeString(stop.departure)) return true;
+    }
+    return false;
+  }
+
+  // The moment the train is first AT a stop. A stop that itself straddles
+  // midnight (arrival 23:58 / departure 25:03) therefore still counts as
+  // belonging to the outgoing day.
+  function stopDayMinutes(stop) {
+    const arrival = parseTimeToMinutes(stop && stop.arrival);
+    if (arrival !== null) return arrival;
+    return parseTimeToMinutes(stop && stop.departure);
+  }
+
+  // Day breaks of one train: `{ index, day }` means the itinerary rolls into
+  // day `day` (0-based, counted from the train's own `date`) AFTER stops[index]
+  // — so `index` is the last station of the outgoing day, the one the map
+  // marks with the cross-day symbol. Untimed stops (pass-throughs carry no
+  // times) inherit the previous timed stop's day, which puts the break on the
+  // last station whose recorded time is still before midnight.
+  function trainDayBreaks(train) {
+    if (!trainHasCrossDayTimes(train)) return [];
+    const stops = Array.isArray(train && train.stops) ? train.stops : [];
+    const breaks = [];
+    let lastTimedIndex = -1;
+    let lastDay = 0;
+    for (let i = 0; i < stops.length; i += 1) {
+      const minutes = stopDayMinutes(stops[i]);
+      if (minutes === null) continue;
+      const day = Math.floor(minutes / 1440);
+      // A train whose FIRST timed stop already reads 25:xx is mis-dated, not
+      // cross-day: with no earlier station there is nothing to break away from.
+      if (day > lastDay && lastTimedIndex >= 0)
+        breaks.push({ index: lastTimedIndex, day });
+      if (day > lastDay) lastDay = day;
+      lastTimedIndex = i;
+    }
+    return breaks;
+  }
+
+  // The day a STOP belongs to. The break station itself closes the outgoing
+  // day (`stopIndex > index`), which is why one symbol serves both directions:
+  // it is the last station of day D and the first of day D+1.
+  function dayIndexForStop(breaks, stopIndex) {
+    let day = 0;
+    for (let i = 0; i < (breaks || []).length; i += 1)
+      if (stopIndex > breaks[i].index) day = breaks[i].day;
+    return day;
+  }
+
+  // The day a route SEGMENT belongs to. Segment s runs stops[s] → stops[s+1],
+  // so the segment LEAVING the break station is already next-day — exactly the
+  // stretch drawn dashed while its neighbouring day is selected.
+  function dayIndexForSegment(breaks, segmentIndex) {
+    let day = 0;
+    for (let i = 0; i < (breaks || []).length; i += 1)
+      if (segmentIndex >= breaks[i].index) day = breaks[i].day;
+    return day;
+  }
+
+  function addDaysToDateString(date, days) {
+    if (!isValidDateString(date)) return null;
+    if (!days) return date;
+    const [year, month, day] = date.split("-").map(Number);
+    const shifted = new Date(
+      Date.UTC(year, month - 1, day) + days * 86400000,
+    );
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
+  }
+
   function getTrainDepartureMinutes(train) {
     const stops = Array.isArray(train && train.stops) ? train.stops : [];
     if (!stops.length) return Infinity;
@@ -179,8 +272,11 @@
   }
 
   return Object.freeze({
+    addDaysToDateString,
     compareTrainsByDateAndDeparture,
     dateSortKey,
+    dayIndexForSegment,
+    dayIndexForStop,
     getTrainDepartureMinutes,
     inferDateFromTrainId,
     isValidDateString,
@@ -190,5 +286,7 @@
     normalizeTrainDate,
     parseFeatureCollectionChunked,
     parseTimeToMinutes,
+    trainDayBreaks,
+    trainHasCrossDayTimes,
   });
 });

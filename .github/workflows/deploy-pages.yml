@@ -59,6 +59,23 @@ jobs:
       - name: Precompute sample data (per-train route parts)
         run: node app/scripts/precompute-train-parts.mjs
 
+      # The two special-sample loops ship as their own datasets (the 資料 card
+      # loads each on demand), so they need the same offline solve. Each store
+      # is written by its generator script, then precomputed into its own
+      # output dir. PRECOMPUTE_STORE / PRECOMPUTE_OUT_DIR resolve against the
+      # CWD, which is the repo root here — hence the app/ prefixes. The
+      # assemble step below hard-fails if either manifest is missing.
+      - name: Precompute special sample loops (New Year + Tokyo limited express)
+        run: |
+          node app/scripts/generate-new-year-grand-loop.mjs
+          PRECOMPUTE_STORE=app/data/special-samples/new-year-grand-loop.json \
+          PRECOMPUTE_OUT_DIR=app/data/new-year-grand-loop-data \
+            node app/scripts/precompute-train-parts.mjs
+          node app/scripts/generate-tokyo-limited-express-loop.mjs
+          PRECOMPUTE_STORE=app/data/special-samples/tokyo-limited-express-loop.json \
+          PRECOMPUTE_OUT_DIR=app/data/tokyo-limited-express-loop-data \
+            node app/scripts/precompute-train-parts.mjs
+
       - name: Assemble static site
         # Copies the frontend without local gzip sidecars, publishes datasets
         # with .json extensions, includes the required precomputed sample data
