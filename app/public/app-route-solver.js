@@ -235,7 +235,7 @@ function resolveRouteEndpointStationCandidates(endpoint, train, allowedCodes) {
   // the preferred institution class so Dijkstra can infer the real railroad
   // between distant stop pairs.
   if (nearbySameNamePreferred.length) {
-    return dedupeStationFeatures([...nearbySameNamePreferred, ...candidates]);
+    return dedupeStationFeatures([...candidates, ...nearbySameNamePreferred]);
   }
 
   if (preferredCandidates.length) return candidates;
@@ -271,7 +271,7 @@ function resolveRouteEndpointStationCandidates(endpoint, train, allowedCodes) {
       ),
     },
   );
-  return dedupeStationFeatures([...sameNamePreferredFallback, ...candidates]);
+  return dedupeStationFeatures([...candidates, ...sameNamePreferredFallback]);
 }
 
 function edgeMatchesRequiredHints(edge, segmentHints) {
@@ -962,17 +962,27 @@ function collectStationCandidateGraphNodes(
   hints,
   allowedCodes,
 ) {
-  const seen = new Set();
-  const candidates = [];
+  // Several line-specific station records can snap to the same graph node.
+  // Keep the best candidate for that node instead of whichever station
+  // feature happened to appear first.  The latter can preserve a distant
+  // same-name platform and later make endpoint completion draw a long spike.
+  const candidateByKey = new Map();
   stationFeatures.forEach((feature) => {
     getStationCandidateGraphNodes(feature, graph, hints, allowedCodes).forEach(
       (candidate) => {
-        if (seen.has(candidate.key)) return;
-        seen.add(candidate.key);
-        candidates.push(candidate);
+        const previous = candidateByKey.get(candidate.key);
+        if (
+          !previous ||
+          candidate.score < previous.score ||
+          (candidate.score === previous.score &&
+            candidate.distance < previous.distance)
+        ) {
+          candidateByKey.set(candidate.key, candidate);
+        }
       },
     );
   });
+  const candidates = [...candidateByKey.values()];
   candidates.sort((a, b) => a.score - b.score || a.distance - b.distance);
   return candidates;
 }
@@ -984,7 +994,16 @@ function getStationCandidateGraphNodes(
   allowedCodes = [...DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES],
 ) {
   const allowedKey = (allowedCodes || []).map(String).sort().join(",");
-  const cacheKey = `${stationCode(stationFeature) || stationName(stationFeature)}|${stationLineName(stationFeature)}|${stationOperator(stationFeature)}|${allowedKey}|home:${hints.requirePreferredInstitution ? 1 : 0}|reqL:${[...(hints.requiredLines || [])].join("/")}|reqO:${[...(hints.requiredOperators || [])].join("/")}|prefL:${[...(hints.preferredLines || [])].join("/")}|prefO:${[...(hints.preferredOperators || [])].join("/")}`;
+  // N02 can contain multiple physical station geometries with the same code,
+  // line and operator (for example the two 白島線 八丁堀 records).  Geometry
+  // must therefore participate in the cache key or one platform can reuse
+  // another platform's graph-node candidates.
+  const stationGeometryKey = JSON.stringify(
+    stationFeature?.geometry?.coordinates ||
+      getFeatureDisplayCoordinate(stationFeature) ||
+      null,
+  );
+  const cacheKey = `${stationCode(stationFeature) || stationName(stationFeature)}|${stationLineName(stationFeature)}|${stationOperator(stationFeature)}|geometry:${stationGeometryKey}|${allowedKey}|home:${hints.requirePreferredInstitution ? 1 : 0}|reqL:${[...(hints.requiredLines || [])].join("/")}|reqO:${[...(hints.requiredOperators || [])].join("/")}|prefL:${[...(hints.preferredLines || [])].join("/")}|prefO:${[...(hints.preferredOperators || [])].join("/")}`;
   if (cacheKey && graph.stationSnapCache.has(cacheKey))
     return graph.stationSnapCache.get(cacheKey);
 
@@ -1322,4 +1341,3 @@ function distanceMeters(a, b) {
     Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
   return 2 * radius * Math.asin(Math.sqrt(x));
 }
-

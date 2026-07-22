@@ -144,7 +144,7 @@ function renderStopsTable(train) {
           <td><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
           <td>
             <select data-stop-field="stop_type" data-stop-index="${index}">
-              ${["origin", "passenger_stop", "pass_through", "operational_stop", "destination"].map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${I18N.t("stoptype." + type)}</option>`).join("")}
+              ${STOP_TYPES.map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${I18N.t("stoptype." + type)}</option>`).join("")}
             </select>
           </td>
           <td>

@@ -127,6 +127,12 @@ function validateTrain(train, index, ids) {
     if (train[key] !== undefined && typeof train[key] !== "string")
       throw new Error(`${prefix}: ${key} must be a string when present.`);
   });
+  // §3.2: ids feed route_id / cache keys / DOM ids, so keep them to the
+  // documented charset instead of accepting arbitrary text.
+  if (!TRAIN_ID_PATTERN.test(train.id))
+    throw new Error(
+      `${prefix}: id must match ${TRAIN_ID_PATTERN.source} (letters, digits, "_" and "-").`,
+    );
   if (ids.has(train.id))
     throw new Error(`${prefix}: duplicate id ${train.id}.`);
   ids.add(train.id);
@@ -154,6 +160,13 @@ function validateTrain(train, index, ids) {
     if (!stop.stop_type)
       throw new Error(
         `${prefix} stop ${stopIndex + 1}: stop_type is required.`,
+      );
+    // §7.2: an unrecognised stop_type silently falls through every
+    // `=== "pass_through"` test and gets treated as a stopping station, so
+    // reject it here rather than mis-rendering it later.
+    if (!STOP_TYPES.includes(stop.stop_type))
+      throw new Error(
+        `${prefix} stop ${stopIndex + 1}: stop_type must be one of ${STOP_TYPES.join(" / ")}.`,
       );
     if (typeof stop.ride_segment !== "boolean") {
       throw new Error(

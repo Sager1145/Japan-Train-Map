@@ -38,48 +38,16 @@ function routeSectionForSegment(train, p) {
   return sections.find((s) => s.from === p.from && s.to === p.to) || null;
 }
 
-function buildTrainSegmentPopup(train, feature) {
-  const p = feature.properties || {};
-  const ridden = p.ride_segment === true;
-  const fromStop = (train.stops || []).find((x) => stopName(x) === p.from);
-  const toStop = (train.stops || []).find((x) => stopName(x) === p.to);
-  // Branch portion may run under a different number; show it for this segment.
-  const section = routeSectionForSegment(train, p);
-  const segNumber = (section && section.number) || train.number || "-";
-  const segName = (section && section.name) || "";
+// The segment number shown for a hovered/clicked route piece: a 併結 / 直通
+// section may run under its own 車號 (jsonspec §6.1b), otherwise the train's.
+function segmentNumberLabel(train, properties) {
+  const section = routeSectionForSegment(train, properties || {});
+  const number = (section && section.number) || train.number || "";
+  const name = (section && section.name) || "";
   const isBranch = Boolean(
     section && section.number && section.number !== train.number,
   );
-  const rows = [
-    ["Train ID", train.id],
-    ["車號", segNumber],
-    ["Type / Company", trainTypeCompanyLabel(train) || "-"],
-  ];
-  if (isBranch)
-    rows.push([
-      "支線車號 / Branch",
-      `${section.number}${segName ? "　" + segName : ""}`,
-    ]);
-  return popupHtml(`${segNumber} ${segName || ""}`, [
-    ...rows,
-    ["Segment", `${p.from || ""} → ${p.to || ""}`],
-    ["Departure", (fromStop && fromStop.departure) || "-"],
-    ["Arrival", (toStop && toStop.arrival) || "-"],
-    ["Ride", ridden ? "Yes" : "No"],
-    ["segment_index", p.segment_index ?? "-"],
-    ["Route ID", p.route_id || "-"],
-    ["Route choice", p.route_choice || "-"],
-    ["Route source", p.source || "matched route"],
-    [
-      "Allowed N02_002",
-      (
-        p.allowed_institution_type_codes ||
-        train.route_policy?.allowed_institution_type_codes ||
-        []
-      ).join(", ") || "-",
-    ],
-    ["Visible", train.visible === false ? "No" : "Yes"],
-  ]);
+  return { number, name, isBranch };
 }
 
 function popupHtml(title, rows) {

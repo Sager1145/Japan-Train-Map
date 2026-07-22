@@ -315,7 +315,12 @@ async function loadSampleManifest() {
   if (!sampleManifestPromise) {
     sampleManifestPromise = (async () => {
       try {
-        const manifest = await fetchJson(`${SAMPLE_DATA_API}/manifest`);
+        // Revalidate the small manifest on every boot. Sample files are
+        // replaced in place on deploy, so accepting a still-fresh HTTP cache
+        // entry here can pin the browser to an older geometry set.
+        const manifest = await fetchJson(`${SAMPLE_DATA_API}/manifest`, {
+          cache: "no-cache",
+        });
         if (
           !manifest ||
           manifest.format !== 1 ||
@@ -352,15 +357,18 @@ function seedRouteCacheFromPart(part) {
   const route = part && part.route;
   if (!route || typeof route.cache_key !== "string" || !route.cache_key) return;
   if (route.unsolvable === true) {
+    runtimeRouteCache.delete(route.cache_key);
     runtimeRouteNegativeCache.add(route.cache_key);
     return;
   }
-  if (
-    Array.isArray(route.features) &&
-    route.features.length &&
-    !runtimeRouteCache.has(route.cache_key)
-  )
+  if (Array.isArray(route.features) && route.features.length) {
+    // Published sample parts are the authoritative output of the current
+    // solver. Always replace a warmed IndexedDB entry: before this overwrite,
+    // an old Hatchobori solve could survive indefinitely under the same key
+    // and hide a corrected part-099.json.
+    runtimeRouteNegativeCache.delete(route.cache_key);
     runtimeRouteCache.set(route.cache_key, route.features);
+  }
 }
 
 // Async train source over the published parts: fetches ONE train per request,
@@ -378,10 +386,10 @@ function makeTrainPartsSource(manifest) {
       pending = (async () => {
         const partPath = `${SAMPLE_DATA_API}/${names[index]}`;
         try {
-          return await fetchJson(partPath);
+          return await fetchJson(partPath, { cache: "no-cache" });
         } catch (err) {
           try {
-            return await fetchJson(partPath); // one retry for transient failures
+            return await fetchJson(partPath, { cache: "no-cache" }); // one retry for transient failures
           } catch (retryErr) {
             console.warn(
               `Train part ${names[index]} failed to load; skipping this train.`,
@@ -637,4 +645,3 @@ function updateDataSourceUi() {
     restoreBtn.disabled = !userStoreAvailable;
   }
 }
-

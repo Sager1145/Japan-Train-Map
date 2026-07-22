@@ -519,13 +519,102 @@ function rebuildGroupRepresentativeGeometry(gi) {
   return representative;
 }
 
+// --- corridor curve memo ---------------------------------------------------
+// smoothCorridorCurve is a PURE function of (input coordinates, fit-curve
+// settings) but is the single most expensive step of a cold record build
+// (~1.7s across ~330 corridors in 全部: a B-spline solve with curvature
+// regularisation + fallback passes per corridor). Both call sites (the corridor
+// chain, and smoothStandaloneCorridorRun) funnel through it, so memoizing here
+// lets any repaint that keeps the route GEOMETRY — style / visibility / ride /
+// date / selection edits, scope switches, returning to 全部 after an edit —
+// reuse the fitted curves instead of re-solving every corridor. Keyed by the
+// fit settings + a coordinate signature. A structuredClone is handed out and
+// the cached entry is never surfaced, so the caller's post-fit mutations (the
+// nearParallel flag, the station-join reassignment of gi.curve) cannot corrupt
+// the cache. Bounded FIFO: stale keys from a geometry / settings change are
+// simply never matched again and age out. Cloning all live curves costs ~50ms,
+// negligible against the ~1.7s solve it replaces.
+const _fitCurveMemo = new Map();
+const FIT_CURVE_MEMO_MAX = 2048;
+// Deep-copy a fitted curve so the cached entry can never be mutated by callers.
+// Not structuredClone: the precompute/test VM sandbox does not expose it, and
+// JSON round-tripping would turn Infinity/NaN radius fields into null. One-level
+// array copy is enough — pts/dirs are [x,y] pairs (sliced), cum is numbers,
+// _sourceLines are read-only source lines (their coord pairs may stay shared).
+function cloneFittedCurve(c) {
+  const o = {};
+  for (const k in c) {
+    const v = c[k];
+    if (Array.isArray(v)) {
+      const a = new Array(v.length);
+      for (let i = 0; i < v.length; i += 1) {
+        const e = v[i];
+        a[i] = Array.isArray(e) ? e.slice() : e;
+      }
+      o[k] = a;
+    } else o[k] = v;
+  }
+  return o;
+}
+function fitCurveSettingsSig() {
+  const s = APPLIED_FIT_CURVE_SETTINGS || {};
+  return (
+    (s.fitCurvePrecision ?? "") +
+    "," +
+    (s.fitCurveMinRadius ?? "") +
+    "," +
+    (s.fitCurveMinDetail ?? "") +
+    "," +
+    (s.fitCurveMaxDeviation ?? "")
+  );
+}
+function fitCurveCoordSig(line) {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < line.length; i += 1) {
+    const p = line[i];
+    h = Math.imul(h ^ ((p[0] * 1e6) | 0), 0x01000193) >>> 0;
+    h = Math.imul(h ^ ((p[1] * 1e6) | 0), 0x01000193) >>> 0;
+  }
+  // Length + exact endpoints + full hash: a collision would need identical
+  // length, endpoints AND hash for genuinely different geometry.
+  const f = line[0];
+  const l = line[line.length - 1];
+  return (
+    line.length +
+    ":" +
+    f[0].toFixed(6) +
+    "," +
+    f[1].toFixed(6) +
+    ":" +
+    l[0].toFixed(6) +
+    "," +
+    l[1].toFixed(6) +
+    ":" +
+    h.toString(16)
+  );
+}
+function smoothCorridorCurve(line) {
+  if (!line || line.length < 2) return null;
+  const key = fitCurveSettingsSig() + "|" + fitCurveCoordSig(line);
+  const cached = _fitCurveMemo.get(key);
+  if (cached) return cloneFittedCurve(cached);
+  const result = smoothCorridorCurveUncached(line);
+  if (result) {
+    if (_fitCurveMemo.size >= FIT_CURVE_MEMO_MAX)
+      _fitCurveMemo.delete(_fitCurveMemo.keys().next().value);
+    _fitCurveMemo.set(key, result); // pristine: callers only ever get clones
+    return cloneFittedCurve(result);
+  }
+  return null;
+}
+
 // Build a genuinely smooth physical-distance fit for the hover fan. The source
 // polyline is only an ANCHOR: controls may leave it by fitCurveMaxDeviation,
 // sub-fitCurveMinDetail features are removed, curvature is regularised toward
 // fitCurveMinRadius, then an open cubic B-spline produces a C2-continuous curve.
 // fitCurvePrecision changes output sampling only — it can never reintroduce a
 // source corner into either the displayed debug curve or the direction field.
-function smoothCorridorCurve(line) {
+function smoothCorridorCurveUncached(line) {
   if (!line || line.length < 2) return null;
   const precision = Math.max(
     0.5,

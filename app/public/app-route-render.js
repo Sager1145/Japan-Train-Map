@@ -21,7 +21,7 @@ function rebuildSelectedRoute() {
   persistAndRender();
   setStatus(
     els.fieldStatus,
-    `Route sections rebuilt. ${train.route_sections.length} segment(s) calculated. Non-true stops/segments are rendered in pale color.`,
+    `Route sections rebuilt. ${train.route_sections.length} segment(s) calculated. Stops/segments outside the ridden range are hidden entirely.`,
     "ok",
   );
 }

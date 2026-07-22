@@ -163,9 +163,9 @@
 | `number`         | string  |  是 | —    | 车次，例如 `踊り子9号`                   |
 | `train_type`     | string  |  否 | `""` | 车辆类型，例如 `特急` / `普通` / `快速` / `新幹線`（见 3.4） |
 | `company`        | string  |  否 | `""` | 车辆（运营）公司；直通车用 `/` 分隔多家公司（见 3.4）  |
-| `origin`         | string  |  是 | —    | 列车运行起点                          |
-| `destination`    | string  |  是 | —    | 列车运行终点                          |
-| `stops`          | array   |  是 | —    | 完整停站/通过站数据，至少 2 项（见第 7 节）       |
+| `origin`         | string  |  是 | —    | 实际乘坐起点（上车站）                     |
+| `destination`    | string  |  是 | —    | 实际乘坐终点（下车站）                     |
+| `stops`          | array   |  是 | —    | 实际乘坐区间内的停站/通过站数据，至少 2 项（见第 7 节） |
 | `date`           | string  |  否 | 见 3.3 | 运行/行程日期 `YYYY-MM-DD`（1.3 新增；缺省按 3.3 自动补全） |
 | `direction`      | string  |  否 | `"down"` | 方向，推荐 `up` / `down` / `unknown` |
 | `visible`        | boolean |  否 | `true` | 是否在地图上显示                        |
@@ -401,7 +401,11 @@ id ASC             # 最终 tiebreaker
 | `number` | string |  否 | 该区间实际运行的车号（当与 train 顶层 `number` 不同时填写） |
 | `name`   | string |  否 | 该区间的列车名（可选）                              |
 
-设置后，地图上**该区间的 popup 与悬浮标签显示此支线车号**（而非列车顶层车号），并额外标注「支線車號 / Branch」。未设置时沿用列车顶层 `number`。导入/导出均保留此二字段（仅在非空时写出）；其余规则与 `line_names` / `operator_names` 一致（不影响寻路，仅用于显示）。
+设置后，地图上**该区间的 popup 显示此支线车号**（而非列车顶层车号），并额外标注「支線車號 / Branch」。未设置时沿用列车顶层 `number`。导入/导出均保留此二字段（仅在非空时写出）；其余规则与 `line_names` / `operator_names` 一致（不影响寻路，仅用于显示）。
+
+> **注意：悬浮标签（hover tooltip）目前不生效**——它只读列车顶层 `number`，不查 `route_sections`，
+> 所以悬停在支线区间上看到的仍是干线车号（如在 こまち 段上看到 はやぶさ95号）。
+> 只有点开 popup 才会显示支线车号。这是已知实现缺口，不是设计意图。
 
 ```json
 "route_sections": [
@@ -440,8 +444,11 @@ stops[2] → stops[3]
 ...
 ```
 
-`route_sections` 不应因为 `ride_segment=false` 而被删除。
-`ride_segment=false` 只影响显示样式，不影响是否保留区间数据。
+`route_sections` 只写 `origin` 到 `destination` 的实际乘坐区间，并与该范围内的相邻
+`stops` 一一对应。列车在上车前或下车后的运行区间不得写入。
+
+在已经限定为实际乘坐区间的数据内部，`route_sections` 不应仅因为某站
+`ride_segment=false` 而被删除；该值只影响显示样式。
 
 ### 6.4 支线分支限定（寻路只走列车真正经过的分支）
 
@@ -467,7 +474,15 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 
 4. **通过站只能来自实际分支**：自动补全通过站（见第 9 节）时，只能采集落在本段 `line_names` 所限定分支上的车站；任何不在该分支几何上的车站一律不得作为通过站写入。已写入的、不属于实际分支的通过站属于数据错误，须删除。
 
-5. **校验**：跨/邻接分歧站的区间若缺 `line_names`，校验应给出 warning（建议补硬约束，实现见 `warnBranchLeak`）；若导出的通过站不在该段 `line_names` 对应的线名集合内，应报 warning 提示疑似错误分支泄漏。
+5. **校验**：跨/邻接分歧站的区间若缺 `line_names`，校验应给出 warning（建议补硬约束，实现见 `warnBranchLeak`）；若声明的通过站不在相邻区间 `line_names` 对应的线名集合内，应报 warning 提示疑似错误分支泄漏。
+
+   > **实现范围（`warnBranchLeak`，顾问性、console-only、永不阻断导入）**：判据是
+   > **端点启发式**——只看 `section.from` / `section.to` 两端解析出的线名是否多于一条。因此
+   > (a) 两端都只在一条线上、但**中途穿过**分歧站的长区间**不会**被检出（上面 早岐 的例子若写成
+   > 一整段就属于此类）；(b) 任何多线换乘站作端点都会触发，哪怕它并非分歧站——即会有误报。
+   > 通过站那一半检查的是 `stops` 里**声明的** `pass_through`，不是求解后计算出的通过站
+   > （后者只取区间端点，本就不会跑到别的分支上）。
+   > 要真正覆盖 (a)，得改成沿求解出的几何扫描沿途分歧站；目前没有这样做。
 
 > 与第 5 节 `preferred_*` 的关系：偏好是**软偏置**（无可行偏好路径时仍可绕行），分歧站限定要求的是**硬约束**，二者不可混用——分支限定只能靠 `route_sections[].line_names` / `operator_names`。
 
@@ -476,7 +491,8 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 ## 7. Stops 规范
 
 
-`stops` 是最重要的数据。导出的 JSON 必须包含完整停站数据。
+`stops` 是最重要的数据。导出的 JSON 必须包含**实际乘坐区间内**的完整停站数据；
+不包含列车在上车前或下车后的站点。
 
 ### 7.1 Stop 字段
 
@@ -495,6 +511,8 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 
 ### 7.2 stop_type 允许值
 
+这是**封闭枚举**：`validateTrain` 会拒绝表外的值（常量 `STOP_TYPES`，编辑器下拉同源）。
+
 | 值                  | 说明    |
 | ------------------ | ----- |
 | `origin`           | 始发站   |
@@ -502,6 +520,9 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 | `passenger_stop`   | 客运停靠站 |
 | `operational_stop` | 运转停靠站 |
 | `pass_through`     | 通过站   |
+
+> 之所以必须封闭：代码里到处是 `stop_type === "pass_through"` 这类判断，未知值会**静默落到
+> 停靠站分支**——既不报错也不提示，只是安静地渲染错。宁可导入时报错。
 
 ### 7.3 Stop 示例
 
@@ -534,7 +555,7 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 "ride_segment": false
 ```
 
-表示该站不处于实际乘坐状态，淡色显示。
+表示该站不处于实际乘坐状态，**完全不绘制**（不是淡色显示，见 §13.4）。
 
 ### 8.2 toggle 规则（停靠站可切换，通过站不可单独切换）
 
@@ -555,28 +576,28 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 
 ### 8.3 区间显示规则
 
-相邻两站之间的 route segment 显示规则：
+相邻两站之间的 route segment 显示规则（两端取的是 §8.2 的**派生值** `effectiveStopRide`，不是 `stop.ride_segment` 原始字段——通过站按其两侧停靠站派生）：
 
 ```text
-两端 station.ride_segment 都为 true
+两端 effectiveStopRide 都为 true
 → 区间使用正常颜色显示
 ```
 
 ```text
-任意一端 station.ride_segment 为 false
-→ 区间使用淡色显示
+任意一端 effectiveStopRide 为 false
+→ 区间完全不绘制（见 §13.4）
 ```
 
 示例：
 
-| from | from.ride_segment | to  | to.ride_segment | 显示   |
-| ---- | ----------------: | --- | --------------: | ---- |
-| 東京   |              true | 品川  |            true | 正常颜色 |
-| 品川   |              true | 横浜  |           false | 淡色   |
-| 横浜   |             false | 小田原 |            true | 淡色   |
-| 小田原  |             false | 熱海  |           false | 淡色   |
+| from | from 派生 ride | to  | to 派生 ride | 显示   |
+| ---- | ----------: | --- | --------: | ---- |
+| 東京   |        true | 品川  |      true | 正常颜色 |
+| 品川   |        true | 横浜  |     false | 完全隐藏 |
+| 横浜   |       false | 小田原 |      true | 完全隐藏 |
+| 小田原  |       false | 熱海  |     false | 完全隐藏 |
 
-### 8.4 route_sections 不按 ride_segment 删除
+### 8.4 实际乘坐区间内的 route_sections 不按 ride_segment 删除
 
 即使某站：
 
@@ -584,7 +605,7 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 "ride_segment": false
 ```
 
-也必须继续保留相邻 `route_sections`。
+也必须继续保留实际乘坐区间内的相邻 `route_sections`。
 
 错误做法：
 
@@ -597,88 +618,56 @@ ride_segment=false
 
 ```text
 ride_segment=false
-→ 保留 route section
-→ 该站 marker 淡色
-→ 与该站相邻的 route segment 淡色
+→ 保留 route section（数据不删）
+→ 该站 marker 不绘制
+→ 与该站相邻的 route segment 不绘制
 ```
 
-### 8.5 指定乘坐区间时必须保留完整停站与通过站
+### 8.5 只写实际乘坐区间
 
-如果某趟特急规定了乘坐区间（即只乘坐整条特急的其中一段），生成的 JSON 仍然必须包含该特急的**全部**停靠站和通过站，不得因为只乘坐一段而删除其余站点。
+每个 train 对象只表示一段连续的实际乘坐区间。`origin` / `destination` 分别是上车站和
+下车站，`stops` 只保留两站之间（含端点）的停靠站、运转停靠站和通过站，
+`route_sections` 只保留这些 stops 之间的相邻区间。
 
-`ride_segment` 是“该站是否处于实际乘坐区间”的标记，**不是**“是否保留该站数据”的标记。整条特急的完整停站序列必须始终完整导出，乘坐与否只通过 `ride_segment` 的 `true` / `false` 体现。
-
-正确做法：
+列车在上车前和下车后继续运行的站点及区间**不得写入**。不得为了记录列车运行全程，
+在 `stops` 中保留乘坐范围外的站点并将其设为 `ride_segment=false`。
 
 ```text
-规定乘坐区间
-→ 保留全部 stops（origin / passenger_stop / operational_stop / pass_through / destination 一个都不删）
-→ 保留全部通过站
-→ 保留全部 route_sections
-→ 乘坐区间内的站点 ride_segment = true
-→ 未乘坐区间两端及其之间的站点 ride_segment = false
+列车实际运行 A → B → C → D → E
+乘客实际乘坐 B → C
+
+正确：stops = [B, C]，route_sections = [B→C]
+错误：stops = [A, B, C, D, E]，再用 ride_segment=false 隐藏 A、D、E
 ```
 
-错误做法：
-
-```text
-规定乘坐区间
-→ 删除未乘坐的停靠站
-→ 删除未乘坐的通过站
-→ 删除未乘坐的 route_sections
-→ stops 里只剩乘坐区间的站点
-```
-
-显示效果：
-
-```text
-乘坐区间内的站点 / 区间   → 正常颜色（ride_segment=true）
-未乘坐区间的站点 / 区间   → 淡色（ride_segment=false）
-```
-
-区间淡色规则仍沿用 8.3：只要相邻两站任意一端 `ride_segment=false`，该 route segment 即淡色显示（见 8.3 表格与第 13 节渲染规则）。
-
-示例：一趟从 `A` 跑到 `E` 的特急，用户只乘坐 `B→C` 一段，导出的 `stops` 仍须包含 `A、B、C、D、E` 以及之间的全部通过站，只是：
-
-```text
-A  ride_segment=false
-B  ride_segment=true
-C  ride_segment=true
-D  ride_segment=false
-E  ride_segment=false
-A↔B / C↔D / D↔E 区间   → 淡色
-B↔C 区间               → 正常颜色
-```
+实际乘坐区间内仍沿用 §8.2 / §8.3 的显示规则；`ride_segment=false` 可用于编辑器中的
+临时隐藏状态，但不能作为携带上车前或下车后运行数据的手段。若同一车次存在两段不连续的
+实际乘坐，必须拆成两个 train 对象。
 
 ---
 
-## 8.6 特急全区间规范（支线列车 / 全区间写入、部分显示）
+## 8.6 特急 / 新干线的实际乘坐区间规范
 
-> 这是「搜索/录入 JSON 信息」时对**特急、新干线**类列车的硬性要求；普通/快速等区间列车可只写实际乘坐段。
+> 特急、新干线、普通、快速等所有列车采用同一规则：只写实际乘坐区间。
 
-### 8.6.1 必须写入列车的「全区间」
+### 8.6.1 乘坐区间就是 train 的数据边界
 
-每一趟特急/新干线在 JSON 中必须按其**实际运行全程**录入：从该次列车的**始发终着站**到**终点终着站**的**全部停车站**，而不是只写乘客实际乘坐的一段。
+每一趟特急/新干线只录入乘客实际从上车站到下车站所经过的站点和区间。无需查询、
+补齐或保存该车次在乘坐范围外的始发站、终着站和停车站。
 
-```text
-列车全区间 = 该车次官方「始发站 → 终着站」的全部停车站（按 停车型态/时刻表）
-乘坐区间   = 乘客实际「上车站 → 下车站」的子区间
-```
+例如：南風20号实际运行高知 → 岡山，乘客只乘高知 → 阿波池田，则 `stops` 只写
+高知…大歩危…阿波池田，末站为 `destination`；琴平及其后的站点和区间不写入。
 
-例如：南風20号 实际运行 高知 → 岡山，乘客只乘 高知 → 阿波池田。
-则 stops 必须写 高知…大歩危…阿波池田…琴平…多度津…宇多津…児島…岡山（全程），
-而不是只写到 阿波池田。
+### 8.6.2 端点与字段
 
-### 8.6.2 只显示实际乘坐区间
-
-- 乘坐区间内的停车站：`ride_segment = true`（正常显示）。
-- 乘坐区间以外（上车前 / 下车后 的全部站点与通过站）：`ride_segment = false`，按 §13.4 **完全隐藏（不绘制）**。
-- 因此地图上仍只看到乘客实际乘坐的一段，但 JSON 已保留该特急的完整运行区间，可随时改动乘坐范围而不必重新查询全程。
-- `origin` / `destination` 顶层字段仍可记为「实际上/下车站」用于行程语义；`direction` 记为该车次的「行き先」终着站（见车号方向约定）。
+- 顶层 `origin` / `destination` 必须分别等于实际上车站 / 下车站。
+- `stops[0]` 为 `origin`，末项为 `destination`，两端均属于实际乘坐范围。
+- `route_sections` 只覆盖实际乘坐范围内相邻 stops 的区间。
+- 实际乘坐范围内的站点通常为 `ride_segment=true`；该字段的交互与显示语义仍见 §8.2～§8.4。
 
 ### 8.6.3 支线列车（併结分割 / 直通改号）
 
-部分特急在全区间内会**分段以不同车号运行**（新干线併结后在某站分割：はやぶさ↔こまち、こまち↔はやぶさ；在来线直通改号：かもめ↔リレーかもめ 等）。此时：
+部分特急在实际乘坐区间内会**分段以不同车号运行**（新干线併结后在某站分割：はやぶさ↔こまち、こまち↔はやぶさ；在来线直通改号：かもめ↔リレーかもめ 等）。此时：
 
 - 在对应区间的 `route_section` 上写 `number`（必要时 `name`）标明该段实际车号（见 §6.1b）。
 - 列车顶层 `number` 可写併结名（如 `はやぶさ95号・こまち95号`）；各支线段用 section 的 `number` 覆盖显示。
@@ -687,9 +676,11 @@ B↔C 区间               → 正常颜色
 
 ### 8.6.4 校验
 
-- 特急/新干线 `stops` 应覆盖该车次全区间（首站=始发终着、末站=终点终着）。
-- 至少一个停车站 `ride_segment=true`（即必须有实际乘坐区间）。
-- 跨/邻接分歧站的区间须满足 §6.4（缺 `line_names` 给 warning；通过站泄漏到错误分支报 warning）。
+> 本节多数是**录入约定**，不是机器校验。下面逐条标注实现状态。
+
+- **（录入约定，未校验）** 特急/新干线 `stops` 应仅覆盖实际乘坐区间（首站=上车站、末站=下车站）。当前没有检查会向官方时刻表核对这一点。
+- **（录入约定，未校验）** 至少一个停车站 `ride_segment=true`。`validateTrain` 只检查 `ride_segment` 是 boolean；全 `false` 的列车能通过校验、能导出，只是在地图上什么都不显示。
+- **（已实现，console warning）** 跨/邻接分歧站的区间须满足 §6.4：`warnBranchLeak` 会就「缺 `line_names`」与「通过站不在相邻区间线名集合内」各发一条 `console.warn`。它是**顾问性**的，包在 `try/catch` 里，永不阻断导入。
 - 其余规则沿用 §7 / §8 / §13。
 
 ---
@@ -751,6 +742,12 @@ stop_type = pass_through
 
 ### 9.3 通过站 warning 格式
 
+> ⚠️ **未实现（目标形态）**：当前实现里**不存在**这个结构化 warning，也没有 report 数组。
+> 通过站解析不到时是**静默跳过**（`getStopFeature` 返回 `null` 即 `return`），控制台不会有任何
+> 记录。最接近的是求解器的 `console.warn("Route section endpoint station not found; segment skipped.")`，
+> 那是**按区间**报的，不带 `train_id` / `station_name` / stop 类型。
+> 下面的结构是希望达到的目标，不是现状；§9.2 的「在 report / console 中记录 warning」同样尚未满足。
+
 建议 warning 结构：
 
 ```json
@@ -765,7 +762,12 @@ stop_type = pass_through
 
 ### 9.4 停靠站与通过站的错误等级区别
 
-| stop_type          | 找不到 N02 station 时     |
+> ⚠️ **未实现（目标形态）**：当前实现**不按 stop_type 区分等级**。任何解析不到的 stop——
+> 包括 `origin` / `destination` / `passenger_stop`——都走同一条静默跳过的分支
+> （`if (!stopFeature) return;`），既不报 error 也不发 warning；`validateTrain` 根本不做站点解析，
+> 所以没有任何代码路径能抛出下表的 error。下表是希望达到的目标，不是现状。
+
+| stop_type          | 找不到 N02 station 时（目标）  |
 | ------------------ | --------------------- |
 | `origin`           | error                 |
 | `destination`      | error                 |
@@ -868,15 +870,19 @@ null
 → 标准化每趟 train（补默认值、按 3.3 解析 date）
 → 追加到当前 trainStore.trains
 → 如果 id 重复，自动改为唯一 id（如 odr_001-2）
-→ 自动保存到服务器 train-store.json（PUT /api/train-store，去抖）
-→ 自动选中最后导入的列车
+→ 自动保存到服务器 train-store.json（PUT /api/train-store，去抖 450ms）
 ```
 
-> 持久化说明：本系统以**服务器端 `data/train-store.json`** 作为唯一事实来源
+> **选中行为**：追加导入**不改变当前选中的列车**（`selectedTrainId` 原样保留）。
+> 只有「替换」类载入会重设选中，且选中的是**第一趟**（`appendedIds[0]`），不是最后一趟。
+
+> 持久化说明：接有后端时，本系统以**服务器端 `data/train-store.json`** 作为唯一事实来源
 > （`GET/PUT/DELETE /api/train-store`），编辑会去抖自动保存、启动时自动载入，
-> 取代了早期的浏览器 localStorage 备份。仅有纯 UI 状态（当前选中日期 `selectedDate`、
-> 手动新增的空日期 `manualDates`、地图跟随/聚焦开关）仍存放在 localStorage，
-> **不**进入 canonical store。
+> 取代了早期的浏览器 localStorage 备份。
+> **静态部署（`HAS_BACKEND` 为假，如 GitHub Pages）没有服务器可写**，此时事实来源改为
+> 浏览器 **IndexedDB**（库 `n02-user-train-store-db`，按日期分块），仍**不是** localStorage。
+> localStorage 只放纯 UI 状态：当前选中日期 `selectedDate`、手动新增的空日期 `manualDates`、
+> 地图跟随/聚焦开关，此外还有显示调节参数、侧栏显隐与界面语言——都**不**进入 canonical store。
 
 ### 11.3 导入后可编辑
 
@@ -905,9 +911,10 @@ null
 }
 ```
 
-### 12.2 每趟列车必须导出完整 stops
+### 12.2 每趟列车必须导出实际乘坐区间及完整 stop 字段
 
-不得导出精简 stops。
+`stops` 和 `route_sections` 只覆盖实际乘坐区间；不得附带上车前或下车后的列车运行数据。
+实际乘坐区间内的 stop 不得省略字段。
 
 必须保留：
 
@@ -920,7 +927,8 @@ stop_type
 ride_segment
 ```
 
-即使某趟特急只乘坐其中一段，也必须导出该特急的全部停靠站与通过站（含 `ride_segment=false` 的站点），不得只导出乘坐区间内的站点。详见 8.5。
+“完整 stop”指每个已写入站点都具有上述 6 个字段，不是指保存该列车的完整运行全程。
+特急、新干线也只导出实际乘坐区间内的停靠站与通过站，详见 §8.5～§8.6。
 
 ### 12.3 不允许导出 UI 临时字段
 
@@ -973,25 +981,30 @@ n02_station_code
 
 ### 13.2 非乘坐站点
 
-`ride_segment=false`：
+`ride_segment=false`（派生值，见 §8.2）：
 
 ```text
-同色淡显
-低 opacity
-仍然可点击
-仍然显示 tooltip / popup
+不绘制 marker
+不可点击、不参与 hover 命中
+无 tooltip / popup
 ```
+
+> 实现上这些 marker 在建记录阶段就被丢弃（`effectiveStopRide` 为 false 即 `return`），
+> 而不是画出来再调低透明度，所以它们在地图上不存在，不只是"看不清"。详见 §13.4。
 
 ### 13.3 正常区间
 
 相邻两端 `ride_segment=true`：
 
 ```text
-color = train.style.color
-weight = DEFAULT_TRAIN_WEIGHT × DISPLAY.routeWidthScale（全局线宽，见 §4）
-opacity = 0.92
-dashArray = null
+color    = train.style.color
+weight   = DEFAULT_TRAIN_WEIGHT × DISPLAY.routeWidthScale（全局线宽，见 §4）
+opacity  = DISPLAY.riddenOpacity（全局显示设置，默认 1；聚焦态强制 1）
+dashArray = 无（路线图层不使用虚线；虚线只出现在调试用的拟合曲线 overlay）
 ```
+
+> `opacity` **不是**固定常数：它由「顯示調節 → 已乘區間透明度」（`DISPLAY.riddenOpacity`，
+> 0–1 滑杆，默认 `1`）控制，与线宽一样属于全局显示设置、不写进 JSON。
 
 ### 13.4 未乘坐区间 / 站点：完全隐藏
 
@@ -1037,7 +1050,7 @@ from station point → to station point 直接连线
   "type": "Feature",
   "properties": {
     "train_id": "odr_001",
-    "route_id": "odr_001-primary",
+    "route_id": "odr_001-runtime-primary",
     "is_primary": true,
     "segment_index": 0,
     "from": "東京",
@@ -1051,6 +1064,18 @@ from station point → to station point 直接连线
   }
 }
 ```
+
+`route_id` 的实际形态是 `` `${train.id}-runtime-primary` ``（求解器与图层共用同一模板）。
+
+> **上表只是识别用的最小子集，不是完整字段表。** 求解结果还会附带十余个诊断 / 复用字段，
+> 例如 `route_choice`、`geometry_role`、`source`、`solve_mode`、`route_template_key`、
+> `allowed_institution_type_codes`、`required_line_names` / `required_operator_names`、
+> `preferred_line_names` / `preferred_operator_names`、`used_institution_type_codes`、
+> `snap_distance_m`、`path_coordinate_count` 等，渲染时还会补一个 `ride_segment`。
+> 其中至少两个是**有功能的**、不可当作纯装饰删除：`geometry_role` 决定 MultiLineString
+> 是否被接受，`route_template_key` 是路线模板缓存的回查键。
+> 由于 `matched_routes` 属于构建结果而非 canonical JSON（见 §14 开头与数据源部分 13.3），
+> 该字段集可随实现调整，消费方应按名取用、忽略未知字段。
 
 ### 14.2 segment_index 对应关系
 
@@ -1069,14 +1094,17 @@ fromStop = stops[segment_index]
 toStop = stops[segment_index + 1]
 ```
 
+读取的是 §8.2 的派生值 `effectiveStopRide(stops, i)`，**不是** `stop.ride_segment` 原始字段。
+对停靠站两者相同；对通过站派生值来自其两侧停靠站，所以必须走派生函数：
+
 ```text
-fromStop.ride_segment && toStop.ride_segment
+effectiveStopRide(segment_index) && effectiveStopRide(segment_index + 1)
 → 正常颜色
 ```
 
 ```text
-!(fromStop.ride_segment && toStop.ride_segment)
-→ 淡色
+!(effectiveStopRide(segment_index) && effectiveStopRide(segment_index + 1))
+→ 完全不绘制（见 §13.4）
 ```
 
 ---
@@ -1085,7 +1113,7 @@ fromStop.ride_segment && toStop.ride_segment
 
 ### 15.1 Store 校验
 
-必须满足：
+下表描述**前端**校验器（`validateTrainStore`），即导入 / 导出路径。必须满足：
 
 ```text
 顶层是对象（非数组）
@@ -1098,12 +1126,19 @@ trains[*].id 不重复
 > 说明：导入时要求 `trains.length >= 1`（空 store 无可导入内容会报错）；但服务器保存 /
 > 导出允许空 `trains`（例如「全部删除」后保存的就是空 store）。
 
+> **服务器端校验明显更宽松**：`PUT /api/train-store` 的 `coerceStore` 只检查三件事——
+> 顶层是非数组对象、`schema_version` 在受理列表内、`trains` 是数组。它**不**拒绝多余顶层键，
+> **不**查 id 重复，也**不**逐趟跑 `validateTrain`。此外 `POST /api/agent/import` 会把列车
+> 直接写进 store，完全不做每趟校验。因此「store 一定合规」这个不变量由**前端**保证，
+> 绕过前端直接写 API 的调用方需自行负责。
+
 ### 15.2 Train 校验
 
 每趟 train 必须满足（`validateTrain`）：
 
 ```text
 id / number / origin / destination  都是非空字符串
+id 必须匹配 ^[a-zA-Z0-9_-]+$（见 3.2）
 id 在 store 内唯一（不得重复）
 train_type / company 若出现：必须是字符串（可为空串）
 stops 是 array 且 length >= 2
@@ -1134,7 +1169,7 @@ route_policy.institution_filter_mode              若出现须为 "soft" 或 "ha
 
 ```text
 name 非空
-stop_type 非空
+stop_type 非空，且必须是 7.2 五个允许值之一
 ride_segment 是 boolean
 arrival 是字符串或 null
 departure 是字符串或 null
@@ -1157,6 +1192,8 @@ stop_type=pass_through 且 N02 匹配失败
 origin / destination / passenger_stop 匹配失败
 → error
 ```
+
+> ⚠️ 同 §9.4：等级区分尚未实现，目前所有类型都是静默跳过。
 
 ---
 
@@ -1259,13 +1296,13 @@ origin / destination / passenger_stop 匹配失败
 ```text
 品川 → 横浜
 横浜 ride_segment=false
-→ 淡色
+→ 完全隐藏（该段与横浜 marker 都不绘制）
 ```
 
 ```text
 横浜 → 熱海
 横浜 ride_segment=false
-→ 淡色
+→ 完全隐藏
 ```
 
 如果 `横浜` 作为 `pass_through` 无法在 N02 站点数据中找到：
@@ -1283,19 +1320,21 @@ origin / destination / passenger_stop 匹配失败
 
 1. 导出顶层永远是 `{ "schema_version": "1.3", "trains": [...] }`；导入另宽松接受裸数组与单列车对象（见 1.2）。
 2. 导入时 append，不覆盖现有 trains；持久化到服务器 `train-store.json`（非 localStorage）。
-3. 导出时必须包含完整 stops。
+3. 导出时只包含实际乘坐区间；区间内每个 stop 必须包含完整字段。
 4. 每个 stop 必须包含 `ride_segment`。
-5. 每一站的 `ride_segment` 都可 toggle。
-6. `ride_segment=false` 的站点必须淡色显示。
-7. 与 `ride_segment=false` 站点相邻的区间必须淡色显示。
-8. `ride_segment=false` 不得删除 `route_sections`。
-8a. 规定乘坐区间时必须保留该特急的全部停靠站与通过站，仅把未乘坐区间的站点 `ride_segment` 置为 `false`，不得删除任何站点。
+5. **停靠站**的 `ride_segment` 都可 toggle（含终点站）；**通过站不可单独 toggle**，其值由两侧停靠站派生（见 §8.2）。
+6. `ride_segment=false` 的站点必须**完全不绘制**（不是淡色，见 §13.4）。
+7. 与 `ride_segment=false` 站点相邻的区间必须**完全不绘制**。
+8. 在已经限定的实际乘坐区间内，`ride_segment=false` 不得单独造成相邻 `route_sections` 缺失。
+8a. 所有列车（含特急、新干线）只写实际上车站到下车站之间的停靠站、通过站与 `route_sections`；不得用 `ride_segment=false` 携带乘坐范围外的运行数据。
 9. 找不到通过站时跳过，通过站缺失不得导致导入失败。
 10. 找不到 origin / destination / passenger_stop 时应报错。
 11. 禁止使用站点直线 fallback 伪装铁路线。
 12. 每趟列车只允许一条 primary route。
 13. matched route 应按相邻停站拆成 segment features。
-14. JR-only 匹配必须只允许 `N02_002=["1","2"]` 或 `["2"]`。
+14. JR-only 匹配靠 `allowed_institution_type_codes = ["1","2"]`（或 `["2"]`）表达。
+    `route_policy.jr_only` 只是**顾问性标记**：它被校验、被导出，但求解器不读它，
+    单独把它置 `true` 不会改变任何寻路结果（见 §5.1 / §5.4）。
 15. 寻路只走列车真正经过的支线分支：分歧站处必须用 `route_sections[].line_names` 硬约束锁定实际分支，绝不自动纳入该线在分歧站上挂着的其它分支；折返车次须切分求解；通过站只能来自实际分支（见 §6.4）。
 
 ---
@@ -1453,7 +1492,7 @@ N02-25_GML/
     N02-25_Station.shx
 ```
 
-本系统推荐优先读取：
+本系统推荐优先读取（**指重建数据时**；日常运行读的是预生成的 `app/data/*.json`，见 §18）：
 
 ```text
 N02-25_GML/UTF-8/N02-25_RailroadSection.geojson
@@ -1613,29 +1652,29 @@ Station 不是 Point。
 
 因为 N02 Station 是线，不是点，所以前端或构建器必须生成显示点。
 
-推荐处理规则：
+**实际处理规则**（`app/data/stations.json` 的 `display_point` 即按此预生成）：
 
 ```text
 Station LineString
-→ 取线段 normalized midpoint
+→ 取所有顶点的算术平均（顶点重心 / centroid）
 → 作为 display_point
 ```
 
-如果未来遇到 MultiLineString，推荐规则：
+> 这里是**顶点重心**，不是「按길度取中点」。两者只在两点线上等价——当前 10,234 个 station
+> 里有 7,909 个恰好只有两个顶点，所以两种算法看起来一样；余下 2,303 个多顶点 station 的
+> `display_point` 全部符合顶点重心、不符合等长中点。全 10,234/10,234 个已实测确认为顶点重心。
+
+前端取显示点的顺序（`getFeatureDisplayCoordinate`）：
 
 ```text
-Station MultiLineString
-→ 选择最长 LineString
-→ 取最长线的 normalized midpoint
-→ 作为 display_point
+1. properties.display_point 存在   → 直接用（正常路径，预生成）
+2. geometry 是 Point               → 直接用其坐标
+3. 其余                            → 展平几何后取【第一个】坐标（兜底）
 ```
 
-如果遇到 Point，视为兼容情况：
-
-```text
-Station Point
-→ 直接作为 display_point
-```
+> **MultiLineString 没有「取最长线」逻辑**：兜底分支只是把各段展平后取第一个坐标。
+> 由于 N02-25 的 station 全是 LineString 且都已预生成 `display_point`，这条兜底目前走不到；
+> 若将来真出现 MultiLineString，取最长线的中点会更稳，但**现在并未这样实现**。
 
 输出给前端的 station display feature 可以使用：
 
@@ -2013,7 +2052,7 @@ computed pass-through geometry
 
 N02 数据只提供汉字站名（`N02_005`），**不含任何假名、罗马字或中文译名**（见第 4 / 10 节）。因此站名的全部表记既不写进列车 JSON，也不硬编码在前端字典里，而是集中放在一张**按站 ID 索引的对照表** `app/data/station-readings.json`，通过 `GET /api/station-readings` 提供。**本表是站名的唯一权威来源**：一条记录同时给出汉字原名、平假名、片假名、罗马字、繁体中文、简体中文六种表记。
 
-**为什么按站 ID 而不是站名**：N02 里存在大量同名不同站（当前在用车站中就有 54 个站名对应多个 `N02_005c`），且同名站偶有不同读音；以 `N02_005c`（駅コード，见第 11 节）为主键可精确区分，站名仅作兜底。主键天生免疫「同一车站多公司 / 多线路」——那种情况本就是多个不同的 `N02_005c`，各自独立、读音一致，不会冲突。
+**为什么按站 ID 而不是站名**：N02 里存在大量同名不同站（当前表内就有 63 个站名对应多个 `N02_005c`），且同名站偶有不同读音；以 `N02_005c`（駅コード，见第 11 节）为主键可精确区分，站名仅作兜底。主键天生免疫「同一车站多公司 / 多线路」——那种情况本就是多个不同的 `N02_005c`，各自独立、读音一致，不会冲突。
 
 #### 文件结构
 
@@ -2047,13 +2086,23 @@ N02 数据只提供汉字站名（`N02_005`），**不含任何假名、罗马�
 NFKC 规整 → 去首尾空白 → ヶ→ケ → ヵ→カ
 ```
 
-#### 覆盖范围（当前 N02-25 + 当前 store）
+#### 覆盖范围（当前 N02-25 + 当前 store，实测）
 
 ```text
-byCode：793 条（覆盖当前所有列车实际停靠 / 经过的 N02_005c）
-byName：774 条（同名归一化兜底）
-缺失读音：0
+byCode：812 条
+byName：787 条（同名归一化兜底）
 ```
+
+> ⚠️ **对照表当前并未覆盖全部在用车站。** 实测：store 里出现 1,019 个不同的 `n02_station_code`，
+> 其中 **217 个没有 `byCode` 记录**，**206 个连 `byName` 兜底也没有**（例如 `004638 松江`、
+> `004759 米子`、`000458 函館駅前`，以及山陰 / 伯備 / 松浦 各线与広島電鉄的大批车站）。
+> 另有 `byName["いわき"]` 的 `kana` 为 `null`、`katakana` 为空串。
+> 未命中的站按 §13.4 查表顺序第 4 步**原样显示汉字**——不会报错、不会崩，
+> 但 zh / en 界面上这些站没有注音或译名。
+>
+> 补齐这批读音**必须逐站核对权威资料**：其中大量是难读站
+> （美袋=みなぎ、温泉津=ゆのつ、敬川=うやがわ、下府=しもこう、日原=にちはら 等），
+> 凭印象填写极易出错，而本表是站名的**唯一权威来源**，错值会直接显示给用户。
 
 对照表只需覆盖**在用**车站；新增列车若引入新站，需为其站码补一条 `byCode`（拿不到码时至少补 `byName`）。
 
@@ -2270,14 +2319,18 @@ HTML 内嵌全量 N02 数据
 
 OSM 只作为底图，不参与铁路数据计算。
 
-### 16.1 在线 OSM 模式
+### 16.1 在线底图模式
 
-在线模式可以使用：
+当前实现**不使用** OSM 官方栅格瓦片（`https://tile.openstreetmap.org/{z}/{x}/{y}.png`）。
+实际用的是 **OpenFreeMap 的矢量瓦片**，配一份随仓库携带的 positron 样式：
 
 ```text
-https://tile.openstreetmap.org/{z}/{x}/{y}.png
+样式：./basemap/positron.json（light / dark 共用同一份）
+瓦片：https://tiles.openfreemap.org/planet（矢量，非栅格）
+署名：© OpenStreetMap contributors｜OpenFreeMap
 ```
 
+dark 主题不是另一套样式，而是把 positron 的颜色字面量按表重着色而来（保证标注层级一致）。
 此模式要求联网，并且只允许正常交互式浏览。
 
 ### 16.2 禁止批量下载
@@ -2335,6 +2388,14 @@ Map data © OpenStreetMap contributors
 ---
 
 ## 18. 数据源处理流程
+
+> ⚠️ **本节描述的是原始建库流程，仓库内已无对应脚本。** 步骤 1–9（读 zip / 读 GeoJSON /
+> 建 station index / 建 rail graph）当年产出的是**已提交的预生成产物**
+> `app/data/rail-sections.json` 与 `app/data/stations.json`（各自带 `source` 署名字段），
+> 服务端直接静态提供；没有任何脚本再去读 `N02-25_GML.zip` 或 `.geojson` / `.shp`。
+> 步骤 10 起（读列车 JSON → 过滤 edge → 求解 → 生成 matched_routes → 计算通过站）
+> 则是**运行时在浏览器里**做的，不是构建期。
+> 要从新一年度的 N02 重建数据，需要重新实现步骤 1–9。
 
 推荐完整处理流程：
 
@@ -2516,7 +2577,7 @@ route_policy
 前端负责：
 
 ```text
-显示 OSM / 无底图 / 本地底图
+显示在线底图 / 无底图（只有这两档；没有"本地底图"选项，见 16.3）
 显示 N02 overlay
 显示列车列表
 编辑 JSON
@@ -2530,6 +2591,11 @@ route_policy
 ---
 
 ## 21. 推荐在 HTML 中内嵌的数据源元信息
+
+> ⚠️ **尚未实现**：仓库里搜不到 `n02_dataset`（或 `era_year` / `reference_date` /
+> `railroad_section_feature_count`）的任何出现，`index.html`、前端 JS 与静态站点构建脚本
+> 都不产出这个块。当前的数据源信息以散落形式存在：`data/*.json` 里的 `source` 字段、
+> 界面与 README 的署名文案（见 §17）。下面是推荐形态，不是现状。
 
 单 HTML 中应保留以下 metadata，便于后续追踪：
 

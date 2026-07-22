@@ -252,14 +252,24 @@ function nearParallelSegmentSeparation(a0, a1, b0, b1, maxMeters) {
   return median <= maxMeters && maximum <= maxMeters * 1.3 ? median : null;
 }
 
-// Shared vertex canonicaliser, rebuilt per overlap pass (refreshRouteVertexSnap
-// from buildDeckOverlapMap). `_routeVertexSnap(coord)` returns the canonical
-// representative [lon,lat] for coord's ~OVERLAP_SNAP_METERS neighbourhood; the
-// first vertex seen in a neighbourhood becomes its representative (deterministic
-// for a given item order). The version counter invalidates getRouteLinePairs'
-// per-feature segKey cache when the snap map is rebuilt.
+// Shared vertex canonicaliser, rebuilt (via ensureRouteVertexSnap) only when the
+// route GEOMETRY set actually changes. `_routeVertexSnap(coord)` returns the
+// canonical representative [lon,lat] for coord's ~OVERLAP_SNAP_METERS
+// neighbourhood; the first vertex seen in a neighbourhood becomes its
+// representative (deterministic for a given item order). The version counter
+// invalidates getRouteLinePairs' per-geometry segKey cache when the snap map is
+// rebuilt.
 let _routeVertexSnap = null;
 let _routeVertexSnapVer = 0;
+// Geometry signature of the item set the current snap was built from. A date
+// scope / 全部 / visibility / style / ride-flag / selection change all keep the
+// same route COORDINATES, so their signature is unchanged and the snap (plus
+// every getRouteLinePairs segKey it stamped) is reused instead of spending
+// ~0.5s re-snapping 160k vertices on each cold repaint. Coincident N02 track
+// snaps to the same representative whether or not other routes are present, so
+// reusing one snap across scopes yields corridor membership identical to a
+// per-scope snap (verified against the per-scope build across every date).
+let _routeVertexSnapSig = null;
 
 function refreshRouteVertexSnap(items, tolMeters) {
   _routeVertexSnapVer += 1;
@@ -315,6 +325,41 @@ function refreshRouteVertexSnap(items, tolMeters) {
   _routeVertexSnap = canon;
 }
 
+// Rebuild the vertex snap only when the item set's route geometry actually
+// changed. The signature is the per-train solve cacheKey (route sections +
+// policy + solver version — i.e. exactly what determines the coordinates), so it
+// is invariant under the far more frequent scope / visibility / style / ride /
+// selection changes, letting those reuse the existing snap and its stamped
+// segKeys. Rebuilds (and only then bumps _routeVertexSnapVer) when a train is
+// re-solved, imported, or added/removed. buildDeckOverlapMap calls this in place
+// of refreshRouteVertexSnap.
+function routeVertexSnapSignature(items, tolMeters) {
+  const seen = new Set();
+  const tokens = [];
+  for (const it of items) {
+    const train = it.train;
+    const id = train && train.id;
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const ctx =
+      typeof buildTrainRouteSolveContext === "function"
+        ? buildTrainRouteSolveContext(train)
+        : null;
+    tokens.push(id + "@" + (ctx ? ctx.cacheKey : "fallback"));
+  }
+  // Order-independent: two scopes with the same trains must share a signature
+  // even when tier ordering visits them in a different order.
+  tokens.sort();
+  return tolMeters + "::" + tokens.join("|");
+}
+
+function ensureRouteVertexSnap(items, tolMeters) {
+  const sig = routeVertexSnapSignature(items, tolMeters);
+  if (sig === _routeVertexSnapSig) return;
+  refreshRouteVertexSnap(items, tolMeters);
+  _routeVertexSnapSig = sig;
+}
+
 // Corridor-node identity key for a coordinate, snapped to the shared
 // representative so it matches the node keys embedded in segKeys. Use this
 // (not raw coordKey) anywhere a coordinate is compared ACROSS trains as an
@@ -338,12 +383,21 @@ function overlapNodeKey(coord) {
 // identically across trains — while drawing uses `orig`/keepIdx. This way
 // neither per-feature simplification NOR sub-metre solve jitter can fragment an
 // overlap corridor (the old causes of parallel lanes breaking into pieces).
+// Keyed by the GEOMETRY object, not the feature wrapper: the render pipeline
+// rebuilds a fresh feature object for each train on every repaint but SHARES the
+// underlying geometry (the deduped route template — see dedupedRouteTemplate),
+// so keying on geometry lets the snapped segKeys / Douglas-Peucker indices
+// survive across repaints and scope switches. segKeys/keepIdx are a pure
+// function of (geometry, snap), so two features sharing one geometry share one
+// entry correctly.
 const _routeLinePairCache = new WeakMap();
 function getRouteLinePairs(feature) {
-  let cached = _routeLinePairCache.get(feature);
+  const geometry = feature && feature.geometry;
+  if (!geometry) return [];
+  let cached = _routeLinePairCache.get(geometry);
   if (cached && cached._snapVer === _routeVertexSnapVer) return cached;
   const snap = _routeVertexSnap;
-  cached = iterateGeometryLines(feature.geometry).map((orig) => {
+  cached = iterateGeometryLines(geometry).map((orig) => {
     const segKeys = new Array(Math.max(0, orig.length - 1));
     // Snap each vertex once: consecutive segments share an endpoint, so mapping
     // the whole line up front halves the canon() calls versus snapping both a
@@ -376,6 +430,6 @@ function getRouteLinePairs(feature) {
     };
   });
   cached._snapVer = _routeVertexSnapVer;
-  _routeLinePairCache.set(feature, cached);
+  _routeLinePairCache.set(geometry, cached);
   return cached;
 }

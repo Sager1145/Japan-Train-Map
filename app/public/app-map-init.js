@@ -564,15 +564,13 @@ function interactiveTrainFromClick(info) {
   return { train, feature, selectsNow: trainDate === selectedDate };
 }
 
-// Route click -> select train + open the segment popup at the clicked spot.
+// Route click -> select the train. Deliberately NO popup: the old segment
+// popup dumped ~12 rows of solver diagnostics (route_id, route_choice, source,
+// allowed N02_002, segment_index …) into a panel big enough to cover the map
+// and the controls. The hover tooltip already names the train — including the
+// branch number on 併結 / 直通 sections — and the editor shows the rest.
 function handleDeckRouteClick(info) {
   const hit = interactiveTrainFromClick(info);
   if (!hit) return;
   pickTrain(hit.train.id);
-  if (hit.selectsNow && info.coordinate && map) {
-    openClickPopup(
-      info.coordinate,
-      buildTrainSegmentPopup(hit.train, hit.feature),
-    );
-  }
 }

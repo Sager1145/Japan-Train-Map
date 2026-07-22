@@ -15,12 +15,14 @@
 // read left→right / top→bottom in chronological order, and a train keeps the
 // same lane along the whole shared stretch.
 function buildDeckOverlapMap(items) {
-  // Rebuild the shared vertex canonicaliser FIRST, then bump the version so the
-  // segKeys getRouteLinePairs hands back below (and to the record builder) are
-  // snapped against this exact representative set. Coincident N02 track now
-  // keys identically across trains, so a shared corridor no longer fragments
-  // into single-train slivers.
-  refreshRouteVertexSnap(items, OVERLAP_SNAP_METERS);
+  // Ensure the shared vertex canonicaliser is current FIRST, so the segKeys
+  // getRouteLinePairs hands back below (and to the record builder) are snapped
+  // against the shared representative set. Coincident N02 track keys identically
+  // across trains, so a shared corridor no longer fragments into single-train
+  // slivers. ensureRouteVertexSnap only rebuilds (and bumps the version) when the
+  // route geometry set changed — scope / visibility / style / ride toggles reuse
+  // the existing snap and its stamped segKeys instead of re-snapping every pass.
+  ensureRouteVertexSnap(items, OVERLAP_SNAP_METERS);
   const uniqueTrains = [];
   const seenIds = new Set();
   items.forEach((it) => {

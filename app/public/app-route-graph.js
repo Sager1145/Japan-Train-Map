@@ -100,7 +100,7 @@ function buildTrainRouteSolveContext(train) {
   ]
     .sort()
     .join("|");
-  const cacheKey = `${allowedCodes.join(",")}|${policyKey}|${templateKey}`;
+  const cacheKey = `solver:${ROUTE_SOLVER_CACHE_VERSION}|${allowedCodes.join(",")}|${policyKey}|${templateKey}`;
   return { routeSections, templateKey, allowedCodes, cacheKey };
 }
 
@@ -109,6 +109,28 @@ function buildTrainRouteSolveContext(train) {
 // a known-unsolvable (negative-cached) train. Returns { done:true, result } when
 // the caller should return immediately, otherwise the fields the section solve
 // needs. Side-effect-free apart from the "Generating…" status line.
+// Deduping the cached template geometry is a pure function of that immutable
+// array (segment coincidence, not train identity), yet the cache-HIT path below
+// re-ran it for every train on every render — ~230ms across the full set each
+// cold repaint, the single largest chunk of a scope switch. Memoize it per
+// template array (WeakMap → auto-drops when a re-solve replaces the array), so a
+// hit only pays the cheap per-train clone. cloneRouteFeaturesForTrain rewrites
+// properties but SHARES each feature's geometry object, so the returned features
+// also carry STABLE geometry across renders — which lets getRouteLinePairs cache
+// its snapped segKeys by geometry instead of recomputing them every repaint.
+// Deduping the template first is behaviour-identical to deduping the clone: the
+// clone never touches coordinates, and dedupe's only extra property
+// (geometry_role) does not overlap the clone's (train_id/route_id/source).
+const _dedupedTemplateCache = new WeakMap();
+function dedupedRouteTemplate(cached) {
+  let deduped = _dedupedTemplateCache.get(cached);
+  if (!deduped) {
+    deduped = dedupeSameTrainRouteFeatures(cached);
+    _dedupedTemplateCache.set(cached, deduped);
+  }
+  return deduped;
+}
+
 function prepareTrainRouteSolve(train) {
   const context = buildTrainRouteSolveContext(train);
   if (!context) return { done: true, result: [] };
@@ -117,9 +139,7 @@ function prepareTrainRouteSolve(train) {
     const cached = runtimeRouteCache.get(cacheKey);
     return {
       done: true,
-      result: dedupeSameTrainRouteFeatures(
-        cloneRouteFeaturesForTrain(cached, train),
-      ),
+      result: cloneRouteFeaturesForTrain(dedupedRouteTemplate(cached), train),
     };
   }
 
@@ -907,4 +927,3 @@ function nearbyGraphNodes(coord, graph, radiusDeg = 0.0015, limit = 30) {
   found.sort((a, b) => a.distance - b.distance);
   return found.slice(0, limit);
 }
-

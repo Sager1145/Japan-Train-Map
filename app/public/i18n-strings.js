@@ -88,8 +88,8 @@
     // JSON import / local data
     "sec.import": { zh: "JSON 匯入／本地資料", en: "JSON Import / Local Data" },
     "ph.importJson": {
-      zh: '貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件',
-      en: 'Paste a full store: {"schema_version":"1.2","trains":[...]}, or a train array or a single train object',
+      zh: '貼上完整 store：{"schema_version":"1.3","trains":[...]}，也可貼上列車陣列或單一列車物件',
+      en: 'Paste a full store: {"schema_version":"1.3","trains":[...]}, or a train array or a single train object',
     },
     "btn.openLocal": { zh: "打開本地 JSON", en: "Open Local JSON" },
     "btn.saveLocal": { zh: "保存／另存 JSON", en: "Save / Save As JSON" },
@@ -199,6 +199,7 @@
     "stats.overallTitle": { zh: "全部統計", en: "All-Time Total" },
     "stats.coverageTitle": { zh: "路網覆蓋率", en: "Network Coverage" },
     "stats.actualTitle": { zh: "實際乘坐量", en: "Actual Rides" },
+    "stats.byLine": { zh: "分線明細", en: "By line" },
     "stat.time": { zh: "乘車時間", en: "Ride Time" },
     "stat.ltdexp": { zh: "有料特急", en: "Paid Ltd. Express" },
     "stat.othertrains": { zh: "其他列車", en: "Other trains" },
@@ -628,6 +629,7 @@
     "stats.overallTitle": "全期間の統計",
     "stats.coverageTitle": "路線網カバー率",
     "stats.actualTitle": "実乗車量",
+    "stats.byLine": "路線別",
     "stat.time": "乗車時間",
     "stat.ltdexp": "有料特急",
     "stat.othertrains": "その他の列車",

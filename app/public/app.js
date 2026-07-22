@@ -82,12 +82,12 @@ const HAS_BACKEND = true;
 const CLIENT_ID =
   (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
   `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-const fetchJson = async (path) => {
+const fetchJson = async (path, options) => {
   // Use the browser's default HTTP cache. The server sends a weak ETag +
   // Cache-Control: max-age on every dataset, so reloads revalidate to a 304 (or
   // serve straight from cache within max-age) instead of re-downloading the full
   // multi-MB payload. The old `cache: "no-store"` defeated all of that.
-  const res = await fetch(`${API_BASE}/${path}`);
+  const res = await fetch(`${API_BASE}/${path}`, options);
   if (!res.ok)
     throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
   return res.json();

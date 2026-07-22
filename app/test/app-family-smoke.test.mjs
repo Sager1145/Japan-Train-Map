@@ -227,3 +227,134 @@ test("unloadable saved store yields a recovery sentinel; 404 yields null", async
   result = await vm.runInContext("loadTrainStoreFromServer()", context);
   assert.equal(result && result.recovery, true);
 });
+
+test("station graph candidates keep the best snap for each graph node", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const distant = { properties: { id: "distant" } };
+      const exact = { properties: { id: "exact" } };
+      const original = getStationCandidateGraphNodes;
+      getStationCandidateGraphNodes = (feature) => [{
+        key: "shared-node",
+        score: feature === distant ? 150 : 0,
+        distance: feature === distant ? 150 : 0,
+        stationFeature: feature,
+      }];
+      try {
+        return collectStationCandidateGraphNodes(
+          [distant, exact],
+          {},
+          {},
+          ["4"],
+        ).map((candidate) => candidate.stationFeature.properties.id);
+      } finally {
+        getStationCandidateGraphNodes = original;
+      }
+    })()`,
+    context,
+  );
+  assert.deepEqual([...result], ["exact"]);
+});
+
+test("station snap cache distinguishes duplicate codes at different geometries", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const north = {
+        properties: {
+          N02_002: "4",
+          N02_003: "白島線",
+          N02_004: "広島電鉄",
+          N02_005: "八丁堀",
+          N02_005c: "008047",
+        },
+        geometry: { type: "LineString", coordinates: [[1, 1]] },
+      };
+      const south = {
+        properties: { ...north.properties },
+        geometry: { type: "LineString", coordinates: [[2, 2]] },
+      };
+      const meta = {
+        institution_type_codes: new Set(["4"]),
+        line_names: new Set(["白島線"]),
+        operators: new Set(["広島電鉄"]),
+      };
+      const graph = {
+        stationSnapCache: new Map(),
+        nodeMeta: new Map([["north", meta], ["south", meta]]),
+      };
+      const hints = {
+        preferredLines: new Set(),
+        preferredOperators: new Set(),
+        requiredLines: new Set(),
+        requiredOperators: new Set(),
+        requirePreferredInstitution: true,
+      };
+      const original = nearbyGraphNodes;
+      nearbyGraphNodes = (coord) => [{
+        key: coord[0] === 1 ? "north" : "south",
+        distance: 0,
+      }];
+      try {
+        const a = getStationCandidateGraphNodes(north, graph, hints, ["4"]);
+        const b = getStationCandidateGraphNodes(south, graph, hints, ["4"]);
+        return {
+          first: a[0].key,
+          second: b[0].key,
+          cacheSize: graph.stationSnapCache.size,
+        };
+      } finally {
+        nearbyGraphNodes = original;
+      }
+    })()`,
+    context,
+  );
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(result)),
+    { first: "north", second: "south", cacheSize: 2 },
+  );
+});
+
+test("route cache keys include the solver version", () => {
+  const { context } = loadAppFamily();
+  const key = vm.runInContext(
+    `buildTrainRouteSolveContext({
+      route_policy: { allowed_institution_type_codes: ["4"] },
+      route_sections: [{
+        from_n02_station_code: "008062",
+        to_n02_station_code: "008058",
+      }],
+      stops: [
+        { name: "胡町", n02_station_code: "008062", ride_segment: true },
+        { name: "八丁堀", n02_station_code: "008058", ride_segment: true },
+      ],
+    }).cacheKey`,
+    context,
+  );
+  assert.match(key, /^solver:2\|/);
+});
+
+test("precomputed sample geometry replaces stale warmed geometry", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const key = "solver:2|hiroden-test";
+      runtimeRouteCache.set(key, [{ geometry: { coordinates: [[0, 0], [9, 9]] } }]);
+      runtimeRouteNegativeCache.add(key);
+      seedRouteCacheFromPart({ route: {
+        cache_key: key,
+        features: [{ geometry: { coordinates: [[0, 0], [1, 0]] } }],
+      } });
+      return {
+        coordinates: runtimeRouteCache.get(key)[0].geometry.coordinates,
+        negative: runtimeRouteNegativeCache.has(key),
+      };
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    coordinates: [[0, 0], [1, 0]],
+    negative: false,
+  });
+});

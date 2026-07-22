@@ -72,6 +72,10 @@ const FILE_HANDLE_STORE_NAME = "handles";
 const FILE_HANDLE_KEY = "local-json-file-handle";
 const ROUTE_CACHE_DB_NAME = "n02-route-geometry-cache";
 const ROUTE_CACHE_STORE_NAME = "routes";
+// Bump whenever route-solver semantics change. The value is part of every
+// route cache key, so geometry produced by an older solver can never shadow a
+// corrected precomputed sample route after a deployment.
+const ROUTE_SOLVER_CACHE_VERSION = "2";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],
@@ -86,6 +90,19 @@ const JAPAN_FULL_TERRITORY_BOUNDS = [
 // Single source of truth for protocol/schema constants reused across the app.
 const SCHEMA_VERSION = "1.3";
 const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
+// Train ids flow into route_id, route cache keys and DOM ids, so they are
+// restricted to the charset documented in jsonspec §3.2.
+const TRAIN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+// The five stop_type values of jsonspec §7.2, in the order the editor's
+// <select> lists them (running order, not the spec's table order). Doubles as
+// the import-side whitelist.
+const STOP_TYPES = [
+  "origin",
+  "passenger_stop",
+  "pass_through",
+  "operational_stop",
+  "destination",
+];
 // Sentinel selectedDate value: show the combined "all trains" list.
 const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
@@ -120,4 +137,3 @@ const DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES = ["1", "2", "3", "4", "5"];
 const N02_INSTITUTION_TYPE_CODES = new Set(
   DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES,
 );
-

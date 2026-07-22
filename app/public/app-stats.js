@@ -69,6 +69,13 @@ function classifyN02SectionMask(props) {
   return mask;
 }
 
+// Zero km accumulator keyed by category mask, for per-line-per-category sums.
+function statsZeroCatKm() {
+  const o = {};
+  for (const c of STAT_CATEGORIES) o[c.mask] = 0;
+  return o;
+}
+
 function statsEdgeKm(ax, ay, bx, by) {
   const kx = 111.32 * Math.cos((((ay + by) / 2) * Math.PI) / 180);
   const dx = (ax - bx) * kx;
@@ -232,11 +239,22 @@ function aggregateMileageStats(idx, entries) {
   let riddenAll = 0;
   let unmatchedKm = 0;
   const riddenByMask = new Map(STAT_CATEGORIES.map((c) => [c.mask, 0]));
+  // Deduped ridden km per line, split by category (drives the per-line
+  // breakdown under each coverage row). Same ridden edge Set as the category sums.
+  const lineRidByCat = new Map();
   for (const e of ridden) {
     riddenAll += idx.km[e];
+    const km = idx.km[e];
+    const m = idx.mask[e];
     for (const c of STAT_CATEGORIES)
-      if (idx.mask[e] & c.mask)
-        riddenByMask.set(c.mask, riddenByMask.get(c.mask) + idx.km[e]);
+      if (m & c.mask) riddenByMask.set(c.mask, riddenByMask.get(c.mask) + km);
+    const ln = idx.lineArr && idx.lineArr[e];
+    if (ln) {
+      const lm = idx.lineMaskArr ? idx.lineMaskArr[e] : m;
+      let o = lineRidByCat.get(ln);
+      if (!o) lineRidByCat.set(ln, (o = statsZeroCatKm()));
+      for (const c of STAT_CATEGORIES) if (lm & c.mask) o[c.mask] += km;
+    }
   }
   // Connector spans: counted nationally, attributed to their reconnect
   // category when known; mask-0 remainder is reported as unmatchedKm.
@@ -250,7 +268,14 @@ function aggregateMileageStats(idx, entries) {
       if (span.mask & c.mask)
         riddenByMask.set(c.mask, riddenByMask.get(c.mask) + span.km);
   }
-  return { totals: idx.totals, riddenAll, riddenByMask, unmatchedKm };
+  return {
+    totals: idx.totals,
+    riddenAll,
+    riddenByMask,
+    unmatchedKm,
+    lineTotByCat: idx.lineTotByCat,
+    lineRidByCat,
+  };
 }
 
 // Ride TIME of one train: first effectively-ridden stopping station's
@@ -451,23 +476,40 @@ async function buildStatsEdgeIndexSliced() {
   const map = new Map();
   const kmArr = [];
   const maskArr = [];
+  // Per-line (N02_003) attribution for the coverage breakdown: each category row
+  // expands into its member lines with each line's own ridden km, so a near-100%
+  // aggregate is auditable line by line. Kept as parallel arrays (first feature
+  // on an edge wins the line name); the ~550 distinct N02 line names make this
+  // cheap. lineMaskArr keeps the NAMING feature's own category, so a station edge
+  // shared with a Shinkansen doesn't file the conventional line under 新幹線.
+  const lineArr = []; // edge index -> line name (N02_003), "" when unnamed
+  const lineMaskArr = []; // edge index -> naming feature's own category mask
   let t0 = performance.now();
   for (let fi = 0; fi < feats.length; fi += 1) {
     const f = feats[fi];
     const coords = f.geometry && f.geometry.coordinates;
     if (!Array.isArray(coords)) continue;
-    const mask = classifyN02SectionMask(f.properties || {});
+    const props = f.properties || {};
+    const mask = classifyN02SectionMask(props);
+    const lineName = String(props.N02_003 || "");
     for (let i = 1; i < coords.length; i += 1) {
       const a = coords[i - 1];
       const b = coords[i];
       const key = statsEdgeKey(a, b);
-      const idx = map.get(key);
-      if (idx === undefined) {
-        map.set(key, kmArr.length);
+      let ei = map.get(key);
+      if (ei === undefined) {
+        ei = kmArr.length;
+        map.set(key, ei);
         kmArr.push(statsEdgeKm(a[0], a[1], b[0], b[1]));
         maskArr.push(mask);
+        lineArr.push(lineName);
+        lineMaskArr.push(lineName ? mask : 0);
       } else {
-        maskArr[idx] |= mask;
+        maskArr[ei] |= mask;
+        if (!lineArr[ei] && lineName) {
+          lineArr[ei] = lineName;
+          lineMaskArr[ei] = mask;
+        }
       }
     }
     if ((fi & 127) === 127 && performance.now() - t0 > 12) {
@@ -476,13 +518,33 @@ async function buildStatsEdgeIndexSliced() {
     }
   }
   const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
+  // line name -> per-category total km, so a line's breakdown row reflects ONLY
+  // the track it has in that category (a through-running line's private km and
+  // JR km stay apart, and the sub-rows reconcile with the category header).
+  const lineTotByCat = new Map();
   for (let i = 0; i < kmArr.length; i += 1) {
     totals.all += kmArr[i];
+    const km = kmArr[i];
+    const m = maskArr[i];
     for (const c of STAT_CATEGORIES)
-      if (maskArr[i] & c.mask)
-        totals.byMask.set(c.mask, totals.byMask.get(c.mask) + kmArr[i]);
+      if (m & c.mask) totals.byMask.set(c.mask, totals.byMask.get(c.mask) + km);
+    const ln = lineArr[i];
+    if (ln) {
+      const lm = lineMaskArr[i];
+      let o = lineTotByCat.get(ln);
+      if (!o) lineTotByCat.set(ln, (o = statsZeroCatKm()));
+      for (const c of STAT_CATEGORIES) if (lm & c.mask) o[c.mask] += km;
+    }
   }
-  _statsEdgeIndex = { map, km: kmArr, mask: maskArr, totals };
+  _statsEdgeIndex = {
+    map,
+    km: kmArr,
+    mask: maskArr,
+    totals,
+    lineArr,
+    lineMaskArr,
+    lineTotByCat,
+  };
 }
 
 async function runMileageStatsJob() {
@@ -516,6 +578,40 @@ async function runMileageStatsJob() {
     }
   }
   renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
+}
+
+// Per-line coverage rows shown indented under a category row: every line in that
+// category the user has actually ridden (ridden km > 0), most-ridden first, with
+// each line's own coverage %. Lets a near-100% aggregate be audited line by line
+// (and a line spotted that shouldn't be covered). `open` renders the rows inline
+// (used for 新幹線, only 8 lines); otherwise they go in a collapsed <details>
+// since 在來線 / JR can list dozens. Empty until the edge index is built.
+function categoryLineBreakdownHtml(s, categoryMask, open) {
+  if (!s.lineTotByCat || !s.lineTotByCat.size) return "";
+  const rows = [];
+  s.lineTotByCat.forEach((tot, name) => {
+    const t = tot[categoryMask] || 0;
+    if (t <= 0) return;
+    const rid = (s.lineRidByCat.get(name) || {})[categoryMask] || 0;
+    if (rid > 0) rows.push([name, t, rid]);
+  });
+  if (!rows.length) return "";
+  rows.sort((a, b) => b[2] - a[2]); // most-ridden first
+  const body =
+    `<div class="stat-subrows">` +
+    rows
+      .map(([name, tot, rid]) => {
+        const pct = tot > 0 ? (100 * rid) / tot : 0;
+        return `
+        <div class="stat-subrow">
+          <span class="stat-sublabel">${escapeHtml(name)}</span>
+          <span class="stat-subval"><span class="stat-subpct">${formatStatPct(pct)}%</span><span class="stat-subkm">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
+        </div>`;
+      })
+      .join("") +
+    `</div>`;
+  if (open) return body;
+  return `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byLine"))}（${rows.length}）</summary>${body}</details>`;
 }
 
 function renderMileageStatsDom(view) {
@@ -568,12 +664,14 @@ function renderMileageStatsDom(view) {
           <span class="stat-val"><span class="stat-pct">${escapeHtml(formatStatDuration(s.rideMinutes || 0))}</span></span>
         </div>
       </div>`;
-  // ── Section 2: 實際乘坐量 — cumulative ride amounts (no percentages).
+  // ── Section 2: 路網覆蓋率 per category. The 新幹線 row expands into a
+  //    per-line breakdown so a near-100% figure is auditable line by line.
   rows.innerHTML =
     STAT_CATEGORIES.map((c) => {
       const tot = s.totals.byMask.get(c.mask) || 0;
       const rid = s.riddenByMask.get(c.mask) || 0;
       const pct = tot > 0 ? (100 * rid) / tot : 0;
+      const detail = categoryLineBreakdownHtml(s, c.mask, c.mask === STAT_MASK_HSR);
       return `
       <div class="stat-row">
         <div class="stat-row-head">
@@ -581,6 +679,7 @@ function renderMileageStatsDom(view) {
           <span class="stat-val"><span class="stat-pct">${formatStatPct(pct)}%</span><span class="stat-km">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
         </div>
         <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
+        ${detail}
       </div>`;
     }).join("") +
     `<div class="divider"></div>

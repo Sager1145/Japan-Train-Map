@@ -339,7 +339,10 @@ function deckGetTooltip(info) {
   }
   const t = o.train;
   if (!t) return null;
-  const line = t.number || "";
+  // Branch sections run under their own 車號 (jsonspec §6.1b); the tooltip used
+  // to always show the trunk number, so a こまち leg read "はやぶさ…".
+  const seg = segmentNumberLabel(t, (o.feature && o.feature.properties) || {});
+  const line = seg.number || "";
   const meta = trainTypeCompanyLabel(t);
   const origin = t.origin || "";
   const dest = t.destination || "";
