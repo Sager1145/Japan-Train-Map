@@ -206,7 +206,13 @@ function routeSectionBoundarySharesExplicitStop(previousSection, section) {
 }
 
 function routeFeatureEndCoordinate(feature) {
-  const lines = iterateGeometryLines(feature?.geometry);
+  const geometry = feature?.geometry;
+  const lines =
+    geometry?.type === "LineString"
+      ? [geometry.coordinates]
+      : geometry?.type === "MultiLineString"
+        ? geometry.coordinates
+        : [];
   return lines.length && lines[lines.length - 1].length
     ? lines[lines.length - 1][lines[lines.length - 1].length - 1]
     : null;
@@ -235,15 +241,17 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
     return [];
   }
 
-  const templateFeatures = generated.map((feature) => ({
-    ...feature,
-    properties: {
-      ...(feature.properties || {}),
-      train_id: "__template__",
-      route_id: `${cacheKey}-primary`,
-      route_template_key: templateKey,
-    },
-  }));
+  const templateFeatures = stitchAdjacentRouteFeatureEndpoints(
+    generated.map((feature) => ({
+      ...feature,
+      properties: {
+        ...(feature.properties || {}),
+        train_id: "__template__",
+        route_id: `${cacheKey}-primary`,
+        route_template_key: templateKey,
+      },
+    })),
+  );
   runtimeRouteCache.set(cacheKey, templateFeatures);
   // Persist the freshly solved geometry so later sessions skip both the solve
   // and (if every train hits the cache) the route-graph build entirely.
@@ -390,7 +398,42 @@ function dedupeSameTrainRouteFeatures(features) {
       geometry,
     });
   });
-  return cleaned;
+  return stitchAdjacentRouteFeatureEndpoints(cleaned);
+}
+
+function stitchAdjacentRouteFeatureEndpoints(features) {
+  for (let index = 1; index < features.length; index += 1) {
+    const previous = features[index - 1];
+    const current = features[index];
+    if (
+      Number(current.properties?.segment_index) !==
+      Number(previous.properties?.segment_index) + 1
+    ) {
+      continue;
+    }
+    const previousEnd = routeFeatureEndCoordinate(previous);
+    const currentLines =
+      current.geometry?.type === "LineString"
+        ? [current.geometry.coordinates]
+        : current.geometry?.type === "MultiLineString"
+          ? current.geometry.coordinates
+          : [];
+    const currentStart = currentLines[0]?.[0];
+    if (
+      !previousEnd ||
+      !currentStart ||
+      distanceMeters(previousEnd, currentStart) >
+        ROUTE_SECTION_CONTINUITY_STATION_METERS
+    ) {
+      continue;
+    }
+    if (coordinatesClose(previousEnd, currentStart, 0.25)) {
+      currentLines[0][0] = previousEnd;
+    } else {
+      currentLines[0].unshift(previousEnd);
+    }
+  }
+  return features;
 }
 
 function cloneRouteFeaturesForTrain(features, train) {

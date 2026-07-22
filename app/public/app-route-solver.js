@@ -447,11 +447,21 @@ function solveRouteSectionOnN02Graph(
 
   const segmentHints = usedHints || baseHints;
   const rawCoordinates = best.pathKeys.map((key) => graph.nodes.get(key));
-  const coordinates = completeRouteEndpointCoordinates(
+  let coordinates = completeRouteEndpointCoordinates(
     rawCoordinates,
     best.fromCandidate?.stationFeature || fromStations[0],
     best.toCandidate?.stationFeature || toStations[0],
   );
+  if (
+    continuityAnchor &&
+    coordinates.length &&
+    distanceMeters(continuityAnchor, coordinates[0]) <=
+      ROUTE_SECTION_CONTINUITY_STATION_METERS
+  ) {
+    coordinates = coordinatesClose(continuityAnchor, coordinates[0], 0.25)
+      ? [continuityAnchor, ...coordinates.slice(1)]
+      : [continuityAnchor, ...coordinates];
+  }
   return {
     type: "Feature",
     properties: {

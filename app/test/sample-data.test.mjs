@@ -339,6 +339,98 @@ test("Kagoshima return sample transfers from local 1326D to rapid Nanohana 3328D
   assert.equal(rapid.stops.at(-1).arrival, "09:07");
 });
 
+test("July 22 Kokura evening loop matches the revised itinerary", async () => {
+  const sample = await readJson(SAMPLE_FILE);
+  const trains = sample.trains.filter((train) =>
+    train.id.startsWith("20260722_0") || train.id.startsWith("20260722_1"),
+  );
+  const revised = trains.filter(
+    (train) => train.stops[0].departure >= "20:00",
+  );
+
+  assert.deepEqual(
+    revised.map((train) => [
+      train.origin,
+      train.stops[0].departure,
+      train.destination,
+      train.stops.at(-1).arrival,
+    ]),
+    [
+      ["小倉", "20:05", "黒崎", "20:13"],
+      ["黒崎駅前", "20:20", "筑豊直方", "20:54"],
+      ["直方", "21:26", "田川伊田", "22:01"],
+      ["田川伊田", "22:04", "小倉", "22:53"],
+      ["小倉", "23:00", "企救丘", "23:19"],
+      ["企救丘", "23:30", "小倉", "23:50"],
+    ],
+  );
+  assert.match(revised[0].number, /ソニック54号.*885系.*白いソニック/);
+  assert.equal(revised[3].number, "普通986D（日田彦山線）");
+  revised.forEach((train) => {
+    assert.equal(train.route_sections.length, train.stops.length - 1);
+  });
+});
+
+test("July 23 starts with 500-series Kodama 940 and Sakura 740 at Shin-Yamaguchi", async () => {
+  const sample = await readJson(SAMPLE_FILE);
+  const trains = sample.trains.filter((train) => train.date === "2026-07-23");
+  const [kodama, sakura] = trains;
+
+  assert.equal(kodama.number, "こだま940号（500系）");
+  assert.deepEqual(
+    kodama.stops.map((stop) => [stop.name, stop.arrival, stop.departure]),
+    [
+      ["小倉", null, "06:39"],
+      ["新下関", "06:47", "06:51"],
+      ["厚狭", "07:01", "07:06"],
+      ["新山口", "07:15", null],
+    ],
+  );
+  assert.equal(sakura.number, "さくら740号（Sakura 740）（740A）");
+  assert.equal(sakura.origin, "新山口");
+  assert.equal(sakura.stops[0].departure, "07:38");
+  assert.equal(sakura.destination, "岡山");
+  assert.equal(sakura.stops.at(-1).arrival, "08:50");
+});
+
+test("revised July 22 and 23 precomputed routes have continuous section geometry", async () => {
+  const manifest = await readJson(
+    path.join(APP_DIR, "data", "sample-data", "manifest.json"),
+  );
+  const revisedIds = new Set([
+    "20260722_08_sonic54_kokura_kurosaki",
+    "20260722_09_chikuho_electric_kurosaki_nogata",
+    "20260722_10_heichiku_ita_nogata_tagawaita",
+    "20260722_11_hitahikosan_986d_tagawaita_kokura",
+    "20260722_12_monorail_kokura_kikugaoka",
+    "20260722_13_monorail_kikugaoka_kokura",
+    "20260723_01a_kodama940_kokura_shinyamaguchi",
+    "20260723_01b_sakura740_shinyamaguchi_okayama",
+  ]);
+  const parts = await Promise.all(
+    manifest.parts.map((partName) =>
+      readJson(
+        path.join(APP_DIR, "data", "sample-data", `${partName}.json`),
+      ),
+    ),
+  );
+
+  parts
+    .filter((part) => revisedIds.has(part.train.id))
+    .forEach((part) => {
+      const features = [...part.route.features].sort(
+        (a, b) => a.properties.segment_index - b.properties.segment_index,
+      );
+      for (let index = 0; index < features.length - 1; index += 1) {
+        assert.deepEqual(
+          features[index].geometry.coordinates.at(-1),
+          features[index + 1].geometry.coordinates[0],
+          `${part.train.id} breaks between route sections ${index} and ${index + 1}`,
+        );
+      }
+    });
+});
+
 test("precomputed sample parts cover every canonical train with solved geometry", async (t) => {
   let manifest;
   try {

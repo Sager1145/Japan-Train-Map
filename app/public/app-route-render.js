@@ -53,6 +53,18 @@ function appendTrainToLayers(train) {
   // just the current signature's.
   if (typeof invalidateDeckRouteCaches === "function")
     invalidateDeckRouteCaches();
+  // A progressive import renders ITSELF: it streams the train list, and closes
+  // with one authoritative renderAll() (finalizeProgressiveLoad for the two
+  // "replace" paths, runProgressiveAppend's finalRender for append mode). The
+  // debounced full render below is therefore redundant during an import — and
+  // far from free. The invalidate above drops every cache on EVERY appended
+  // train, so each fire is a COLD rebuild (vertex snap, overlap map, corridor
+  // curves, deck records) over all trains loaded so far, growing as the load
+  // proceeds. On the 142-train sample that was five back-to-back blocking
+  // tasks of 0.7–1.3 s: ~5 s of frozen tab that the loader's 12 ms frame
+  // budget cannot yield out of, all of it discarded by the final render.
+  // Skipping them makes the load both responsive AND ~45% faster.
+  if (typeof importInProgress !== "undefined" && importInProgress) return;
   if (_appendRenderTimer || !map) return;
   _appendRenderTimer = setTimeout(() => {
     _appendRenderTimer = null;

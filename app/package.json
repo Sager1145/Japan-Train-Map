@@ -14,6 +14,7 @@
     "precompute:new-year-grand-loop": "npm run generate:new-year-grand-loop && PRECOMPUTE_STORE=data/special-samples/new-year-grand-loop.json PRECOMPUTE_OUT_DIR=data/new-year-grand-loop-data node scripts/precompute-train-parts.mjs",
     "generate:tokyo-limited-express-loop": "node scripts/generate-tokyo-limited-express-loop.mjs",
     "precompute:tokyo-limited-express-loop": "npm run generate:tokyo-limited-express-loop && PRECOMPUTE_STORE=data/special-samples/tokyo-limited-express-loop.json PRECOMPUTE_OUT_DIR=data/tokyo-limited-express-loop-data node scripts/precompute-train-parts.mjs",
+    "update:july-22-23": "node scripts/update-july-22-23-itinerary.mjs",
     "build:static": "node scripts/build-static-site.mjs",
     "build": "npm run precompute && npm run precompute:new-year-grand-loop && npm run precompute:tokyo-limited-express-loop && npm run build:static"
   },

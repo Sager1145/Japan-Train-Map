@@ -77,7 +77,7 @@ const ROUTE_CACHE_STORE_NAME = "routes";
 // Bump whenever route-solver semantics change. The value is part of every
 // route cache key, so geometry produced by an older solver can never shadow a
 // corrected precomputed sample route after a deployment.
-const ROUTE_SOLVER_CACHE_VERSION = "3";
+const ROUTE_SOLVER_CACHE_VERSION = "14";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],
