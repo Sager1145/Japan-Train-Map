@@ -552,6 +552,9 @@
 
     // add-date prompt
     "prompt.addDate": { zh: "輸入新增日期（YYYY-MM-DD）：", en: "Enter a new date (YYYY-MM-DD):" },
+    // dialog (app-modal.js) buttons
+    "modal.ok": { zh: "確定", en: "OK" },
+    "modal.cancel": { zh: "取消", en: "Cancel" },
     "status.invalidDate": {
       zh: "無效的日期格式：「{input}」。請使用 YYYY-MM-DD。",
       en: 'Invalid date format: "{input}". Use YYYY-MM-DD.',
@@ -859,6 +862,8 @@
     "import.targetDate": "現在の読み込み先：<strong>{date}</strong>（date のない列車はこの日に追加）",
     "import.targetAuto": "現在の読み込み先：<strong>JSON の date 項目／ID から自動判定</strong>（日付を選ぶと読み込み先を変更できます）",
     "prompt.addDate": "追加する日付を入力してください（YYYY-MM-DD）：",
+    "modal.ok": "OK",
+    "modal.cancel": "キャンセル",
     "status.invalidDate": "日付形式が正しくありません：『{input}』。YYYY-MM-DD を使用してください。",
     "status.dateAdded": "{date} を追加し、現在の読み込み先に設定しました。",
     "status.emptyDatesRemoved": "空の日付を {count} 件削除しました。",

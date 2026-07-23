@@ -398,8 +398,8 @@ function updateImportTarget() {
 }
 
 // Add a manual (possibly empty) date bucket, then jump to it.
-function addManualDate() {
-  const input = prompt(I18N.t("prompt.addDate"), "");
+async function addManualDate() {
+  const input = await uiPrompt(I18N.t("prompt.addDate"), "");
   if (input === null) return;
   const normalized = normalizeDateString(input);
   if (!normalized) {

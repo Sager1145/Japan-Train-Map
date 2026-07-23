@@ -394,16 +394,24 @@ function bindEvents() {
   document
     .getElementById("duplicate-train")
     .addEventListener("click", () => duplicateTrain(selectedTrainId));
-  document.getElementById("delete-train").addEventListener("click", () => {
-    if (selectedTrainId && confirm(I18N.t("confirm.deleteTrain")))
+  document.getElementById("delete-train").addEventListener("click", async () => {
+    if (
+      selectedTrainId &&
+      (await uiConfirm(I18N.t("confirm.deleteTrain"), { danger: true }))
+    )
       deleteTrain(selectedTrainId);
   });
-  document.getElementById("delete-all-trains").addEventListener("click", () => {
-    if (trainStore.trains.length && confirm(I18N.t("confirm.deleteAll"))) {
-      deleteAllTrains();
-      setStatus(els.jsonStatus, I18N.t("status.allDeleted"), "warn");
-    }
-  });
+  document
+    .getElementById("delete-all-trains")
+    .addEventListener("click", async () => {
+      if (
+        trainStore.trains.length &&
+        (await uiConfirm(I18N.t("confirm.deleteAll"), { danger: true }))
+      ) {
+        deleteAllTrains();
+        setStatus(els.jsonStatus, I18N.t("status.allDeleted"), "warn");
+      }
+    });
   document
     .getElementById("fit-selected")
     .addEventListener("click", () => fitTrainBounds(getTrain()));
@@ -490,7 +498,7 @@ function bindEvents() {
         // a typo can't wipe the sample view.
         if (!HAS_BACKEND && isSampleMode()) {
           parseImportedCanonicalStore(els.importJson.value); // throws if invalid
-          if (confirm(I18N.t("confirm.importInSample"))) {
+          if (await uiConfirm(I18N.t("confirm.importInSample"))) {
             dataSourceMode = "user";
             sampleModeDate = null;
             resetTrainStoreForProgressiveLoad();
@@ -554,7 +562,7 @@ function bindEvents() {
       if (importInProgress) return;
       // Loading the sample never touches the user's saved data, but it DOES
       // replace what is on screen — confirm before doing so.
-      if (!confirm(I18N.t("confirm.loadSampleAll"))) return;
+      if (!(await uiConfirm(I18N.t("confirm.loadSampleAll")))) return;
       loadSampleAllBtn.disabled = true;
       try {
         fitJapanMainIslands();
@@ -571,7 +579,7 @@ function bindEvents() {
   if (loadNewYearGrandLoopBtn)
     loadNewYearGrandLoopBtn.addEventListener("click", async () => {
       if (importInProgress) return;
-      if (!confirm(I18N.t("confirm.loadNewYearGrandLoop"))) return;
+      if (!(await uiConfirm(I18N.t("confirm.loadNewYearGrandLoop")))) return;
       loadNewYearGrandLoopBtn.disabled = true;
       try {
         fitJapanMainIslands();
@@ -588,7 +596,8 @@ function bindEvents() {
   if (loadTokyoLimitedExpressLoopBtn)
     loadTokyoLimitedExpressLoopBtn.addEventListener("click", async () => {
       if (importInProgress) return;
-      if (!confirm(I18N.t("confirm.loadTokyoLimitedExpressLoop"))) return;
+      if (!(await uiConfirm(I18N.t("confirm.loadTokyoLimitedExpressLoop"))))
+        return;
       loadTokyoLimitedExpressLoopBtn.disabled = true;
       try {
         fitJapanMainIslands();
@@ -603,7 +612,7 @@ function bindEvents() {
   if (restoreUserStoreBtn)
     restoreUserStoreBtn.addEventListener("click", async () => {
       if (importInProgress) return;
-      if (!confirm(I18N.t("confirm.restoreMine"))) return;
+      if (!(await uiConfirm(I18N.t("confirm.restoreMine")))) return;
       try {
         fitJapanMainIslands();
         await restoreUserStore();
@@ -620,7 +629,7 @@ function bindEvents() {
       const message = userStoreAvailable
         ? I18N.t("confirm.overwriteMine")
         : I18N.t("confirm.saveAsMine");
-      if (!confirm(message)) return;
+      if (!(await uiConfirm(message))) return;
       try {
         await saveCurrentAsUserStore();
       } catch (error) {
@@ -646,7 +655,8 @@ function bindEvents() {
     .getElementById("clear-storage")
     .addEventListener("click", async () => {
       if (importBusy()) return;
-      if (!confirm(I18N.t("confirm.clearStorage"))) return;
+      if (!(await uiConfirm(I18N.t("confirm.clearStorage"), { danger: true })))
+        return;
       try {
         // Cancel any pending autosave so it can't immediately re-create the file.
         clearTimeout(serverStoreSaveTimer);

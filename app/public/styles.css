@@ -2015,6 +2015,120 @@ tr.branch-junction td {
   padding: 6px 10px;
 }
 
+/* ---------------------------------------------------------------------------
+   Custom confirm/prompt dialog (app-modal.js) — replaces the native, main-
+   thread-blocking window.confirm/prompt. Same design tokens as .rp-popup, so
+   it matches railprint's popup and follows light/dark via the CSS variables.
+   Button label colour uses var(--white) (the surface tone, i.e. the opposite
+   of --ink) so text stays legible on the accent/danger fill in BOTH themes.
+   --------------------------------------------------------------------------- */
+.rp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 14, 12, 0.42);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+html[data-theme="dark"] .rp-modal-overlay {
+  background: rgba(0, 0, 0, 0.55);
+}
+.rp-modal-overlay.is-open {
+  opacity: 1;
+}
+.rp-modal {
+  box-sizing: border-box;
+  width: min(360px, 100%);
+  padding: 20px;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--rail-dim);
+  border-radius: var(--radius-card);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
+  transform: translateY(8px) scale(0.98);
+  transition: transform 0.16s ease;
+}
+.rp-modal-overlay.is-open .rp-modal {
+  transform: none;
+}
+.rp-modal-message {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.rp-modal-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: -4px 0 16px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border: 1px solid var(--rail-dim);
+  border-radius: var(--radius-button);
+}
+.rp-modal-input:focus {
+  outline: none;
+  border-color: var(--rail-lit);
+}
+.rp-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.rp-modal-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border: 1px solid var(--rail-dim);
+  border-radius: var(--radius-button);
+  background: var(--white);
+  color: var(--ink);
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    filter 0.12s ease;
+}
+.rp-modal-btn:hover {
+  background: var(--surface-subtle);
+}
+.rp-modal-btn:focus-visible {
+  outline: 2px solid var(--rail-lit);
+  outline-offset: 2px;
+}
+.rp-modal-btn--primary {
+  background: var(--rail-lit);
+  border-color: var(--rail-lit);
+  color: var(--white);
+}
+.rp-modal-btn--primary:hover {
+  background: var(--rail-text);
+  border-color: var(--rail-text);
+}
+.rp-modal-btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--white);
+}
+.rp-modal-btn--danger:hover {
+  background: var(--danger);
+  filter: brightness(1.06);
+}
+
 /* Line hover popup: floats above the cursor (the tooltip container is
    positioned at the pointer; this inner box lifts the visible content up so
    it never sits under the mouse or covers the line). */
