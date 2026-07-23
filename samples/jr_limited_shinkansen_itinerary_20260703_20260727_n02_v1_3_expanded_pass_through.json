@@ -31385,6 +31385,900 @@
           "ride_segment": true
         }
       ]
+    },
+    {
+      "id": "20260724_01_ishizuchi9",
+      "date": "2026-07-24",
+      "number": "いしづち9号（Ishizuchi 9）（9M）",
+      "train_type": "特急",
+      "company": "JR四国",
+      "origin": "高松",
+      "destination": "宇多津",
+      "direction": "宇多津",
+      "visible": true,
+      "style": {
+        "color": "#1f9e6b"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "予讃線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "008164",
+          "to_n02_station_code": "008240",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008240",
+          "to_n02_station_code": "008253",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "高松",
+          "n02_station_code": "008164",
+          "arrival": null,
+          "departure": "11:50",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "坂出",
+          "n02_station_code": "008240",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "宇多津",
+          "n02_station_code": "008253",
+          "arrival": "12:11",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_02_nanpu9",
+      "date": "2026-07-24",
+      "number": "南風9号（Nanpū 9）（9D）",
+      "train_type": "特急",
+      "company": "JR四国",
+      "origin": "宇多津",
+      "destination": "阿波池田",
+      "direction": "阿波池田",
+      "visible": true,
+      "style": {
+        "color": "#e0662b"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "予讃線",
+          "土讃線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "008253",
+          "to_n02_station_code": "008271",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008271",
+          "to_n02_station_code": "008300",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008300",
+          "to_n02_station_code": "008371",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008371",
+          "to_n02_station_code": "008408",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008408",
+          "to_n02_station_code": "008561",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "宇多津",
+          "n02_station_code": "008253",
+          "arrival": null,
+          "departure": "12:39",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "丸亀",
+          "n02_station_code": "008271",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "多度津",
+          "n02_station_code": "008300",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "善通寺",
+          "n02_station_code": "008371",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "琴平",
+          "n02_station_code": "008408",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波池田",
+          "n02_station_code": "008561",
+          "arrival": "13:22",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_03_tsurugisan6",
+      "date": "2026-07-24",
+      "number": "剣山6号（Tsurugisan 6）（56D）",
+      "train_type": "特急",
+      "company": "JR四国",
+      "origin": "阿波池田",
+      "destination": "穴吹",
+      "direction": "穴吹",
+      "visible": true,
+      "style": {
+        "color": "#2f6fb0"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "土讃線",
+          "徳島線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "008561",
+          "to_n02_station_code": "008553",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008553",
+          "to_n02_station_code": "008545",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008545",
+          "to_n02_station_code": "008542",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008542",
+          "to_n02_station_code": "008518",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "阿波池田",
+          "n02_station_code": "008561",
+          "arrival": null,
+          "departure": "14:30",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "佃",
+          "n02_station_code": "008553",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波加茂",
+          "n02_station_code": "008545",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "貞光",
+          "n02_station_code": "008542",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "穴吹",
+          "n02_station_code": "008518",
+          "arrival": "15:03",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_04_tokushima_local_463d",
+      "date": "2026-07-24",
+      "number": "普通（徳島線 463D）",
+      "train_type": "普通",
+      "company": "JR四国",
+      "origin": "穴吹",
+      "destination": "阿波池田",
+      "direction": "阿波池田",
+      "visible": true,
+      "style": {
+        "color": "#6b7280"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "徳島線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "008518",
+          "to_n02_station_code": "008542",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008542",
+          "to_n02_station_code": "008545",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008545",
+          "to_n02_station_code": "008553",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008553",
+          "to_n02_station_code": "008561",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "穴吹",
+          "n02_station_code": "008518",
+          "arrival": null,
+          "departure": "16:03",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "貞光",
+          "n02_station_code": "008542",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波加茂",
+          "n02_station_code": "008545",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "佃",
+          "n02_station_code": "008553",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波池田",
+          "n02_station_code": "008561",
+          "arrival": "16:48",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_05_nanpu17",
+      "date": "2026-07-24",
+      "number": "南風17号（Nanpū 17）（17D）",
+      "train_type": "特急",
+      "company": "JR四国",
+      "origin": "阿波池田",
+      "destination": "高知",
+      "direction": "高知",
+      "visible": true,
+      "style": {
+        "color": "#e0662b"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "土讃線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "008561",
+          "to_n02_station_code": "008691",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008691",
+          "to_n02_station_code": "009004",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009004",
+          "to_n02_station_code": "009057",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009057",
+          "to_n02_station_code": "009095",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "阿波池田",
+          "n02_station_code": "008561",
+          "arrival": null,
+          "departure": "17:24",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大歩危",
+          "n02_station_code": "008691",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐山田",
+          "n02_station_code": "009004",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "後免",
+          "n02_station_code": "009057",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "高知",
+          "n02_station_code": "009095",
+          "arrival": "18:44",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_06_nanpu28",
+      "date": "2026-07-24",
+      "number": "南風28号（Nanpū 28）（28D）",
+      "train_type": "特急",
+      "company": "JR四国/JR西日本",
+      "origin": "高知",
+      "destination": "岡山",
+      "direction": "岡山",
+      "visible": true,
+      "style": {
+        "color": "#e0662b"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "土讃線",
+          "予讃線",
+          "本四備讃線",
+          "宇野線"
+        ],
+        "preferred_operator_names": [
+          "四国旅客鉄道",
+          "西日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "009095",
+          "to_n02_station_code": "009057",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009057",
+          "to_n02_station_code": "009004",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009004",
+          "to_n02_station_code": "008691",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008691",
+          "to_n02_station_code": "008561",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008561",
+          "to_n02_station_code": "008408",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008408",
+          "to_n02_station_code": "008371",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008371",
+          "to_n02_station_code": "008300",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008300",
+          "to_n02_station_code": "008271",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008271",
+          "to_n02_station_code": "008252",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008252",
+          "to_n02_station_code": "007919",
+          "line_names": [
+            "本四備讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007919",
+          "to_n02_station_code": "007663",
+          "line_names": [
+            "本四備讃線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007663",
+          "to_n02_station_code": "007310",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "高知",
+          "n02_station_code": "009095",
+          "arrival": null,
+          "departure": "19:31",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "後免",
+          "n02_station_code": "009057",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐山田",
+          "n02_station_code": "009004",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "大歩危",
+          "n02_station_code": "008691",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波池田",
+          "n02_station_code": "008561",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "琴平",
+          "n02_station_code": "008408",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "善通寺",
+          "n02_station_code": "008371",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "多度津",
+          "n02_station_code": "008300",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "丸亀",
+          "n02_station_code": "008271",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "宇多津",
+          "n02_station_code": "008252",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "児島",
+          "n02_station_code": "007919",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "茶屋町",
+          "n02_station_code": "007663",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "岡山",
+          "n02_station_code": "007310",
+          "arrival": "21:57",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_07_kodama970",
+      "date": "2026-07-24",
+      "number": "こだま970号（500系）",
+      "train_type": "新幹線",
+      "company": "JR西日本",
+      "origin": "岡山",
+      "destination": "姫路",
+      "direction": "姫路",
+      "visible": true,
+      "style": {
+        "color": "#d35400"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "1"
+        ],
+        "preferred_line_names": [
+          "山陽新幹線"
+        ],
+        "preferred_operator_names": [
+          "西日本旅客鉄道"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "007329",
+          "to_n02_station_code": "006552",
+          "line_names": [
+            "山陽新幹線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "006552",
+          "to_n02_station_code": "006511",
+          "line_names": [
+            "山陽新幹線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "岡山",
+          "n02_station_code": "007329",
+          "arrival": null,
+          "departure": "22:18",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "相生",
+          "n02_station_code": "006552",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "姫路",
+          "n02_station_code": "006511",
+          "arrival": "22:43",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
     }
   ]
 }
