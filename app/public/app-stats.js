@@ -69,6 +69,129 @@ function classifyN02SectionMask(props) {
   return mask;
 }
 
+// ── Mini-Shinkansen reclassification (§23a-mini) ─────────────────────────────
+// 山形新幹線 / 秋田新幹線 run on gauge-converted track that N02-25 STILL files as
+// 在来線 (N02_002 = "2") under the plain line names 奥羽線 / 田沢湖線 — there is no
+// Shinkansen attribute to key on. 博多南線 is the same story (Shinkansen rolling
+// stock on a line N02 files as 在来線). Track that ONLY carries Shinkansen must
+// count as 新幹線 and NOT as 在来線, or the 新幹線 denominator reads ~8 points high
+// (~285 km missing) and these lines can never appear in the breakdown.
+//
+// A corridor edge is MOVED (not copied): its 在来線 bit is cleared and its 新幹線
+// bit set — the JR全線 bit is left intact (it is still JR track). Whole-line
+// corridors match by N02_003 name; the two 奥羽線 sub-corridors are traced along
+// the 奥羽線 subgraph between their gauge-conversion endpoints.
+// NOTE: the ~1.8 km 越後湯沢–ガーラ湯沢 spur (Shinkansen-only, filed under 上越線)
+// is deliberately NOT reclassified — it has no separable N02 section geometry
+// and is unridden; add it here as a corridor if it ever needs to show.
+const HSR_RECLASSIFY_FULL_LINES = new Map([
+  ["田沢湖線", "秋田新幹線"], // 盛岡–大曲, ~75.6 km (whole line)
+  ["博多南線", "博多南線"], // 博多–博多南, ~8.9 km (label kept, category → 新幹線)
+]);
+const HSR_RECLASSIFY_OU_LINE = "奥羽線";
+const HSR_RECLASSIFY_OU_CORRIDORS = [
+  // 山形新幹線: 奥羽線 福島(001373) – 新庄(001004), ~148.6 km
+  { display: "山形新幹線", from: [140.45972, 37.75341], to: [140.3059, 38.76386] },
+  // 秋田新幹線: 奥羽線 大曲(000854) – 秋田(000783), ~51.7 km (盛岡–大曲 is 田沢湖線)
+  { display: "秋田新幹線", from: [140.47996, 39.46546], to: [140.12947, 39.71836] },
+];
+
+// Minimal binary min-heap for the corridor trace, kept local so app-stats has
+// no load-order dependency on the route solver's heap.
+class StatsMinHeap {
+  constructor() {
+    this._h = [];
+  }
+  get size() {
+    return this._h.length;
+  }
+  push(priority, value) {
+    const h = this._h;
+    h.push([priority, value]);
+    let i = h.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (h[p][0] <= h[i][0]) break;
+      [h[p], h[i]] = [h[i], h[p]];
+      i = p;
+    }
+  }
+  pop() {
+    const h = this._h;
+    const top = h[0];
+    const last = h.pop();
+    if (h.length) {
+      h[0] = last;
+      let i = 0;
+      const n = h.length;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let s = i;
+        if (l < n && h[l][0] < h[s][0]) s = l;
+        if (r < n && h[r][0] < h[s][0]) s = r;
+        if (s === i) break;
+        [h[s], h[i]] = [h[i], h[s]];
+        i = s;
+      }
+    }
+    return top;
+  }
+}
+
+function statsNodeKey(coord) {
+  return statsQuant(coord[0]) + "," + statsQuant(coord[1]);
+}
+
+// Nearest subgraph node to an endpoint (station) coordinate, so a corridor snaps
+// onto its line even when the station point isn't itself a graph vertex. Returns
+// the node key, or null when the subgraph is empty.
+function snapToNearestStatsNode(coord, nodeXY) {
+  const x = statsQuant(coord[0]);
+  const y = statsQuant(coord[1]);
+  let best = null;
+  let bestKm = Infinity;
+  nodeXY.forEach(([nx, ny], key) => {
+    const d = statsEdgeKm(x, y, nx, ny);
+    if (d < bestKm) {
+      bestKm = d;
+      best = key;
+    }
+  });
+  return best;
+}
+
+// Dijkstra shortest path between two nodes of a single-line subgraph, returned as
+// the Set of edge indices it traverses. adj: node key -> [[neighborKey, edgeIdx]].
+function traceStatsCorridorEdges(adj, kmArr, fromKey, toKey) {
+  const edges = new Set();
+  if (fromKey === toKey || !adj.has(fromKey) || !adj.has(toKey)) return edges;
+  const dist = new Map([[fromKey, 0]]);
+  const prev = new Map(); // node key -> [prevKey, edge index]
+  const heap = new StatsMinHeap();
+  heap.push(0, fromKey);
+  while (heap.size) {
+    const [d, u] = heap.pop();
+    if (u === toKey) break;
+    if (d > (dist.get(u) ?? Infinity)) continue;
+    for (const [v, ei] of adj.get(u) || []) {
+      const nd = d + kmArr[ei];
+      if (nd < (dist.get(v) ?? Infinity)) {
+        dist.set(v, nd);
+        prev.set(v, [u, ei]);
+        heap.push(nd, v);
+      }
+    }
+  }
+  let cur = toKey;
+  while (prev.has(cur)) {
+    const [p, ei] = prev.get(cur);
+    edges.add(ei);
+    cur = p;
+  }
+  return edges;
+}
+
 // Zero km accumulator keyed by category mask, for per-line-per-category sums.
 function statsZeroCatKm() {
   const o = {};
@@ -484,6 +607,16 @@ async function buildStatsEdgeIndexSliced() {
   // shared with a Shinkansen doesn't file the conventional line under 新幹線.
   const lineArr = []; // edge index -> line name (N02_003), "" when unnamed
   const lineMaskArr = []; // edge index -> naming feature's own category mask
+  // Mini-Shinkansen reclassification accumulators (applied after the full pass):
+  // whole-line corridors collect their edge indices; the two 奥羽線 sub-corridors
+  // collect a subgraph to trace along afterwards. Every edge is recorded against
+  // the CURRENT feature's line name (not the first-wins lineArr), so a corridor
+  // edge co-located with another line is still captured.
+  const hsrFullHits = new Map(); // display line -> Set<edge index>
+  for (const disp of HSR_RECLASSIFY_FULL_LINES.values())
+    if (!hsrFullHits.has(disp)) hsrFullHits.set(disp, new Set());
+  const ouAdj = new Map(); // 奥羽線 node key -> [[neighborKey, edge index]]
+  const ouNodeXY = new Map(); // 奥羽線 node key -> [x, y] for endpoint snapping
   let t0 = performance.now();
   for (let fi = 0; fi < feats.length; fi += 1) {
     const f = feats[fi];
@@ -492,6 +625,8 @@ async function buildStatsEdgeIndexSliced() {
     const props = f.properties || {};
     const mask = classifyN02SectionMask(props);
     const lineName = String(props.N02_003 || "");
+    const fullReclass = HSR_RECLASSIFY_FULL_LINES.get(lineName) || null;
+    const isOuLine = lineName === HSR_RECLASSIFY_OU_LINE;
     for (let i = 1; i < coords.length; i += 1) {
       const a = coords[i - 1];
       const b = coords[i];
@@ -511,11 +646,52 @@ async function buildStatsEdgeIndexSliced() {
           lineMaskArr[ei] = mask;
         }
       }
+      if (fullReclass) {
+        hsrFullHits.get(fullReclass).add(ei);
+      } else if (isOuLine) {
+        const ka = statsNodeKey(a);
+        const kb = statsNodeKey(b);
+        if (!ouNodeXY.has(ka))
+          ouNodeXY.set(ka, [statsQuant(a[0]), statsQuant(a[1])]);
+        if (!ouNodeXY.has(kb))
+          ouNodeXY.set(kb, [statsQuant(b[0]), statsQuant(b[1])]);
+        let la = ouAdj.get(ka);
+        if (!la) ouAdj.set(ka, (la = []));
+        let lb = ouAdj.get(kb);
+        if (!lb) ouAdj.set(kb, (lb = []));
+        la.push([kb, ei]);
+        lb.push([ka, ei]);
+      }
     }
     if ((fi & 127) === 127 && performance.now() - t0 > 12) {
       await _statsYield();
       t0 = performance.now();
     }
+  }
+  // Apply the mini-Shinkansen reclassification BEFORE totals are summed, so the
+  // 新幹線 / 在來線 denominators and the per-line breakdown all reflect it. Each
+  // corridor edge moves out of 在來線 into 新幹線 (JR全線 bit left intact) and is
+  // relabeled so it files under its Shinkansen name.
+  const applyHsrCorridorOverride = (ei, display) => {
+    maskArr[ei] = (maskArr[ei] & ~STAT_MASK_CONV) | STAT_MASK_HSR;
+    lineArr[ei] = display;
+    lineMaskArr[ei] = STAT_MASK_HSR | STAT_MASK_JR;
+  };
+  try {
+    hsrFullHits.forEach((set, display) =>
+      set.forEach((ei) => applyHsrCorridorOverride(ei, display)),
+    );
+    for (const corr of HSR_RECLASSIFY_OU_CORRIDORS) {
+      const from = snapToNearestStatsNode(corr.from, ouNodeXY);
+      const to = snapToNearestStatsNode(corr.to, ouNodeXY);
+      if (!from || !to) continue;
+      const corridorEdges = traceStatsCorridorEdges(ouAdj, kmArr, from, to);
+      corridorEdges.forEach((ei) => applyHsrCorridorOverride(ei, corr.display));
+    }
+  } catch (err) {
+    // A tracing hiccup must never blank the panel — worst case the two 奥羽線
+    // corridors stay filed under 在來線 (the pre-fix behavior).
+    console.warn("mini-Shinkansen corridor reclassification skipped:", err);
   }
   const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
   // line name -> per-category total km, so a line's breakdown row reflects ONLY
@@ -580,12 +756,12 @@ async function runMileageStatsJob() {
   renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
 }
 
-// Per-line coverage rows shown indented under a category row: every line in that
-// category the user has actually ridden (ridden km > 0), most-ridden first, with
-// each line's own coverage %. Lets a near-100% aggregate be audited line by line
-// (and a line spotted that shouldn't be covered). `open` renders the rows inline
-// (used for 新幹線, only 8 lines); otherwise they go in a collapsed <details>
-// since 在來線 / JR can list dozens. Empty until the edge index is built.
+// Per-line coverage rows shown indented under a category row, most-ridden first,
+// each with its own coverage %. Lets a near-100% aggregate be audited line by
+// line (and a line spotted that shouldn't be covered). `open` renders the rows
+// inline AND lists every line in the category including unridden ones (used for
+// 新幹線, only ~11 lines — so the 0% 山形/秋田新幹線 are visible); the collapsed
+// 在來線 / JR / 私鐵 lists stay ridden-only to avoid dozens of 0% rows.
 function categoryLineBreakdownHtml(s, categoryMask, open) {
   if (!s.lineTotByCat || !s.lineTotByCat.size) return "";
   const rows = [];
@@ -593,10 +769,10 @@ function categoryLineBreakdownHtml(s, categoryMask, open) {
     const t = tot[categoryMask] || 0;
     if (t <= 0) return;
     const rid = (s.lineRidByCat.get(name) || {})[categoryMask] || 0;
-    if (rid > 0) rows.push([name, t, rid]);
+    if (rid > 0 || open) rows.push([name, t, rid]);
   });
   if (!rows.length) return "";
-  rows.sort((a, b) => b[2] - a[2]); // most-ridden first
+  rows.sort((a, b) => b[2] - a[2] || b[1] - a[1]); // most-ridden, then longest
   const body =
     `<div class="stat-subrows">` +
     rows
