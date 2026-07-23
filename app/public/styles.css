@@ -1960,6 +1960,16 @@ tr.branch-junction td {
   font-size: 11px;
   color: var(--ink-muted);
 }
+/* This train's arrival/departure under the station name (ridden-route marker
+   hover popup only; the national-network hover popup has no train context). */
+.rp-popup-times {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.rp-popup-date {
+  opacity: 0.8;
+}
 .rp-line-list {
   list-style: none;
   margin: 6px 0 0;

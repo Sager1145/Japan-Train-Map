@@ -311,22 +311,55 @@ function handleDeckHover(id) {
 
 // deck.gl floating tooltip: a marker shows just its station name; a route
 // segment shows the line name plus its origin -> destination endpoints.
+// The two hover-tooltip skins. Both set the SAME keys so switching between them
+// on the one reused tooltip element never leaves a stale property behind.
+const DECK_TIP_DARK = {
+  background: "rgba(30,37,44,0.92)",
+  color: "#fff",
+  fontSize: "11px",
+  fontWeight: "700",
+  padding: "3px 7px",
+  border: "none",
+  borderRadius: "4px",
+  boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+  maxWidth: "220px",
+  whiteSpace: "normal",
+};
+// Railprint card skin (matches .rp-popup / the confirm modal; theme-aware).
+const DECK_TIP_RAILPRINT = {
+  background: "var(--white)",
+  color: "var(--ink)",
+  fontSize: "12px",
+  fontWeight: "400",
+  padding: "8px 10px",
+  border: "1px solid var(--rail-dim)",
+  borderRadius: "10px",
+  boxShadow: "0 6px 20px rgba(0,0,0,0.22)",
+  maxWidth: "260px",
+  whiteSpace: "normal",
+};
+
 function deckGetTooltip(info) {
   const o = info && info.object;
   if (!o) return null;
-  const style = {
-    background: "rgba(30,37,44,0.92)",
-    color: "#fff",
-    fontSize: "11px",
-    fontWeight: "700",
-    padding: "3px 7px",
-    borderRadius: "4px",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-  };
+  const style = DECK_TIP_DARK;
   if (o.category) {
     const pr = (o.feature && o.feature.properties) || {};
     const name = pr.name || "";
     if (!name) return null;
+    // Railprint-style station popup (every line through the station), using the
+    // same RailNetwork data + processing as the national-network hover popup.
+    // Lazily fetch the network package the first time a station is hovered;
+    // until it is ready, show the compact name/time tooltip, and clear the
+    // tooltip dedup cache on load so it upgrades in place on the next move.
+    const railprintHtml = buildStationLinesPopup(pr, o.train);
+    if (railprintHtml)
+      return { html: railprintHtml, style: DECK_TIP_RAILPRINT };
+    if (typeof RailMap !== "undefined" && !RailMap._network) {
+      RailMap.ensureNetwork().then((net) => {
+        if (net) RailMap._tooltipRecord = null;
+      });
+    }
     const times = [];
     if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
     if (pr.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);

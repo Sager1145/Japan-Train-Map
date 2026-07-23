@@ -10,6 +10,34 @@
 //  §34.  Popups & tooltips (stop / route-segment HTML)
 // =========================================================================
 
+// Railprint-style hover popup for a ridden-route station marker: the SAME data
+// source (the RailNetwork package) and processing (RailMapPopup.buildPopupModel
+// groups every line through the station's group, deduped, with logos/colours)
+// as the national-network station hover popup — plus this train's own stop
+// times under the name. Returns null when the network package isn't loaded yet
+// or the station isn't in it, so the caller can lazily load it and fall back.
+function buildStationLinesPopup(pr, train) {
+  const net = typeof RailMap !== "undefined" ? RailMap._network : null;
+  if (!net || typeof RailMapPopup === "undefined") return null;
+  const group = pr.n02_group_code || pr.N02_005g;
+  const members = group ? net.groupMembers.get(String(group)) : null;
+  if (!members || !members.length) return null;
+  const model = RailMapPopup.buildPopupModel(net, members[0].stationId);
+  if (!model || !model.lines.length) return null;
+  const times = [];
+  if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
+  if (pr.departure)
+    times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);
+  if (times.length && train) {
+    const d = dateLabel(getTrainDate(train));
+    if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
+  }
+  const subhead = times.length
+    ? `<div class="rp-popup-times">${times.join("　")}</div>`
+    : "";
+  return RailMapPopup.stationPopupHtml(model, { subhead });
+}
+
 function buildStopPopup(stopFeature, train) {
   const p = stopFeature.properties || {};
   return popupHtml(`${train.number || ""}`, [

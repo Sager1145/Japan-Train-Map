@@ -117,7 +117,7 @@
       lines: rows,
     };
   }
-  function stationPopupHtml(model) {
+  function stationPopupHtml(model, opts) {
     const header = model.nameRoma
       ? '<span class="rp-popup-ja">' +
         escHtml(model.name) +
@@ -140,10 +140,12 @@
         );
       })
       .join("");
+    const subhead = opts && opts.subhead ? opts.subhead : "";
     return (
       '<div class="rp-popup"><div class="rp-popup-head">' +
       header +
       "</div>" +
+      subhead +
       (rows ? '<ul class="rp-line-list">' + rows + "</ul>" : "") +
       "</div>"
     );
