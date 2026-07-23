@@ -32,7 +32,117 @@
       },
       "route_sections": [
         {
+          "from": "千葉",
+          "to": "東千葉",
           "from_n02_station_code": "004165",
+          "to_n02_station_code": "004151",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東千葉",
+          "to": "都賀",
+          "from_n02_station_code": "004151",
+          "to_n02_station_code": "004057",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "都賀",
+          "to": "四街道",
+          "from_n02_station_code": "004057",
+          "to_n02_station_code": "003898",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "四街道",
+          "to": "物井",
+          "from_n02_station_code": "003898",
+          "to_n02_station_code": "003727",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "物井",
+          "to": "佐倉",
+          "from_n02_station_code": "003727",
+          "to_n02_station_code": "003532",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "佐倉",
+          "to": "南酒々井",
+          "from_n02_station_code": "003532",
+          "to_n02_station_code": "003576",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "南酒々井",
+          "to": "榎戸",
+          "from_n02_station_code": "003576",
+          "to_n02_station_code": "003741",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "榎戸",
+          "to": "八街",
+          "from_n02_station_code": "003741",
+          "to_n02_station_code": "003895",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "八街",
+          "to": "日向",
+          "from_n02_station_code": "003895",
+          "to_n02_station_code": "004096",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "日向",
+          "to": "成東",
+          "from_n02_station_code": "004096",
           "to_n02_station_code": "004189",
           "line_names": [
             "総武線"
@@ -49,6 +159,78 @@
           "arrival": null,
           "departure": "08:10",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "東千葉",
+          "n02_station_code": "004151",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "都賀",
+          "n02_station_code": "004057",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "四街道",
+          "n02_station_code": "003898",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "物井",
+          "n02_station_code": "003727",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "佐倉",
+          "n02_station_code": "003532",
+          "arrival": null,
+          "departure": "08:23",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "南酒々井",
+          "n02_station_code": "003576",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "榎戸",
+          "n02_station_code": "003741",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "八街",
+          "n02_station_code": "003895",
+          "arrival": null,
+          "departure": "08:38",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "日向",
+          "n02_station_code": "004096",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -92,7 +274,45 @@
       },
       "route_sections": [
         {
+          "from": "成東",
+          "to": "求名",
           "from_n02_station_code": "004190",
+          "to_n02_station_code": "004289",
+          "line_names": [
+            "東金線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "求名",
+          "to": "東金",
+          "from_n02_station_code": "004289",
+          "to_n02_station_code": "004339",
+          "line_names": [
+            "東金線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東金",
+          "to": "福俵",
+          "from_n02_station_code": "004339",
+          "to_n02_station_code": "004376",
+          "line_names": [
+            "東金線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "福俵",
+          "to": "大網",
+          "from_n02_station_code": "004376",
           "to_n02_station_code": "004450",
           "line_names": [
             "東金線"
@@ -109,6 +329,30 @@
           "arrival": null,
           "departure": "09:02",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "求名",
+          "n02_station_code": "004289",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東金",
+          "n02_station_code": "004339",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "福俵",
+          "n02_station_code": "004376",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -153,10 +397,251 @@
       },
       "route_sections": [
         {
+          "from": "大網",
+          "to": "土気",
           "from_n02_station_code": "004451",
+          "to_n02_station_code": "004436",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "土気",
+          "to": "誉田",
+          "from_n02_station_code": "004436",
+          "to_n02_station_code": "004375",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "誉田",
+          "to": "鎌取",
+          "from_n02_station_code": "004375",
+          "to_n02_station_code": "004327",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "鎌取",
+          "to": "蘇我",
+          "from_n02_station_code": "004327",
+          "to_n02_station_code": "004281",
+          "line_names": [
+            "外房線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "蘇我",
+          "to": "千葉みなと",
+          "from_n02_station_code": "004281",
+          "to_n02_station_code": "004209",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "千葉みなと",
+          "to": "稲毛海岸",
+          "from_n02_station_code": "004209",
+          "to_n02_station_code": "004093",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "稲毛海岸",
+          "to": "検見川浜",
+          "from_n02_station_code": "004093",
+          "to_n02_station_code": "004049",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "検見川浜",
+          "to": "海浜幕張",
+          "from_n02_station_code": "004049",
+          "to_n02_station_code": "003984",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "海浜幕張",
+          "to": "幕張豊砂",
+          "from_n02_station_code": "003984",
+          "to_n02_station_code": "010168",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "幕張豊砂",
+          "to": "新習志野",
+          "from_n02_station_code": "010168",
+          "to_n02_station_code": "003863",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新習志野",
+          "to": "南船橋",
+          "from_n02_station_code": "003863",
+          "to_n02_station_code": "003761",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "南船橋",
+          "to": "二俣新町",
+          "from_n02_station_code": "003761",
+          "to_n02_station_code": "003682",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "二俣新町",
+          "to": "市川塩浜",
+          "from_n02_station_code": "003682",
+          "to_n02_station_code": "003870",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "市川塩浜",
+          "to": "新浦安",
+          "from_n02_station_code": "003870",
+          "to_n02_station_code": "003978",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新浦安",
+          "to": "舞浜",
+          "from_n02_station_code": "003978",
+          "to_n02_station_code": "004055",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "舞浜",
+          "to": "葛西臨海公園",
+          "from_n02_station_code": "004055",
+          "to_n02_station_code": "004012",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "葛西臨海公園",
+          "to": "新木場",
+          "from_n02_station_code": "004012",
+          "to_n02_station_code": "003995",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新木場",
+          "to": "潮見",
+          "from_n02_station_code": "003995",
+          "to_n02_station_code": "003928",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "潮見",
+          "to": "越中島",
+          "from_n02_station_code": "003928",
+          "to_n02_station_code": "003859",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "越中島",
+          "to": "八丁堀",
+          "from_n02_station_code": "003859",
+          "to_n02_station_code": "003800",
+          "line_names": [
+            "京葉線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "八丁堀",
+          "to": "東京",
+          "from_n02_station_code": "003800",
           "to_n02_station_code": "003785",
           "line_names": [
-            "外房線",
             "京葉線"
           ],
           "operator_names": [
@@ -171,6 +656,166 @@
           "arrival": null,
           "departure": "09:47",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "土気",
+          "n02_station_code": "004436",
+          "arrival": "09:50",
+          "departure": "09:51",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "誉田",
+          "n02_station_code": "004375",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "鎌取",
+          "n02_station_code": "004327",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "蘇我",
+          "n02_station_code": "004281",
+          "arrival": "10:00",
+          "departure": "10:02",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "千葉みなと",
+          "n02_station_code": "004209",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "稲毛海岸",
+          "n02_station_code": "004093",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "検見川浜",
+          "n02_station_code": "004049",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "海浜幕張",
+          "n02_station_code": "003984",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "幕張豊砂",
+          "n02_station_code": "010168",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新習志野",
+          "n02_station_code": "003863",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "南船橋",
+          "n02_station_code": "003761",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "二俣新町",
+          "n02_station_code": "003682",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "市川塩浜",
+          "n02_station_code": "003870",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新浦安",
+          "n02_station_code": "003978",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "舞浜",
+          "n02_station_code": "004055",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "葛西臨海公園",
+          "n02_station_code": "004012",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新木場",
+          "n02_station_code": "003995",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "潮見",
+          "n02_station_code": "003928",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "越中島",
+          "n02_station_code": "003859",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "八丁堀",
+          "n02_station_code": "003800",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -214,7 +859,69 @@
       },
       "route_sections": [
         {
+          "from": "東京",
+          "to": "有楽町",
           "from_n02_station_code": "003770",
+          "to_n02_station_code": "003798",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "有楽町",
+          "to": "新橋",
+          "from_n02_station_code": "003798",
+          "to_n02_station_code": "003872",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新橋",
+          "to": "浜松町",
+          "from_n02_station_code": "003872",
+          "to_n02_station_code": "003949",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "浜松町",
+          "to": "田町",
+          "from_n02_station_code": "003949",
+          "to_n02_station_code": "004000",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "田町",
+          "to": "高輪ゲートウェイ",
+          "from_n02_station_code": "004000",
+          "to_n02_station_code": "004061",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "高輪ゲートウェイ",
+          "to": "品川",
+          "from_n02_station_code": "004061",
           "to_n02_station_code": "004095",
           "line_names": [
             "東海道線"
@@ -231,6 +938,46 @@
           "arrival": null,
           "departure": "11:43",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "有楽町",
+          "n02_station_code": "003798",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新橋",
+          "n02_station_code": "003872",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "浜松町",
+          "n02_station_code": "003949",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "田町",
+          "n02_station_code": "004000",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "高輪ゲートウェイ",
+          "n02_station_code": "004061",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -274,7 +1021,141 @@
       },
       "route_sections": [
         {
+          "from": "品川",
+          "to": "大井町",
           "from_n02_station_code": "004095",
+          "to_n02_station_code": "004207",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "大井町",
+          "to": "大森",
+          "from_n02_station_code": "004207",
+          "to_n02_station_code": "004264",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "大森",
+          "to": "蒲田",
+          "from_n02_station_code": "004264",
+          "to_n02_station_code": "004328",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "蒲田",
+          "to": "川崎",
+          "from_n02_station_code": "004328",
+          "to_n02_station_code": "004432",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "川崎",
+          "to": "鶴見",
+          "from_n02_station_code": "004432",
+          "to_n02_station_code": "004496",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "鶴見",
+          "to": "新子安",
+          "from_n02_station_code": "004496",
+          "to_n02_station_code": "004562",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新子安",
+          "to": "東神奈川",
+          "from_n02_station_code": "004562",
+          "to_n02_station_code": "004597",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東神奈川",
+          "to": "横浜",
+          "from_n02_station_code": "004597",
+          "to_n02_station_code": "004634",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "横浜",
+          "to": "保土ヶ谷",
+          "from_n02_station_code": "004634",
+          "to_n02_station_code": "004685",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "保土ヶ谷",
+          "to": "東戸塚",
+          "from_n02_station_code": "004685",
+          "to_n02_station_code": "004741",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東戸塚",
+          "to": "戸塚",
+          "from_n02_station_code": "004741",
+          "to_n02_station_code": "004824",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "戸塚",
+          "to": "大船",
+          "from_n02_station_code": "004824",
           "to_n02_station_code": "004959",
           "line_names": [
             "東海道線"
@@ -291,6 +1172,94 @@
           "arrival": null,
           "departure": "12:08",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大井町",
+          "n02_station_code": "004207",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大森",
+          "n02_station_code": "004264",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "蒲田",
+          "n02_station_code": "004328",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "川崎",
+          "n02_station_code": "004432",
+          "arrival": "12:16",
+          "departure": "12:16",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "鶴見",
+          "n02_station_code": "004496",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新子安",
+          "n02_station_code": "004562",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "東神奈川",
+          "n02_station_code": "004597",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "横浜",
+          "n02_station_code": "004634",
+          "arrival": "12:23",
+          "departure": "12:24",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "保土ヶ谷",
+          "n02_station_code": "004685",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "東戸塚",
+          "n02_station_code": "004741",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "戸塚",
+          "n02_station_code": "004824",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -334,7 +1303,33 @@
       },
       "route_sections": [
         {
+          "from": "大船",
+          "to": "藤沢",
           "from_n02_station_code": "004959",
+          "to_n02_station_code": "004996",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "藤沢",
+          "to": "辻堂",
+          "from_n02_station_code": "004996",
+          "to_n02_station_code": "005004",
+          "line_names": [
+            "東海道線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "辻堂",
+          "to": "茅ヶ崎",
+          "from_n02_station_code": "005004",
           "to_n02_station_code": "005024",
           "line_names": [
             "東海道線"
@@ -351,6 +1346,22 @@
           "arrival": null,
           "departure": "12:41",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "藤沢",
+          "n02_station_code": "004996",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "辻堂",
+          "n02_station_code": "005004",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -394,7 +1405,201 @@
       },
       "route_sections": [
         {
+          "from": "茅ヶ崎",
+          "to": "北茅ヶ崎",
           "from_n02_station_code": "005023",
+          "to_n02_station_code": "004995",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "北茅ヶ崎",
+          "to": "香川",
+          "from_n02_station_code": "004995",
+          "to_n02_station_code": "004953",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "香川",
+          "to": "寒川",
+          "from_n02_station_code": "004953",
+          "to_n02_station_code": "004920",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "寒川",
+          "to": "宮山",
+          "from_n02_station_code": "004920",
+          "to_n02_station_code": "004880",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "宮山",
+          "to": "倉見",
+          "from_n02_station_code": "004880",
+          "to_n02_station_code": "004850",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "倉見",
+          "to": "門沢橋",
+          "from_n02_station_code": "004850",
+          "to_n02_station_code": "004795",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "門沢橋",
+          "to": "社家",
+          "from_n02_station_code": "004795",
+          "to_n02_station_code": "004765",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "社家",
+          "to": "厚木",
+          "from_n02_station_code": "004765",
+          "to_n02_station_code": "004701",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "厚木",
+          "to": "海老名",
+          "from_n02_station_code": "004701",
+          "to_n02_station_code": "004666",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "海老名",
+          "to": "入谷",
+          "from_n02_station_code": "004666",
+          "to_n02_station_code": "004593",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "入谷",
+          "to": "相武台下",
+          "from_n02_station_code": "004593",
+          "to_n02_station_code": "004544",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "相武台下",
+          "to": "下溝",
+          "from_n02_station_code": "004544",
+          "to_n02_station_code": "004462",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "下溝",
+          "to": "原当麻",
+          "from_n02_station_code": "004462",
+          "to_n02_station_code": "004437",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "原当麻",
+          "to": "番田",
+          "from_n02_station_code": "004437",
+          "to_n02_station_code": "004379",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "番田",
+          "to": "上溝",
+          "from_n02_station_code": "004379",
+          "to_n02_station_code": "004342",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "上溝",
+          "to": "南橋本",
+          "from_n02_station_code": "004342",
+          "to_n02_station_code": "004288",
+          "line_names": [
+            "相模線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "南橋本",
+          "to": "橋本",
+          "from_n02_station_code": "004288",
           "to_n02_station_code": "004254",
           "line_names": [
             "相模線"
@@ -411,6 +1616,134 @@
           "arrival": null,
           "departure": "12:59",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "北茅ヶ崎",
+          "n02_station_code": "004995",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "香川",
+          "n02_station_code": "004953",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "寒川",
+          "n02_station_code": "004920",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "宮山",
+          "n02_station_code": "004880",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "倉見",
+          "n02_station_code": "004850",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "門沢橋",
+          "n02_station_code": "004795",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "社家",
+          "n02_station_code": "004765",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "厚木",
+          "n02_station_code": "004701",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "海老名",
+          "n02_station_code": "004666",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "入谷",
+          "n02_station_code": "004593",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "相武台下",
+          "n02_station_code": "004544",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "下溝",
+          "n02_station_code": "004462",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "原当麻",
+          "n02_station_code": "004437",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "番田",
+          "n02_station_code": "004379",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "上溝",
+          "n02_station_code": "004342",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "南橋本",
+          "n02_station_code": "004288",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -454,7 +1787,45 @@
       },
       "route_sections": [
         {
+          "from": "橋本",
+          "to": "相原",
           "from_n02_station_code": "004253",
+          "to_n02_station_code": "004206",
+          "line_names": [
+            "横浜線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "相原",
+          "to": "八王子みなみ野",
+          "from_n02_station_code": "004206",
+          "to_n02_station_code": "004082",
+          "line_names": [
+            "横浜線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "八王子みなみ野",
+          "to": "片倉",
+          "from_n02_station_code": "004082",
+          "to_n02_station_code": "004038",
+          "line_names": [
+            "横浜線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "片倉",
+          "to": "八王子",
+          "from_n02_station_code": "004038",
           "to_n02_station_code": "003953",
           "line_names": [
             "横浜線"
@@ -471,6 +1842,30 @@
           "arrival": null,
           "departure": "14:25",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "相原",
+          "n02_station_code": "004206",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "八王子みなみ野",
+          "n02_station_code": "004082",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "片倉",
+          "n02_station_code": "004038",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -514,7 +1909,33 @@
       },
       "route_sections": [
         {
+          "from": "八王子",
+          "to": "豊田",
           "from_n02_station_code": "003947",
+          "to_n02_station_code": "003921",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "豊田",
+          "to": "日野",
+          "from_n02_station_code": "003921",
+          "to_n02_station_code": "003779",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "日野",
+          "to": "立川",
+          "from_n02_station_code": "003779",
           "to_n02_station_code": "003634",
           "line_names": [
             "中央線"
@@ -531,6 +1952,22 @@
           "arrival": null,
           "departure": "15:34",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "豊田",
+          "n02_station_code": "003921",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "日野",
+          "n02_station_code": "003779",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -574,7 +2011,21 @@
       },
       "route_sections": [
         {
+          "from": "立川",
+          "to": "国立",
           "from_n02_station_code": "003634",
+          "to_n02_station_code": "003622",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "国立",
+          "to": "西国分寺",
+          "from_n02_station_code": "003622",
           "to_n02_station_code": "003614",
           "line_names": [
             "中央線"
@@ -591,6 +2042,14 @@
           "arrival": null,
           "departure": "15:46",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "国立",
+          "n02_station_code": "003622",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -634,7 +2093,81 @@
       },
       "route_sections": [
         {
+          "from": "西国分寺",
+          "to": "新小平",
           "from_n02_station_code": "003611",
+          "to_n02_station_code": "003385",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新小平",
+          "to": "新秋津",
+          "from_n02_station_code": "003385",
+          "to_n02_station_code": "003152",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新秋津",
+          "to": "東所沢",
+          "from_n02_station_code": "003152",
+          "to_n02_station_code": "003100",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東所沢",
+          "to": "新座",
+          "from_n02_station_code": "003100",
+          "to_n02_station_code": "003081",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新座",
+          "to": "北朝霞",
+          "from_n02_station_code": "003081",
+          "to_n02_station_code": "003056",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "北朝霞",
+          "to": "西浦和",
+          "from_n02_station_code": "003056",
+          "to_n02_station_code": "003014",
+          "line_names": [
+            "武蔵野線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "西浦和",
+          "to": "武蔵浦和",
+          "from_n02_station_code": "003014",
           "to_n02_station_code": "003006",
           "line_names": [
             "武蔵野線"
@@ -651,6 +2184,54 @@
           "arrival": null,
           "departure": "15:59",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "新小平",
+          "n02_station_code": "003385",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "新秋津",
+          "n02_station_code": "003152",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東所沢",
+          "n02_station_code": "003100",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "新座",
+          "n02_station_code": "003081",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "北朝霞",
+          "n02_station_code": "003056",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "西浦和",
+          "n02_station_code": "003014",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -694,7 +2275,57 @@
       },
       "route_sections": [
         {
+          "from": "武蔵浦和",
+          "to": "中浦和",
           "from_n02_station_code": "003008",
+          "to_n02_station_code": "002995",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "中浦和",
+          "to": "南与野",
+          "from_n02_station_code": "002995",
+          "to_n02_station_code": "002975",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "南与野",
+          "to": "与野本町",
+          "from_n02_station_code": "002975",
+          "to_n02_station_code": "002951",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "与野本町",
+          "to": "北与野",
+          "from_n02_station_code": "002951",
+          "to_n02_station_code": "002938",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "北与野",
+          "to": "大宮",
+          "from_n02_station_code": "002938",
           "to_n02_station_code": "002912",
           "line_names": [
             "東北線"
@@ -711,6 +2342,38 @@
           "arrival": null,
           "departure": "16:28",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "中浦和",
+          "n02_station_code": "002995",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "南与野",
+          "n02_station_code": "002975",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "与野本町",
+          "n02_station_code": "002951",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "北与野",
+          "n02_station_code": "002938",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {
@@ -754,7 +2417,45 @@
       },
       "route_sections": [
         {
+          "from": "大宮",
+          "to": "さいたま新都心",
           "from_n02_station_code": "002912",
+          "to_n02_station_code": "002934",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "さいたま新都心",
+          "to": "与野",
+          "from_n02_station_code": "002934",
+          "to_n02_station_code": "002947",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "与野",
+          "to": "北浦和",
+          "from_n02_station_code": "002947",
+          "to_n02_station_code": "002968",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "北浦和",
+          "to": "浦和",
+          "from_n02_station_code": "002968",
           "to_n02_station_code": "002989",
           "line_names": [
             "東北線"
@@ -774,6 +2475,30 @@
           "ride_segment": true
         },
         {
+          "name": "さいたま新都心",
+          "n02_station_code": "002934",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "与野",
+          "n02_station_code": "002947",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北浦和",
+          "n02_station_code": "002968",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "浦和",
           "n02_station_code": "002989",
           "arrival": "17:50",
@@ -788,7 +2513,7 @@
       "date": "2026-05-29",
       "number": "スペーシア日光4号（予約区間）",
       "train_type": "特急",
-      "company": "JR東日本",
+      "company": "JR東日本/東武鉄道",
       "origin": "浦和",
       "destination": "新宿",
       "direction": "新宿",
@@ -816,11 +2541,143 @@
       },
       "route_sections": [
         {
+          "from": "浦和",
+          "to": "南浦和",
           "from_n02_station_code": "002989",
+          "to_n02_station_code": "003004",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "南浦和",
+          "to": "蕨",
+          "from_n02_station_code": "003004",
+          "to_n02_station_code": "003041",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "蕨",
+          "to": "西川口",
+          "from_n02_station_code": "003041",
+          "to_n02_station_code": "003055",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "西川口",
+          "to": "川口",
+          "from_n02_station_code": "003055",
+          "to_n02_station_code": "003086",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "川口",
+          "to": "赤羽",
+          "from_n02_station_code": "003086",
+          "to_n02_station_code": "003157",
+          "line_names": [
+            "東北線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "赤羽",
+          "to": "十条",
+          "from_n02_station_code": "003157",
+          "to_n02_station_code": "003218",
+          "line_names": [
+            "赤羽線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "十条",
+          "to": "板橋",
+          "from_n02_station_code": "003218",
+          "to_n02_station_code": "003286",
+          "line_names": [
+            "赤羽線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "板橋",
+          "to": "池袋",
+          "from_n02_station_code": "003286",
+          "to_n02_station_code": "003391",
+          "line_names": [
+            "赤羽線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "池袋",
+          "to": "目白",
+          "from_n02_station_code": "003391",
+          "to_n02_station_code": "003470",
+          "line_names": [
+            "山手線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "目白",
+          "to": "高田馬場",
+          "from_n02_station_code": "003470",
+          "to_n02_station_code": "003508",
+          "line_names": [
+            "山手線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "高田馬場",
+          "to": "新大久保",
+          "from_n02_station_code": "003508",
+          "to_n02_station_code": "003601",
+          "line_names": [
+            "山手線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新大久保",
+          "to": "新宿",
+          "from_n02_station_code": "003601",
           "to_n02_station_code": "003701",
           "line_names": [
-            "東北線",
-            "赤羽線",
             "山手線"
           ],
           "operator_names": [
@@ -835,6 +2692,94 @@
           "arrival": null,
           "departure": "18:11",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "南浦和",
+          "n02_station_code": "003004",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "蕨",
+          "n02_station_code": "003041",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "西川口",
+          "n02_station_code": "003055",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "川口",
+          "n02_station_code": "003086",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "赤羽",
+          "n02_station_code": "003157",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "十条",
+          "n02_station_code": "003218",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "板橋",
+          "n02_station_code": "003286",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "池袋",
+          "n02_station_code": "003391",
+          "arrival": "18:29",
+          "departure": "18:30",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "目白",
+          "n02_station_code": "003470",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "高田馬場",
+          "n02_station_code": "003508",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新大久保",
+          "n02_station_code": "003601",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -879,10 +2824,239 @@
       },
       "route_sections": [
         {
+          "from": "新宿",
+          "to": "千駄ヶ谷",
           "from_n02_station_code": "003693",
+          "to_n02_station_code": "003767",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "千駄ヶ谷",
+          "to": "信濃町",
+          "from_n02_station_code": "003767",
+          "to_n02_station_code": "003774",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "信濃町",
+          "to": "四ツ谷",
+          "from_n02_station_code": "003774",
+          "to_n02_station_code": "003728",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "四ツ谷",
+          "to": "市ヶ谷",
+          "from_n02_station_code": "003728",
+          "to_n02_station_code": "003685",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "市ヶ谷",
+          "to": "飯田橋",
+          "from_n02_station_code": "003685",
+          "to_n02_station_code": "003608",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "飯田橋",
+          "to": "水道橋",
+          "from_n02_station_code": "003608",
+          "to_n02_station_code": "003591",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "水道橋",
+          "to": "御茶ノ水",
+          "from_n02_station_code": "003591",
+          "to_n02_station_code": "003616",
+          "line_names": [
+            "中央線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "御茶ノ水",
+          "to": "秋葉原",
+          "from_n02_station_code": "003616",
+          "to_n02_station_code": "003626",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "秋葉原",
+          "to": "浅草橋",
+          "from_n02_station_code": "003626",
+          "to_n02_station_code": "003640",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "浅草橋",
+          "to": "両国",
+          "from_n02_station_code": "003640",
+          "to_n02_station_code": "003654",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "両国",
+          "to": "錦糸町",
+          "from_n02_station_code": "003654",
+          "to_n02_station_code": "003647",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "錦糸町",
+          "to": "亀戸",
+          "from_n02_station_code": "003647",
+          "to_n02_station_code": "003641",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "亀戸",
+          "to": "平井",
+          "from_n02_station_code": "003641",
+          "to_n02_station_code": "003561",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "平井",
+          "to": "新小岩",
+          "from_n02_station_code": "003561",
+          "to_n02_station_code": "003486",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新小岩",
+          "to": "小岩",
+          "from_n02_station_code": "003486",
+          "to_n02_station_code": "003360",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "小岩",
+          "to": "市川",
+          "from_n02_station_code": "003360",
+          "to_n02_station_code": "003403",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "市川",
+          "to": "本八幡",
+          "from_n02_station_code": "003403",
+          "to_n02_station_code": "003467",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "本八幡",
+          "to": "下総中山",
+          "from_n02_station_code": "003467",
+          "to_n02_station_code": "003498",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "下総中山",
+          "to": "西船橋",
+          "from_n02_station_code": "003498",
+          "to_n02_station_code": "003547",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "西船橋",
+          "to": "船橋",
+          "from_n02_station_code": "003547",
           "to_n02_station_code": "003593",
           "line_names": [
-            "中央線",
             "総武線"
           ],
           "operator_names": [
@@ -897,6 +3071,158 @@
           "arrival": null,
           "departure": "20:11",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "千駄ヶ谷",
+          "n02_station_code": "003767",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "信濃町",
+          "n02_station_code": "003774",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "四ツ谷",
+          "n02_station_code": "003728",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "市ヶ谷",
+          "n02_station_code": "003685",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "飯田橋",
+          "n02_station_code": "003608",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "水道橋",
+          "n02_station_code": "003591",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "御茶ノ水",
+          "n02_station_code": "003616",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "秋葉原",
+          "n02_station_code": "003626",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "浅草橋",
+          "n02_station_code": "003640",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "両国",
+          "n02_station_code": "003654",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "錦糸町",
+          "n02_station_code": "003647",
+          "arrival": "20:27",
+          "departure": "20:27",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "亀戸",
+          "n02_station_code": "003641",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "平井",
+          "n02_station_code": "003561",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新小岩",
+          "n02_station_code": "003486",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "小岩",
+          "n02_station_code": "003360",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "市川",
+          "n02_station_code": "003403",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "本八幡",
+          "n02_station_code": "003467",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "下総中山",
+          "n02_station_code": "003498",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "西船橋",
+          "n02_station_code": "003547",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -940,7 +3266,81 @@
       },
       "route_sections": [
         {
+          "from": "船橋",
+          "to": "東船橋",
           "from_n02_station_code": "003593",
+          "to_n02_station_code": "003613",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "東船橋",
+          "to": "津田沼",
+          "from_n02_station_code": "003613",
+          "to_n02_station_code": "003681",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "津田沼",
+          "to": "幕張本郷",
+          "from_n02_station_code": "003681",
+          "to_n02_station_code": "003815",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "幕張本郷",
+          "to": "幕張",
+          "from_n02_station_code": "003815",
+          "to_n02_station_code": "003919",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "幕張",
+          "to": "新検見川",
+          "from_n02_station_code": "003919",
+          "to_n02_station_code": "003965",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "新検見川",
+          "to": "稲毛",
+          "from_n02_station_code": "003965",
+          "to_n02_station_code": "004047",
+          "line_names": [
+            "総武線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from": "稲毛",
+          "to": "西千葉",
+          "from_n02_station_code": "004047",
           "to_n02_station_code": "004124",
           "line_names": [
             "総武線"
@@ -957,6 +3357,54 @@
           "arrival": null,
           "departure": "20:41",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "東船橋",
+          "n02_station_code": "003613",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "津田沼",
+          "n02_station_code": "003681",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "幕張本郷",
+          "n02_station_code": "003815",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "幕張",
+          "n02_station_code": "003919",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "新検見川",
+          "n02_station_code": "003965",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "稲毛",
+          "n02_station_code": "004047",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {

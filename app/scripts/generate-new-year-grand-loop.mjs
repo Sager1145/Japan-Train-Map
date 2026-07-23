@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  expandRouteStationPieces,
+  findStationCode,
+} from "./lib/expand-route-stations.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT = path.join(
@@ -61,7 +65,7 @@ const services = [
   ["19", "2025-12-31", "普通（22:24 南船橋行）", "普通", "西国分寺", "003611", "22:24", "武蔵浦和", "003006", "22:46", ["武蔵野線"], COLORS.musashino],
   ["20", "2025-12-31", "普通（22:52 新宿行）", "普通", "武蔵浦和", "003008", "22:52", "赤羽", "003155", "23:05", ["東北線", "赤羽線"], COLORS.saikyo],
   ["21", "2025-12-31", "普通（23:08 大宮行）", "普通", "赤羽", "003157", "23:08", "南浦和", "003004", "23:20", ["東北線"], COLORS.keihin],
-  ["22", "2025-12-31", "普通（23:38 新習志野行）", "普通", "南浦和", "003005", "23:38", "西船橋", "003554", "00:29", ["武蔵野線"], COLORS.musashino],
+  ["22", "2025-12-31", "普通（23:38 新習志野行）", "普通", "南浦和", "003005", "23:38", "西船橋", "003554", "24:29", ["武蔵野線"], COLORS.musashino],
   ["23", "2026-01-01", "普通（00:36 千葉行・終夜運転）", "普通", "西船橋", "003547", "00:36", "千葉", "004165", "01:11", ["総武線"], COLORS.sobu],
   ["24", "2026-01-01", "普通（01:20 成田行・終夜臨時列車）", "普通", "千葉", "004165", "01:20", "成田", "003161", "02:11", ["総武線", "成田線"], COLORS.narita],
   ["25", "2026-01-01", "普通（05:21 銚子行）", "普通", "成田", "003161", "05:21", "松岸", "003317", "06:42", ["成田線"], COLORS.narita],
@@ -81,6 +85,90 @@ const services = [
   ["39", "2026-01-01", "普通（17:10 我孫子方面）", "普通", "松戸", "003136", "17:10", "馬橋", "003066", "17:14", ["常磐線"], COLORS.joban],
 ];
 
+const SERVICE_DETAILS = {
+  "01": {
+    company: "東京メトロ/JR東日本",
+  },
+  "04": {
+    routePieces: [
+      { to: "新前橋", lineNames: ["両毛線"] },
+      { to: "高崎", lineNames: ["上越線"] },
+    ],
+  },
+  "05": {
+    passengerStops: [
+      "高崎",
+      "倉賀野",
+      "新町",
+      "神保原",
+      "本庄",
+      "岡部",
+      "深谷",
+      "籠原",
+      "熊谷",
+      "鴻巣",
+      "北本",
+      "桶川",
+      "上尾",
+      "大宮",
+    ],
+  },
+  "07": {
+    routePieces: [
+      { to: "高麗川", lineNames: ["川越線"] },
+      { to: "八王子", lineNames: ["八高線"] },
+    ],
+  },
+  "11": {
+    routePieces: [
+      { to: "横浜", lineNames: ["根岸線"] },
+      { to: "鶴見", lineNames: ["東海道線"] },
+    ],
+  },
+  "15": {
+    passengerStops: ["川崎", "品川"],
+  },
+  "20": {
+    routePieces: [{ to: "赤羽", lineNames: ["東北線"] }],
+  },
+  "24": {
+    routePieces: [
+      { to: "佐倉", lineNames: ["総武線"] },
+      { to: "成田", lineNames: ["成田線"] },
+    ],
+  },
+  "32": {
+    passengerStops: [
+      "蘇我",
+      "千葉みなと",
+      "稲毛海岸",
+      "検見川浜",
+      "海浜幕張",
+      "南船橋",
+      "新浦安",
+      "舞浜",
+      "新木場",
+      "八丁堀",
+      "東京",
+    ],
+  },
+  "33": {
+    passengerStops: ["東京", "新日本橋", "馬喰町", "錦糸町"],
+  },
+  "36": {
+    passengerStops: ["神田", "御茶ノ水", "四ツ谷", "新宿"],
+  },
+  "37": {
+    routePieces: [
+      { to: "田端", lineNames: ["山手線"] },
+      { to: "日暮里", lineNames: ["東北線"] },
+    ],
+  },
+  "38": {
+    passengerStops: ["日暮里", "三河島", "南千住", "北千住", "松戸"],
+  },
+};
+
 function makeTrain(service) {
   const [
     order,
@@ -96,12 +184,73 @@ function makeTrain(service) {
     lineNames,
     color,
   ] = service;
+  const details = SERVICE_DETAILS[order] || {};
+  let currentName = origin;
+  let currentCode = originCode;
+  const pieceSpecs = details.routePieces || [
+    { to: destination, lineNames },
+  ];
+  const pieces = pieceSpecs.map((pieceSpec) => {
+    const toCode =
+      pieceSpec.to === destination
+        ? destinationCode
+        : findStationCode(pieceSpec.to, pieceSpec.lineNames);
+    if (!toCode) {
+      throw new Error(
+        `${order}: N02 station code not found for ${pieceSpec.to}`,
+      );
+    }
+    const piece = {
+      from: currentName,
+      to: pieceSpec.to,
+      from_n02_station_code: currentCode,
+      to_n02_station_code: toCode,
+      line_names: pieceSpec.lineNames,
+    };
+    currentName = pieceSpec.to;
+    currentCode = toCode;
+    return piece;
+  });
+  const expanded = expandRouteStationPieces(pieces);
+  if (
+    !expanded ||
+    expanded.stations[0]?.name !== origin ||
+    expanded.stations.at(-1)?.name !== destination
+  ) {
+    throw new Error(`${order}: failed to expand ${origin} -> ${destination}`);
+  }
+  const passengerStops = details.passengerStops
+    ? new Set(details.passengerStops)
+    : null;
+  const stops = expanded.stations.map((station, index) => {
+    const isOrigin = index === 0;
+    const isDestination = index === expanded.stations.length - 1;
+    const isPassengerStop =
+      isOrigin ||
+      isDestination ||
+      !passengerStops ||
+      passengerStops.has(station.name);
+    return {
+      name: station.name,
+      n02_station_code: station.code,
+      arrival: isOrigin ? null : isDestination ? arrival : null,
+      departure: isDestination ? null : isOrigin ? departure : null,
+      stop_type: isOrigin
+        ? "origin"
+        : isDestination
+          ? "destination"
+          : isPassengerStop
+            ? "passenger_stop"
+            : "pass_through",
+      ride_segment: true,
+    };
+  });
   return {
     id: `new_year_grand_loop_${date.replaceAll("-", "")}_${order}`,
     date,
     number,
     train_type: trainType,
-    company: "JR東日本",
+    company: details.company || "JR東日本",
     origin,
     destination,
     direction: destination,
@@ -117,32 +266,11 @@ function makeTrain(service) {
       institution_filter_mode: "soft",
       allowed_institution_type_codes: ["2"],
     },
-    route_sections: [
-      {
-        from_n02_station_code: originCode,
-        to_n02_station_code: destinationCode,
-        line_names: lineNames,
-        operator_names: [OPERATOR],
-      },
-    ],
-    stops: [
-      {
-        name: origin,
-        n02_station_code: originCode,
-        arrival: null,
-        departure,
-        stop_type: "origin",
-        ride_segment: true,
-      },
-      {
-        name: destination,
-        n02_station_code: destinationCode,
-        arrival,
-        departure: null,
-        stop_type: "destination",
-        ride_segment: true,
-      },
-    ],
+    route_sections: expanded.sections.map((section) => ({
+      ...section,
+      operator_names: [OPERATOR],
+    })),
+    stops,
   };
 }
 

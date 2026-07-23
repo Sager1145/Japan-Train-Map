@@ -118,25 +118,74 @@ test("New Year grand loop is an independent canonical 1.3 store", async () => {
     assert.match(train.id, /^[a-zA-Z0-9_-]+$/);
     assert.equal(ids.has(train.id), false, `duplicate train id: ${train.id}`);
     ids.add(train.id);
-    assert.equal(train.company, "JR東日本");
-    assert.equal(train.stops.length, 2);
+    assert.match(train.company, /JR東日本/);
+    assert.ok(train.stops.length >= 2);
     assert.equal(train.stops[0].stop_type, "origin");
-    assert.equal(train.stops[1].stop_type, "destination");
-    assert.equal(train.route_sections.length, 1);
-    assert.equal(
-      train.route_sections[0].from_n02_station_code,
-      train.stops[0].n02_station_code,
-    );
-    assert.equal(
-      train.route_sections[0].to_n02_station_code,
-      train.stops[1].n02_station_code,
-    );
+    assert.equal(train.stops.at(-1).stop_type, "destination");
+    assert.equal(train.route_sections.length, train.stops.length - 1);
+    train.route_sections.forEach((section, index) => {
+      assert.equal(section.from, train.stops[index].name);
+      assert.equal(section.to, train.stops[index + 1].name);
+      assert.equal(
+        section.from_n02_station_code,
+        train.stops[index].n02_station_code,
+      );
+      assert.equal(
+        section.to_n02_station_code,
+        train.stops[index + 1].n02_station_code,
+      );
+      assert.ok(section.line_names.length > 0);
+      assert.deepEqual(section.operator_names, ["東日本旅客鉄道"]);
+    });
   }
 
+  assert.equal(store.trains[0].company, "東京メトロ/JR東日本");
   assert.equal(store.trains.some((train) => train.number.includes("13:49")), false);
   assert.equal(store.trains.some((train) => train.number.includes("21:03")), false);
   assert.ok(store.trains.some((train) => train.number.includes("14:14")));
   assert.ok(store.trains.some((train) => train.number.includes("21:18")));
+
+  const byId = new Map(store.trains.map((train) => [train.id, train]));
+  assert.equal(
+    byId.get("new_year_grand_loop_20251231_22").stops.at(-1).arrival,
+    "24:29",
+  );
+  assert.deepEqual(
+    byId
+      .get("new_year_grand_loop_20251231_05")
+      .stops.filter((stop) => stop.stop_type === "pass_through")
+      .map((stop) => stop.name),
+    ["行田", "吹上", "北鴻巣", "北上尾", "宮原"],
+  );
+  assert.deepEqual(
+    byId
+      .get("new_year_grand_loop_20260101_32")
+      .stops.filter((stop) => stop.stop_type === "pass_through")
+      .map((stop) => stop.name),
+    [
+      "幕張豊砂",
+      "新習志野",
+      "二俣新町",
+      "市川塩浜",
+      "葛西臨海公園",
+      "潮見",
+      "越中島",
+    ],
+  );
+  assert.deepEqual(
+    byId
+      .get("new_year_grand_loop_20260101_36")
+      .stops.filter((stop) => stop.stop_type !== "pass_through")
+      .map((stop) => stop.name),
+    ["神田", "御茶ノ水", "四ツ谷", "新宿"],
+  );
+  assert.deepEqual(
+    byId
+      .get("new_year_grand_loop_20260101_38")
+      .stops.filter((stop) => stop.stop_type === "pass_through")
+      .map((stop) => stop.name),
+    ["綾瀬", "亀有", "金町"],
+  );
 });
 
 test("New Year grand-loop parts are separate, complete and fully solved", async () => {
@@ -233,6 +282,63 @@ test("Tokyo limited-express loop follows the TripIt booking times and revised en
   assert.equal(finalTrain.destination, "西千葉");
   assert.equal(finalTrain.stops.at(-1).arrival, "21:00");
   assert.equal(store.trains.some((train) => train.destination === "千葉"), false);
+
+  const expectedPassengerStops = new Map([
+    ["tokyo_limited_express_loop_20260529_01", ["千葉", "佐倉", "八街", "成東"]],
+    ["tokyo_limited_express_loop_20260529_03", ["大網", "土気", "蘇我", "東京"]],
+    ["tokyo_limited_express_loop_20260529_04", ["東京", "品川"]],
+    ["tokyo_limited_express_loop_20260529_05", ["品川", "川崎", "横浜", "大船"]],
+    ["tokyo_limited_express_loop_20260529_09", ["八王子", "立川"]],
+    ["tokyo_limited_express_loop_20260529_13", ["大宮", "浦和"]],
+    ["tokyo_limited_express_loop_20260529_14", ["浦和", "池袋", "新宿"]],
+    ["tokyo_limited_express_loop_20260529_15", ["新宿", "錦糸町", "船橋"]],
+  ]);
+  const byId = new Map(store.trains.map((train) => [train.id, train]));
+  for (const [id, expectedStops] of expectedPassengerStops) {
+    assert.deepEqual(
+      byId
+        .get(id)
+        .stops.filter((stop) => stop.stop_type !== "pass_through")
+        .map((stop) => stop.name),
+      expectedStops,
+      `${id} official passenger stops`,
+    );
+  }
+  assert.equal(
+    byId
+      .get("tokyo_limited_express_loop_20260529_03")
+      .stops.find((stop) => stop.name === "蘇我").departure,
+    "10:02",
+  );
+  assert.equal(
+    byId
+      .get("tokyo_limited_express_loop_20260529_14")
+      .stops.find((stop) => stop.name === "池袋").departure,
+    "18:30",
+  );
+  assert.equal(
+    byId.get("tokyo_limited_express_loop_20260529_14").company,
+    "JR東日本/東武鉄道",
+  );
+
+  for (const train of store.trains) {
+    assert.ok(train.stops.length >= 2);
+    assert.equal(train.stops[0].stop_type, "origin");
+    assert.equal(train.stops.at(-1).stop_type, "destination");
+    assert.equal(train.route_sections.length, train.stops.length - 1);
+    train.route_sections.forEach((section, index) => {
+      assert.equal(section.from, train.stops[index].name);
+      assert.equal(section.to, train.stops[index + 1].name);
+      assert.equal(
+        section.from_n02_station_code,
+        train.stops[index].n02_station_code,
+      );
+      assert.equal(
+        section.to_n02_station_code,
+        train.stops[index + 1].n02_station_code,
+      );
+    });
+  }
 });
 
 test("Tokyo limited-express loop parts are independent and fully solved", async () => {

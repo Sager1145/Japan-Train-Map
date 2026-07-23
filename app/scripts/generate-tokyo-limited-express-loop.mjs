@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  expandRouteStationPieces,
+  findStationCode,
+} from "./lib/expand-route-stations.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT = path.join(
@@ -32,6 +36,65 @@ const services = [
   ["16", "中央・総武線各駅停車 1904Y（千葉行）", "普通", "船橋", "003593", "20:41", "西千葉", "004124", "21:00", ["総武線"], "#ffd400"],
 ];
 
+const SERVICE_DETAILS = {
+  "01": {
+    passengerStops: ["千葉", "佐倉", "八街", "成東"],
+    times: {
+      佐倉: { departure: "08:23" },
+      八街: { departure: "08:38" },
+    },
+  },
+  "03": {
+    routePieces: [
+      { to: "蘇我", lineNames: ["外房線"] },
+      { to: "東京", lineNames: ["京葉線"] },
+    ],
+    passengerStops: ["大網", "土気", "蘇我", "東京"],
+    times: {
+      土気: { arrival: "09:50", departure: "09:51" },
+      蘇我: { arrival: "10:00", departure: "10:02" },
+    },
+  },
+  "04": {
+    passengerStops: ["東京", "品川"],
+  },
+  "05": {
+    passengerStops: ["品川", "川崎", "横浜", "大船"],
+    times: {
+      川崎: { arrival: "12:16", departure: "12:16" },
+      横浜: { arrival: "12:23", departure: "12:24" },
+    },
+  },
+  "09": {
+    passengerStops: ["八王子", "立川"],
+  },
+  "13": {
+    passengerStops: ["大宮", "浦和"],
+  },
+  "14": {
+    company: "JR東日本/東武鉄道",
+    routePieces: [
+      { to: "赤羽", lineNames: ["東北線"] },
+      { to: "池袋", lineNames: ["赤羽線"] },
+      { to: "新宿", lineNames: ["山手線"] },
+    ],
+    passengerStops: ["浦和", "池袋", "新宿"],
+    times: {
+      池袋: { arrival: "18:29", departure: "18:30" },
+    },
+  },
+  "15": {
+    routePieces: [
+      { to: "御茶ノ水", lineNames: ["中央線"] },
+      { to: "船橋", lineNames: ["総武線"] },
+    ],
+    passengerStops: ["新宿", "錦糸町", "船橋"],
+    times: {
+      錦糸町: { arrival: "20:27", departure: "20:27" },
+    },
+  },
+};
+
 function makeTrain(service) {
   const [
     order,
@@ -46,12 +109,82 @@ function makeTrain(service) {
     lineNames,
     color,
   ] = service;
+  const details = SERVICE_DETAILS[order] || {};
+  let currentName = origin;
+  let currentCode = originCode;
+  const pieceSpecs = details.routePieces || [
+    { to: destination, lineNames },
+  ];
+  const pieces = pieceSpecs.map((pieceSpec) => {
+    const toCode =
+      pieceSpec.to === destination
+        ? destinationCode
+        : findStationCode(pieceSpec.to, pieceSpec.lineNames);
+    if (!toCode) {
+      throw new Error(
+        `${order}: N02 station code not found for ${pieceSpec.to}`,
+      );
+    }
+    const piece = {
+      from: currentName,
+      to: pieceSpec.to,
+      from_n02_station_code: currentCode,
+      to_n02_station_code: toCode,
+      line_names: pieceSpec.lineNames,
+    };
+    currentName = pieceSpec.to;
+    currentCode = toCode;
+    return piece;
+  });
+  const expanded = expandRouteStationPieces(pieces);
+  if (
+    !expanded ||
+    expanded.stations[0]?.name !== origin ||
+    expanded.stations.at(-1)?.name !== destination
+  ) {
+    throw new Error(`${order}: failed to expand ${origin} -> ${destination}`);
+  }
+  const passengerStops = details.passengerStops
+    ? new Set(details.passengerStops)
+    : null;
+  const stops = expanded.stations.map((station, index) => {
+    const isOrigin = index === 0;
+    const isDestination = index === expanded.stations.length - 1;
+    const isPassengerStop =
+      isOrigin ||
+      isDestination ||
+      !passengerStops ||
+      passengerStops.has(station.name);
+    const times = details.times?.[station.name] || {};
+    return {
+      name: station.name,
+      n02_station_code: station.code,
+      arrival: isOrigin
+        ? null
+        : isDestination
+          ? arrival
+          : times.arrival || null,
+      departure: isDestination
+        ? null
+        : isOrigin
+          ? departure
+          : times.departure || null,
+      stop_type: isOrigin
+        ? "origin"
+        : isDestination
+          ? "destination"
+          : isPassengerStop
+            ? "passenger_stop"
+            : "pass_through",
+      ride_segment: true,
+    };
+  });
   return {
     id: `tokyo_limited_express_loop_20260529_${order}`,
     date: DATE,
     number,
     train_type: trainType,
-    company: "JR東日本",
+    company: details.company || "JR東日本",
     origin,
     destination,
     direction: destination,
@@ -67,32 +200,11 @@ function makeTrain(service) {
       institution_filter_mode: "soft",
       allowed_institution_type_codes: ["2"],
     },
-    route_sections: [
-      {
-        from_n02_station_code: originCode,
-        to_n02_station_code: destinationCode,
-        line_names: lineNames,
-        operator_names: [OPERATOR],
-      },
-    ],
-    stops: [
-      {
-        name: origin,
-        n02_station_code: originCode,
-        arrival: null,
-        departure,
-        stop_type: "origin",
-        ride_segment: true,
-      },
-      {
-        name: destination,
-        n02_station_code: destinationCode,
-        arrival,
-        departure: null,
-        stop_type: "destination",
-        ride_segment: true,
-      },
-    ],
+    route_sections: expanded.sections.map((section) => ({
+      ...section,
+      operator_names: [OPERATOR],
+    })),
+    stops,
   };
 }
 
