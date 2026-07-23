@@ -30599,108 +30599,12 @@
       ]
     },
     {
-      "id": "20260723_01a_kodama940_kokura_shinyamaguchi",
-      "date": "2026-07-23",
-      "number": "こだま940号（500系）",
-      "train_type": "新幹線",
-      "company": "JR西日本",
-      "origin": "小倉",
-      "destination": "新山口",
-      "direction": "新大阪",
-      "visible": true,
-      "style": {
-        "color": "#1d4ed8"
-      },
-      "route_policy": {
-        "mode": "single_primary_route",
-        "jr_only": true,
-        "allow_alternatives": false,
-        "allow_browser_straight_line_fallback": false,
-        "allowed_institution_type_codes": [
-          "1"
-        ],
-        "preferred_line_names": [
-          "山陽新幹線"
-        ],
-        "preferred_operator_names": [
-          "西日本旅客鉄道"
-        ],
-        "institution_filter_mode": "soft"
-      },
-      "route_sections": [
-        {
-          "from_n02_station_code": "008682",
-          "to_n02_station_code": "008577",
-          "line_names": [
-            "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
-          ]
-        },
-        {
-          "from_n02_station_code": "008577",
-          "to_n02_station_code": "008528",
-          "line_names": [
-            "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
-          ]
-        },
-        {
-          "from_n02_station_code": "008528",
-          "to_n02_station_code": "008479",
-          "line_names": [
-            "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
-          ]
-        }
-      ],
-      "stops": [
-        {
-          "name": "小倉",
-          "n02_station_code": "008682",
-          "arrival": null,
-          "departure": "06:39",
-          "stop_type": "origin",
-          "ride_segment": true
-        },
-        {
-          "name": "新下関",
-          "n02_station_code": "008577",
-          "arrival": "06:47",
-          "departure": "06:51",
-          "stop_type": "passenger_stop",
-          "ride_segment": true
-        },
-        {
-          "name": "厚狭",
-          "n02_station_code": "008528",
-          "arrival": "07:01",
-          "departure": "07:06",
-          "stop_type": "passenger_stop",
-          "ride_segment": true
-        },
-        {
-          "name": "新山口",
-          "n02_station_code": "008479",
-          "arrival": "07:15",
-          "departure": null,
-          "stop_type": "destination",
-          "ride_segment": true
-        }
-      ]
-    },
-    {
-      "id": "20260723_01b_sakura740_shinyamaguchi_okayama",
+      "id": "20260723_01_sakura740",
       "date": "2026-07-23",
       "number": "さくら740号（Sakura 740）（740A）",
       "train_type": "新幹線",
-      "company": "JR西日本",
-      "origin": "新山口",
+      "company": "JR九州/JR西日本",
+      "origin": "小倉",
       "destination": "岡山",
       "direction": "新大阪",
       "visible": true,
@@ -30716,22 +30620,39 @@
           "1"
         ],
         "preferred_line_names": [
+          "九州新幹線",
           "山陽新幹線"
         ],
-        "preferred_operator_names": [
-          "西日本旅客鉄道"
-        ],
+        "preferred_operator_names": [],
         "institution_filter_mode": "soft"
       },
       "route_sections": [
+        {
+          "from_n02_station_code": "008682",
+          "to_n02_station_code": "008577",
+          "line_names": [
+            "山陽新幹線"
+          ]
+        },
+        {
+          "from_n02_station_code": "008577",
+          "to_n02_station_code": "008528",
+          "line_names": [
+            "山陽新幹線"
+          ]
+        },
+        {
+          "from_n02_station_code": "008528",
+          "to_n02_station_code": "008479",
+          "line_names": [
+            "山陽新幹線"
+          ]
+        },
         {
           "from_n02_station_code": "008479",
           "to_n02_station_code": "008530",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30739,9 +30660,6 @@
           "to_n02_station_code": "008430",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30749,9 +30667,6 @@
           "to_n02_station_code": "008025",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30759,9 +30674,6 @@
           "to_n02_station_code": "008080",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30769,9 +30681,6 @@
           "to_n02_station_code": "008017",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30779,9 +30688,6 @@
           "to_n02_station_code": "007969",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30789,9 +30695,6 @@
           "to_n02_station_code": "007864",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30799,9 +30702,6 @@
           "to_n02_station_code": "007697",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         },
         {
@@ -30809,19 +30709,40 @@
           "to_n02_station_code": "007329",
           "line_names": [
             "山陽新幹線"
-          ],
-          "operator_names": [
-            "西日本旅客鉄道"
           ]
         }
       ],
       "stops": [
         {
+          "name": "小倉",
+          "n02_station_code": "008682",
+          "arrival": null,
+          "departure": "07:16",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "新下関",
+          "n02_station_code": "008577",
+          "arrival": "07:23",
+          "departure": "07:24",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "厚狭",
+          "n02_station_code": "008528",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "新山口",
           "n02_station_code": "008479",
-          "arrival": null,
+          "arrival": "07:37",
           "departure": "07:38",
-          "stop_type": "origin",
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {

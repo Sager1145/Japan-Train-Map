@@ -371,26 +371,26 @@ test("July 22 Kokura evening loop matches the revised itinerary", async () => {
   });
 });
 
-test("July 23 starts with 500-series Kodama 940 and Sakura 740 at Shin-Yamaguchi", async () => {
+test("July 23 first leg is a single Sakura 740 from Kokura to Okayama", async () => {
   const sample = await readJson(SAMPLE_FILE);
   const trains = sample.trains.filter((train) => train.date === "2026-07-23");
-  const [kodama, sakura] = trains;
+  const [sakura] = trains;
 
-  assert.equal(kodama.number, "こだま940号（500系）");
-  assert.deepEqual(
-    kodama.stops.map((stop) => [stop.name, stop.arrival, stop.departure]),
-    [
-      ["小倉", null, "06:39"],
-      ["新下関", "06:47", "06:51"],
-      ["厚狭", "07:01", "07:06"],
-      ["新山口", "07:15", null],
-    ],
-  );
+  // The Kodama 940 + Sakura 740 split was consolidated back into one train:
+  // the whole first leg is ridden on Sakura 740 (Kokura → Okayama).
+  assert.equal(sakura.id, "20260723_01_sakura740");
   assert.equal(sakura.number, "さくら740号（Sakura 740）（740A）");
-  assert.equal(sakura.origin, "新山口");
-  assert.equal(sakura.stops[0].departure, "07:38");
+  assert.equal(sakura.origin, "小倉");
+  assert.equal(sakura.stops[0].departure, "07:16");
   assert.equal(sakura.destination, "岡山");
   assert.equal(sakura.stops.at(-1).arrival, "08:50");
+  // Its scheduled stops on the 山陽新幹線 (others are pass_through).
+  assert.deepEqual(
+    sakura.stops
+      .filter((stop) => stop.stop_type !== "pass_through")
+      .map((stop) => stop.name),
+    ["小倉", "新下関", "新山口", "広島", "福山", "岡山"],
+  );
 });
 
 test("revised July 22 and 23 precomputed routes have continuous section geometry", async () => {
@@ -404,8 +404,7 @@ test("revised July 22 and 23 precomputed routes have continuous section geometry
     "20260722_11_hitahikosan_986d_tagawaita_kokura",
     "20260722_12_monorail_kokura_kikugaoka",
     "20260722_13_monorail_kikugaoka_kokura",
-    "20260723_01a_kodama940_kokura_shinyamaguchi",
-    "20260723_01b_sakura740_shinyamaguchi_okayama",
+    "20260723_01_sakura740",
   ]);
   const parts = await Promise.all(
     manifest.parts.map((partName) =>
