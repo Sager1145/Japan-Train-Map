@@ -19610,7 +19610,7 @@
           "n02_station_code": "007413",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19618,7 +19618,7 @@
           "n02_station_code": "007461",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19626,7 +19626,7 @@
           "n02_station_code": "007527",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19642,7 +19642,7 @@
           "n02_station_code": "007455",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19658,7 +19658,7 @@
           "n02_station_code": "007044",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19666,7 +19666,7 @@
           "n02_station_code": "006999",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19674,7 +19674,7 @@
           "n02_station_code": "006973",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19682,7 +19682,7 @@
           "n02_station_code": "006803",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19698,7 +19698,7 @@
           "n02_station_code": "006518",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19706,7 +19706,7 @@
           "n02_station_code": "006434",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19714,7 +19714,7 @@
           "n02_station_code": "006374",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19722,7 +19722,7 @@
           "n02_station_code": "006233",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19730,7 +19730,7 @@
           "n02_station_code": "006179",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19746,7 +19746,7 @@
           "n02_station_code": "006067",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19754,7 +19754,7 @@
           "n02_station_code": "006034",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19762,7 +19762,7 @@
           "n02_station_code": "005858",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19770,7 +19770,7 @@
           "n02_station_code": "005737",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19778,7 +19778,7 @@
           "n02_station_code": "005662",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19786,7 +19786,7 @@
           "n02_station_code": "005452",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19794,7 +19794,7 @@
           "n02_station_code": "005379",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19802,7 +19802,7 @@
           "n02_station_code": "005330",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19818,7 +19818,7 @@
           "n02_station_code": "005184",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19826,7 +19826,7 @@
           "n02_station_code": "005152",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19834,7 +19834,7 @@
           "n02_station_code": "004972",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19842,7 +19842,7 @@
           "n02_station_code": "004869",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19850,7 +19850,7 @@
           "n02_station_code": "004739",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -19858,7 +19858,7 @@
           "n02_station_code": "004735",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20635,7 +20635,7 @@
           "n02_station_code": "004731",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20643,7 +20643,7 @@
           "n02_station_code": "004750",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20651,7 +20651,7 @@
           "n02_station_code": "004697",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20667,7 +20667,7 @@
           "n02_station_code": "004690",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20683,7 +20683,7 @@
           "n02_station_code": "004764",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20691,7 +20691,7 @@
           "n02_station_code": "004793",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20699,7 +20699,7 @@
           "n02_station_code": "004854",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20707,7 +20707,7 @@
           "n02_station_code": "004879",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20723,7 +20723,7 @@
           "n02_station_code": "005007",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20731,7 +20731,7 @@
           "n02_station_code": "005041",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20739,7 +20739,7 @@
           "n02_station_code": "005070",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20747,7 +20747,7 @@
           "n02_station_code": "005148",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20755,7 +20755,7 @@
           "n02_station_code": "005171",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20763,7 +20763,7 @@
           "n02_station_code": "005259",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20771,7 +20771,7 @@
           "n02_station_code": "005281",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20787,7 +20787,7 @@
           "n02_station_code": "005371",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20795,7 +20795,7 @@
           "n02_station_code": "005380",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20803,7 +20803,7 @@
           "n02_station_code": "005524",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20811,7 +20811,7 @@
           "n02_station_code": "005593",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20819,14 +20819,14 @@
           "n02_station_code": "005676",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
           "name": "温泉津",
           "n02_station_code": "005724",
           "arrival": null,
-          "departure": null,
+          "departure": "16:30",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
@@ -20835,7 +20835,7 @@
           "n02_station_code": "005749",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20843,7 +20843,7 @@
           "n02_station_code": "005813",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20851,14 +20851,14 @@
           "n02_station_code": "005864",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
           "name": "江津",
           "n02_station_code": "005944",
           "arrival": null,
-          "departure": null,
+          "departure": "16:43",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
@@ -20867,7 +20867,7 @@
           "n02_station_code": "006058",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20875,14 +20875,14 @@
           "n02_station_code": "006109",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
           "name": "波子",
           "n02_station_code": "006153",
           "arrival": null,
-          "departure": null,
+          "departure": "16:51",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
@@ -20891,7 +20891,7 @@
           "n02_station_code": "006196",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20899,14 +20899,14 @@
           "n02_station_code": "006244",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
           "name": "浜田",
           "n02_station_code": "006302",
           "arrival": null,
-          "departure": null,
+          "departure": "17:01",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
@@ -20915,7 +20915,7 @@
           "n02_station_code": "006390",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20923,7 +20923,7 @@
           "n02_station_code": "006416",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20931,14 +20931,14 @@
           "n02_station_code": "006512",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
           "name": "三保三隅",
           "n02_station_code": "006654",
           "arrival": null,
-          "departure": null,
+          "departure": "17:17",
           "stop_type": "passenger_stop",
           "ride_segment": true
         },
@@ -20947,7 +20947,7 @@
           "n02_station_code": "006738",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20955,7 +20955,7 @@
           "n02_station_code": "006829",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20963,7 +20963,7 @@
           "n02_station_code": "006962",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20979,7 +20979,7 @@
           "n02_station_code": "007414",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20987,7 +20987,7 @@
           "n02_station_code": "007555",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -20995,7 +20995,7 @@
           "n02_station_code": "007643",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21003,7 +21003,7 @@
           "n02_station_code": "007705",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21019,7 +21019,7 @@
           "n02_station_code": "007884",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21035,7 +21035,7 @@
           "n02_station_code": "007981",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21051,7 +21051,7 @@
           "n02_station_code": "008104",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21059,7 +21059,7 @@
           "n02_station_code": "008139",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21067,7 +21067,7 @@
           "n02_station_code": "008156",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21083,7 +21083,7 @@
           "n02_station_code": "008223",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21091,7 +21091,7 @@
           "n02_station_code": "008256",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21099,7 +21099,7 @@
           "n02_station_code": "008291",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21107,7 +21107,7 @@
           "n02_station_code": "008383",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21115,7 +21115,7 @@
           "n02_station_code": "008409",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21123,7 +21123,7 @@
           "n02_station_code": "008413",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21147,7 +21147,7 @@
           "n02_station_code": "008445",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21155,7 +21155,7 @@
           "n02_station_code": "008447",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21163,7 +21163,7 @@
           "n02_station_code": "008457",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21171,7 +21171,7 @@
           "n02_station_code": "008464",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -21179,7 +21179,7 @@
           "n02_station_code": "008471",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
