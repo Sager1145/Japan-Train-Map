@@ -151,5 +151,7 @@
     );
   }
 
-  global.RailMapPopup = { buildPopupModel, stationPopupHtml };
+  // companyLabel is shared with the 統計 per-line breakdown, which groups its
+  // rows by operating company and needs the same short label (JR東日本 etc.).
+  global.RailMapPopup = { buildPopupModel, stationPopupHtml, companyLabel };
 })(window);

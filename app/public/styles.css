@@ -1066,6 +1066,13 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Operating company the breakdown rows are grouped by — dimmer than the line
+   name so the list still reads as a list of lines. */
+.stat-subco {
+  margin-right: 5px;
+  font-size: 0.85em;
+  opacity: 0.72;
+}
 .stat-subval {
   display: flex;
   align-items: baseline;

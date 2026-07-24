@@ -398,6 +398,7 @@ function aggregateMileageStats(idx, entries) {
     unmatchedKm,
     lineTotByCat: idx.lineTotByCat,
     lineRidByCat,
+    lineOperator: idx.lineOperator,
   };
 }
 
@@ -607,6 +608,10 @@ async function buildStatsEdgeIndexSliced() {
   // shared with a Shinkansen doesn't file the conventional line under 新幹線.
   const lineArr = []; // edge index -> line name (N02_003), "" when unnamed
   const lineMaskArr = []; // edge index -> naming feature's own category mask
+  // Operator (N02_004) of the SAME naming feature, so the per-line breakdown can
+  // be grouped by company. A mini-Shinkansen corridor keeps its source line's
+  // operator (奥羽線/田沢湖線 = JR東日本, 博多南線 = JR西日本), which is correct.
+  const lineOpArr = []; // edge index -> naming feature's operator
   // Mini-Shinkansen reclassification accumulators (applied after the full pass):
   // whole-line corridors collect their edge indices; the two 奥羽線 sub-corridors
   // collect a subgraph to trace along afterwards. Every edge is recorded against
@@ -625,6 +630,7 @@ async function buildStatsEdgeIndexSliced() {
     const props = f.properties || {};
     const mask = classifyN02SectionMask(props);
     const lineName = String(props.N02_003 || "");
+    const operatorName = String(props.N02_004 || "");
     const fullReclass = HSR_RECLASSIFY_FULL_LINES.get(lineName) || null;
     const isOuLine = lineName === HSR_RECLASSIFY_OU_LINE;
     for (let i = 1; i < coords.length; i += 1) {
@@ -639,11 +645,13 @@ async function buildStatsEdgeIndexSliced() {
         maskArr.push(mask);
         lineArr.push(lineName);
         lineMaskArr.push(lineName ? mask : 0);
+        lineOpArr.push(lineName ? operatorName : "");
       } else {
         maskArr[ei] |= mask;
         if (!lineArr[ei] && lineName) {
           lineArr[ei] = lineName;
           lineMaskArr[ei] = mask;
+          lineOpArr[ei] = operatorName;
         }
       }
       if (fullReclass) {
@@ -698,6 +706,12 @@ async function buildStatsEdgeIndexSliced() {
   // the track it has in that category (a through-running line's private km and
   // JR km stay apart, and the sub-rows reconcile with the category header).
   const lineTotByCat = new Map();
+  // line name -> operator -> km. The company shown for a line is the one owning
+  // the MOST of its track, not whichever edge happened to be indexed first: a
+  // line shares the odd edge with another operator at a joint station (e.g. the
+  // 山形新幹線 corridor touches 山形鉄道 track), and first-wins let that one edge
+  // label the whole line with the wrong company.
+  const lineOpKm = new Map();
   for (let i = 0; i < kmArr.length; i += 1) {
     totals.all += kmArr[i];
     const km = kmArr[i];
@@ -710,8 +724,27 @@ async function buildStatsEdgeIndexSliced() {
       let o = lineTotByCat.get(ln);
       if (!o) lineTotByCat.set(ln, (o = statsZeroCatKm()));
       for (const c of STAT_CATEGORIES) if (lm & c.mask) o[c.mask] += km;
+      const op = lineOpArr[i];
+      if (op) {
+        let byOp = lineOpKm.get(ln);
+        if (!byOp) lineOpKm.set(ln, (byOp = new Map()));
+        byOp.set(op, (byOp.get(op) || 0) + km);
+      }
     }
   }
+  // Resolve each line to its majority-km operator.
+  const lineOperator = new Map();
+  lineOpKm.forEach((byOp, ln) => {
+    let best = "";
+    let bestKm = -1;
+    byOp.forEach((v, op) => {
+      if (v > bestKm) {
+        bestKm = v;
+        best = op;
+      }
+    });
+    if (best) lineOperator.set(ln, best);
+  });
   _statsEdgeIndex = {
     map,
     km: kmArr,
@@ -720,6 +753,7 @@ async function buildStatsEdgeIndexSliced() {
     lineArr,
     lineMaskArr,
     lineTotByCat,
+    lineOperator,
   };
 }
 
@@ -756,9 +790,35 @@ async function runMileageStatsJob() {
   renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
 }
 
-// Per-line coverage rows shown indented under a category row, most-ridden first,
-// each with its own coverage %. Lets a near-100% aggregate be audited line by
-// line (and a line spotted that shouldn't be covered). Every category renders
+// Collator for the per-line breakdown order: `numeric` makes an embedded line
+// number sort naturally (1号線 < 2号線 < 10号線 rather than 1 < 10 < 2) and latin
+// letters compare alphabetically; Japanese names fall back to a stable locale
+// order. One shared instance — constructing a Collator per compare is slow.
+const STATS_LINE_COLLATOR = new Intl.Collator(["ja", "en"], {
+  numeric: true,
+  sensitivity: "base",
+});
+
+// Short operator label for a breakdown row, reusing railprint's popup mapping
+// (東日本旅客鉄道 -> JR東日本). Falls back to the raw N02 operator name.
+function statsCompanyLabel(operator) {
+  if (!operator) return "";
+  try {
+    if (
+      typeof RailMapPopup !== "undefined" &&
+      typeof RailMapPopup.companyLabel === "function"
+    )
+      return RailMapPopup.companyLabel(operator);
+  } catch (_) {
+    /* fall through to the raw name */
+  }
+  return operator;
+}
+
+// Per-line coverage rows shown indented under a category row, ordered by
+// operating company then line, each with its own coverage %. Lets a near-100%
+// aggregate be audited line by line (and a line spotted that shouldn't be
+// covered). Every category renders
 // as the same collapsible 依線路 <details> button. `listAll` additionally
 // includes unridden (0%) member lines — used for 新幹線 (only ~11 lines, so the
 // 0% 山形/秋田新幹線 stay visible) and 地下鐵; the 在來線 / JR / 私鐵 lists
@@ -773,15 +833,37 @@ function categoryLineBreakdownHtml(s, categoryMask, listAll) {
     if (rid > 0 || listAll) rows.push([name, t, rid]);
   });
   if (!rows.length) return "";
-  rows.sort((a, b) => b[2] - a[2] || b[1] - a[1]); // most-ridden, then longest
+  // Stable, readable order instead of "whatever we rode most": group by
+  // operating company, then by line within the company. STATS_LINE_COLLATOR is
+  // numeric-aware, so an embedded line number sorts 1→2→10 (not 1→10→2) and any
+  // latin letters fall in alphabetical order. Lines with no known operator sort
+  // last so they can't split a company's block.
+  const operatorOf = (name) => (s.lineOperator && s.lineOperator.get(name)) || "";
+  rows.sort((a, b) => {
+    const opA = operatorOf(a[0]);
+    const opB = operatorOf(b[0]);
+    if (opA !== opB) {
+      if (!opA) return 1;
+      if (!opB) return -1;
+      const byOp = STATS_LINE_COLLATOR.compare(opA, opB);
+      if (byOp) return byOp;
+    }
+    return STATS_LINE_COLLATOR.compare(a[0], b[0]);
+  });
   const body =
     `<div class="stat-subrows">` +
     rows
       .map(([name, tot, rid]) => {
         const pct = tot > 0 ? (100 * rid) / tot : 0;
+        // Show the company the rows are grouped by, otherwise a company-ordered
+        // list reads as arbitrary (the line names alone give no clue).
+        const co = statsCompanyLabel(operatorOf(name));
+        const coHtml = co
+          ? `<span class="stat-subco">${escapeHtml(co)}</span>`
+          : "";
         return `
         <div class="stat-subrow">
-          <span class="stat-sublabel">${escapeHtml(name)}</span>
+          <span class="stat-sublabel">${coHtml}${escapeHtml(name)}</span>
           <span class="stat-subval"><span class="stat-subpct">${formatStatPct(pct)}%</span><span class="stat-subkm">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
         </div>`;
       })
