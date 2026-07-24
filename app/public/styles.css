@@ -19,10 +19,40 @@
   --danger-border: #e5c4c1;
   --danger-bg: #fbf1f0;
 
-  /* scale tokens */
-  --radius-card: 14px;
+  /* Radius scale: xs (focus rings, mini chips/swatches) < small (compact
+     table controls) < button (buttons, inputs, popups, floating chrome)
+     < card (cards, panels, modal) < pill (fully rounded). Circles use 50%. */
+  --radius-xs: 4px;
+  --radius-small: 6px;
   --radius-button: 10px;
+  --radius-card: 14px;
   --radius-pill: 999px;
+
+  /* Standard hairline border. Emphasis/selection borders are 2px, matching
+     the focus outline; anything heavier is a legend pictogram, not chrome. */
+  --hairline: 1px solid var(--rail-dim);
+
+  /* Elevation scale: sm (resting cards) < md (floating map chrome) < lg
+     (popups, tooltips, panels) < xl (modal). Dark values below. */
+  --shadow-sm: 0 2px 10px rgba(26, 26, 26, 0.05);
+  --shadow-md: 0 2px 10px rgba(26, 26, 26, 0.14);
+  --shadow-lg: 0 6px 20px rgba(26, 26, 26, 0.2);
+  --shadow-xl: 0 14px 44px rgba(26, 26, 26, 0.26);
+  /* Accent halo for selected / pending states (follows theme accent). */
+  --ring-accent: 0 0 0 2px color-mix(in srgb, var(--rail-lit) 20%, transparent);
+  /* Modal scrim behind .rp-modal. */
+  --overlay-bg: rgba(20, 14, 12, 0.42);
+
+  /* Type scale. Glyph-art sizes (7-9px ■/▾ marks, the 20px ⓘ) stay literal. */
+  --font-xs: 10px;
+  --font-sm: 11px;
+  --font-md: 12px;
+  --font-base: 13px;
+  --font-lg: 14px;
+  --font-xl: 17px;
+  --font-title: 18px;
+  --font-stat: 24px;
+  --font-hero: 30px;
 
   /* semantic states (kept from JRM; railprint has no danger hue) */
   --warn: #b66a00;
@@ -38,7 +68,7 @@
   --muted: var(--ink-muted);
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
-  --shadow: 0 2px 10px rgba(26, 26, 26, 0.05);
+  --shadow: var(--shadow-sm);
 }
 
 html[data-theme="dark"] {
@@ -67,7 +97,12 @@ html[data-theme="dark"] {
   --muted: var(--ink-muted);
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 6px 22px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 14px 44px rgba(0, 0, 0, 0.6);
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --shadow: var(--shadow-sm);
 }
 
 /* Theme changes use the same 460 ms linear blend as the two preloaded map
@@ -129,7 +164,7 @@ body {
     -apple-system,
     "Segoe UI",
     sans-serif;
-  font-size: 13px;
+  font-size: var(--font-base);
   letter-spacing: 0;
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -170,7 +205,7 @@ html[data-sidebar="collapsed"] #app {
   overflow: auto;
   scroll-behavior: smooth;
   padding: 12px 14px 24px;
-  border-right: 1px solid var(--rail-dim);
+  border-right: var(--hairline);
   background: var(--bg);
   transform: translateX(
     calc(var(--sidebar-size) - var(--sidebar-open-size))
@@ -203,9 +238,9 @@ html[data-sidebar="collapsed"] #app {
   height: 62px;
   min-height: 0;
   padding: 0;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-left: 0;
-  border-radius: 0 9px 9px 0;
+  border-radius: 0 var(--radius-button) var(--radius-button) 0;
   background: color-mix(in srgb, var(--white) 94%, transparent);
   color: var(--rail-text);
   box-shadow: 3px 0 10px rgba(0, 0, 0, 0.14);
@@ -239,7 +274,7 @@ html[data-sidebar="collapsed"] #app {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   pointer-events: none;
 }
 
@@ -321,7 +356,7 @@ body {
 :focus-visible {
   outline: 2px solid var(--rail-text);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 /* ---- Header ----------------------------------------------------------- */
@@ -351,7 +386,7 @@ h1 {
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 18px;
+  font-size: var(--font-title);
   line-height: 1.25;
   font-weight: 700;
   color: var(--ink);
@@ -360,7 +395,7 @@ h1 {
 .brand-mark {
   flex: none;
   color: var(--rail-lit);
-  font-size: 10px;
+  font-size: var(--font-xs);
 }
 
 .lang-switch,
@@ -373,7 +408,7 @@ h1 {
 
 .lang-switch label,
 .theme-switch label {
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--ink-muted);
@@ -383,10 +418,10 @@ h1 {
 .theme-switch select {
   width: auto;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 500;
   padding: 4px 8px;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--white);
   color: var(--ink);
@@ -419,12 +454,12 @@ h1 {
   gap: 4px;
   min-width: 0;
   min-height: 32px;
-  padding: 5px 7px;
-  border: 1px solid var(--rail-dim);
+  padding: 4px 8px;
+  border: var(--hairline);
   border-radius: var(--radius-pill);
   background: var(--white);
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
@@ -460,13 +495,13 @@ h1 {
 /* ---- Folder-tab cards (railprint signature component) ------------------ */
 .card {
   position: relative;
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   /* sticky workspace pills + the 12px protruding folder tab */
-  scroll-margin-top: 78px;
+  scroll-margin-top: 80px;
   background: var(--white);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Workspace tabs already name these panels in the persistent nav, so plain
@@ -484,16 +519,16 @@ h1 {
   margin: 0;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 24px;
   padding: 0 12px;
   border-radius: var(--radius-button) var(--radius-button) 0 0;
   background: var(--rail-bg);
   color: var(--rail-text);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   letter-spacing: 0.02em;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-bottom: none;
   white-space: nowrap;
   max-width: calc(100% - 28px);
@@ -546,7 +581,7 @@ h1 {
 /* Sub-group heading inside a card: compact support-color label and marker. */
 .subhead {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--rail-text);
@@ -585,7 +620,7 @@ label {
   display: grid;
   gap: 4px;
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   letter-spacing: 0.02em;
   min-width: 0;
@@ -604,9 +639,9 @@ select,
 textarea {
   width: 100%;
   min-width: 0;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
-  padding: 7px 9px;
+  padding: 8px 10px;
   background: var(--white);
   color: var(--ink);
 }
@@ -630,7 +665,7 @@ textarea {
   resize: vertical;
   font-family:
     ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.45;
 }
 
@@ -644,8 +679,8 @@ button {
   align-items: center;
   justify-content: center;
   min-height: 32px;
-  padding: 5px 12px;
-  border: 1.5px solid var(--rail-dim);
+  padding: 6px 12px;
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--white);
   color: var(--ink);
@@ -693,7 +728,6 @@ button.icon {
   width: 26px;
   min-height: 26px;
   padding: 0;
-  border-width: 1px;
   display: inline-grid;
   place-items: center;
 }
@@ -720,14 +754,14 @@ button:disabled {
 
 .date-btn {
   min-height: 26px;
-  padding: 3px 12px;
-  border: 1px solid var(--rail-dim);
+  padding: 4px 12px;
+  border: var(--hairline);
   border-radius: var(--radius-pill);
   background: var(--white);
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 500;
   line-height: 1.2;
 }
@@ -745,7 +779,7 @@ button:disabled {
 .date-btn .date-count {
   opacity: 0.75;
   margin-left: 4px;
-  font-size: 11px;
+  font-size: var(--font-sm);
 }
 .date-btn.active .date-count {
   opacity: 0.9;
@@ -754,9 +788,9 @@ button:disabled {
 .inline-check {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -768,7 +802,7 @@ button:disabled {
 /* ---- Train list --------------------------------------------------------- */
 .train-list-title {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 700;
   color: var(--ink);
 }
@@ -781,19 +815,19 @@ button:disabled {
   border: 1px dashed var(--rail-dim);
   border-radius: var(--radius-button);
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   text-align: center;
   background: var(--rail-bg);
 }
 
 .train-date-badge {
   display: inline-block;
-  padding: 1px 7px;
-  margin-right: 5px;
+  padding: 2px 8px;
+  margin-right: 6px;
   border-radius: var(--radius-pill);
   background: var(--rail-bg);
   color: var(--rail-text);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   vertical-align: 1px;
 }
@@ -816,11 +850,11 @@ button:disabled {
 .train-item {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr);
-  gap: 9px;
+  gap: 8px;
   align-items: stretch;
   min-height: 56px;
-  padding: 8px 9px;
-  border: 1px solid var(--rail-dim);
+  padding: 8px 10px;
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--white);
   color: var(--ink);
@@ -828,7 +862,7 @@ button:disabled {
   text-align: left;
   white-space: normal;
   overflow: hidden;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 .train-item:hover {
   border-color: var(--rail-text);
@@ -842,7 +876,7 @@ button:disabled {
 .train-item-main {
   display: grid;
   align-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 .train-item .train-title,
@@ -855,19 +889,19 @@ button:disabled {
 }
 .train-state {
   display: inline-block;
-  margin-left: 7px;
-  padding: 1px 7px;
+  margin-left: 8px;
+  padding: 2px 8px;
   border-radius: var(--radius-pill);
   background: var(--rail-bg);
   color: var(--rail-text);
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--font-xs);
   line-height: 1.4;
 }
 
 .train-item.selected {
   border-color: var(--rail-text);
-  box-shadow: 0 0 0 2px rgba(255, 85, 34, 0.18);
+  box-shadow: var(--ring-accent);
 }
 .train-item.focused {
   background: var(--rail-bg);
@@ -888,7 +922,7 @@ button:disabled {
 .hint,
 .status {
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.4;
 }
 .hint {
@@ -913,7 +947,7 @@ button:disabled {
 /* ---- 資料來源 mode line (static deploy) --------------------------------- */
 /* "My data" (green, autosaved) vs "sample data" (amber, nothing persists). */
 .data-source-status {
-  font-size: 12.5px;
+  font-size: var(--font-base);
   font-weight: 700;
   line-height: 1.4;
   color: var(--ok);
@@ -926,7 +960,7 @@ button:disabled {
 /* ---- Import target / progress ------------------------------------------ */
 .import-target {
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.4;
 }
 .import-target:empty {
@@ -948,18 +982,18 @@ button:disabled {
   border-radius: var(--radius-pill);
   background: var(--rail-bg);
   overflow: hidden;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
 }
 .progress-fill {
   width: 0%;
   height: 100%;
   border-radius: var(--radius-pill);
   background: var(--rail-lit);
-  transition: width 0.16s ease;
+  transition: width 0.15s ease;
 }
 .progress-text {
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.35;
 }
 .file-input-hidden {
@@ -978,7 +1012,7 @@ button:disabled {
   flex-wrap: wrap;
 }
 .stats-pct {
-  font-size: 30px;
+  font-size: var(--font-hero);
   font-weight: 700;
   line-height: 1;
   color: var(--rail-lit);
@@ -990,18 +1024,18 @@ button:disabled {
 }
 .stats-sub {
   color: var(--ink-muted);
-  font-size: 13px;
+  font-size: var(--font-base);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .stats-rows {
   display: grid;
-  gap: 9px;
+  gap: 8px;
   margin-top: 2px;
 }
 .stat-row {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .stat-row-head {
   display: flex;
@@ -1010,7 +1044,7 @@ button:disabled {
   gap: 8px;
 }
 .stat-label {
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--ink);
@@ -1025,17 +1059,17 @@ button:disabled {
 .stat-pct {
   font-weight: 700;
   color: var(--rail-text);
-  font-size: 13px;
+  font-size: var(--font-base);
 }
 .stat-km {
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
 }
 .stats-track {
   height: 6px;
   border-radius: var(--radius-pill);
   background: var(--rail-bg);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   overflow: hidden;
 }
 .stats-fill {
@@ -1051,7 +1085,7 @@ button:disabled {
   gap: 2px;
   margin: 4px 0 2px 10px;
   padding-left: 8px;
-  border-left: 1px solid var(--rail-dim);
+  border-left: var(--hairline);
 }
 .stat-subrow {
   display: flex;
@@ -1060,7 +1094,7 @@ button:disabled {
   gap: 8px;
 }
 .stat-sublabel {
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1069,24 +1103,24 @@ button:disabled {
 /* Operating company the breakdown rows are grouped by — dimmer than the line
    name so the list still reads as a list of lines. */
 .stat-subco {
-  margin-right: 5px;
+  margin-right: 6px;
   font-size: 0.85em;
   opacity: 0.72;
 }
 .stat-subval {
   display: flex;
   align-items: baseline;
-  gap: 5px;
+  gap: 6px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .stat-subpct {
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: 700;
+  font-size: var(--font-sm);
   color: var(--ink);
 }
 .stat-subkm {
-  font-size: 10px;
+  font-size: var(--font-xs);
   color: var(--ink-muted);
 }
 /* Collapsible per-line breakdown for the larger categories (在來線 / JR / …). */
@@ -1096,9 +1130,9 @@ button:disabled {
 .stat-lines-summary {
   list-style: none;
   cursor: pointer;
-  font-size: 10.5px;
+  font-size: var(--font-sm);
   color: var(--ink-muted);
-  padding: 1px 0 1px 10px;
+  padding: 2px 0 2px 10px;
   user-select: none;
 }
 .stat-lines-summary::-webkit-details-marker {
@@ -1119,7 +1153,7 @@ button:disabled {
 }
 .stats-loading {
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
 }
 
 /* 當日統計 block: shown above the all-time section while a date is active. */
@@ -1128,7 +1162,7 @@ button:disabled {
 }
 .stats-daily {
   display: grid;
-  gap: 7px;
+  gap: 8px;
 }
 .stats-daily-hero {
   display: flex;
@@ -1137,11 +1171,11 @@ button:disabled {
   flex-wrap: wrap;
   padding: 8px 10px;
   background: var(--rail-bg);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
 }
 .stats-daily-km {
-  font-size: 24px;
+  font-size: var(--font-stat);
   font-weight: 700;
   line-height: 1;
   color: var(--rail-lit);
@@ -1149,7 +1183,7 @@ button:disabled {
 }
 .stats-daily-km .unit {
   font-size: 0.55em;
-  margin-left: 3px;
+  margin-left: 2px;
 }
 /* ---- Danger zone --------------------------------------------------------- */
 .danger-zone {
@@ -1196,7 +1230,7 @@ button:disabled {
   max-width: 100%;
   max-height: min(54vh, 520px);
   overflow: auto;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--white);
   scrollbar-gutter: stable;
@@ -1210,13 +1244,13 @@ table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 12px;
+  font-size: var(--font-md);
 }
 
 th,
 td {
-  border-bottom: 1px solid var(--rail-dim);
-  padding: 5px 4px;
+  border-bottom: var(--hairline);
+  padding: 6px 4px;
   vertical-align: top;
 }
 
@@ -1226,55 +1260,73 @@ th {
   z-index: 2;
   color: var(--ink-muted);
   font-weight: 500;
-  font-size: 11px;
+  font-size: var(--font-sm);
   letter-spacing: 0.02em;
   text-align: left;
   background: var(--surface-subtle);
 }
 
+/* Stops-table column widths (table-layout: fixed sizes from the header row). */
+th.col-seq {
+  width: 22px;
+}
+th.col-station,
+th.col-actions {
+  width: 86px;
+}
+th.col-time {
+  width: 54px;
+}
+th.col-type {
+  width: 76px;
+}
+th.col-ride {
+  width: 40px;
+}
+
 td input,
 td select {
-  padding: 5px 3px;
-  font-size: 12px;
-  border-radius: 6px;
+  padding: 6px 4px;
+  font-size: var(--font-md);
+  border-radius: var(--radius-small);
   font-variant-numeric: tabular-nums;
 }
 .stop-actions {
   display: flex;
-  gap: 3px;
+  gap: 4px;
 }
 /* Branch (支線) grouping in the stops table */
 tr.branch-header td {
   background: var(--rail-bg);
   padding: 6px 6px;
-  border-bottom: 1px solid var(--rail-dim);
+  border-bottom: var(--hairline);
 }
 tr.branch-header strong {
-  font-size: 12px;
+  font-size: var(--font-md);
   color: var(--rail-text);
 }
 .branch-swatch {
   display: inline-block;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin-right: 6px;
   vertical-align: middle;
 }
 .branch-tag {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--font-xs);
   color: var(--ink-muted);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-pill);
-  padding: 0 6px;
+  padding: 2px 8px;
   margin-left: 4px;
   vertical-align: middle;
   background: var(--white);
 }
 .branch-ride {
   float: right;
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink-muted);
   display: inline-flex;
   align-items: center;
@@ -1307,7 +1359,7 @@ tr.branch-junction td {
   min-width: 220px;
   padding: 8px 12px;
   border-radius: var(--radius-button);
-  box-shadow: 0 4px 14px rgba(26, 26, 26, 0.18);
+  box-shadow: var(--shadow-lg);
   font: inherit;
   background: var(--white);
   color: var(--ink);
@@ -1320,7 +1372,7 @@ tr.branch-junction td {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 2px 8px;
-  font-size: 12px;
+  font-size: var(--font-md);
 }
 .popup-grid span:nth-child(odd) {
   color: var(--ink-muted);
@@ -1340,7 +1392,7 @@ tr.branch-junction td {
     min-height: var(--sidebar-open-size);
     max-height: var(--sidebar-open-size);
     border-right: none;
-    border-top: 1px solid var(--rail-dim);
+    border-top: var(--hairline);
     transform: translateY(
       calc(var(--sidebar-open-size) - var(--sidebar-size))
     );
@@ -1374,9 +1426,9 @@ tr.branch-junction td {
     left: 50%;
     width: 62px;
     height: 24px;
-    border-left: 1px solid var(--rail-dim);
+    border-left: var(--hairline);
     border-bottom: 0;
-    border-radius: 9px 9px 0 0;
+    border-radius: var(--radius-button) var(--radius-button) 0 0;
     cursor: ns-resize;
     transform: translateX(-50%);
     transition:
@@ -1428,7 +1480,7 @@ tr.branch-junction td {
   }
 
   h1 {
-    font-size: 17px;
+    font-size: var(--font-xl);
   }
 
   .lang-switch label,
@@ -1485,9 +1537,9 @@ tr.branch-junction td {
 }
 .display-control {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--font-md);
 }
 .display-control-head {
   display: flex;
@@ -1521,20 +1573,20 @@ tr.branch-junction td {
 
 #rebuild-fit-curves.pending {
   border-color: var(--rail-lit);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--rail-lit) 22%, transparent);
+  box-shadow: var(--ring-accent);
 }
 
 /* ---- Map hover / selection labels ----------------------------------- */
 /* Endpoint-label markers (maplibregl.Marker DOM elements). */
 .station-label {
   background: var(--white);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 500;
   padding: 2px 8px;
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  border-radius: var(--radius-button);
+  box-shadow: var(--shadow-lg);
   /* Fade with the map's hover/selection spotlight instead of snapping. */
   transition: opacity 0.4s ease;
   white-space: nowrap;
@@ -1546,19 +1598,19 @@ tr.branch-junction td {
 /* Day-endpoint labels (start / end of the selected day) — emphasised so they
    stand out from ordinary hover labels. */
 .station-label--endpoint {
-  border: 1.5px solid var(--rail-text);
-  box-shadow: 0 1px 7px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--rail-text);
+  box-shadow: var(--shadow-lg);
   z-index: 650;
 }
 .station-label-badge {
   display: inline-block;
   background: var(--rail-text);
   color: var(--white);
-  font-size: 9px;
-  font-weight: 800;
+  font-size: var(--font-xs);
+  font-weight: 700;
   line-height: 1.1;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   margin-right: 4px;
   vertical-align: middle;
 }
@@ -1580,7 +1632,7 @@ tr.branch-junction td {
 
 .station-label-time {
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   margin-left: 2px;
 }
@@ -1592,7 +1644,7 @@ tr.branch-junction td {
   bottom: 10px;
   /* Map chrome tier, same rationale as .map-layers-control. */
   z-index: 910;
-  font-size: 12px;
+  font-size: var(--font-md);
 }
 
 .map-info-summary {
@@ -1601,10 +1653,10 @@ tr.branch-junction td {
   width: 36px;
   height: 36px;
   margin-left: auto;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: 50%;
   background: var(--white);
-  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.15);
+  box-shadow: var(--shadow-md);
   color: var(--rail-text);
   cursor: pointer;
   font-family: Georgia, "Times New Roman", serif;
@@ -1635,10 +1687,10 @@ tr.branch-junction td {
   max-height: min(570px, calc(100dvh - 76px));
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-card);
   background: var(--white);
-  box-shadow: 0 8px 28px rgba(26, 26, 26, 0.2);
+  box-shadow: var(--shadow-lg);
   color: var(--ink);
   scrollbar-gutter: stable;
 }
@@ -1647,15 +1699,15 @@ tr.branch-junction td {
 .map-info-header {
   display: block;
   margin: 0;
-  padding: 16px 18px 14px;
-  border-bottom: 1px solid var(--rail-dim);
+  padding: 16px 16px 14px;
+  border-bottom: var(--hairline);
   background: var(--rail-bg);
 }
 
 .map-info-header h2 {
   margin: 0 0 4px;
   color: var(--ink);
-  font-size: 17px;
+  font-size: var(--font-xl);
   line-height: 1.3;
 }
 
@@ -1667,22 +1719,22 @@ tr.branch-junction td {
 
 .map-info-header p {
   color: var(--ink-muted);
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.5;
 }
 
 .map-info-section {
-  padding: 15px 18px 17px;
+  padding: 16px;
 }
 
 .map-info-section + .map-info-section {
-  border-top: 1px solid var(--rail-dim);
+  border-top: var(--hairline);
 }
 
 .map-info-section h3 {
-  margin: 0 0 11px;
+  margin: 0 0 12px;
   color: var(--rail-text);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 700;
   letter-spacing: 0.08em;
   line-height: 1.3;
@@ -1705,14 +1757,14 @@ tr.branch-junction td {
   display: block;
   margin-bottom: 2px;
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--font-md);
   line-height: 1.35;
 }
 
 .map-info-legend-row p,
 .map-info-source p {
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-sm);
   line-height: 1.45;
 }
 
@@ -1788,7 +1840,7 @@ tr.branch-junction td {
 .map-info-source {
   min-width: 0;
   padding: 10px;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--surface-subtle);
 }
@@ -1797,13 +1849,13 @@ tr.branch-junction td {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 .map-info-links a {
   color: var(--rail-text);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--font-sm);
+  font-weight: 500;
   line-height: 1.35;
   overflow-wrap: anywhere;
   text-underline-offset: 2px;
@@ -1819,11 +1871,11 @@ tr.branch-junction td {
      sidebar, which is outside #map's stacking context — see the layer scale. */
   z-index: 900;
   background: var(--white);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
-  box-shadow: 0 2px 10px rgba(26, 26, 26, 0.12);
+  box-shadow: var(--shadow-md);
   padding: 0;
-  font-size: 12px;
+  font-size: var(--font-md);
   max-width: 220px;
   overflow: hidden;
 }
@@ -1834,7 +1886,7 @@ tr.branch-junction td {
   min-height: 32px;
   padding: 6px 10px;
   color: var(--rail-text);
-  font-size: 11px;
+  font-size: var(--font-sm);
   font-weight: 500;
   list-style: none;
   cursor: pointer;
@@ -1858,18 +1910,18 @@ tr.branch-junction td {
   transform: rotate(180deg);
 }
 .map-layers-control[open] .map-layers-summary {
-  border-bottom: 1px solid var(--rail-dim);
+  border-bottom: var(--hairline);
 }
 .map-layers-body {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   padding: 8px 10px 10px;
 }
 .map-layers-control select {
-  font-size: 12px;
+  font-size: var(--font-md);
   min-height: 32px;
-  padding: 5px 7px;
+  padding: 6px 8px;
   margin-bottom: 4px;
 }
 .map-layers-control label {
@@ -1889,9 +1941,9 @@ tr.branch-junction td {
 /* 已乘路線 category group heading inside the layers control */
 .map-layers-subhead {
   margin-top: 6px;
-  padding-top: 7px;
-  border-top: 1px solid var(--rail-dim);
-  font-size: 11px;
+  padding-top: 8px;
+  border-top: var(--hairline);
+  font-size: var(--font-sm);
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--rail-text);
@@ -1900,7 +1952,7 @@ tr.branch-junction td {
   content: "■";
   font-size: 7px;
   color: var(--rail-lit);
-  margin-right: 5px;
+  margin-right: 6px;
   vertical-align: 2px;
 }
 
@@ -1938,11 +1990,11 @@ tr.branch-junction td {
   }
 
   .map-info-header {
-    padding: 13px 14px 12px;
+    padding: 12px 14px;
   }
 
   .map-info-section {
-    padding: 13px 14px 15px;
+    padding: 12px 14px 14px;
   }
 }
 
@@ -1960,25 +2012,25 @@ tr.branch-junction td {
   flex-direction: column;
 }
 .rp-popup-ja {
-  font-size: 13px;
+  font-size: var(--font-base);
   font-weight: 500;
   color: var(--ink);
 }
 .rp-popup-roma {
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink-muted);
 }
 /* This train's arrival/departure under the station name (ridden-route marker
    hover popup only; the national-network hover popup has no train context). */
 .rp-popup-times {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink-muted);
 }
 /* Origin → destination line in the route-segment hover card. */
 .rp-popup-route {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink);
 }
 .rp-popup-date {
@@ -1998,7 +2050,7 @@ tr.branch-junction td {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-sm);
   color: var(--ink);
   min-height: 18px;
 }
@@ -2011,7 +2063,7 @@ tr.branch-junction td {
 }
 .rp-line-co {
   flex: none;
-  font-size: 0.82em;
+  font-size: 0.85em;
   color: var(--ink-muted);
   white-space: nowrap;
   max-width: 7em;
@@ -2029,7 +2081,7 @@ tr.branch-junction td {
 .rp-line-swatch {
   width: 14px;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   flex: none;
   display: inline-block;
 }
@@ -2054,14 +2106,11 @@ tr.branch-junction td {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(20, 14, 12, 0.42);
+  background: var(--overlay-bg);
   -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
   opacity: 0;
-  transition: opacity 0.16s ease;
-}
-html[data-theme="dark"] .rp-modal-overlay {
-  background: rgba(0, 0, 0, 0.55);
+  transition: opacity 0.15s ease;
 }
 .rp-modal-overlay.is-open {
   opacity: 1;
@@ -2072,18 +2121,18 @@ html[data-theme="dark"] .rp-modal-overlay {
   padding: 20px;
   background: var(--white);
   color: var(--ink);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-card);
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.26);
+  box-shadow: var(--shadow-xl);
   transform: translateY(8px) scale(0.98);
-  transition: transform 0.16s ease;
+  transition: transform 0.15s ease;
 }
 .rp-modal-overlay.is-open .rp-modal {
   transform: none;
 }
 .rp-modal-message {
   margin: 0 0 16px;
-  font-size: 14px;
+  font-size: var(--font-lg);
   line-height: 1.5;
   color: var(--ink);
   white-space: pre-wrap;
@@ -2095,10 +2144,10 @@ html[data-theme="dark"] .rp-modal-overlay {
   margin: -4px 0 16px;
   padding: 8px 10px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--font-lg);
   color: var(--ink);
   background: var(--surface-subtle);
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
 }
 .rp-modal-input:focus {
@@ -2115,17 +2164,17 @@ html[data-theme="dark"] .rp-modal-overlay {
   -webkit-appearance: none;
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-base);
+  font-weight: 500;
   padding: 8px 16px;
-  border: 1px solid var(--rail-dim);
+  border: var(--hairline);
   border-radius: var(--radius-button);
   background: var(--white);
   color: var(--ink);
   transition:
-    background 0.12s ease,
-    border-color 0.12s ease,
-    filter 0.12s ease;
+    background 0.15s ease,
+    border-color 0.15s ease,
+    filter 0.15s ease;
 }
 .rp-modal-btn:hover {
   background: var(--surface-subtle);
@@ -2165,13 +2214,13 @@ html[data-theme="dark"] .rp-modal-overlay {
   transform: translate(-50%, calc(-100% - 14px));
   background: var(--white);
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--font-md);
   font-weight: 400;
   line-height: 1.2;
   padding: 6px 10px;
-  border: 1px solid var(--rail-dim);
-  border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  border: var(--hairline);
+  border-radius: var(--radius-button);
+  box-shadow: var(--shadow-lg);
   white-space: nowrap;
   pointer-events: none;
 }
@@ -2180,7 +2229,7 @@ html[data-theme="dark"] .rp-modal-overlay {
    and popup arrows legible on the dark page and official Dark basemap. */
 html[data-theme="dark"] .maplibregl-ctrl-group {
   background: var(--white);
-  box-shadow: 0 0 0 1px var(--rail-dim), 0 2px 10px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 0 0 1px var(--rail-dim), var(--shadow-md);
 }
 html[data-theme="dark"] .maplibregl-ctrl-group button + button {
   border-top-color: var(--rail-dim);

@@ -330,12 +330,12 @@ function handleDeckHover(id) {
 const DECK_TIP_RAILPRINT = {
   background: "var(--white)",
   color: "var(--ink)",
-  fontSize: "12px",
+  fontSize: "var(--font-md)",
   fontWeight: "400",
-  padding: "8px 10px",
-  border: "1px solid var(--rail-dim)",
-  borderRadius: "10px",
-  boxShadow: "0 6px 20px rgba(0,0,0,0.22)",
+  padding: "6px 10px",
+  border: "var(--hairline)",
+  borderRadius: "var(--radius-button)",
+  boxShadow: "var(--shadow-lg)",
   maxWidth: "260px",
   whiteSpace: "normal",
 };

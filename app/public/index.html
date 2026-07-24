@@ -38,7 +38,7 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260720-routecache2" />
+    <link rel="stylesheet" href="styles.css?v=20260725-uistyle1" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -158,13 +158,13 @@
               <table>
                 <thead>
                   <tr>
-                    <th style="width: 22px" data-i18n="th.seq">序</th>
-                    <th style="width: 86px" data-i18n="th.station">車站</th>
-                    <th style="width: 54px" data-i18n="th.arr">到</th>
-                    <th style="width: 54px" data-i18n="th.dep">發</th>
-                    <th style="width: 76px" data-i18n="th.type">類型</th>
-                    <th style="width: 40px" data-i18n="th.ride">乘坐</th>
-                    <th style="width: 86px" data-i18n="th.actions">操作</th>
+                    <th class="col-seq" data-i18n="th.seq">序</th>
+                    <th class="col-station" data-i18n="th.station">車站</th>
+                    <th class="col-time" data-i18n="th.arr">到</th>
+                    <th class="col-time" data-i18n="th.dep">發</th>
+                    <th class="col-type" data-i18n="th.type">類型</th>
+                    <th class="col-ride" data-i18n="th.ride">乘坐</th>
+                    <th class="col-actions" data-i18n="th.actions">操作</th>
                   </tr>
                 </thead>
                 <tbody id="stops-body"></tbody>
@@ -321,7 +321,7 @@
     <script src="app-config.js?v=20260720-routecache2"></script>
     <script src="app-modal.js?v=20260720-routecache2"></script>
     <script src="app-display-settings.js?v=20260720-routecache2"></script>
-    <script src="app-display-features.js?v=20260720-routecache2"></script>
+    <script src="app-display-features.js?v=20260725-uistyle1"></script>
     <script src="app-route-simplify.js?v=20260720-routecache2"></script>
     <script src="app-dates.js?v=20260720-routecache2"></script>
     <script src="app.js?v=20260720-routecache2"></script>
