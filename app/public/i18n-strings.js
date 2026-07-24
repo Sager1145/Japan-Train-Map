@@ -601,6 +601,23 @@
     "stoptype.pass_through": { zh: "通過站", en: "Pass-through" },
     "stoptype.operational_stop": { zh: "運轉停車", en: "Operational stop" },
     "stoptype.destination": { zh: "終站", en: "Destination" },
+
+    // stop-marker click popup (buildStopPopup). N02_005c / N02_005g stay
+    // literal: they are N02 field codes, not translatable labels.
+    "popup.trainId": { zh: "列車 ID", en: "Train ID" },
+    "popup.typeCompany": { zh: "類型／公司", en: "Type / Company" },
+    "popup.station": { zh: "車站", en: "Station" },
+    "popup.arrival": { zh: "到達", en: "Arrival" },
+    "popup.departure": { zh: "出發", en: "Departure" },
+    "popup.stopType": { zh: "停站類型", en: "Stop type" },
+    "popup.rideSegment": { zh: "乘坐區間", en: "Ridden segment" },
+    "popup.line": { zh: "路線", en: "Line" },
+    "popup.operator": { zh: "營運公司", en: "Operator" },
+    "popup.computed": { zh: "自動推定", en: "Computed" },
+    "popup.routeSource": { zh: "路線來源", en: "Route source" },
+    "popup.yes": { zh: "是", en: "Yes" },
+    "popup.no": { zh: "否", en: "No" },
+    "popup.noPale": { zh: "否（淡色顯示）", en: "No / pale" },
   };
 
   // Complete Japanese UI copy. Keeping this as a locale overlay avoids
@@ -903,6 +920,20 @@
     "stoptype.pass_through": "通過駅",
     "stoptype.operational_stop": "運転停車",
     "stoptype.destination": "終着駅",
+    "popup.trainId": "列車ID",
+    "popup.typeCompany": "種別・会社",
+    "popup.station": "駅",
+    "popup.arrival": "到着",
+    "popup.departure": "出発",
+    "popup.stopType": "停車種別",
+    "popup.rideSegment": "乗車区間",
+    "popup.line": "路線",
+    "popup.operator": "事業者",
+    "popup.computed": "自動推定",
+    "popup.routeSource": "経路ソース",
+    "popup.yes": "はい",
+    "popup.no": "いいえ",
+    "popup.noPale": "いいえ（淡色表示）",
   };
 
   window.I18NStrings = { STRINGS, JA_STRINGS };

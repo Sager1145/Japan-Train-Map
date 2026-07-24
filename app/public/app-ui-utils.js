@@ -40,20 +40,30 @@ function buildStationLinesPopup(pr, train) {
 
 function buildStopPopup(stopFeature, train) {
   const p = stopFeature.properties || {};
+  const stopTypeLabel = STOP_TYPES.includes(p.stop_type)
+    ? I18N.t(`stoptype.${p.stop_type}`)
+    : p.stop_type;
   return popupHtml(`${train.number || ""}`, [
-    ["Train ID", train.id],
-    ["Type / Company", trainTypeCompanyLabel(train) || "-"],
-    ["Station", p.name],
-    ["Arrival", p.arrival || "-"],
-    ["Departure", p.departure || "-"],
-    ["stop_type", p.stop_type],
-    ["Normal color", p.ride_segment === true ? "Yes" : "No / pale"],
+    [I18N.t("popup.trainId"), train.id],
+    [I18N.t("popup.typeCompany"), trainTypeCompanyLabel(train) || "-"],
+    [I18N.t("popup.station"), p.name],
+    [I18N.t("popup.arrival"), p.arrival || "-"],
+    [I18N.t("popup.departure"), p.departure || "-"],
+    [I18N.t("popup.stopType"), stopTypeLabel],
+    [
+      I18N.t("popup.rideSegment"),
+      p.ride_segment === true ? I18N.t("popup.yes") : I18N.t("popup.noPale"),
+    ],
+    // N02_005c / N02_005g are N02 field codes — kept literal on purpose.
     ["N02_005c", p.n02_station_code || "-"],
     ["N02_005g", p.n02_group_code || "-"],
-    ["Line", p.line_name || "-"],
-    ["Operator", p.operator || "-"],
-    ["Computed", p.pass_through_computed ? "Yes" : "No"],
-    ["Route source", p.source || "station overlay"],
+    [I18N.t("popup.line"), p.line_name || "-"],
+    [I18N.t("popup.operator"), p.operator || "-"],
+    [
+      I18N.t("popup.computed"),
+      p.pass_through_computed ? I18N.t("popup.yes") : I18N.t("popup.no"),
+    ],
+    [I18N.t("popup.routeSource"), p.source || "station overlay"],
   ]);
 }
 
