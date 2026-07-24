@@ -31941,6 +31941,198 @@
       ]
     },
     {
+      "id": "20260724_08_tosaden_south",
+      "date": "2026-07-24",
+      "number": "とさでん路面電車 桟橋方面（Tosaden Tram, southbound）",
+      "train_type": "路面電車",
+      "company": "とさでん交通",
+      "origin": "高知駅前",
+      "destination": "はりまや橋",
+      "direction": "桟橋方面",
+      "visible": true,
+      "style": {
+        "color": "#4F6FA8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "駅前線"
+        ],
+        "preferred_operator_names": [
+          "とさでん交通"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "009098",
+          "to_n02_station_code": "009107",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        },
+        {
+          "from_n02_station_code": "009107",
+          "to_n02_station_code": "009111",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        },
+        {
+          "from_n02_station_code": "009111",
+          "to_n02_station_code": "009117",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "高知駅前",
+          "n02_station_code": "009098",
+          "arrival": null,
+          "departure": "18:50",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "高知橋",
+          "n02_station_code": "009107",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "蓮池町通",
+          "n02_station_code": "009111",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "はりまや橋",
+          "n02_station_code": "009117",
+          "arrival": "18:55",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260724_09_tosaden_north",
+      "date": "2026-07-24",
+      "number": "とさでん路面電車 高知駅前行（Tosaden Tram for Kōchi-Ekimae）",
+      "train_type": "路面電車",
+      "company": "とさでん交通",
+      "origin": "はりまや橋",
+      "destination": "高知駅前",
+      "direction": "高知駅前",
+      "visible": true,
+      "style": {
+        "color": "#4F6FA8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "駅前線"
+        ],
+        "preferred_operator_names": [
+          "とさでん交通"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "009117",
+          "to_n02_station_code": "009111",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        },
+        {
+          "from_n02_station_code": "009111",
+          "to_n02_station_code": "009107",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        },
+        {
+          "from_n02_station_code": "009107",
+          "to_n02_station_code": "009098",
+          "line_names": [
+            "駅前線"
+          ],
+          "operator_names": [
+            "とさでん交通"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "はりまや橋",
+          "n02_station_code": "009117",
+          "arrival": null,
+          "departure": "19:14",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "蓮池町通",
+          "n02_station_code": "009111",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "高知橋",
+          "n02_station_code": "009107",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "高知駅前",
+          "n02_station_code": "009098",
+          "arrival": "19:19",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
       "id": "20260724_06_nanpu28",
       "date": "2026-07-24",
       "number": "南風28号（Nanpū 28）（28D）",
