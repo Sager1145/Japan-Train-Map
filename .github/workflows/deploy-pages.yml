@@ -47,9 +47,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Pin Node so the build doesn't drift with the runner's default, and
-      # run the characterization tests BEFORE building — a regression should
-      # fail the deploy, not ship to Pages.
+      # Pin Node so the build doesn't drift with the runner's default.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -57,10 +55,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        working-directory: app
-
-      - name: Run tests
-        run: npm test
         working-directory: app
 
       # Solve every train's route geometry OFFLINE (the script runs app.js's
@@ -91,6 +85,14 @@ jobs:
           PRECOMPUTE_STORE=app/data/special-samples/tokyo-limited-express-loop.json \
           PRECOMPUTE_OUT_DIR=app/data/tokyo-limited-express-loop-data \
             node app/scripts/precompute-train-parts.mjs
+
+      # AFTER precompute (the sample-data tests read the generated part
+      # manifests, which are gitignored) but BEFORE assemble/deploy — a
+      # regression fails the deploy instead of shipping to Pages, and the
+      # suite also validates the parts this very run just generated.
+      - name: Run tests
+        run: npm test
+        working-directory: app
 
       - name: Assemble static site
         # Copies the frontend without local gzip sidecars, publishes datasets
