@@ -491,3 +491,95 @@ test("SSE clients receive hello and store-change events with origin metadata", a
     }
   });
 });
+
+test("coerceStore backstop rejects shapes the frontend could never load", async () => {
+  await withServer(async ({ baseUrl }) => {
+    // Non-object trains used to persist verbatim with ok:true, after which
+    // every open browser dropped into read-only recovery mode on reload.
+    const garbage = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schema_version: "1.3", trains: [1, "two", null] }),
+    });
+    assert.equal(garbage.status, 400);
+    assert.deepEqual(await responseJson(garbage), {
+      error: "trains[0] must be an object.",
+    });
+
+    // Unknown top-level keys are rejected on load by the frontend
+    // (assertOnlyKeys), so persisting them would only brick the next boot.
+    const unknownKey = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schema_version: "1.3", trains: [], extra: 1 }),
+    });
+    assert.equal(unknownKey.status, 400);
+    assert.deepEqual(await responseJson(unknownKey), {
+      error: "Store contains unsupported field: extra.",
+    });
+
+    // Id-less trains used to collapse onto the Map key `undefined` in append
+    // mode: only the last one survived while trains_added counted them all.
+    const idless = await fetch(`${baseUrl}/api/agent/import?mode=append`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([
+        { stops: [], marker: "no-id-1" },
+        { stops: [], marker: "no-id-2" },
+      ]),
+    });
+    assert.equal(idless.status, 400);
+    assert.deepEqual(await responseJson(idless), {
+      error: 'trains[0].id must be a string of letters, digits, "_" or "-".',
+    });
+
+    // None of the rejected bodies may have been persisted.
+    const saved = await fetch(`${baseUrl}/api/train-store`);
+    assert.equal(saved.status, 404);
+  });
+});
+
+test("body-parser failures return JSON errors, not HTML stack traces", async () => {
+  await withServer(async ({ baseUrl }) => {
+    const malformed = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: '{"schema_version": "1.3", trains: BROKEN',
+    });
+    assert.equal(malformed.status, 400);
+    assert.match(
+      malformed.headers.get("content-type") || "",
+      /application\/json/,
+    );
+    assert.deepEqual(await responseJson(malformed), {
+      error: "Request body is not valid JSON.",
+    });
+  });
+});
+
+test("store deletion is serialized behind queued writes", async () => {
+  // A direct unlink could land between a queued write's writeFile and its
+  // rename, letting the rename resurrect the "cleared" store after DELETE
+  // already answered ok — remove() must flow through the same FIFO queue.
+  const { createTrainStore } = require("../server/train-store");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-store-"));
+  try {
+    const filePath = path.join(root, "train-store.json");
+    const store = createTrainStore(filePath);
+    const big = {
+      schema_version: "1.3",
+      trains: Array.from({ length: 2000 }, (_, index) => ({
+        id: `t${index}`,
+        stops: [],
+        payload: "x".repeat(1024),
+      })),
+    };
+    const writePromise = store.write(big); // enqueued first
+    const removePromise = store.remove(); // must run strictly after the write
+    const [, removed] = await Promise.all([writePromise, removePromise]);
+    assert.deepEqual(removed, { existed: true });
+    await assert.rejects(fs.access(filePath), /ENOENT/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

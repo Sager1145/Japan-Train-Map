@@ -162,14 +162,19 @@ function createApp({
 
     res.type("application/json");
     res.setHeader("Cache-Control", "no-store");
-    fs.createReadStream(trainStore.filePath)
-      .on("error", (err) => {
-        logger.error("Error reading train-store.json:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to read train store." });
-        }
-      })
-      .pipe(res);
+    const stream = fs.createReadStream(trainStore.filePath);
+    stream.on("error", (err) => {
+      logger.error("Error reading train-store.json:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to read train store." });
+      } else {
+        res.destroy();
+      }
+    });
+    // pipe() never destroys the source when the client disconnects, leaking
+    // one open fd per aborted transfer.
+    res.on("close", () => stream.destroy());
+    stream.pipe(res);
   });
 
   app.put(
@@ -264,6 +269,15 @@ function createApp({
             .filter(Boolean),
         });
       } catch (err) {
+        if (err instanceof SyntaxError) {
+          // The append's read-modify-write choked on the stored file, not on
+          // this request — surface that instead of a misleading save failure.
+          logger.error("Stored train-store.json is not valid JSON:", err);
+          return res.status(500).json({
+            error:
+              "Stored train-store.json is not valid JSON; fix or clear it before appending.",
+          });
+        }
         logger.error("Error writing train-store.json (agent import):", err);
         res.status(500).json({ error: "Failed to save train store." });
       }
@@ -272,17 +286,16 @@ function createApp({
 
   app.delete("/api/train-store", async (req, res) => {
     try {
-      await fs.promises.unlink(trainStore.filePath);
-      liveEvents.broadcastStoreChanged({
-        origin: req.get("X-Client-Id") || null,
-        source: "delete",
-        cleared: true,
-      });
-      res.json({ ok: true });
-    } catch (err) {
-      if (err.code === "ENOENT") {
-        return res.json({ ok: true, alreadyEmpty: true });
+      const { existed } = await trainStore.remove();
+      if (existed) {
+        liveEvents.broadcastStoreChanged({
+          origin: req.get("X-Client-Id") || null,
+          source: "delete",
+          cleared: true,
+        });
       }
+      res.json(existed ? { ok: true } : { ok: true, alreadyEmpty: true });
+    } catch (err) {
       logger.error("Error deleting train-store.json:", err);
       res.status(500).json({ error: "Failed to clear train store." });
     }
@@ -324,6 +337,25 @@ function createApp({
   });
 
   app.use(express.static(publicDir));
+
+  // Shape body-parser failures as JSON like every other 4xx in this API.
+  // Without this, Express's default handler returns an HTML page with a full
+  // stack trace (NODE_ENV is usually unset in dev), which breaks any client
+  // that parses error bodies as JSON and leaks absolute filesystem paths.
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    if (err && err.type === "entity.parse.failed") {
+      return res.status(400).json({ error: "Request body is not valid JSON." });
+    }
+    if (err && err.type === "entity.too.large") {
+      return res
+        .status(413)
+        .json({ error: "Request body exceeds the 25 MB limit." });
+    }
+    logger.error("Unhandled request error:", err);
+    res.status(500).json({ error: "Internal server error." });
+  });
 
   return app;
 }

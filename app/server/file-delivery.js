@@ -15,7 +15,7 @@ function createFileDelivery({ logger = console } = {}) {
   async function ensureGzipSidecar(filePath, sourceStat) {
     const gzPath = `${filePath}.gz`;
     const gzStat = await fs.promises.stat(gzPath).catch(() => null);
-    if (gzStat && gzStat.mtimeMs > sourceStat.mtimeMs) return gzPath;
+    if (gzStat && gzStat.mtimeMs >= sourceStat.mtimeMs) return gzPath;
 
     if (!gzipBuilds.has(filePath)) {
       const tmpPath = `${gzPath}.${process.pid}.tmp`;
@@ -25,6 +25,12 @@ function createFileDelivery({ logger = console } = {}) {
         fs.createWriteStream(tmpPath),
       )
         .then(() => fs.promises.rename(tmpPath, gzPath))
+        // Stamp the sidecar with the mtime of the source AS READ. If the
+        // source is atomically replaced while the gzip builds (exactly what
+        // the precompute/build scripts do under a running dev server), the
+        // new source's mtime is >= this stamp and the next request rebuilds —
+        // a wall-clock mtime would have pinned the stale sidecar forever.
+        .then(() => fs.promises.utimes(gzPath, sourceStat.atime, sourceStat.mtime))
         .catch(async (err) => {
           await fs.promises.unlink(tmpPath).catch(() => {});
           throw err;
@@ -73,14 +79,19 @@ function createFileDelivery({ logger = console } = {}) {
       }
     }
 
-    fs.createReadStream(streamPath)
-      .on("error", (err) => {
-        logger.error(`Error streaming ${label}:`, err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Failed to read file" });
-        }
-      })
-      .pipe(res);
+    const stream = fs.createReadStream(streamPath);
+    stream.on("error", (err) => {
+      logger.error(`Error streaming ${label}:`, err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to read file" });
+      } else {
+        res.destroy();
+      }
+    });
+    // pipe() never destroys the source when the client disconnects; every
+    // aborted multi-MB transfer leaked one open fd for the server's lifetime.
+    res.on("close", () => stream.destroy());
+    stream.pipe(res);
   }
 
   return { serveGzippable };

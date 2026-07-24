@@ -47,6 +47,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Pin Node so the build doesn't drift with the runner's default, and
+      # run the characterization tests BEFORE building — a regression should
+      # fail the deploy, not ship to Pages.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: app
+
+      - name: Run tests
+        run: npm test
+        working-directory: app
+
       # Solve every train's route geometry OFFLINE (the script runs app.js's
       # own solver inside a Node vm) and emit app/data/sample-data/: a manifest
       # (with a per-date index) plus one part-NNN.json per train carrying its

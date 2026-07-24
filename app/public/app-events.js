@@ -532,10 +532,12 @@ function bindEvents() {
         );
         // Force-flush the debounced server autosave so the import is persisted now.
         await flushServerStoreSave();
+        // Clear the paste only on success — after a failure the user needs
+        // the original text back to fix the reported problem.
+        els.importJson.value = "";
       } catch (error) {
         setStatus(els.importStatus, error.message, "err");
       } finally {
-        els.importJson.value = "";
         applyButton.disabled = false;
       }
     });

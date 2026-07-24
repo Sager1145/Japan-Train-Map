@@ -243,6 +243,12 @@ function renderStopsTable(train) {
       if (!train?.stops?.[index]) return;
 
       let refreshStopsTable = false;
+      // Snapshot for revert: field-level stop edits used to bypass validation
+      // entirely, so blanking a station name (or breaking the first/last-stop
+      // time shape) persisted a store that validateTrainStore rejects on the
+      // next boot — dropping the user into read-only recovery mode.
+      const previousStops =
+        field === "ride_segment" ? null : clone(train.stops);
 
       if (field === "ride_segment") {
         // Pass-through stations are not individually toggleable; their visibility
@@ -276,6 +282,16 @@ function renderStopsTable(train) {
       }
 
       if (field === "name") applyStationMetadata(train.stops[index], train);
+
+      if (previousStops) {
+        const error = stopEditValidationError(train);
+        if (error) {
+          train.stops = previousStops;
+          setStatus(els.fieldStatus, error.message, "err");
+          renderStopsTable(train);
+          return;
+        }
+      }
 
       saveTrainStore();
       perfMeasure("renderTrainLayers", renderTrainLayers);
@@ -429,10 +445,25 @@ function applyStationMetadata(stop, train) {
   stop.n02_group_code = stationGroupCode(station);
 }
 
+// Validate one train after a stop-level edit, mirroring what the boot path
+// will enforce (validateTrainStore on load). Returns null when the edit is
+// safe to persist, otherwise the validation error so the caller can revert —
+// without this, deleting below 2 stops or blanking a name saved a store the
+// app itself refused to load on the next boot (read-only recovery mode).
+function stopEditValidationError(train) {
+  try {
+    validateTrain(normalizeExportTrain(train), 0, new Set());
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
 function mutateStop(index, action) {
   if (importBusy()) return;
   const train = getTrain();
   if (!train || !train.stops?.[index]) return;
+  const previousStops = clone(train.stops);
   if (action === "delete") train.stops.splice(index, 1);
   if (action === "up" && index > 0)
     [train.stops[index - 1], train.stops[index]] = [
@@ -444,6 +475,13 @@ function mutateStop(index, action) {
       train.stops[index],
       train.stops[index + 1],
     ];
+  const error = stopEditValidationError(train);
+  if (error) {
+    train.stops = previousStops;
+    setStatus(els.fieldStatus, error.message, "err");
+    renderStopsTable(train);
+    return;
+  }
   persistAndRender();
 }
 

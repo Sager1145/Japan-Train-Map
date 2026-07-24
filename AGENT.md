@@ -122,13 +122,22 @@ Minimal valid train (the browser solves the route from these fields):
       "origin": "東京",
       "destination": "伊豆急下田",
       "stops": [
-        { "name": "東京", "stop_type": "origin", "departure": "09:00" },
-        { "name": "伊豆急下田", "stop_type": "destination", "arrival": "11:40" }
+        { "name": "東京", "stop_type": "origin", "departure": "09:00", "ride_segment": true },
+        { "name": "伊豆急下田", "stop_type": "destination", "arrival": "11:40", "ride_segment": true }
       ]
     }
   ]
 }
 ```
+
+> **`ride_segment` matters:** it defaults to `false` when omitted, and
+> non-ridden segments/stations are hidden **entirely** (jsonspec §7.1/§8.3) —
+> a train whose stops all omit it imports fine but draws **nothing**. Set
+> `"ride_segment": true` on every stop the passenger actually rode.
+>
+> **`ride_segment` 很重要：**缺省为 `false`，而非乘坐区间会被**完全隐藏**
+> （见 jsonspec §7.1/§8.3）——全部省略该字段的列车能导入成功，但地图上
+> **什么都不会画**。请为实际乘坐的每个停站写 `"ride_segment": true`。
 
 ---
 

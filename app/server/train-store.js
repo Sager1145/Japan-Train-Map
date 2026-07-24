@@ -4,6 +4,10 @@ const fs = require("fs");
 
 const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
 const DEFAULT_SCHEMA_VERSION = "1.3";
+// Same charset the frontend enforces (jsonspec §3.2): ids feed route_id,
+// cache keys and the append upsert's Map key, so an id-less train must be
+// rejected here instead of collapsing onto the `undefined` key.
+const TRAIN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function coerceStore(body, { lenient = false } = {}) {
   let store = body;
@@ -35,6 +39,30 @@ function coerceStore(body, { lenient = false } = {}) {
   if (!Array.isArray(store.trains)) {
     throw new Error("trains must be an array.");
   }
+  // The frontend rejects unknown top-level keys on load (assertOnlyKeys), so
+  // persisting them here would only brick the next boot into recovery mode.
+  for (const key of Object.keys(store)) {
+    if (key !== "schema_version" && key !== "trains") {
+      throw new Error(`Store contains unsupported field: ${key}.`);
+    }
+  }
+  // Minimal per-train shape check. The browser does the full jsonspec
+  // validation; this backstop only rejects what the frontend could never
+  // load (and what the append upsert cannot key), so an agent gets a 400
+  // instead of ok:true followed by every open map entering recovery mode.
+  store.trains.forEach((train, index) => {
+    if (!train || typeof train !== "object" || Array.isArray(train)) {
+      throw new Error(`trains[${index}] must be an object.`);
+    }
+    if (typeof train.id !== "string" || !TRAIN_ID_PATTERN.test(train.id)) {
+      throw new Error(
+        `trains[${index}].id must be a string of letters, digits, "_" or "-".`,
+      );
+    }
+    if (!Array.isArray(train.stops)) {
+      throw new Error(`trains[${index}] (${train.id}): stops must be an array.`);
+    }
+  });
   return store;
 }
 
@@ -96,11 +124,27 @@ function createTrainStore(filePath) {
     });
   }
 
+  // Deletion MUST flow through the same FIFO queue as writes: a direct unlink
+  // could land between a queued write's writeFile and its rename, letting the
+  // rename resurrect the "cleared" store after DELETE already returned ok.
+  function remove() {
+    return enqueue(async () => {
+      try {
+        await fs.promises.unlink(filePath);
+        return { existed: true };
+      } catch (err) {
+        if (err.code === "ENOENT") return { existed: false };
+        throw err;
+      }
+    });
+  }
+
   return {
     filePath,
     read,
     write,
     update,
+    remove,
   };
 }
 

@@ -921,15 +921,20 @@ function sectionEndpointBbox(section, train, allowedCodes) {
 // search should widen (or fall back to the full graph).
 function pathTouchesRegionEdge(feature, regionBbox, marginDeg) {
   if (!feature || !regionBbox) return false;
-  const coords = (feature.geometry && feature.geometry.coordinates) || [];
-  for (const c of coords) {
-    if (
-      c[0] <= regionBbox[0] + marginDeg ||
-      c[0] >= regionBbox[2] - marginDeg ||
-      c[1] <= regionBbox[1] + marginDeg ||
-      c[1] >= regionBbox[3] - marginDeg
-    ) {
-      return true;
+  // The solver currently emits LineStrings only, but iterate by geometry type
+  // so a MultiLineString could never silently skip the widen-to-full-graph
+  // check (comparing a nested coordinate array against a number is always
+  // false, which would accept a possibly-truncated regional result).
+  for (const line of iterateGeometryLines(feature.geometry)) {
+    for (const c of line) {
+      if (
+        c[0] <= regionBbox[0] + marginDeg ||
+        c[0] >= regionBbox[2] - marginDeg ||
+        c[1] <= regionBbox[1] + marginDeg ||
+        c[1] >= regionBbox[3] - marginDeg
+      ) {
+        return true;
+      }
     }
   }
   return false;

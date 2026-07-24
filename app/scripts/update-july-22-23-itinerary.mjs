@@ -321,6 +321,9 @@ const sourceStore = JSON.parse(fs.readFileSync(STORE_FILES[0], "utf8"));
 const updatedStore = updateStore(sourceStore);
 const output = `${JSON.stringify(updatedStore, null, 2)}\n`;
 for (const file of STORE_FILES) {
-  fs.writeFileSync(file, output);
+  // temp + rename so a crash mid-write can't leave a truncated store/sample.
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, output);
+  fs.renameSync(tmp, file);
   console.log(`Updated ${path.relative(REPO_DIR, file)}`);
 }

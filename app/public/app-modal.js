@@ -84,11 +84,35 @@
               e.preventDefault();
               finish(render.cancelValue);
             } else if (e.key === "Enter" && !e.shiftKey) {
+              // A focused button keeps its NATIVE Enter activation: Enter on
+              // 取消 must cancel, not fire the accept shortcut (which made
+              // Enter confirm even danger dialogs with Cancel focused).
+              const active = d.activeElement;
+              if (active && dialog.contains(active) && active.tagName === "BUTTON")
+                return;
               // Let the render decide the accept value (confirm=true, prompt=text).
               const accept = render.getAcceptValue && render.getAcceptValue();
               if (accept !== undefined) {
                 e.preventDefault();
                 finish(accept);
+              }
+            } else if (e.key === "Tab") {
+              // Minimal focus trap: aria-modal promises modality, so Tab must
+              // cycle within the dialog instead of escaping into the page.
+              const focusables = dialog.querySelectorAll("button, input");
+              if (!focusables.length) return;
+              const first = focusables[0];
+              const last = focusables[focusables.length - 1];
+              const active = d.activeElement;
+              if (!active || !dialog.contains(active)) {
+                e.preventDefault();
+                first.focus();
+              } else if (e.shiftKey && active === first) {
+                e.preventDefault();
+                last.focus();
+              } else if (!e.shiftKey && active === last) {
+                e.preventDefault();
+                first.focus();
               }
             }
           };

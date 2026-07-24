@@ -22,6 +22,21 @@ function getDefaultTrainStore() {
 let serverStoreSaveTimer = null;
 let serverStoreSaveInFlight = false;
 let pendingServerStoreText = null;
+// Re-flush after a FAILED autosave. The retry re-marks the store dirty and
+// re-serializes the CURRENT in-memory state (never a stale captured body), so
+// a transient network/server hiccup no longer leaves the last edit unsaved
+// until the user happens to edit again.
+let storeSaveRetryTimer = null;
+const STORE_SAVE_RETRY_MS = 5000;
+function scheduleStoreSaveRetry() {
+  clearTimeout(storeSaveRetryTimer);
+  storeSaveRetryTimer = setTimeout(() => {
+    storeSaveRetryTimer = null;
+    if (storeRecoveryMode) return;
+    storeSaveDirty = true;
+    flushServerStoreSave();
+  }, STORE_SAVE_RETRY_MS);
+}
 // Marks the in-memory store dirty WITHOUT serializing. The expensive full
 // JSON.stringify is deferred until the debounced flush actually runs, so a
 // rapid burst of small
@@ -43,6 +58,7 @@ function enterStoreRecoveryMode({ message = "", rawText = null } = {}) {
   storeRecoveryMode = true;
   // Cancel anything the autosave debounce queued before the failure was known.
   clearTimeout(serverStoreSaveTimer);
+  clearTimeout(storeSaveRetryTimer);
   clearTimeout(exportTextareaTimer);
   pendingServerStoreText = null;
   storeSaveDirty = false;
@@ -119,10 +135,13 @@ async function flushServerStoreSave() {
         body: jsonText,
       });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      clearTimeout(storeSaveRetryTimer);
+      storeSaveRetryTimer = null;
       setStatus(els.jsonStatus, I18N.t("status.autosaveOk"), "ok");
     } catch (error) {
       console.warn("Autosave to server train-store failed.", error);
       setStatus(els.jsonStatus, I18N.t("status.autosaveFail", { msg: error.message }), "warn");
+      scheduleStoreSaveRetry();
     } finally {
       serverStoreSaveInFlight = false;
       // A newer change may have arrived while this request was in flight
@@ -155,6 +174,8 @@ async function flushUserStoreSave() {
       );
       await writeUserStoreChunks(canonical);
       userStoreAvailable = canonical.trains.length > 0;
+      clearTimeout(storeSaveRetryTimer);
+      storeSaveRetryTimer = null;
       setStatus(els.jsonStatus, I18N.t("status.autosaveLocalOk"), "ok");
       updateDataSourceUi();
     } catch (error) {
@@ -164,6 +185,7 @@ async function flushUserStoreSave() {
         I18N.t("status.autosaveFail", { msg: error.message }),
         "warn",
       );
+      scheduleStoreSaveRetry();
     } finally {
       userStoreSaveInFlight = false;
       // A newer change may have arrived while this write was in flight.
@@ -589,6 +611,22 @@ function getRailContentHash() {
       }
     }
   }
+  // Station data participates in every solve (snap candidates, endpoint
+  // resolution, negative verdicts), so a corrected stations.json must
+  // invalidate cached geometry exactly like changed rail geometry does —
+  // without this, a persisted "unsolvable" marker outlived station fixes.
+  const stationFeats = (stationsGeoJson && stationsGeoJson.features) || [];
+  mix(stationFeats.length);
+  for (let i = 0; i < stationFeats.length; i += 1) {
+    const props = stationFeats[i].properties || {};
+    const code = String(props.N02_005c || "");
+    for (let j = 0; j < code.length; j += 1) mix(code.charCodeAt(j));
+    const coord = getFeatureDisplayCoordinate(stationFeats[i]);
+    if (Array.isArray(coord)) {
+      mix(coord[0] * 1e5);
+      mix(coord[1] * 1e5);
+    }
+  }
   railContentHashCache = `r${(h >>> 0).toString(36)}-${feats.length}`;
   return railContentHashCache;
 }
@@ -615,33 +653,52 @@ function openRouteCacheDb() {
 async function warmRouteCacheFromIndexedDb() {
   if (!window.indexedDB) return;
   const prefix = `${getRailContentHash()}::`;
+  const solverPrefix = `solver:${ROUTE_SOLVER_CACHE_VERSION}|`;
   try {
     const db = await openRouteCacheDb();
     await new Promise((resolve) => {
-      const tx = db.transaction(ROUTE_CACHE_STORE_NAME, "readonly");
+      // readwrite: the same cursor pass evicts entries from superseded
+      // namespaces (old rail hash or old solver version). Nothing can ever
+      // read them again, so without this every data/solver update stranded
+      // the previous namespace in IndexedDB forever — unbounded growth on
+      // the storage-tight iPhone target.
+      const tx = db.transaction(ROUTE_CACHE_STORE_NAME, "readwrite");
       const req = tx.objectStore(ROUTE_CACHE_STORE_NAME).openCursor();
       let warmed = 0;
+      let evicted = 0;
       req.onsuccess = () => {
         const cursor = req.result;
         if (!cursor) return;
         const key = String(cursor.key);
         if (key.startsWith(prefix)) {
           const rest = key.slice(prefix.length);
-          if (rest.startsWith(ROUTE_NEG_CACHE_MARKER)) {
+          const isNegative = rest.startsWith(ROUTE_NEG_CACHE_MARKER);
+          const cacheKey = isNegative
+            ? rest.slice(ROUTE_NEG_CACHE_MARKER.length)
+            : rest;
+          if (!cacheKey.startsWith(solverPrefix)) {
+            // Same rail data, older solver semantics: unreachable, evict.
+            cursor.delete();
+            evicted += 1;
+          } else if (isNegative) {
             // Persisted "this route can't be solved" marker for this rail net.
-            runtimeRouteNegativeCache.add(
-              rest.slice(ROUTE_NEG_CACHE_MARKER.length),
-            );
+            runtimeRouteNegativeCache.add(cacheKey);
           } else if (Array.isArray(cursor.value) && cursor.value.length) {
             runtimeRouteCache.set(rest, cursor.value);
             warmed += 1;
           }
+        } else {
+          // Entry from a previous rail-data namespace: unreachable, evict.
+          cursor.delete();
+          evicted += 1;
         }
         cursor.continue();
       };
       tx.oncomplete = () => {
         db.close();
         if (warmed) console.info(`Warmed ${warmed} route(s) from IndexedDB.`);
+        if (evicted)
+          console.info(`Evicted ${evicted} stale cached route entr(ies).`);
         resolve();
       };
       tx.onerror = () => {

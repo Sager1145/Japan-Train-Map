@@ -560,11 +560,23 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
     // trains carrying their own `date` keep it (spec 3.2), and when "全部"
     // is active the date is inferred from the id instead.
     const wasRecovery = storeRecoveryMode;
-    const appendedIds = await runProgressiveAppend(importedStore.trains, {
-      persistEachStep: true,
-      onProgress,
-      fallbackDate: currentImportFallbackDate(),
-    });
+    // Roll back on failure: appendImportedTrain pushes each valid train
+    // before an invalid one throws, and without this the half-appended
+    // prefix stayed in the store (and the next edit autosaved it).
+    const baselineCount = trainStore.trains.length;
+    let appendedIds;
+    try {
+      appendedIds = await runProgressiveAppend(importedStore.trains, {
+        persistEachStep: true,
+        onProgress,
+        fallbackDate: currentImportFallbackDate(),
+      });
+    } catch (error) {
+      if (trainStore.trains.length > baselineCount)
+        trainStore.trains.length = baselineCount;
+      renderAll();
+      throw error;
+    }
     if (wasRecovery) {
       // The user explicitly imported data over the recovery view and every
       // train loaded. Resume saving — and re-issue the persist that the
