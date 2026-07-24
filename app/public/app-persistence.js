@@ -22,6 +22,14 @@ function getDefaultTrainStore() {
 let serverStoreSaveTimer = null;
 let serverStoreSaveInFlight = false;
 let pendingServerStoreText = null;
+let pendingServerStoreJournalTimer = null;
+let pendingServerStoreJournalStageInFlight = false;
+let pendingServerStoreJournalQueue = Promise.resolve();
+// Exact raw server state this tab last loaded/saved. Pending recovery copies
+// carry this base so a later boot can replay only when the server has not been
+// changed by another tab/agent in the meantime.
+let lastKnownServerStoreText = null;
+let lastKnownServerStoreExists = false;
 // Re-flush after a FAILED autosave. The retry re-marks the store dirty and
 // re-serializes the CURRENT in-memory state (never a stale captured body), so
 // a transient network/server hiccup no longer leaves the last edit unsaved
@@ -59,6 +67,8 @@ function enterStoreRecoveryMode({ message = "", rawText = null } = {}) {
   // Cancel anything the autosave debounce queued before the failure was known.
   clearTimeout(serverStoreSaveTimer);
   clearTimeout(storeSaveRetryTimer);
+  clearTimeout(pendingServerStoreJournalTimer);
+  pendingServerStoreJournalTimer = null;
   clearTimeout(exportTextareaTimer);
   pendingServerStoreText = null;
   storeSaveDirty = false;
@@ -92,6 +102,7 @@ function saveTrainStore() {
     return;
   }
   storeSaveDirty = true;
+  if (HAS_BACKEND) schedulePendingServerStoreJournal();
   clearTimeout(serverStoreSaveTimer);
   serverStoreSaveTimer = setTimeout(
     () => flushServerStoreSave(),
@@ -107,6 +118,49 @@ function serializePendingStoreIfDirty() {
     exportTrainStore(),
   );
   storeSaveDirty = false;
+}
+
+// Stage a recovery copy at the start of an edit burst, well before the 450 ms
+// network debounce. The visibility-change flush still stages synchronously as
+// a final backstop, but most close/navigation events now find an already
+// committed IndexedDB copy instead of depending on page-lifetime grace time.
+function schedulePendingServerStoreJournal() {
+  if (
+    pendingServerStoreJournalTimer ||
+    pendingServerStoreJournalStageInFlight
+  ) {
+    return;
+  }
+  pendingServerStoreJournalTimer = setTimeout(async () => {
+    pendingServerStoreJournalTimer = null;
+    pendingServerStoreJournalStageInFlight = true;
+    try {
+      serializePendingStoreIfDirty();
+      if (pendingServerStoreText !== null) {
+        await queuePendingServerStoreJournalWrite(pendingServerStoreText);
+      }
+    } catch (error) {
+      console.warn(
+        "Could not pre-stage the pending server-store recovery copy.",
+        error,
+      );
+    } finally {
+      pendingServerStoreJournalStageInFlight = false;
+      // Coalesce edits made while the IndexedDB transaction was active into
+      // the next staged snapshot.
+      if (storeSaveDirty) schedulePendingServerStoreJournal();
+    }
+  }, 0);
+}
+
+function queuePendingServerStoreJournalWrite(body) {
+  const run = pendingServerStoreJournalQueue.then(() =>
+    writePendingServerStoreSave(body),
+  );
+  // Keep the queue usable after a failed IndexedDB transaction while still
+  // returning the real rejection to this caller.
+  pendingServerStoreJournalQueue = run.catch(() => undefined);
+  return run;
 }
 
 // Resolves when the current PUT settles — lets the clear-storage handler wait
@@ -129,12 +183,36 @@ async function flushServerStoreSave() {
   pendingServerStoreText = null;
   serverStoreSavePromise = (async () => {
     try {
+      // Start an IndexedDB transaction before the network request. If the page
+      // is destroyed during a visibility-change flush, the next boot can
+      // safely replay this snapshot. Failure to access browser storage is
+      // non-fatal: ordinary server autosave still proceeds.
+      try {
+        await queuePendingServerStoreJournalWrite(jsonText);
+      } catch (pendingError) {
+        console.warn(
+          "Could not write the pending server-store recovery copy.",
+          pendingError,
+        );
+      }
       const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
         body: jsonText,
       });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      lastKnownServerStoreText = jsonText;
+      lastKnownServerStoreExists = true;
+      try {
+        await deletePendingServerStoreSave(CLIENT_ID, jsonText);
+      } catch (pendingError) {
+        // Harmless: boot sees that the pending body already equals the server
+        // body and removes the stale recovery record.
+        console.warn(
+          "Could not clear the pending server-store recovery copy.",
+          pendingError,
+        );
+      }
       clearTimeout(storeSaveRetryTimer);
       storeSaveRetryTimer = null;
       setStatus(els.jsonStatus, I18N.t("status.autosaveOk"), "ok");
@@ -158,6 +236,18 @@ async function flushServerStoreSave() {
 // machinery so force-flush callers behave identically on both deployments.
 let userStoreSaveInFlight = false;
 let userStoreSavePromise = null;
+class UserStoreConflictError extends Error {
+  constructor(dateKey) {
+    super(`Saved data for ${dateKey || UNDATED} changed in another tab.`);
+    this.name = "UserStoreConflictError";
+    this.dateKey = dateKey || UNDATED;
+  }
+}
+function userStoreChunkConflicts(baselineText, currentRecord) {
+  const currentText =
+    currentRecord === undefined ? undefined : JSON.stringify(currentRecord);
+  return currentText !== baselineText;
+}
 async function flushUserStoreSave() {
   if (isSampleMode()) {
     storeSaveDirty = false;
@@ -180,6 +270,17 @@ async function flushUserStoreSave() {
       updateDataSourceUi();
     } catch (error) {
       console.warn("Autosave to browser storage (IndexedDB) failed.", error);
+      if (error instanceof UserStoreConflictError) {
+        // Do not retry a stale snapshot: it would conflict forever and, before
+        // the compare-before-write guard, silently replaced the other tab's
+        // newer record. Keep this tab's state in memory for export/rescue.
+        setStatus(
+          els.jsonStatus,
+          I18N.t("status.autosaveConflict", { date: error.dateKey }),
+          "err",
+        );
+        return;
+      }
       setStatus(
         els.jsonStatus,
         I18N.t("status.autosaveFail", { msg: error.message }),
@@ -231,7 +332,11 @@ async function loadTrainStoreFromServer() {
     console.warn("Could not reach the server train-store endpoint.", error);
     return { recovery: true, rawText: null, message: error.message };
   }
-  if (res.status === 404) return null;
+  if (res.status === 404) {
+    lastKnownServerStoreText = null;
+    lastKnownServerStoreExists = false;
+    return null;
+  }
   if (!res.ok) {
     console.warn(`Server train-store read failed: ${res.status}.`);
     return {
@@ -243,6 +348,8 @@ async function loadTrainStoreFromServer() {
   let text = "";
   try {
     text = await res.text();
+    lastKnownServerStoreText = text;
+    lastKnownServerStoreExists = true;
     const parsed = JSON.parse(text);
     validateTrainStore(parsed);
     return parsed;
@@ -253,6 +360,219 @@ async function loadTrainStoreFromServer() {
     );
     return { recovery: true, rawText: text, message: error.message };
   }
+}
+
+// -------------------------------------------------------------------------
+// Backend autosave recovery journal (IndexedDB)
+// -------------------------------------------------------------------------
+
+function openPendingServerStoreDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB is unavailable."));
+      return;
+    }
+    const request = indexedDB.open(PENDING_SERVER_STORE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (
+        !request.result.objectStoreNames.contains(PENDING_SERVER_STORE_NAME)
+      ) {
+        request.result.createObjectStore(PENDING_SERVER_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
+      reject(
+        request.error ||
+          new Error("Could not open the pending server-store database."),
+      );
+  });
+}
+
+async function writePendingServerStoreSave(body) {
+  const db = await openPendingServerStoreDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PENDING_SERVER_STORE_NAME, "readwrite");
+      tx.objectStore(PENDING_SERVER_STORE_NAME).put(
+        {
+          client_id: CLIENT_ID,
+          body,
+          base_body: lastKnownServerStoreText,
+          base_exists: lastKnownServerStoreExists,
+          updated_at: new Date().toISOString(),
+        },
+        CLIENT_ID,
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(
+          tx.error ||
+            new Error("Could not save the pending server-store recovery copy."),
+        );
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function readPendingServerStoreSaves() {
+  if (!window.indexedDB) return [];
+  const db = await openPendingServerStoreDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(PENDING_SERVER_STORE_NAME, "readonly");
+      const records = [];
+      const request = tx.objectStore(PENDING_SERVER_STORE_NAME).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (cursor.value && typeof cursor.value.body === "string")
+          records.push({ ...cursor.value, _key: String(cursor.key) });
+        cursor.continue();
+      };
+      tx.oncomplete = () => resolve(records);
+      tx.onerror = () =>
+        reject(
+          tx.error ||
+            new Error("Could not read pending server-store recovery copies."),
+        );
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function deletePendingServerStoreSave(clientId, expectedBody = null) {
+  if (!window.indexedDB) return;
+  const db = await openPendingServerStoreDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PENDING_SERVER_STORE_NAME, "readwrite");
+      const store = tx.objectStore(PENDING_SERVER_STORE_NAME);
+      const request = store.get(clientId);
+      request.onsuccess = () => {
+        const record = request.result;
+        if (
+          record &&
+          (expectedBody === null || record.body === expectedBody)
+        ) {
+          store.delete(clientId);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(
+          tx.error ||
+            new Error("Could not clear a pending server-store recovery copy."),
+        );
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function clearPendingServerStoreSaves() {
+  if (!window.indexedDB) return;
+  const db = await openPendingServerStoreDb();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PENDING_SERVER_STORE_NAME, "readwrite");
+      tx.objectStore(PENDING_SERVER_STORE_NAME).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () =>
+        reject(
+          tx.error ||
+            new Error("Could not clear pending server-store recovery copies."),
+        );
+    });
+  } finally {
+    db.close();
+  }
+}
+
+// Replay journal entries only when their exact base still matches the server.
+// A mismatch means another source changed the store after this tab's edit; keep
+// both copies and enter recovery instead of silently overwriting either one.
+async function recoverPendingServerStoreSaves(savedStore) {
+  let records;
+  try {
+    records = await readPendingServerStoreSaves();
+  } catch (error) {
+    console.warn("Could not inspect pending server-store recovery copies.", error);
+    return savedStore;
+  }
+  records.sort((a, b) =>
+    String(a.updated_at || "").localeCompare(String(b.updated_at || "")),
+  );
+  let currentStore = savedStore;
+  for (const record of records) {
+    let pendingStore;
+    try {
+      pendingStore = JSON.parse(record.body);
+      validateTrainStore(pendingStore);
+    } catch (error) {
+      return {
+        recovery: true,
+        rawText: record.body,
+        message: I18N.t("err.pendingServerInvalid", { msg: error.message }),
+      };
+    }
+
+    if (
+      lastKnownServerStoreExists &&
+      record.body === lastKnownServerStoreText
+    ) {
+      await deletePendingServerStoreSave(
+        record.client_id || record._key || CLIENT_ID,
+        record.body,
+      );
+      currentStore = pendingStore;
+      continue;
+    }
+
+    const baseMatches =
+      Boolean(record.base_exists) === lastKnownServerStoreExists &&
+      (!lastKnownServerStoreExists ||
+        record.base_body === lastKnownServerStoreText);
+    if (!baseMatches) {
+      return {
+        recovery: true,
+        rawText: record.body,
+        pendingStore,
+        message: I18N.t("err.pendingServerConflict"),
+      };
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Client-Id": record.client_id || CLIENT_ID,
+        },
+        body: record.body,
+      });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    } catch (error) {
+      return {
+        recovery: true,
+        rawText: record.body,
+        pendingStore,
+        message: I18N.t("err.pendingServerReplayFailed", {
+          msg: error.message,
+        }),
+      };
+    }
+    lastKnownServerStoreText = record.body;
+    lastKnownServerStoreExists = true;
+    currentStore = pendingStore;
+    await deletePendingServerStoreSave(
+      record.client_id || record._key || CLIENT_ID,
+      record.body,
+    );
+  }
+  return currentStore;
 }
 
 let localJsonFileHandle = null;
@@ -410,26 +730,91 @@ async function writeUserStoreChunks(canonicalStore, { force = false } = {}) {
         "readwrite",
       );
       const dateStore = tx.objectStore(USER_STORE_DATES_STORE);
+      let conflictError = null;
+      let settled = false;
+      const finishReject = (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
       const run = () => {
         for (const dateKey of toDelete) dateStore.delete(dateKey);
         for (const [dateKey, record] of toPut) dateStore.put(record, dateKey);
-        if (serialized.size) {
-          tx.objectStore(USER_STORE_META_STORE).put(meta, USER_STORE_META_KEY);
-        } else {
-          tx.objectStore(USER_STORE_META_STORE).delete(USER_STORE_META_KEY);
-        }
+        // Rebuild meta.dates from the transaction's resulting keys. Another
+        // tab may have added a different day since this tab loaded; retaining
+        // those keys prevents the later meta write from hiding its ordering.
+        const keysReq = dateStore.getAllKeys();
+        keysReq.onsuccess = () => {
+          const actualKeys = keysReq.result.map(String);
+          const actualSet = new Set(actualKeys);
+          const orderedKeys = [...serialized.keys()].filter((key) =>
+            actualSet.has(key),
+          );
+          for (const key of actualKeys.sort()) {
+            if (!orderedKeys.includes(key)) orderedKeys.push(key);
+          }
+          if (orderedKeys.length) {
+            tx.objectStore(USER_STORE_META_STORE).put(
+              { ...meta, dates: orderedKeys },
+              USER_STORE_META_KEY,
+            );
+          } else {
+            tx.objectStore(USER_STORE_META_STORE).delete(USER_STORE_META_KEY);
+          }
+        };
       };
       if (force) {
         const clearReq = dateStore.clear();
         clearReq.onsuccess = run;
       } else {
-        run();
+        // IndexedDB serializes readwrite transactions with overlapping object
+        // stores. Compare every day this tab is about to touch against the
+        // snapshot it originally loaded INSIDE that same transaction; a later
+        // tab therefore sees the earlier commit and aborts instead of silently
+        // replacing it with stale whole-day state.
+        const touchedKeys = [
+          ...new Set([
+            ...toDelete,
+            ...toPut.map(([dateKey]) => dateKey),
+          ]),
+        ];
+        if (!touchedKeys.length) {
+          run();
+        } else {
+          let remaining = touchedKeys.length;
+          for (const dateKey of touchedKeys) {
+            const getReq = dateStore.get(dateKey);
+            getReq.onsuccess = () => {
+              if (conflictError) return;
+              const baselineText = userStoreWrittenChunks.get(dateKey);
+              if (userStoreChunkConflicts(baselineText, getReq.result)) {
+                conflictError = new UserStoreConflictError(dateKey);
+                tx.abort();
+                return;
+              }
+              remaining -= 1;
+              if (remaining === 0) run();
+            };
+          }
+        }
       }
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
       tx.onerror = () =>
-        reject(tx.error || new Error("Could not write the user store."));
+        finishReject(
+          conflictError ||
+            tx.error ||
+            new Error("Could not write the user store."),
+        );
       tx.onabort = () =>
-        reject(tx.error || new Error("User store write was aborted."));
+        finishReject(
+          conflictError ||
+            tx.error ||
+            new Error("User store write was aborted."),
+        );
     });
   } finally {
     db.close();
@@ -833,4 +1218,3 @@ async function openLocalJsonFile() {
   els.localJsonFileInput.value = "";
   els.localJsonFileInput.click();
 }
-

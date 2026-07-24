@@ -662,12 +662,17 @@ function bindEvents() {
       try {
         // Cancel any pending autosave so it can't immediately re-create the file.
         clearTimeout(serverStoreSaveTimer);
+        clearTimeout(storeSaveRetryTimer);
+        clearTimeout(pendingServerStoreJournalTimer);
+        pendingServerStoreJournalTimer = null;
+        storeSaveRetryTimer = null;
         pendingServerStoreText = null;
         storeSaveDirty = false;
         // A write already in flight could land AFTER our delete and resurrect
         // the just-cleared data. Wait for it to settle first.
         if (serverStoreSaveInFlight) await serverStoreSavePromise;
         if (userStoreSaveInFlight) await userStoreSavePromise;
+        await pendingServerStoreJournalQueue;
         pendingServerStoreText = null;
         storeSaveDirty = false;
         if (HAS_BACKEND) {
@@ -677,6 +682,18 @@ function bindEvents() {
           });
           if (!res.ok && res.status !== 404)
             throw new Error(`${res.status} ${res.statusText}`);
+          lastKnownServerStoreText = null;
+          lastKnownServerStoreExists = false;
+          try {
+            await clearPendingServerStoreSaves();
+          } catch (pendingError) {
+            // The server delete succeeded. A browser-storage cleanup failure
+            // must not leave the UI claiming that the server clear failed.
+            console.warn(
+              "Could not clear pending server-store recovery copies.",
+              pendingError,
+            );
+          }
         } else {
           await clearUserStore();
           updateDataSourceUi();

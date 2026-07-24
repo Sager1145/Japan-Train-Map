@@ -899,9 +899,14 @@ null
 
 > 持久化说明：接有后端时，本系统以**服务器端 `data/train-store.json`** 作为唯一事实来源
 > （`GET/PUT/DELETE /api/train-store`），编辑会去抖自动保存、启动时自动载入，
-> 取代了早期的浏览器 localStorage 备份。
+> 取代了早期的浏览器 localStorage 备份。每次 `PUT` 前会先把待保存正文及其服务器基线写入
+> 浏览器 IndexedDB；若页面隐藏/关闭时请求被中断，下次启动会在基线仍匹配时重放。若服务器
+> 已被其他客户端修改，则进入恢复模式，绝不静默覆盖新内容。`GET` 仍按设计逐字节返回原文件，
+> 即使 JSON 已损坏也便于诊断；写入路径会把损坏作为独立错误报告。
 > **静态部署（`HAS_BACKEND` 为假，如 GitHub Pages）没有服务器可写**，此时事实来源改为
 > 浏览器 **IndexedDB**（库 `n02-user-train-store-db`，按日期分块），仍**不是** localStorage。
+> 保存事务会先比较本标签页载入的基线；若另一个标签页已修改同一天记录，则拒绝旧写入并提示
+> 冲突，避免 last-writer-wins 静默丢失数据。
 > localStorage 只放纯 UI 状态：当前选中日期 `selectedDate`、手动新增的空日期 `manualDates`、
 > 地图跟随/聚焦开关，此外还有显示调节参数、侧栏显隐与界面语言——都**不**进入 canonical store。
 
@@ -1165,11 +1170,12 @@ trains[*].id 不重复
 > 说明：导入时要求 `trains.length >= 1`（空 store 无可导入内容会报错）；但服务器保存 /
 > 导出允许空 `trains`（例如「全部删除」后保存的就是空 store）。
 
-> **服务器端校验明显更宽松**：`PUT /api/train-store` 的 `coerceStore` 只检查三件事——
-> 顶层是非数组对象、`schema_version` 在受理列表内、`trains` 是数组。它**不**拒绝多余顶层键，
-> **不**查 id 重复，也**不**逐趟跑 `validateTrain`。此外 `POST /api/agent/import` 会把列车
-> 直接写进 store，完全不做每趟校验。因此「store 一定合规」这个不变量由**前端**保证，
-> 绕过前端直接写 API 的调用方需自行负责。
+> **服务器端校验仍比前端宽松**：`PUT /api/train-store` 的 `coerceStore` 检查顶层为非数组
+> 对象、`schema_version` 在受理列表内、`trains` 为数组，拒绝多余顶层字段及重复 id，并检查
+> 每趟列车有合法 id 与 `stops` 数组；但它**不**逐趟跑完整的 `validateTrain`。
+> `POST /api/agent/import` 的 replace 模式同样拒绝重复 id；append 模式允许输入中重复 id，
+> 并按文档规定的顺序执行 id-based upsert（后项覆盖前项）。因此除上述 backstop 外，
+> 「store 一定合规」这个不变量仍主要由**前端**保证，绕过前端直接写 API 的调用方需自行负责。
 
 ### 15.2 Train 校验
 

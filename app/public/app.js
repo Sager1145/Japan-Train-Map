@@ -540,14 +540,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Node deployment: the live server store is the source of truth; if
     // nothing has been saved yet, fall back to the built-in defaults (and do
     // not persist them until edited).
-    const savedStore = await loadTrainStoreFromServer();
+    let savedStore = await loadTrainStoreFromServer();
+    if (!savedStore?.recovery) {
+      savedStore = await recoverPendingServerStoreSaves(savedStore);
+    }
     if (savedStore && savedStore.recovery) {
       // A saved store EXISTS but cannot be loaded. Show the defaults
       // read-only: recovery mode keeps autosave off so the recoverable file
       // is never overwritten by a casual edit.
       await replaceTrainStoreFromStoreProgressive(
-        getDefaultTrainStore(),
-        I18N.t("src.builtinDefault"),
+        savedStore.pendingStore || getDefaultTrainStore(),
+        savedStore.pendingStore
+          ? I18N.t("src.pendingRecovery")
+          : I18N.t("src.builtinDefault"),
         bootLoadOptions,
       );
       enterStoreRecoveryMode(savedStore);
@@ -666,6 +671,8 @@ async function handleExternalStoreChange(detail) {
       // Store was cleared on the server: fall back to built-in defaults. A
       // recovery-mode session has nothing left to protect once the broken
       // store is gone, so normal (writable) behavior resumes.
+      lastKnownServerStoreText = null;
+      lastKnownServerStoreExists = false;
       exitStoreRecoveryMode();
       await replaceTrainStoreFromStoreProgressive(
         getDefaultTrainStore(),

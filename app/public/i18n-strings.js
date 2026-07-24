@@ -201,6 +201,10 @@
       zh: "已自動保存到此瀏覽器。",
       en: "Auto-saved in this browser.",
     },
+    "status.autosaveConflict": {
+      zh: "未保存：另一個分頁已更改 {date} 的資料。請先匯出此分頁的 JSON，再重新載入以免覆蓋較新的資料。",
+      en: "Not saved: another tab changed {date}. Export this tab’s JSON before reloading so the newer saved data is not overwritten.",
+    },
     "src.userStore": { zh: "我的資料（此瀏覽器保存）", en: "my data (saved in this browser)" },
     "src.sampleDay": { zh: "示例資料 {date}", en: "sample data {date}" },
     "src.sampleAll": { zh: "全部示例資料", en: "full sample data" },
@@ -434,6 +438,10 @@
     "src.serverCleared": { zh: "伺服器已清除（內建預設）", en: "server cleared (built-in defaults)" },
     "src.agentImport": { zh: "AI 代理導入", en: "AI agent import" },
     "src.otherUpdate": { zh: "其他來源更新", en: "update from another source" },
+    "src.pendingRecovery": {
+      zh: "瀏覽器中尚未送達伺服器的恢復副本",
+      en: "unsent browser recovery copy",
+    },
     "src.localJson": { zh: "本地 JSON：{name}", en: "local JSON: {name}" },
 
     // status messages
@@ -469,6 +477,18 @@
     "status.autosaveFail": {
       zh: "自動保存到伺服器失敗：{msg}",
       en: "Auto-save to server failed: {msg}",
+    },
+    "err.pendingServerInvalid": {
+      zh: "瀏覽器中的未送達恢復副本無效：{msg}",
+      en: "The unsent browser recovery copy is invalid: {msg}",
+    },
+    "err.pendingServerConflict": {
+      zh: "瀏覽器中有未送達的編輯，但伺服器資料之後已被其他來源更改。為避免覆蓋，未自動重送；請從匯出框保存或合併此恢復副本。",
+      en: "This browser has an unsent edit, but another source changed the server afterward. It was not replayed; save or merge the recovery copy from the Export box.",
+    },
+    "err.pendingServerReplayFailed": {
+      zh: "無法重送瀏覽器中的未送達編輯：{msg}",
+      en: "Could not replay the browser’s unsent edit: {msg}",
     },
     "status.noFsApi": {
       zh: "此瀏覽器不支援直接寫入本地檔案，已改為下載 JSON。",
@@ -681,6 +701,8 @@
     "status.sampleNoSave":
       "サンプルモード：変更は保存されません。内容を残すには「データ」タブの「自分のデータとして保存」を押してください。",
     "status.autosaveLocalOk": "このブラウザに自動保存しました。",
+    "status.autosaveConflict":
+      "未保存：別のタブが {date} のデータを変更しました。新しい保存データを上書きしないよう、このタブの JSON をエクスポートしてから再読み込みしてください。",
     "src.userStore": "自分のデータ（このブラウザ保存）",
     "src.sampleDay": "サンプルデータ {date}",
     "src.sampleAll": "サンプルデータ全件",
@@ -818,6 +840,7 @@
     "src.serverCleared": "サーバー消去済み（内蔵初期データ）",
     "src.agentImport": "AI エージェントからの読み込み",
     "src.otherUpdate": "別のソースからの更新",
+    "src.pendingRecovery": "ブラウザー内の未送信リカバリーコピー",
     "src.localJson": "ローカル JSON：{name}",
     "status.loadFailed": "データの読み込みに失敗しました：{msg}",
     "status.noSavedStore": "保存済みの train-store.json がないため、内蔵初期データを読み込みました。編集内容はサーバーへ自動保存されます。",
@@ -827,6 +850,12 @@
     "status.autoLoaded": "{label} を自動読み込みしました：{count} 本。",
     "status.autosaveOk": "サーバーの train-store.json に自動保存しました。",
     "status.autosaveFail": "サーバーへの自動保存に失敗しました：{msg}",
+    "err.pendingServerInvalid":
+      "ブラウザー内の未送信リカバリーコピーが無効です：{msg}",
+    "err.pendingServerConflict":
+      "未送信の編集がありますが、その後サーバーが別のソースから更新されました。上書きを避けるため自動再送していません。エクスポート欄からリカバリーコピーを保存または統合してください。",
+    "err.pendingServerReplayFailed":
+      "ブラウザー内の未送信編集を再送できませんでした：{msg}",
     "status.noFsApi": "このブラウザーはローカルファイルへの直接書き込みに対応していないため、JSON をダウンロードしました。",
     "err.noWritePerm": "ローカル JSON ファイルへの書き込み権限がありません。",
     "prog.prepare": "{label} の順次読み込みを準備中：0/{total}",

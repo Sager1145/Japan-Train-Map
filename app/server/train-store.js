@@ -1,15 +1,22 @@
 "use strict";
 
 const fs = require("fs");
+const os = require("os");
 
 const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
 const DEFAULT_SCHEMA_VERSION = "1.3";
+const FILE_LOCK_RETRY_MS = 15;
+const FILE_LOCK_TIMEOUT_MS = 15000;
+const FILE_LOCK_STALE_MS = 120000;
 // Same charset the frontend enforces (jsonspec §3.2): ids feed route_id,
 // cache keys and the append upsert's Map key, so an id-less train must be
 // rejected here instead of collapsing onto the `undefined` key.
 const TRAIN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
-function coerceStore(body, { lenient = false } = {}) {
+function coerceStore(
+  body,
+  { lenient = false, allowDuplicateIds = false } = {},
+) {
   let store = body;
   if (lenient) {
     if (Array.isArray(body)) {
@@ -50,6 +57,7 @@ function coerceStore(body, { lenient = false } = {}) {
   // validation; this backstop only rejects what the frontend could never
   // load (and what the append upsert cannot key), so an agent gets a 400
   // instead of ok:true followed by every open map entering recovery mode.
+  const ids = new Set();
   store.trains.forEach((train, index) => {
     if (!train || typeof train !== "object" || Array.isArray(train)) {
       throw new Error(`trains[${index}] must be an object.`);
@@ -62,6 +70,10 @@ function coerceStore(body, { lenient = false } = {}) {
     if (!Array.isArray(train.stops)) {
       throw new Error(`trains[${index}] (${train.id}): stops must be an array.`);
     }
+    if (!allowDuplicateIds && ids.has(train.id)) {
+      throw new Error(`trains[${index}]: duplicate id ${train.id}.`);
+    }
+    ids.add(train.id);
   });
   return store;
 }
@@ -76,6 +88,7 @@ function createTrainStore(filePath) {
   // caller still receives the rejection.
   let queue = Promise.resolve();
   let writeCounter = 0;
+  const lockPath = `${filePath}.lock`;
 
   function enqueue(task) {
     const run = queue.then(task);
@@ -98,6 +111,98 @@ function createTrainStore(filePath) {
     }
   }
 
+  async function acquireFileLock() {
+    const startedAt = Date.now();
+    while (true) {
+      try {
+        const handle = await fs.promises.open(lockPath, "wx");
+        const lockRecord = {
+          pid: process.pid,
+          hostname: os.hostname(),
+          token: `${process.pid}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+          created_at: Date.now(),
+        };
+        try {
+          await handle.writeFile(JSON.stringify(lockRecord), "utf8");
+        } catch (err) {
+          await fs.promises.unlink(lockPath).catch(() => {});
+          throw err;
+        } finally {
+          await handle.close();
+        }
+        let released = false;
+        return async () => {
+          if (released) return;
+          released = true;
+          try {
+            // If this lock was reclaimed after this process stalled, never
+            // unlink the newer owner's lock during our late cleanup.
+            const current = JSON.parse(
+              await fs.promises.readFile(lockPath, "utf8"),
+            );
+            if (current.token !== lockRecord.token) return;
+            await fs.promises.unlink(lockPath);
+          } catch (err) {
+            if (err.code !== "ENOENT" && !(err instanceof SyntaxError))
+              throw err;
+          }
+        };
+      } catch (err) {
+        if (err.code !== "EEXIST") throw err;
+        // A killed process cannot clean up its lock. On this host, reclaim a
+        // lock as soon as its recorded PID is gone; for a shared filesystem
+        // owned by another host, use the conservative age threshold.
+        const [stat, recordText] = await Promise.all([
+          fs.promises.stat(lockPath).catch(() => null),
+          fs.promises.readFile(lockPath, "utf8").catch(() => null),
+        ]);
+        let ownerDead = false;
+        if (recordText) {
+          try {
+            const record = JSON.parse(recordText);
+            if (
+              record.hostname === os.hostname() &&
+              Number.isInteger(record.pid) &&
+              record.pid > 0
+            ) {
+              try {
+                process.kill(record.pid, 0);
+              } catch (ownerError) {
+                ownerDead = ownerError.code !== "EPERM";
+              }
+            }
+          } catch (_) {
+            // A just-created lock can be temporarily empty/partial; age-based
+            // cleanup below handles a genuinely abandoned malformed file.
+          }
+        }
+        const stale =
+          stat && Date.now() - stat.mtimeMs > FILE_LOCK_STALE_MS;
+        if (ownerDead || stale) {
+          await fs.promises.unlink(lockPath).catch(() => {});
+          continue;
+        }
+        if (Date.now() - startedAt >= FILE_LOCK_TIMEOUT_MS) {
+          const timeout = new Error(
+            `Timed out waiting for train-store lock: ${lockPath}`,
+          );
+          timeout.code = "ELOCKTIMEOUT";
+          throw timeout;
+        }
+        await new Promise((resolve) => setTimeout(resolve, FILE_LOCK_RETRY_MS));
+      }
+    }
+  }
+
+  async function withFileLock(task) {
+    const release = await acquireFileLock();
+    try {
+      return await task();
+    } finally {
+      await release();
+    }
+  }
+
   async function read() {
     try {
       const text = await fs.promises.readFile(filePath, "utf8");
@@ -109,34 +214,38 @@ function createTrainStore(filePath) {
   }
 
   function write(store) {
-    return enqueue(() => writeNow(store));
+    return enqueue(() => withFileLock(() => writeNow(store)));
   }
 
   // Atomic read-modify-write: `mutator` receives the current store (null when
   // none is saved yet) and returns the store to persist. Runs inside the
   // write queue so no other write can land between the read and the write.
   function update(mutator) {
-    return enqueue(async () => {
-      const current = await read();
-      const next = await mutator(current);
-      await writeNow(next);
-      return next;
-    });
+    return enqueue(() =>
+      withFileLock(async () => {
+        const current = await read();
+        const next = await mutator(current);
+        await writeNow(next);
+        return next;
+      }),
+    );
   }
 
   // Deletion MUST flow through the same FIFO queue as writes: a direct unlink
   // could land between a queued write's writeFile and its rename, letting the
   // rename resurrect the "cleared" store after DELETE already returned ok.
   function remove() {
-    return enqueue(async () => {
-      try {
-        await fs.promises.unlink(filePath);
-        return { existed: true };
-      } catch (err) {
-        if (err.code === "ENOENT") return { existed: false };
-        throw err;
-      }
-    });
+    return enqueue(() =>
+      withFileLock(async () => {
+        try {
+          await fs.promises.unlink(filePath);
+          return { existed: true };
+        } catch (err) {
+          if (err.code === "ENOENT") return { existed: false };
+          throw err;
+        }
+      }),
+    );
   }
 
   return {

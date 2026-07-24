@@ -123,7 +123,7 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
     key: `${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}|${kind}`,
     dayEndpoint: !!opts.dayEndpoint,
     // Estimated rendered width (px): text + horizontal padding (+ badge chip).
-    width: Math.min(300, measureLabelTextWidth(plain) + (badgeText ? 34 : 16)),
+    width: Math.min(300, measureLabelTextWidth(plain) + (badgeText ? 38 : 20)),
   };
 }
 
@@ -194,6 +194,20 @@ function updateEndpointLabels() {
     // labels fade with the rest of the map (mirrors railmap's HOVER_DIM).
     const target =
       hoverLabelTrainId && spec.tid !== hoverLabelTrainId ? "0.25" : "1";
+    // Horizontal viewport clamp: a station near the container edge would
+    // center its card half off-screen; shift the marker offset sideways so
+    // the whole label stays visible (re-run on zoomend/moveend).
+    {
+      const pt = map.project([spec.latlng[1], spec.latlng[0]]);
+      const half = spec.width / 2;
+      const cw = map.getContainer().clientWidth;
+      const left = pt.x + spec.offset[0] - half;
+      const right = pt.x + spec.offset[0] + half;
+      let dx = 0;
+      if (left < 4) dx = 4 - left;
+      else if (right > cw - 4) dx = cw - 4 - right;
+      if (dx) spec.offset = [spec.offset[0] + dx, spec.offset[1]];
+    }
     const cls =
       (spec.dayEndpoint
         ? "station-label station-label--endpoint"
@@ -311,21 +325,8 @@ function handleDeckHover(id) {
 
 // deck.gl floating tooltip: a marker shows just its station name; a route
 // segment shows the line name plus its origin -> destination endpoints.
-// The two hover-tooltip skins. Both set the SAME keys so switching between them
-// on the one reused tooltip element never leaves a stale property behind.
-const DECK_TIP_DARK = {
-  background: "rgba(30,37,44,0.92)",
-  color: "#fff",
-  fontSize: "11px",
-  fontWeight: "700",
-  padding: "3px 7px",
-  border: "none",
-  borderRadius: "4px",
-  boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-  maxWidth: "220px",
-  whiteSpace: "normal",
-};
-// Railprint card skin (matches .rp-popup / the confirm modal; theme-aware).
+// One skin for every hover surface: the railprint card (.rp-popup design
+// tokens \u2014 theme-aware, same as the C5 station popup and the confirm modal).
 const DECK_TIP_RAILPRINT = {
   background: "var(--white)",
   color: "var(--ink)",
@@ -338,11 +339,26 @@ const DECK_TIP_RAILPRINT = {
   maxWidth: "260px",
   whiteSpace: "normal",
 };
+// The route-segment tip draws its card on an INNER element (.map-line-tip,
+// shifted above the cursor), so its container must reset every key the card
+// skin sets \u2014 the tooltip element is reused across skins and a leftover
+// border/background would draw an empty ghost box.
+const DECK_TIP_TRANSPARENT = {
+  background: "transparent",
+  color: "inherit",
+  fontSize: "inherit",
+  fontWeight: "inherit",
+  padding: "0",
+  border: "none",
+  borderRadius: "0",
+  boxShadow: "none",
+  maxWidth: "none",
+  whiteSpace: "normal",
+};
 
 function deckGetTooltip(info) {
   const o = info && info.object;
   if (!o) return null;
-  const style = DECK_TIP_DARK;
   if (o.category) {
     const pr = (o.feature && o.feature.properties) || {};
     const name = pr.name || "";
@@ -350,11 +366,19 @@ function deckGetTooltip(info) {
     // Railprint-style station popup (every line through the station), using the
     // same RailNetwork data + processing as the national-network hover popup.
     // Lazily fetch the network package the first time a station is hovered;
-    // until it is ready, show the compact name/time tooltip, and clear the
+    // until it is ready, show the compact name/time card, and clear the
     // tooltip dedup cache on load so it upgrades in place on the next move.
     const railprintHtml = buildStationLinesPopup(pr, o.train);
     if (railprintHtml)
-      return { html: railprintHtml, style: DECK_TIP_RAILPRINT };
+      return {
+        html: railprintHtml,
+        style: DECK_TIP_RAILPRINT,
+        // Pin the card to the station itself (railprint presentation:
+        // anchored popup that auto-flips at viewport edges) instead of
+        // trailing the cursor; style stays as the fallback for renderers
+        // that ignore anchorLngLat.
+        anchorLngLat: Array.isArray(o.position) ? o.position : null,
+      };
     if (typeof RailMap !== "undefined" && !RailMap._network) {
       RailMap.ensureNetwork().then((net) => {
         if (net) RailMap._tooltipRecord = null;
@@ -366,11 +390,16 @@ function deckGetTooltip(info) {
     // The stop's date rides along after its times.
     if (times.length && o.train) {
       const d = dateLabel(getTrainDate(o.train));
-      if (d) times.push(`<span style="opacity:0.8">${escapeHtml(d)}</span>`);
+      if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
     }
-    const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
+    const timeHtml = times.length
+      ? `<div class="rp-popup-times">${times.join("\u3000")}</div>`
+      : "";
     const code = pr.n02_station_code || pr.N02_005c || null;
-    return { html: `<b>${escapeHtml(I18N.placeName(name, code))}</b>${timeHtml}`, style };
+    return {
+      html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(I18N.placeName(name, code))}</span></div>${timeHtml}</div>`,
+      style: DECK_TIP_RAILPRINT,
+    };
   }
   const t = o.train;
   if (!t) return null;
@@ -389,28 +418,31 @@ function deckGetTooltip(info) {
   // The train's running date rides along after its times.
   {
     const d = dateLabel(getTrainDate(t));
-    if (d) times.push(`<span style="opacity:0.8">${escapeHtml(d)}</span>`);
+    if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
   }
-  const numHtml = meta
-    ? `<br><span style="opacity:0.85">${escapeHtml(meta)}</span>`
+  const metaHtml = meta
+    ? `<span class="rp-popup-roma">${escapeHtml(meta)}</span>`
     : "";
-  const timeHtml = times.length ? `<br>${times.join("\u3000")}` : "";
+  const routeHtml = `<div class="rp-popup-route">${escapeHtml(I18N.placeName(origin, oStop && stopStationCode(oStop)))} \u2192 ${escapeHtml(I18N.placeName(dest, dStop && stopStationCode(dStop)))}</div>`;
+  const timeHtml = times.length
+    ? `<div class="rp-popup-times">${times.join("\u3000")}</div>`
+    : "";
   // Hovering an overlapped stretch: show which parallel lane this train is
   // (date order, left/top = earliest) and hint that sliding sideways switches.
   const overlapHtml =
     o.overlapCount > 1
-      ? `<br><span style="opacity:0.8">\u21c6 ${I18N.t("tip.overlap", {
+      ? `<div class="rp-popup-times">\u21c6 ${I18N.t("tip.overlap", {
           slot: o.overlapSlot + 1,
           count: o.overlapCount,
-        })}</span>`
+        })}</div>`
       : "";
   // The visible box is an INNER element shifted above the cursor via CSS; the
   // OUTER element is positioned by deck.gl through its own transform, so we must
   // NOT set transform on it (doing so wipes deck's positioning and hides the
   // popup entirely — the bug this replaces).
   return {
-    html: `<div class="map-line-tip"><b>${escapeHtml(I18N.trainName(line))}</b>${numHtml}<br>${escapeHtml(I18N.placeName(origin, oStop && stopStationCode(oStop)))} \u2192 ${escapeHtml(I18N.placeName(dest, dStop && stopStationCode(dStop)))}${timeHtml}${overlapHtml}</div>`,
-    style: { background: "transparent", boxShadow: "none", padding: "0", margin: "0" },
+    html: `<div class="map-line-tip"><div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(I18N.trainName(line))}</span>${metaHtml}</div>${routeHtml}${timeHtml}${overlapHtml}</div></div>`,
+    style: DECK_TIP_TRANSPARENT,
   };
 }
 

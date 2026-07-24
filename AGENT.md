@@ -163,7 +163,14 @@ Minimal valid train (the browser solves the route from these fields):
   header, so there is no reload loop.
 - **The store is the single source of truth.** The agent import path writes the
   same `data/train-store.json` the UI autosaves to, so agent and human edits
-  interoperate.
+  interoperate. Writes use a sidecar file lock, so separate server processes
+  sharing one data directory cannot lose a concurrent read-modify-write update.
+  Full replacement requests reject duplicate train ids; append imports retain
+  their documented id-based upsert behavior.
+- **Raw reads are intentional.** `GET /api/train-store` mirrors the saved file
+  bytes verbatim. If that file is corrupt, the endpoint still returns those
+  bytes so recovery tools can inspect them; write/append paths report corruption
+  as a distinct error and do not silently replace it.
 - **Solving is client-side.** The server does not compute geometry; it stores
   and broadcasts. A plan therefore renders only where a browser can solve it —
   but the saved plan persists regardless of whether a map is open.

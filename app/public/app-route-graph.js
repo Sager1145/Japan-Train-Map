@@ -357,9 +357,25 @@ async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
 }
 
 function dedupeSameTrainRouteFeatures(features) {
-  const seenSegments = new Set();
+  // Dedupe solver overlap only WITHIN one itinerary traversal. The same train
+  // may legitimately use the same physical track again in a later
+  // segment_index (an out-and-back or loop). Collapsing those direction-
+  // independent coordinate keys globally erased the later traversal; if it
+  // crossed midnight, its next-day dashed line disappeared entirely because
+  // the surviving feature carried only the earlier segment_index.
+  const seenSegmentsByTraversal = new Map();
   const cleaned = [];
-  (features || []).forEach((feature) => {
+  (features || []).forEach((feature, featureIndex) => {
+    const rawSegmentIndex = feature.properties?.segment_index;
+    const traversalKey =
+      rawSegmentIndex === undefined || rawSegmentIndex === null
+        ? `feature:${featureIndex}`
+        : `segment:${rawSegmentIndex}`;
+    let seenSegments = seenSegmentsByTraversal.get(traversalKey);
+    if (!seenSegments) {
+      seenSegments = new Set();
+      seenSegmentsByTraversal.set(traversalKey, seenSegments);
+    }
     const uniqueLines = [];
     iterateGeometryLines(feature.geometry).forEach((line) => {
       const uniqueLine = [];

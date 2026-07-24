@@ -1,12 +1,14 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
 const fs = require("node:fs/promises");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createApp, DATA_FILES } = require("../server/create-app");
+const { createTrainStore } = require("../server/train-store");
 
 const FIXED_NOW = new Date("2026-07-17T12:34:56.000Z");
 
@@ -382,6 +384,115 @@ test("parallel agent appends lose no trains (atomic read-modify-write)", async (
   });
 });
 
+test("separate train-store processes serialize append read-modify-write", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-process-lock-"));
+  const filePath = path.join(root, "train-store.json");
+  const modulePath = path.join(__dirname, "..", "server", "train-store.js");
+  const readyA = path.join(root, "a.ready");
+  const readyB = path.join(root, "b.ready");
+  await fs.writeFile(
+    filePath,
+    JSON.stringify({
+      schema_version: "1.3",
+      trains: [{ id: "base", stops: [] }],
+    }),
+  );
+
+  const childSource = `
+    const fs = require("node:fs");
+    const { createTrainStore } = require(process.argv[1]);
+    const store = createTrainStore(process.argv[2]);
+    const id = process.argv[3];
+    const ownReady = process.argv[4];
+    const otherReady = process.argv[5];
+    fs.writeFileSync(ownReady, id);
+    (async () => {
+      const deadline = Date.now() + 5000;
+      while (!fs.existsSync(otherReady) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      return store.update(async (current) => {
+        // Hold the process-local mutator open briefly. Without a cross-process
+        // lock both processes read the same baseline and one append is lost.
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return {
+          schema_version: "1.3",
+          trains: [...current.trains, { id, stops: [] }],
+        };
+      });
+    })().then(() => process.exit(0), (error) => {
+      console.error(error);
+      process.exit(1);
+    });
+  `;
+
+  const runChild = (id, ownReady, otherReady) =>
+    new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [
+        "-e",
+        childSource,
+        modulePath,
+        filePath,
+        id,
+        ownReady,
+        otherReady,
+      ]);
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      child.on("error", reject);
+      child.on("exit", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr || `child ${id} exited with ${code}`));
+      });
+    });
+
+  try {
+    await Promise.all([
+      runChild("append-a", readyA, readyB),
+      runChild("append-b", readyB, readyA),
+    ]);
+    const stored = JSON.parse(await fs.readFile(filePath, "utf8"));
+    assert.deepEqual(
+      stored.trains.map((train) => train.id).sort(),
+      ["append-a", "append-b", "base"],
+    );
+    await assert.rejects(fs.access(`${filePath}.lock`), /ENOENT/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a dead local process cannot strand the cross-process lock", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-dead-lock-"));
+  const filePath = path.join(root, "train-store.json");
+  const lockPath = `${filePath}.lock`;
+  await fs.writeFile(
+    lockPath,
+    JSON.stringify({
+      pid: 2147483647,
+      hostname: os.hostname(),
+      token: "dead-owner",
+      created_at: Date.now(),
+    }),
+  );
+  try {
+    const store = createTrainStore(filePath);
+    await store.write({
+      schema_version: "1.3",
+      trains: [{ id: "recovered", stops: [] }],
+    });
+    assert.equal(
+      JSON.parse(await fs.readFile(filePath, "utf8")).trains[0].id,
+      "recovered",
+    );
+    await assert.rejects(fs.access(lockPath), /ENOENT/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("sample data and static assets preserve validation and delivery headers", async () => {
   await withServer(async ({ baseUrl }) => {
     const invalid = await rawRequest(baseUrl, "/api/sample-data/%2e%2e");
@@ -531,6 +642,35 @@ test("coerceStore backstop rejects shapes the frontend could never load", async 
     assert.equal(idless.status, 400);
     assert.deepEqual(await responseJson(idless), {
       error: 'trains[0].id must be a string of letters, digits, "_" or "-".',
+    });
+
+    const duplicatePut = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schema_version: "1.3",
+        trains: [
+          { id: "duplicate", stops: [] },
+          { id: "duplicate", stops: [] },
+        ],
+      }),
+    });
+    assert.equal(duplicatePut.status, 400);
+    assert.deepEqual(await responseJson(duplicatePut), {
+      error: "trains[1]: duplicate id duplicate.",
+    });
+
+    const duplicateReplace = await fetch(`${baseUrl}/api/agent/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([
+        { id: "duplicate", stops: [] },
+        { id: "duplicate", stops: [] },
+      ]),
+    });
+    assert.equal(duplicateReplace.status, 400);
+    assert.deepEqual(await responseJson(duplicateReplace), {
+      error: "trains[1]: duplicate id duplicate.",
     });
 
     // None of the rejected bodies may have been persisted.

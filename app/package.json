@@ -8,7 +8,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "test": "node --test",
-    "lint": "node scripts/check-source.mjs",
+    "lint": "node scripts/check-source.mjs && node scripts/check-undefined-globals.mjs",
     "precompute": "node scripts/precompute-train-parts.mjs",
     "generate:new-year-grand-loop": "node scripts/generate-new-year-grand-loop.mjs",
     "precompute:new-year-grand-loop": "npm run generate:new-year-grand-loop && PRECOMPUTE_STORE=data/special-samples/new-year-grand-loop.json PRECOMPUTE_OUT_DIR=data/new-year-grand-loop-data node scripts/precompute-train-parts.mjs",
@@ -23,5 +23,10 @@
   },
   "dependencies": {
     "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "fake-indexeddb": "^6.2.5",
+    "globals": "^16.5.0"
   }
 }

@@ -216,7 +216,13 @@ function createApp({
 
       let incoming;
       try {
-        incoming = coerceStore(req.body, { lenient: true });
+        incoming = coerceStore(req.body, {
+          lenient: true,
+          // Append is deliberately an upsert: repeated ids, whether already
+          // stored or repeated in one incoming batch, resolve last-one-wins.
+          // Replace must remain a canonical store and therefore rejects them.
+          allowDuplicateIds: mode === "append",
+        });
       } catch (err) {
         return res.status(400).json({ error: err.message });
       }

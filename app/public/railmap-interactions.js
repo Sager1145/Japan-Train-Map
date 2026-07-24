@@ -401,7 +401,11 @@
     },
 
     // Floating tooltip fed by the app's getTooltip handler (same contract as
-    // the deck.gl getTooltip: {html, style} or null).
+    // the deck.gl getTooltip: {html, style} or null). A result that also
+    // carries anchorLngLat ([lng, lat]) renders as a station-anchored
+    // maplibre Popup — the same presentation as the C5 network-station
+    // railprint popup (auto-flipping anchor, tip arrow, popup CSS) — instead
+    // of the cursor-following div, which clips at viewport edges.
     _showTooltip(hit, point) {
       const map = this._map;
       if (!this._tooltipEl) {
@@ -416,12 +420,12 @@
       const record = hit ? hit.record : null;
       // Same hovered record as last time: the HTML can't have changed (it is
       // derived from the record alone), so just follow the pointer instead of
-      // re-running getTooltip + innerHTML on every movement.
+      // re-running getTooltip + innerHTML on every movement. An anchored
+      // popup stays put — it is pinned to the station, not the pointer.
       if (record === this._tooltipRecord) {
-        if (record && point && el.style.display !== "none") {
-          el.style.transform =
-            "translate(" + (point.x + 12) + "px," + (point.y + 12) + "px)";
-        }
+        if (this._markerPopup) return;
+        if (record && point && el.style.display !== "none")
+          this._placeTooltip(point);
         return;
       }
       this._tooltipRecord = record;
@@ -431,14 +435,55 @@
           : null;
       if (!tip) {
         el.style.display = "none";
+        this._removeMarkerPopup();
         return;
       }
+      const gl = global.maplibregl;
+      if (tip.anchorLngLat && gl) {
+        el.style.display = "none";
+        if (!this._markerPopup) {
+          this._markerPopup = new gl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 10,
+            maxWidth: "260px",
+          });
+        }
+        this._markerPopup
+          .setLngLat(tip.anchorLngLat)
+          .setHTML(tip.html || "")
+          .addTo(map);
+        return;
+      }
+      this._removeMarkerPopup();
       el.innerHTML = tip.html || "";
       const st = tip.style || {};
       for (const k of Object.keys(st)) el.style[k] = st[k];
       el.style.display = "block";
-      el.style.transform =
-        "translate(" + (point.x + 12) + "px," + (point.y + 12) + "px)";
+      this._placeTooltip(point);
+    },
+
+    // Keep the cursor tooltip inside the map container: flip it to the other
+    // side of the pointer when the default below-right placement would run
+    // off the right/bottom edge (the clipping bug this replaces).
+    _placeTooltip(point) {
+      const el = this._tooltipEl;
+      if (!el || !point) return;
+      const c = this._map.getContainer();
+      let x = point.x + 12;
+      let y = point.y + 12;
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      if (x + w > c.clientWidth - 4) x = Math.max(4, point.x - w - 12);
+      if (y + h > c.clientHeight - 4) y = Math.max(4, point.y - h - 12);
+      el.style.transform = "translate(" + x + "px," + y + "px)";
+    },
+
+    _removeMarkerPopup() {
+      if (this._markerPopup) {
+        this._markerPopup.remove();
+        this._markerPopup = null;
+      }
     },
 
     // C5 — bilingual hover popup on the NETWORK station dots (only when the

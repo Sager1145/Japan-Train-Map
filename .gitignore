@@ -2,6 +2,9 @@
 .DS_Store
 __pycache__/
 
+# Installed dependencies are recreated from package-lock.json.
+app/node_modules/
+
 app/data/*.json.gz
 
 # Precomputed sample data (manifest + one JSON per train, ~8 MB).

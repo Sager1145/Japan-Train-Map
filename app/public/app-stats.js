@@ -758,18 +758,19 @@ async function runMileageStatsJob() {
 
 // Per-line coverage rows shown indented under a category row, most-ridden first,
 // each with its own coverage %. Lets a near-100% aggregate be audited line by
-// line (and a line spotted that shouldn't be covered). `open` renders the rows
-// inline AND lists every line in the category including unridden ones (used for
-// 新幹線, only ~11 lines — so the 0% 山形/秋田新幹線 are visible); the collapsed
-// 在來線 / JR / 私鐵 lists stay ridden-only to avoid dozens of 0% rows.
-function categoryLineBreakdownHtml(s, categoryMask, open) {
+// line (and a line spotted that shouldn't be covered). Every category renders
+// as the same collapsible 依線路 <details> button. `listAll` additionally
+// includes unridden (0%) member lines — used for 新幹線 (only ~11 lines, so the
+// 0% 山形/秋田新幹線 stay visible) and 地下鐵; the 在來線 / JR / 私鐵 lists
+// stay ridden-only to avoid hundreds of 0% rows.
+function categoryLineBreakdownHtml(s, categoryMask, listAll) {
   if (!s.lineTotByCat || !s.lineTotByCat.size) return "";
   const rows = [];
   s.lineTotByCat.forEach((tot, name) => {
     const t = tot[categoryMask] || 0;
     if (t <= 0) return;
     const rid = (s.lineRidByCat.get(name) || {})[categoryMask] || 0;
-    if (rid > 0 || open) rows.push([name, t, rid]);
+    if (rid > 0 || listAll) rows.push([name, t, rid]);
   });
   if (!rows.length) return "";
   rows.sort((a, b) => b[2] - a[2] || b[1] - a[1]); // most-ridden, then longest
@@ -786,7 +787,6 @@ function categoryLineBreakdownHtml(s, categoryMask, open) {
       })
       .join("") +
     `</div>`;
-  if (open) return body;
   return `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byLine"))}（${rows.length}）</summary>${body}</details>`;
 }
 
@@ -840,14 +840,19 @@ function renderMileageStatsDom(view) {
           <span class="stat-val"><span class="stat-pct">${escapeHtml(formatStatDuration(s.rideMinutes || 0))}</span></span>
         </div>
       </div>`;
-  // ── Section 2: 路網覆蓋率 per category. The 新幹線 row expands into a
-  //    per-line breakdown so a near-100% figure is auditable line by line.
+  // ── Section 2: 路網覆蓋率 per category. Every row expands into a per-line
+  //    breakdown (依線路 button) so a near-100% figure is auditable line by
+  //    line; 新幹線 and 地下鐵 list all member lines including unridden ones.
   rows.innerHTML =
     STAT_CATEGORIES.map((c) => {
       const tot = s.totals.byMask.get(c.mask) || 0;
       const rid = s.riddenByMask.get(c.mask) || 0;
       const pct = tot > 0 ? (100 * rid) / tot : 0;
-      const detail = categoryLineBreakdownHtml(s, c.mask, c.mask === STAT_MASK_HSR);
+      const detail = categoryLineBreakdownHtml(
+        s,
+        c.mask,
+        c.mask === STAT_MASK_HSR || c.mask === STAT_MASK_METRO,
+      );
       return `
       <div class="stat-row">
         <div class="stat-row-head">

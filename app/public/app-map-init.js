@@ -434,6 +434,12 @@ async function initMap(mapAssetsReady) {
   // zoom — refresh the lane offsets when the drift exceeds the threshold.
   map.on("moveend", maybeRefreshOverlapOffsets);
 
+  // Endpoint labels clamp themselves inside the viewport (pixel-space), so a
+  // pan that carries a labelled station toward the edge needs a re-layout.
+  map.on("moveend", () => {
+    if (cachedOrderedTrains.length) updateEndpointLabels();
+  });
+
   // Clamp the map over Japan; minZoom depends on the pixel viewport.
   applyJapanMapConstraints();
   map.on("resize", applyJapanMapConstraints);

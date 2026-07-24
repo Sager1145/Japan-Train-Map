@@ -1523,11 +1523,11 @@ tr.branch-junction td {
   background: var(--white);
   border: 1px solid var(--rail-dim);
   color: var(--ink);
-  font-size: 11px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 4px;
-  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
   /* Fade with the map's hover/selection spotlight instead of snapping. */
   transition: opacity 0.4s ease;
   white-space: nowrap;
@@ -1572,8 +1572,9 @@ tr.branch-junction td {
 }
 
 .station-label-time {
-  color: var(--rail-text);
-  font-weight: 600;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 500;
   margin-left: 2px;
 }
 
@@ -1967,6 +1968,12 @@ tr.branch-junction td {
   font-size: 11px;
   color: var(--ink-muted);
 }
+/* Origin → destination line in the route-segment hover card. */
+.rp-popup-route {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink);
+}
 .rp-popup-date {
   opacity: 0.8;
 }
@@ -2142,19 +2149,22 @@ html[data-theme="dark"] .rp-modal-overlay {
 /* Line hover popup: floats above the cursor (the tooltip container is
    positioned at the pointer; this inner box lifts the visible content up so
    it never sits under the mouse or covers the line). */
+/* Route-segment hover card — same railprint tokens as .rp-popup and the
+   station popup, just shifted above the cursor. */
 .map-line-tip {
   position: absolute;
   left: 0;
   top: 0;
   transform: translate(-50%, calc(-100% - 14px));
-  background: rgba(26, 26, 26, 0.92);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.35;
-  padding: 3px 7px;
-  border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.2;
+  padding: 6px 10px;
+  border: 1px solid var(--rail-dim);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
   white-space: nowrap;
   pointer-events: none;
 }

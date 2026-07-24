@@ -2,11 +2,10 @@
 // (the same replay approach as scripts/precompute-train-parts.mjs).
 //
 // The app is a set of classic scripts sharing one global lexical scope, so a
-// stale cross-file reference only explodes at RUNTIME — `npm run lint` is a
-// per-file syntax check and cannot see it. Test 1 fires every registered
-// language-change listener WITHOUT i18n.js's try/catch, so an identifier that
-// one file calls and another no longer defines fails the suite instead of
-// being swallowed as a console warning.
+// stale cross-file reference only explodes at RUNTIME. The lint task now runs
+// concatenated `no-undef`; test 1 remains a runtime family smoke check by
+// firing every registered language-change listener WITHOUT i18n.js's
+// try/catch, so a swallowed listener error still fails the suite.
 //
 // Tests 2–3 characterize the read-only recovery mode: a saved store that
 // exists but cannot be loaded must yield a recovery sentinel (never writable
@@ -20,6 +19,7 @@ import vm from "node:vm";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { IDBFactory } from "fake-indexeddb";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -74,7 +74,7 @@ function makeDummyElement() {
   };
 }
 
-function loadAppFamily() {
+function loadAppFamily({ indexedDB } = {}) {
   const i18nListeners = [];
   const mediaStub = () => ({
     matches: false,
@@ -134,6 +134,7 @@ function loadAppFamily() {
     },
     RailMap: {},
     maplibregl: {},
+    indexedDB,
     fetch: () => {
       throw new Error("fetch is not available in the smoke-test sandbox");
     },
@@ -189,6 +190,36 @@ test("recovery mode blocks autosave and pins the raw JSON for rescue", () => {
   run("saveTrainStore()");
   assert.equal(run("storeSaveDirty"), true, "autosave must resume after exit");
   run("clearTimeout(serverStoreSaveTimer)"); // don't leave the debounce armed
+  run("clearTimeout(pendingServerStoreJournalTimer)");
+});
+
+test("backend edits stage a recovery journal before the network debounce", async () => {
+  const { context } = loadAppFamily();
+  context.__journalBodies = [];
+  vm.runInContext(
+    `writePendingServerStoreSave = async (body) => {
+       __journalBodies.push(body);
+     };
+     saveTrainStore();`,
+    context,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(context.__journalBodies.length, 1);
+  assert.deepEqual(JSON.parse(context.__journalBodies[0]), {
+    schema_version: "1.3",
+    trains: [],
+  });
+  assert.equal(
+    vm.runInContext("serverStoreSaveInFlight", context),
+    false,
+    "the 450ms network save must not have started yet",
+  );
+  vm.runInContext(
+    `clearTimeout(serverStoreSaveTimer);
+     clearTimeout(pendingServerStoreJournalTimer);
+     pendingServerStoreText = null;`,
+    context,
+  );
 });
 
 test("unloadable saved store yields a recovery sentinel; 404 yields null", async () => {
@@ -226,6 +257,179 @@ test("unloadable saved store yields a recovery sentinel; 404 yields null", async
   };
   result = await vm.runInContext("loadTrainStoreFromServer()", context);
   assert.equal(result && result.recovery, true);
+});
+
+test("pending backend autosave replays only against its exact server base", async () => {
+  const canonicalStore = (id) => ({
+    schema_version: "1.3",
+    trains: [
+      {
+        id,
+        date: "2026-07-24",
+        number: id,
+        origin: "A",
+        destination: "B",
+        stops: [
+          {
+            name: "A",
+            stop_type: "origin",
+            departure: "10:00",
+            ride_segment: true,
+          },
+          {
+            name: "B",
+            stop_type: "destination",
+            arrival: "11:00",
+            ride_segment: true,
+          },
+        ],
+      },
+    ],
+  });
+  const baseStore = canonicalStore("base");
+  const pendingStore = canonicalStore("pending");
+  const baseText = JSON.stringify(baseStore);
+  const pendingText = JSON.stringify(pendingStore);
+
+  const replay = loadAppFamily();
+  replay.context.__baseStore = baseStore;
+  replay.context.__baseText = baseText;
+  replay.context.__pendingText = pendingText;
+  replay.context.__sentBodies = [];
+  replay.context.__deletedPending = [];
+  replay.context.fetch = async (_url, options) => {
+    replay.context.__sentBodies.push(options.body);
+    return { ok: true, status: 200, statusText: "OK" };
+  };
+  vm.runInContext(
+    `lastKnownServerStoreExists = true;
+     lastKnownServerStoreText = __baseText;
+     readPendingServerStoreSaves = async () => [{
+       client_id: "old-tab",
+       body: __pendingText,
+       base_body: __baseText,
+       base_exists: true,
+       updated_at: "2026-07-24T00:00:00.000Z",
+     }];
+     deletePendingServerStoreSave = async (id, body) => {
+       __deletedPending.push([id, body]);
+     };`,
+    replay.context,
+  );
+  const replayed = await vm.runInContext(
+    "recoverPendingServerStoreSaves(__baseStore)",
+    replay.context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(replayed)), pendingStore);
+  assert.deepEqual(replay.context.__sentBodies, [pendingText]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(replay.context.__deletedPending)),
+    [["old-tab", pendingText]],
+  );
+
+  const conflict = loadAppFamily();
+  conflict.context.__baseStore = baseStore;
+  conflict.context.__pendingText = pendingText;
+  vm.runInContext(
+    `lastKnownServerStoreExists = true;
+     lastKnownServerStoreText = JSON.stringify({
+       schema_version: "1.3",
+       trains: [],
+     });
+     readPendingServerStoreSaves = async () => [{
+       client_id: "old-tab",
+       body: __pendingText,
+       base_body: "different-old-base",
+       base_exists: true,
+       updated_at: "2026-07-24T00:00:00.000Z",
+     }];`,
+    conflict.context,
+  );
+  const conflicted = await vm.runInContext(
+    "recoverPendingServerStoreSaves(__baseStore)",
+    conflict.context,
+  );
+  assert.equal(conflicted.recovery, true);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(conflicted.pendingStore)),
+    pendingStore,
+  );
+});
+
+test("static user-store compare-before-write detects stale day records", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const original = { date: "2026-07-24", trains: [{ id: "a" }] };
+      const changed = { date: "2026-07-24", trains: [{ id: "b" }] };
+      const baseline = JSON.stringify(original);
+      return {
+        unchanged: userStoreChunkConflicts(baseline, original),
+        changed: userStoreChunkConflicts(baseline, changed),
+        concurrentlyCreated: userStoreChunkConflicts(undefined, changed),
+        stillMissing: userStoreChunkConflicts(undefined, undefined),
+      };
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    unchanged: false,
+    changed: true,
+    concurrentlyCreated: true,
+    stillMissing: false,
+  });
+});
+
+test("two static tabs cannot overwrite the same IndexedDB day", async () => {
+  const indexedDB = new IDBFactory();
+  const first = loadAppFamily({ indexedDB });
+  const second = loadAppFamily({ indexedDB });
+  const store = (number) => ({
+    schema_version: "1.3",
+    trains: [
+      {
+        id: "shared-day",
+        date: "2026-07-24",
+        number,
+        stops: [],
+      },
+    ],
+  });
+
+  first.context.__store = store("base");
+  first.context.__nextStore = store("first-tab");
+  second.context.__nextStore = store("second-tab");
+  await vm.runInContext(
+    `trainStore = __store;
+     writeUserStoreChunks(__store, { force: true })`,
+    first.context,
+  );
+  const secondLoaded = await vm.runInContext(
+    "readUserStoreAll()",
+    second.context,
+  );
+  assert.equal(secondLoaded.store.trains[0].number, "base");
+
+  await vm.runInContext(
+    `trainStore = __nextStore;
+     writeUserStoreChunks(__nextStore)`,
+    first.context,
+  );
+  await assert.rejects(
+    vm.runInContext(
+      `trainStore = __nextStore;
+       writeUserStoreChunks(__nextStore)`,
+      second.context,
+    ),
+    (error) =>
+      error &&
+      error.name === "UserStoreConflictError" &&
+      error.dateKey === "2026-07-24",
+  );
+
+  const verify = loadAppFamily({ indexedDB });
+  const stored = await vm.runInContext("readUserStoreAll()", verify.context);
+  assert.equal(stored.store.trains[0].number, "first-tab");
 });
 
 test("station graph candidates keep the best snap for each graph node", () => {
@@ -356,5 +560,48 @@ test("precomputed sample geometry replaces stale warmed geometry", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
     coordinates: [[0, 0], [1, 0]],
     negative: false,
+  });
+});
+
+test("out-and-back geometry keeps the later cross-day traversal", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const features = dedupeSameTrainRouteFeatures([
+        {
+          type: "Feature",
+          properties: { segment_index: 0 },
+          geometry: {
+            type: "LineString",
+            coordinates: [[139, 35], [140, 35]],
+          },
+        },
+        {
+          type: "Feature",
+          properties: { segment_index: 1 },
+          geometry: {
+            type: "LineString",
+            coordinates: [[140, 35], [139, 35]],
+          },
+        },
+      ]);
+      const breaks = trainDayBreaks({
+        date: "2026-07-24",
+        stops: [
+          { name: "A", departure: "22:00" },
+          { name: "B", arrival: "23:00", departure: "23:30" },
+          { name: "A", arrival: "25:00" },
+        ],
+      });
+      return {
+        retained: features.map((feature) => feature.properties.segment_index),
+        days: [0, 1].map((index) => dayIndexForSegment(breaks, index)),
+      };
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    retained: [0, 1],
+    days: [0, 1],
   });
 });

@@ -69,6 +69,11 @@ const USER_STORE_DATES_STORE = "dates";
 const USER_STORE_META_STORE = "meta";
 const USER_STORE_META_KEY = "meta";
 const SERVER_AUTOSAVE_DEBOUNCE_MS = 450;
+// Before a backend PUT, keep one browser-local recovery copy per tab. A
+// visibility-change flush may be terminated with the page, and fetch
+// keepalive cannot carry stores above its 64 KiB body budget.
+const PENDING_SERVER_STORE_DB_NAME = "n02-pending-server-train-store-db";
+const PENDING_SERVER_STORE_NAME = "pending";
 const FILE_HANDLE_DB_NAME = "n02-train-store-file-handle-db";
 const FILE_HANDLE_STORE_NAME = "handles";
 const FILE_HANDLE_KEY = "local-json-file-handle";
