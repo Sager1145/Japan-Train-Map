@@ -46,6 +46,26 @@
       ? ax + "," + ay + "|" + bx + "," + by
       : bx + "," + by + "|" + ax + "," + ay;
   }
+  // Tolerant station-name normalization — the ONE key rule for every
+  // station-name identity in the system: the station-resolution index
+  // (app-stations.js), the reading-table byName lookup (i18n.js, which also
+  // re-keys station-readings.json through this at load), and the build
+  // scripts' station-code lookup (scripts/lib/expand-route-stations.mjs).
+  // NFKC folds full/half-width differences; internal whitespace and the
+  // small/large kana variants (柳ヶ浦 vs 柳ケ浦) that N02, hand-written JSON
+  // and the readings table spell inconsistently are unified.
+  function normalizeStationName(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/ヶ/g, "ケ")
+      .replace(/ヵ/g, "カ")
+      .replace(/ゖ/g, "け")
+      .replace(/ゕ/g, "か");
+  }
+
   // Equirectangular km between two lon/lat points: the cheap distance used
   // for graph edge weights and stats sums (the route solver's haversine
   // `distanceMeters` stays separate — different accuracy class on purpose).
@@ -386,6 +406,7 @@
     makeUniqueTrainId,
     normalizeDateString,
     normalizeNullableTime,
+    normalizeStationName,
     normalizeTrainDate,
     parseFeatureCollectionChunked,
     parseTimeToMinutes,

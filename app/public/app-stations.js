@@ -56,19 +56,12 @@ function stopStationCode(stop) {
 }
 
 // Normalize a station name for tolerant matching against imperfect JSON.
-// NFKC folds full/half-width differences; we additionally unify the small/large
-// kana variants that N02 and hand-written JSON spell inconsistently (e.g.
-// 柳ヶ浦 vs 柳ケ浦, 茅ヶ崎 vs 茅ケ崎) and strip internal whitespace.
+// The rule itself lives in AppCore (one owner for every station-name key in
+// the system — resolution index here, i18n's reading lookup, and the build
+// scripts); this is the app-family alias. Runtime property access on purpose:
+// safe under any script order and in the precompute VM replay.
 function normalizeStationName(value) {
-  if (value === null || value === undefined) return "";
-  return String(value)
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+/g, "")
-    .replace(/ヶ/g, "ケ")
-    .replace(/ヵ/g, "カ")
-    .replace(/ゖ/g, "け")
-    .replace(/ゕ/g, "か");
+  return window.AppCore.normalizeStationName(value);
 }
 
 function stationLookupKeys(name, code) {
@@ -243,11 +236,4 @@ function resolveStationCandidates(stopOrName) {
   return nameCandidates.length ? nameCandidates : codeCandidates;
 }
 
-// CommonJS export tail (precedent: app-core.js / rail-network.js) so the Node
-// build scripts can share the station-name normalization rule. In the browser
-// (and the precompute VM replay) `module` is undefined and the functions above
-// are already plain globals, so this is inert there.
-if (typeof module === "object" && module.exports) {
-  module.exports = { normalizeStationName };
-}
 

@@ -2,10 +2,11 @@
 // Lightweight i18n layer for the N02 Limited Express Manager web UI.
 //
 // Loaded BEFORE app.js so `window.I18N` exists synchronously for every caller,
-// and AFTER i18n-strings.js, which carries the UI string catalogs this runtime
-// serves (I18NStrings global). Four languages: Traditional Chinese, Simplified
-// Chinese, Japanese and English. The chosen language is remembered in
-// localStorage.
+// and AFTER i18n-strings.js (UI string catalogs, I18NStrings global) and
+// app-core.js (AppCore.normalizeStationName — the one station-name key rule,
+// used here for the reading-table byName lookups). Four languages:
+// Traditional Chinese, Simplified Chinese, Japanese and English. The chosen
+// language is remembered in localStorage.
 //
 //   I18N.t(key, params)   -> translated UI string ("{x}" placeholders filled)
 //   I18N.placeName(jp)    -> locale-aware Japanese name / reading / romanization
@@ -213,19 +214,23 @@
   // id-keyed table (code first, then a normalized-name fallback), and only
   // falls back to the service dictionaries for non-station labels.
   let STATION_READINGS = { byCode: {}, byName: {} };
+  // One station-name key rule for the whole system, owned by AppCore (the
+  // station-resolution index and the build scripts use the same function).
+  // app-core.js loads before this file — same load-order contract as
+  // I18NStrings above.
+  const normReadingKey = window.AppCore.normalizeStationName;
   function setStationReadings(data) {
-    if (data && typeof data === "object")
-      STATION_READINGS = {
-        byCode: data.byCode || {},
-        byName: data.byName || {},
-      };
-  }
-  function normReadingKey(jp) {
-    return String(jp || "")
-      .normalize("NFKC")
-      .trim()
-      .replace(/ヶ/g, "ケ")
-      .replace(/ヵ/g, "カ");
+    if (data && typeof data === "object") {
+      // Re-key byName through the SAME rule the lookups below use, so hits
+      // can never depend on how the external readings table normalized its
+      // keys (a no-op for the current data — its keys are already on this
+      // grid; verified zero key changes and zero collisions).
+      const byName = {};
+      const source = data.byName || {};
+      for (const key of Object.keys(source))
+        byName[normReadingKey(key)] = source[key];
+      STATION_READINGS = { byCode: data.byCode || {}, byName };
+    }
   }
   function stationReading(code, jp) {
     if (code && STATION_READINGS.byCode) {

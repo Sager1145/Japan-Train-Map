@@ -22,9 +22,13 @@ const require = createRequire(import.meta.url);
 // is the single owner of the grid rule, so this build-time graph quantizes
 // exactly like the in-browser solver/stats and station lookups tolerate the
 // same spelling variants the app tolerates.
-const { quant5: q, coordKey5: nk, equirectKm, TupleMinHeap: MinHeap } =
-  require("../../public/app-core.js");
-const { normalizeStationName } = require("../../public/app-stations.js");
+const {
+  quant5: q,
+  coordKey5: nk,
+  equirectKm,
+  TupleMinHeap: MinHeap,
+  normalizeStationName,
+} = require("../../public/app-core.js");
 
 const DATA_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

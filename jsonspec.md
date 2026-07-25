@@ -2125,11 +2125,14 @@ N02 数据只提供汉字站名（`N02_005`），**不含任何假名、罗马�
 | `byCode[].zh_Hans` | string | 简体中文名                                                          |
 | `byName`           | object | 兜底表。键为**归一化站名**，值为 `{ kana, katakana, romaji, zh_Hant, zh_Hans }`；**不含 id**（原数据无 id 者不补 id） |
 
-**归一化站名**（`byName` 的键，与前端 `normReadingKey` / `normalizeStationName` 一致）：
+**归一化站名**（`byName` 的键。全系统只有一条站名归一化规则，由 `AppCore.normalizeStationName` 唯一实现——站名解析索引、读音查表 `normReadingKey`、构建脚本 `findStationCode` 共用同一个函数）：
 
 ```text
-NFKC 规整 → 去首尾空白 → ヶ→ケ → ヵ→カ
+NFKC 规整 → 去首尾空白 → 去内部空白 → ヶ→ケ → ヵ→カ → ゖ→け → ゕ→か
 ```
+
+> 前端载入本表时会把 `byName` 的键按同一规则**重新归一化**（`I18N.setStationReadings`），
+> 因此即使外部生成的键与该规则有出入，查表也不受影响；当前数据的 787 个键在此规则下逐一不变、无碰撞。
 
 #### 覆盖范围（当前 N02-25 + 当前 store，实测）
 
