@@ -595,6 +595,51 @@ function fitCurveCoordSig(line) {
     h.toString(16)
   );
 }
+// Circumscribed-circle radius of three metric-space points — the discrete
+// curvature probe shared by the solver's relaxation passes, the spline
+// validation window and the post-station-join diagnostics. A near-zero cross
+// product is a straight line: Infinity, never a huge finite radius.
+function circumRadius(a, b, c) {
+  const ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
+  const ca = Math.hypot(a[0] - c[0], a[1] - c[1]);
+  const cross = Math.abs(
+    (b[0] - a[0]) * (c[1] - a[1]) -
+      (b[1] - a[1]) * (c[0] - a[0]),
+  );
+  return cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross);
+}
+
+// Clamped-index 1-D Gaussian convolution over a scalar series sampled at a
+// uniform `step` (metres) — the smoother behind both direction-field stages
+// (the corridor solve's angle pass and the station-join rebuild differ only
+// in `minRadius`, 3 vs 2 samples). The weight table uses the RAW step while
+// only the kernel-size ceil guards against a sub-metre step; both stages'
+// validated outputs depend on exactly this arithmetic, so keep it bit-exact.
+function gaussianSmoothSeries(input, sigma, step, minRadius) {
+  const radius = Math.max(
+    minRadius,
+    Math.min(
+      300,
+      input.length - 1,
+      Math.ceil((sigma * 3) / Math.max(1, step)),
+    ),
+  );
+  const weights = new Array(radius + 1);
+  for (let k = 0; k <= radius; k += 1)
+    weights[k] = Math.exp(-0.5 * Math.pow((k * step) / sigma, 2));
+  return input.map((_, i) => {
+    let sum = 0;
+    let sw = 0;
+    for (let k = -radius; k <= radius; k += 1) {
+      const w = weights[Math.abs(k)];
+      sum += input[Math.max(0, Math.min(input.length - 1, i + k))] * w;
+      sw += w;
+    }
+    return sum / sw;
+  });
+}
+
 function smoothCorridorCurve(line) {
   if (!line || line.length < 2) return null;
   const key = fitCurveSettingsSig() + "|" + fitCurveCoordSig(line);
@@ -652,6 +697,9 @@ function smoothCorridorCurveUncached(line) {
     cum.push(cum[i - 1] + distanceMeters(line[i - 1], line[i]));
   const total = cum[cum.length - 1];
   if (!(total > 0)) return null;
+  // Same binary-search sampler as RailMapGeometry.curvePointAt, kept inline:
+  // the corridor solver must stay runnable in the standalone fit-curve test
+  // VM, which loads this file without the railmap family (or a window).
   const pointOnSource = (target) => {
     let lo = 0;
     let hi = cum.length - 1;
@@ -754,17 +802,6 @@ function smoothCorridorCurveUncached(line) {
   // provides a smooth one-sided tangent there.
   metric[0] = anchorMetric[0].slice();
   metric[metric.length - 1] = anchorMetric[anchorMetric.length - 1].slice();
-
-  const circumRadius = (a, b, c) => {
-    const ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const bc = Math.hypot(c[0] - b[0], c[1] - b[1]);
-    const ca = Math.hypot(a[0] - c[0], a[1] - c[1]);
-    const cross = Math.abs(
-      (b[0] - a[0]) * (c[1] - a[1]) -
-        (b[1] - a[1]) * (c[0] - a[0]),
-    );
-    return cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross);
-  };
 
   // Curvature projection: repeatedly relax only the points whose measured
   // radius is below the requested minimum. Deviation limiting is applied on
@@ -1111,35 +1148,9 @@ function smoothCorridorCurveUncached(line) {
       d += 2 * Math.PI;
     }
   }
-  const smoothAngles = (input, sigma) => {
-    const radius = Math.max(
-      3,
-      Math.min(
-        300,
-        input.length - 1,
-        Math.ceil((sigma * 3) / Math.max(1, outputStep)),
-      ),
-    );
-    const weights = new Array(radius + 1);
-    for (let k = 0; k <= radius; k += 1)
-      weights[k] = Math.exp(
-        -0.5 * Math.pow((k * outputStep) / sigma, 2),
-      );
-    return input.map((_, i) => {
-      let sum = 0;
-      let sw = 0;
-      for (let k = -radius; k <= radius; k += 1) {
-        const w = weights[Math.abs(k)];
-        const j = Math.max(0, Math.min(input.length - 1, i + k));
-        sum += input[j] * w;
-        sw += w;
-      }
-      return sum / sw;
-    });
-  };
   const directionSigmaM = Math.max(80, minDetail * 0.45, minRadius * 0.12);
-  angles = smoothAngles(angles, directionSigmaM);
-  angles = smoothAngles(angles, directionSigmaM * 0.65);
+  angles = gaussianSmoothSeries(angles, directionSigmaM, outputStep, 3);
+  angles = gaussianSmoothSeries(angles, directionSigmaM * 0.65, outputStep, 3);
   const maxTurn = Math.min(
     0.045,
     Math.max(1e-5, outputStep / Math.max(100, minRadius)),
@@ -1328,24 +1339,16 @@ function smoothStandaloneCorridorRun(line, isClosed) {
   return isClosed ? null : smoothCorridorCurve(line);
 }
 
+// Shape guard over the shared RailMapGeometry.curvePointAt sampler: station-
+// join probing may see a curve mid-rebuild, so verify the pts/cum pair and
+// return null instead of sampling garbage. The delegation is runtime-only —
+// the railmap family publishes RailMapGeometry long before any fitted curve
+// exists to probe.
 function fittedCurvePointAt(curve, metres) {
   const pts = curve && curve.pts;
   const cum = curve && curve.cum;
   if (!pts || pts.length < 2 || !cum || cum.length !== pts.length) return null;
-  const target = Math.max(0, Math.min(curve.totalMeters || 0, metres));
-  let lo = 0;
-  let hi = cum.length - 1;
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1;
-    if (cum[mid] <= target) lo = mid;
-    else hi = mid;
-  }
-  const span = cum[lo + 1] - cum[lo] || 1;
-  const t = Math.max(0, Math.min(1, (target - cum[lo]) / span));
-  return [
-    pts[lo][0] + (pts[lo + 1][0] - pts[lo][0]) * t,
-    pts[lo][1] + (pts[lo + 1][1] - pts[lo][1]) * t,
-  ];
+  return window.RailMapGeometry.curvePointAt(curve, metres);
 }
 
 // Recalculate the arc-length and tangent fields after a station fillet has
@@ -1390,24 +1393,19 @@ function refreshFittedCurveGeometry(curve) {
       ),
     ),
   );
+  // Project to metric space once per point, then reuse the solver's own
+  // curvature probe over the projected triples.
+  const metricPts = pts.map((p) => [p[0] * cs * 111320, p[1] * 110540]);
   let minRadius = Infinity;
-  for (let i = radiusHalf; i < pts.length - radiusHalf; i += 1) {
-    const a = pts[i - radiusHalf];
-    const b = pts[i];
-    const c = pts[i + radiusHalf];
-    const ax = a[0] * cs * 111320;
-    const ay = a[1] * 110540;
-    const bx = b[0] * cs * 111320;
-    const by = b[1] * 110540;
-    const cx = c[0] * cs * 111320;
-    const cy = c[1] * 110540;
-    const ab = Math.hypot(bx - ax, by - ay);
-    const bc = Math.hypot(cx - bx, cy - by);
-    const ca = Math.hypot(ax - cx, ay - cy);
-    const cross = Math.abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
-    const radius = cross < 1e-6 ? Infinity : (ab * bc * ca) / (2 * cross);
-    minRadius = Math.min(minRadius, radius);
-  }
+  for (let i = radiusHalf; i < pts.length - radiusHalf; i += 1)
+    minRadius = Math.min(
+      minRadius,
+      circumRadius(
+        metricPts[i - radiusHalf],
+        metricPts[i],
+        metricPts[i + radiusHalf],
+      ),
+    );
   curve.achievedMinRadiusMeters = isFinite(minRadius) ? minRadius : null;
   let maxTurn = 0;
   let previous = null;
@@ -1451,32 +1449,9 @@ function rebuildLimitedDirectionField(curve) {
     while (angles[i] - angles[i - 1] > Math.PI) angles[i] -= 2 * Math.PI;
     while (angles[i] - angles[i - 1] < -Math.PI) angles[i] += 2 * Math.PI;
   }
-  const smooth = (input, sigma) => {
-    const radius = Math.max(
-      2,
-      Math.min(
-        300,
-        input.length - 1,
-        Math.ceil((sigma * 3) / Math.max(1, step)),
-      ),
-    );
-    const weights = new Array(radius + 1);
-    for (let k = 0; k <= radius; k += 1)
-      weights[k] = Math.exp(-0.5 * Math.pow((k * step) / sigma, 2));
-    return input.map((_, i) => {
-      let sum = 0;
-      let weight = 0;
-      for (let k = -radius; k <= radius; k += 1) {
-        const w = weights[Math.abs(k)];
-        sum += input[Math.max(0, Math.min(input.length - 1, i + k))] * w;
-        weight += w;
-      }
-      return sum / weight;
-    });
-  };
   const sigma = Math.max(80, minDetail * 0.45, minRadius * 0.12);
-  angles = smooth(angles, sigma);
-  angles = smooth(angles, sigma * 0.65);
+  angles = gaussianSmoothSeries(angles, sigma, step, 2);
+  angles = gaussianSmoothSeries(angles, sigma * 0.65, step, 2);
   const limitedRadius = minRadius * 1.03;
   for (let pass = 0; pass < 2; pass += 1) {
     for (let i = 1; i < angles.length; i += 1) {

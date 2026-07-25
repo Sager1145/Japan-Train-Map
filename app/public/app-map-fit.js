@@ -10,23 +10,22 @@
 //  §32.  Map fit, bounds clamping & import progress UI
 // =========================================================================
 
-// Bounds over every coordinate of the given GeoJSON features (LineString /
-// MultiLineString / Point), as MapLibre [[w,s],[e,n]]. null when empty.
-function featureCollectionBounds(features) {
+// Min/max fold shared by both coordinate orders below: `lngIdx`/`latIdx`
+// name the slot of each pair holding that axis. Result is MapLibre
+// [[w,s],[e,n]]; null when no valid pair exists.
+function pointPairsBounds(points, lngIdx, latIdx) {
   let w = Infinity,
     s = Infinity,
     e = -Infinity,
     n = -Infinity,
     any = false;
-  (features || []).forEach((feature) => {
-    getFeaturePathCoordinates(feature).forEach((c) => {
-      if (!Array.isArray(c) || c.length < 2) return;
-      any = true;
-      if (c[0] < w) w = c[0];
-      if (c[0] > e) e = c[0];
-      if (c[1] < s) s = c[1];
-      if (c[1] > n) n = c[1];
-    });
+  (points || []).forEach((p) => {
+    if (!Array.isArray(p) || p.length < 2) return;
+    any = true;
+    if (p[lngIdx] < w) w = p[lngIdx];
+    if (p[lngIdx] > e) e = p[lngIdx];
+    if (p[latIdx] < s) s = p[latIdx];
+    if (p[latIdx] > n) n = p[latIdx];
   });
   return any
     ? [
@@ -36,27 +35,19 @@ function featureCollectionBounds(features) {
     : null;
 }
 
+// Bounds over every coordinate of the given GeoJSON features (LineString /
+// MultiLineString / Point), as MapLibre [[w,s],[e,n]]. null when empty.
+function featureCollectionBounds(features) {
+  const coords = [];
+  (features || []).forEach((feature) => {
+    getFeaturePathCoordinates(feature).forEach((c) => coords.push(c));
+  });
+  return pointPairsBounds(coords, 0, 1);
+}
+
 // Bounds over [lat,lng] point pairs (the app's legacy point order).
 function latLngPointsBounds(points) {
-  let w = Infinity,
-    s = Infinity,
-    e = -Infinity,
-    n = -Infinity,
-    any = false;
-  (points || []).forEach((p) => {
-    if (!Array.isArray(p) || p.length < 2) return;
-    any = true;
-    if (p[1] < w) w = p[1];
-    if (p[1] > e) e = p[1];
-    if (p[0] < s) s = p[0];
-    if (p[0] > n) n = p[0];
-  });
-  return any
-    ? [
-        [w, s],
-        [e, n],
-      ]
-    : null;
+  return pointPairsBounds(points, 1, 0);
 }
 
 // Focus / fit the map on [[w,s],[e,n]] bounds, CENTRED in the uncovered part of
@@ -93,20 +84,40 @@ function smoothFitBounds(bounds, opts) {
   map.fitBounds(bounds, { padding, maxZoom, duration, essential: true });
 }
 
-function fitTrainBounds(train) {
-  if (!train) return;
-  const features = getMatchedRouteFeatures(train);
+// Two-stage focus fit shared by the single-train and whole-day paths:
+// matched route geometry wins; only when NO train in the set has any route
+// features do the raw stop coordinates take over. `onlyVisible` restricts
+// the set to trains not hidden by their card toggle — the whole-day fit
+// honours it, while an explicit single-train fit (selection, 定位 button)
+// frames the train regardless.
+function fitTrainsBounds(trains, { onlyVisible = false } = {}) {
+  if (!map) return;
+  const list = (trains || []).filter(
+    (train) => train && (!onlyVisible || train.visible !== false),
+  );
+  const features = [];
+  list.forEach((train) => {
+    getMatchedRouteFeatures(train).forEach((feature) => features.push(feature));
+  });
   const bounds = featureCollectionBounds(features);
   if (bounds) {
     smoothFitBounds(bounds, { maxZoom: 11 });
     return;
   }
-  const points = (train.stops || [])
-    .map((stop) => resolveStationForTrain(stop, train))
-    .filter(Boolean)
-    .map(toLatLng);
+  const points = [];
+  list.forEach((train) =>
+    (train.stops || []).forEach((stop) => {
+      const ll = resolveStationForTrain(stop, train);
+      if (ll) points.push(toLatLng(ll));
+    }),
+  );
   const ptBounds = latLngPointsBounds(points);
   if (ptBounds) smoothFitBounds(ptBounds, { maxZoom: 11 });
+}
+
+// Single-train entry point — still called by the 定位 button (app-events.js).
+function fitTrainBounds(train) {
+  fitTrainsBounds([train]);
 }
 
 function setImportProgress(count, total, label = "") {

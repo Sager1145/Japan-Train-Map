@@ -13,148 +13,24 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
-import path from "node:path";
 import vm from "node:vm";
-import { randomUUID } from "node:crypto";
-import { performance } from "node:perf_hooks";
-import { fileURLToPath } from "node:url";
 import { IDBFactory } from "fake-indexeddb";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.join(__dirname, "..", "public");
-
-// Replay EXACTLY the <script src> list from index.html (single source of
-// truth for load order), keeping app-core.js + the app-*.js family — same
-// filter as scripts/precompute-train-parts.mjs.
-function readOrderedAppScripts() {
-  const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
-  const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) =>
-    m[1].split(/[?#]/, 1)[0],
-  );
-  const appScripts = scripts.filter(
-    (src) => !src.includes("/") && src.startsWith("app") && src.endsWith(".js"),
-  );
-  assert.ok(
-    appScripts.includes("app-core.js") && appScripts.includes("app.js"),
-    "index.html's script list is missing app-core.js/app.js",
-  );
-  return appScripts;
-}
-
-function makeDummyElement() {
-  return {
-    textContent: "",
-    className: "",
-    innerHTML: "",
-    value: "",
-    hidden: false,
-    disabled: false,
-    checked: false,
-    style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
-    dataset: {},
-    content: "",
-    children: [],
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    addEventListener() {},
-    removeEventListener() {},
-    appendChild(child) {
-      return child;
-    },
-    removeChild() {},
-    remove() {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    setAttribute() {},
-    getAttribute: () => null,
-    removeAttribute() {},
-    focus() {},
-    click() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 }),
-  };
-}
+import {
+  evaluateAppScripts,
+  makeSandbox,
+} from "../scripts/lib/app-family-sandbox.mjs";
 
 function loadAppFamily({ indexedDB } = {}) {
   const i18nListeners = [];
-  const mediaStub = () => ({
-    matches: false,
-    media: "",
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  });
-  const sandbox = {
-    console,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    queueMicrotask,
-    performance,
-    URL,
-    TextEncoder,
-    TextDecoder,
-    crypto: { randomUUID },
-    navigator: { userAgent: "node-smoke", maxTouchPoints: 0, language: "en" },
-    localStorage: {
-      getItem: () => null,
-      setItem() {},
-      removeItem() {},
-      clear() {},
-    },
-    matchMedia: mediaStub,
-    requestAnimationFrame: () => 0,
-    cancelAnimationFrame() {},
-    requestIdleCallback: (fn) => setTimeout(fn, 0),
-    cancelIdleCallback() {},
-    document: {
-      hidden: false,
-      documentElement: makeDummyElement(),
-      body: makeDummyElement(),
-      getElementById: () => makeDummyElement(),
-      querySelector: () => makeDummyElement(),
-      querySelectorAll: () => [],
-      createElement: () => makeDummyElement(),
-      createTextNode: () => makeDummyElement(),
-      createDocumentFragment: () => makeDummyElement(),
-      addEventListener() {},
-      removeEventListener() {},
-    },
+  const context = makeSandbox({
+    userAgent: "node-smoke",
+    fetchErrorMessage: "fetch is not available in the smoke-test sandbox",
+    indexedDB,
     // Recording i18n stub: listeners are invoked by the tests DIRECTLY,
     // without i18n.js's try/catch, so listener errors fail the test.
-    I18N: {
-      t: (key) => String(key),
-      placeName: (name) => String(name || ""),
-      trainName: (name) => String(name || ""),
-      setStationReadings() {},
-      setLang() {},
-      applyStatic() {},
-      onChange: (fn) => i18nListeners.push(fn),
-    },
-    RailMap: {},
-    maplibregl: {},
-    indexedDB,
-    fetch: () => {
-      throw new Error("fetch is not available in the smoke-test sandbox");
-    },
-  };
-  sandbox.location = { hash: "", href: "http://localhost/", pathname: "/" };
-  sandbox.history = { replaceState() {}, pushState() {} };
-  sandbox.addEventListener = () => {};
-  sandbox.removeEventListener = () => {};
-  sandbox.dispatchEvent = () => true;
-  sandbox.innerWidth = 1280;
-  sandbox.innerHeight = 800;
-  sandbox.devicePixelRatio = 1;
-  sandbox.window = sandbox;
-  sandbox.self = sandbox;
-  sandbox.globalThis = sandbox;
-  const context = vm.createContext(sandbox);
-  for (const name of readOrderedAppScripts()) {
-    const source = fs.readFileSync(path.join(PUBLIC_DIR, name), "utf8");
-    vm.runInContext(source, context, { filename: name });
-  }
+    i18n: { onChange: (fn) => i18nListeners.push(fn) },
+  });
+  evaluateAppScripts(context);
   return { context, i18nListeners };
 }
 

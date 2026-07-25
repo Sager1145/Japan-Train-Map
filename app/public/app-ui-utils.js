@@ -16,6 +16,22 @@
 // as the national-network station hover popup — plus this train's own stop
 // times under the name. Returns null when the network package isn't loaded yet
 // or the station isn't in it, so the caller can lazily load it and fall back.
+// One `.rp-popup-times` row: the tagged times in caller order (blank values
+// skipped) with the train's date chip riding along after them, joined by
+// U+3000. The station popups show the date only when a time survived;
+// `dateAlways` keeps the route tooltip's behavior of dating an untimed train.
+function popupTimesHtml(entries, date, { dateAlways = false } = {}) {
+  const times = [];
+  for (const [tagKey, value] of entries) {
+    if (value) times.push(`${I18N.t(tagKey)} ${escapeHtml(value)}`);
+  }
+  if (date && (dateAlways || times.length))
+    times.push(`<span class="rp-popup-date">${escapeHtml(date)}</span>`);
+  return times.length
+    ? `<div class="rp-popup-times">${times.join("　")}</div>`
+    : "";
+}
+
 function buildStationLinesPopup(pr, train) {
   const net = typeof RailMap !== "undefined" ? RailMap._network : null;
   if (!net || typeof RailMapPopup === "undefined") return null;
@@ -24,17 +40,13 @@ function buildStationLinesPopup(pr, train) {
   if (!members || !members.length) return null;
   const model = RailMapPopup.buildPopupModel(net, members[0].stationId);
   if (!model || !model.lines.length) return null;
-  const times = [];
-  if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
-  if (pr.departure)
-    times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);
-  if (times.length && train) {
-    const d = dateLabel(getTrainDate(train));
-    if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
-  }
-  const subhead = times.length
-    ? `<div class="rp-popup-times">${times.join("　")}</div>`
-    : "";
+  const subhead = popupTimesHtml(
+    [
+      ["tag.arr", pr.arrival],
+      ["tag.dep", pr.departure],
+    ],
+    train ? dateLabel(getTrainDate(train)) : "",
+  );
   return RailMapPopup.stationPopupHtml(model, { subhead });
 }
 
@@ -106,8 +118,14 @@ function setStatus(el, message, type) {
   el.className = `status ${type || ""}`;
 }
 
+// jsonspec §5.1 colour shape (#RRGGBB), shared by the editor's fallback below
+// and validateTrain's style.color check so the two can never drift.
+function isValidTrainColor(value) {
+  return /^#[0-9a-fA-F]{6}$/.test(value || "");
+}
+
 function normalizeColor(value) {
-  return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : DEFAULT_TRAIN_COLOR;
+  return isValidTrainColor(value) ? value : DEFAULT_TRAIN_COLOR;
 }
 
 function buildPortableHtml() {

@@ -35,13 +35,16 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { performance } from "node:perf_hooks";
-import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateAppScripts,
+  makeSandbox,
+  readOrderedAppScripts,
+} from "./lib/app-family-sandbox.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.join(__dirname, "..");
 const DATA_DIR = path.join(APP_DIR, "data");
-const PUBLIC_DIR = path.join(APP_DIR, "public");
 const STORE_PATH = process.env.PRECOMPUTE_STORE
   ? path.resolve(process.cwd(), process.env.PRECOMPUTE_STORE)
   : path.join(DATA_DIR, "train-store.json");
@@ -50,137 +53,6 @@ const OUT_DIR = process.env.PRECOMPUTE_OUT_DIR
   : path.join(DATA_DIR, "sample-data");
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
-
-// The frontend is a family of ordered classic scripts sharing one global
-// lexical scope. Replay EXACTLY the <script src> list from index.html — the
-// single source of truth for load order — keeping app-core.js and the
-// app-*.js family and skipping the browser-only libraries the sandbox stubs
-// instead (vendor/maplibre, i18n*.js, rail-network.js, railmap*.js). Reading
-// the list from index.html keeps this exporter in lockstep when app modules
-// are added, removed, or reordered.
-function readOrderedAppScripts() {
-  const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
-  const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) =>
-    m[1].split(/[?#]/, 1)[0],
-  );
-  const appScripts = scripts.filter(
-    (src) => !src.includes("/") && src.startsWith("app") && src.endsWith(".js"),
-  );
-  if (!appScripts.includes("app-core.js") || !appScripts.includes("app.js")) {
-    throw new Error(
-      "index.html's script list is missing app-core.js/app.js — cannot replay the app module family.",
-    );
-  }
-  return appScripts;
-}
-
-// ---------------------------------------------------------------------------
-// Browser stubs — the minimum surface app.js touches at module-eval time and
-// on the solve path. Dummy DOM elements swallow status writes.
-// ---------------------------------------------------------------------------
-function makeDummyElement() {
-  const el = {
-    textContent: "",
-    className: "",
-    innerHTML: "",
-    value: "",
-    hidden: false,
-    style: { setProperty() {}, removeProperty() {}, getPropertyValue: () => "" },
-    dataset: {},
-    content: "",
-    children: [],
-    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
-    addEventListener() {},
-    removeEventListener() {},
-    appendChild(child) {
-      return child;
-    },
-    removeChild() {},
-    remove() {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    setAttribute() {},
-    getAttribute: () => null,
-    removeAttribute() {},
-    focus() {},
-    click() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0 }),
-  };
-  return el;
-}
-
-function makeSandbox() {
-  const mediaStub = () => ({
-    matches: false,
-    media: "",
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  });
-  const sandbox = {
-    console,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    queueMicrotask,
-    performance,
-    URL,
-    TextEncoder,
-    TextDecoder,
-    crypto: { randomUUID },
-    navigator: { userAgent: "node-precompute", maxTouchPoints: 0, language: "en" },
-    localStorage: {
-      getItem: () => null,
-      setItem() {},
-      removeItem() {},
-      clear() {},
-    },
-    matchMedia: mediaStub,
-    requestAnimationFrame: () => 0,
-    cancelAnimationFrame() {},
-    requestIdleCallback: (fn) => setTimeout(fn, 0),
-    cancelIdleCallback() {},
-    document: {
-      hidden: false,
-      documentElement: makeDummyElement(),
-      body: makeDummyElement(),
-      getElementById: () => makeDummyElement(),
-      querySelector: () => makeDummyElement(),
-      querySelectorAll: () => [],
-      createElement: () => makeDummyElement(),
-      createTextNode: () => makeDummyElement(),
-      addEventListener() {},
-      removeEventListener() {},
-    },
-    // Solve-path code never calls these; stubs exist so module-eval references
-    // (if any) don't explode.
-    I18N: {
-      t: (key) => String(key),
-      setStationReadings() {},
-      placeName: (name) => String(name || ""),
-      lang: () => "zh-Hant",
-    },
-    RailMap: {},
-    maplibregl: {},
-    fetch: () => {
-      throw new Error("fetch is not available in the precompute sandbox");
-    },
-  };
-  sandbox.location = { hash: "", href: "http://localhost/", pathname: "/" };
-  sandbox.history = { replaceState() {}, pushState() {} };
-  sandbox.addEventListener = () => {};
-  sandbox.removeEventListener = () => {};
-  sandbox.dispatchEvent = () => true;
-  sandbox.innerWidth = 1280;
-  sandbox.innerHeight = 800;
-  sandbox.devicePixelRatio = 1;
-  sandbox.window = sandbox;
-  sandbox.self = sandbox;
-  sandbox.globalThis = sandbox;
-  return vm.createContext(sandbox);
-}
 
 // ---------------------------------------------------------------------------
 // Driver — runs INSIDE the vm context so it can reach app.js's top-level
@@ -343,15 +215,15 @@ async function main() {
     );
   }
 
-  const context = makeSandbox();
+  const context = makeSandbox({
+    userAgent: "node-precompute",
+    fetchErrorMessage: "fetch is not available in the precompute sandbox",
+  });
   const appScripts = readOrderedAppScripts();
   console.log(
     `Evaluating the app script family in sandbox (${appScripts.length} files)...`,
   );
-  for (const name of appScripts) {
-    const source = fs.readFileSync(path.join(PUBLIC_DIR, name), "utf8");
-    vm.runInContext(source, context, { filename: name });
-  }
+  evaluateAppScripts(context, appScripts);
 
   // Fresh output dir (slice mode appends into the existing one instead).
   if (!rangeEnv) fs.rmSync(OUT_DIR, { recursive: true, force: true });

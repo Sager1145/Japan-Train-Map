@@ -1108,12 +1108,7 @@ function buildDeckMarkerRecords(orderedTrains) {
     const opts = routeRecordScopeFlags(train);
     const stops = train.stops || [];
     // First + last effectively-ridden stopping station = the black-dot pair.
-    const ridden = [];
-    stops.forEach((stop, idx) => {
-      if (stop.stop_type === "pass_through") return;
-      if (!effectiveStopRide(stops, idx)) return;
-      ridden.push(idx);
-    });
+    const ridden = effectivelyRiddenStopIndexes(stops);
     const boundarySet = new Set(
       ridden.length ? [ridden[0], ridden[ridden.length - 1]] : [],
     );
@@ -1206,6 +1201,11 @@ function handleDeckMarkerClick(info) {
   }
 }
 
+// Direction-independent key of one drawn route segment. Deliberately NOT
+// AppCore.edgeKey5: this key's historical byte format orders the two node
+// keys as STRINGS (Array.sort), while edgeKey5 orders numerically — the
+// overlap caches keyed on this exact format must not change. It still sits on
+// the shared 5-decimal grid because coordKey quantizes via AppCore.quant5.
 function routeCoordinateSegmentKey(a, b) {
   return [coordKey(a), coordKey(b)].sort().join("|");
 }

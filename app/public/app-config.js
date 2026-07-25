@@ -94,12 +94,14 @@ const JAPAN_FULL_TERRITORY_BOUNDS = [
   [45.75, 146.2],
 ];
 
-// Single source of truth for protocol/schema constants reused across the app.
-const SCHEMA_VERSION = "1.3";
-const ACCEPTED_SCHEMA_VERSIONS = ["1.3"];
+// Protocol/schema constants: AppCore (app-core.js, shared with the Node
+// server backstop) is the single source of truth; re-exported here as the
+// bare globals the app family reads. ACCEPTED_SCHEMA_VERSIONS is frozen.
+const SCHEMA_VERSION = window.AppCore.SCHEMA_VERSION;
+const ACCEPTED_SCHEMA_VERSIONS = window.AppCore.ACCEPTED_SCHEMA_VERSIONS;
 // Train ids flow into route_id, route cache keys and DOM ids, so they are
 // restricted to the charset documented in jsonspec §3.2.
-const TRAIN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const TRAIN_ID_PATTERN = window.AppCore.TRAIN_ID_PATTERN;
 // The five stop_type values of jsonspec §7.2, in the order the editor's
 // <select> lists them (running order, not the spec's table order). Doubles as
 // the import-side whitelist.
@@ -113,7 +115,7 @@ const STOP_TYPES = [
 // Sentinel selectedDate value: show the combined "all trains" list.
 const ALL_DATES = "__all__";
 // Bucket for trains whose date could neither be supplied nor inferred.
-const UNDATED = "undated";
+const UNDATED = window.AppCore.UNDATED;
 const {
   addDaysToDateString,
   compareTrainsByDateAndDeparture,

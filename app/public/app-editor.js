@@ -357,8 +357,10 @@ function addStopToSelected() {
 }
 
 function normalizeStopValue(field, value) {
-  if ((field === "arrival" || field === "departure") && value.trim() === "")
-    return null;
+  // Time fields follow AppCore's blank-time rule (whitespace-only → null), the
+  // same normalization imported JSON goes through — see normalizeNullableTime.
+  if (field === "arrival" || field === "departure")
+    return normalizeNullableTime(value);
   return value;
 }
 
@@ -435,6 +437,20 @@ function effectiveStopRide(stops, index) {
   return (
     stops[prev].ride_segment === true && stops[next].ride_segment === true
   );
+}
+
+// Ordered indexes of a train's effectively-ridden STOPPING stations (pass-
+// throughs excluded). First/last entry = the ride boundary pair — the same
+// rule drives the stats ride-time span and the terminal-dot markers, so it
+// lives once, next to effectiveStopRide.
+function effectivelyRiddenStopIndexes(stops) {
+  const ridden = [];
+  (stops || []).forEach((stop, idx) => {
+    if (!stop || stop.stop_type === "pass_through") return;
+    if (!effectiveStopRide(stops, idx)) return;
+    ridden.push(idx);
+  });
+  return ridden;
 }
 
 function applyStationMetadata(stop, train) {

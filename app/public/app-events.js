@@ -558,58 +558,28 @@ function bindEvents() {
       downloadText("index.html", buildPortableHtml(), "text/html"),
     );
   // --- 資料來源 (static deploy: sample vs the user's own IndexedDB store) ---
-  const loadSampleAllBtn = document.getElementById("load-sample-all");
-  if (loadSampleAllBtn)
-    loadSampleAllBtn.addEventListener("click", async () => {
+  // One shared handler per dataset-replacing button (sample / curated loops).
+  // Loading a dataset never touches the user's saved data, but it DOES replace
+  // what is on screen — confirm before doing so. The finally-side
+  // updateDataSourceUi() re-enables the button (or keeps the active mode's
+  // button disabled), exactly like the three hand-written handlers it replaces.
+  CURATED_DATASET_BUTTONS.forEach(({ buttonId, confirmKey, load }) => {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
       if (importInProgress) return;
-      // Loading the sample never touches the user's saved data, but it DOES
-      // replace what is on screen — confirm before doing so.
-      if (!(await uiConfirm(I18N.t("confirm.loadSampleAll")))) return;
-      loadSampleAllBtn.disabled = true;
+      if (!(await uiConfirm(I18N.t(confirmKey)))) return;
+      btn.disabled = true;
       try {
         fitJapanMainIslands();
-        await loadSampleData({ date: null });
+        await load();
       } catch (error) {
         setStatus(els.importStatus, error.message, "err");
       } finally {
         updateDataSourceUi();
       }
     });
-  const loadNewYearGrandLoopBtn = document.getElementById(
-    "load-new-year-grand-loop",
-  );
-  if (loadNewYearGrandLoopBtn)
-    loadNewYearGrandLoopBtn.addEventListener("click", async () => {
-      if (importInProgress) return;
-      if (!(await uiConfirm(I18N.t("confirm.loadNewYearGrandLoop")))) return;
-      loadNewYearGrandLoopBtn.disabled = true;
-      try {
-        fitJapanMainIslands();
-        await loadNewYearGrandLoopData();
-      } catch (error) {
-        setStatus(els.importStatus, error.message, "err");
-      } finally {
-        updateDataSourceUi();
-      }
-    });
-  const loadTokyoLimitedExpressLoopBtn = document.getElementById(
-    "load-tokyo-limited-express-loop",
-  );
-  if (loadTokyoLimitedExpressLoopBtn)
-    loadTokyoLimitedExpressLoopBtn.addEventListener("click", async () => {
-      if (importInProgress) return;
-      if (!(await uiConfirm(I18N.t("confirm.loadTokyoLimitedExpressLoop"))))
-        return;
-      loadTokyoLimitedExpressLoopBtn.disabled = true;
-      try {
-        fitJapanMainIslands();
-        await loadTokyoLimitedExpressLoopData();
-      } catch (error) {
-        setStatus(els.importStatus, error.message, "err");
-      } finally {
-        updateDataSourceUi();
-      }
-    });
+  });
   const restoreUserStoreBtn = document.getElementById("restore-user-store");
   if (restoreUserStoreBtn)
     restoreUserStoreBtn.addEventListener("click", async () => {

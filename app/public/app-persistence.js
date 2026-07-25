@@ -163,6 +163,18 @@ function queuePendingServerStoreJournalWrite(body) {
   return run;
 }
 
+// PUT one serialized store body to the server train-store endpoint, throwing
+// on any non-OK status. Deploy contract: the `${API_BASE}` template literal
+// below is rewritten by the static build and must stay a literal.
+async function putTrainStore(body, clientId) {
+  const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Client-Id": clientId },
+    body,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
 // Resolves when the current PUT settles — lets the clear-storage handler wait
 // out an in-flight save so it can't land AFTER the DELETE and resurrect the
 // just-cleared file on the server.
@@ -195,12 +207,7 @@ async function flushServerStoreSave() {
           pendingError,
         );
       }
-      const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Client-Id": CLIENT_ID },
-        body: jsonText,
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      await putTrainStore(jsonText, CLIENT_ID);
       lastKnownServerStoreText = jsonText;
       lastKnownServerStoreExists = true;
       try {
@@ -362,31 +369,40 @@ async function loadTrainStoreFromServer() {
   }
 }
 
-// -------------------------------------------------------------------------
-// Backend autosave recovery journal (IndexedDB)
-// -------------------------------------------------------------------------
-
-function openPendingServerStoreDb() {
+// Open (creating on first use) one of this app's version-1 IndexedDB
+// databases, ensuring every named object store exists. All four app databases
+// share this wrapper; only the transaction patterns beyond open differ.
+// `fallbackErrorMessage` keeps each caller's historical open-failure message.
+function openIdb(name, storeNames, fallbackErrorMessage) {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
       reject(new Error("IndexedDB is unavailable."));
       return;
     }
-    const request = indexedDB.open(PENDING_SERVER_STORE_DB_NAME, 1);
+    const request = indexedDB.open(name, 1);
     request.onupgradeneeded = () => {
-      if (
-        !request.result.objectStoreNames.contains(PENDING_SERVER_STORE_NAME)
-      ) {
-        request.result.createObjectStore(PENDING_SERVER_STORE_NAME);
+      const db = request.result;
+      for (const storeName of storeNames) {
+        if (!db.objectStoreNames.contains(storeName))
+          db.createObjectStore(storeName);
       }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
-      reject(
-        request.error ||
-          new Error("Could not open the pending server-store database."),
-      );
+      reject(request.error || new Error(fallbackErrorMessage));
   });
+}
+
+// -------------------------------------------------------------------------
+// Backend autosave recovery journal (IndexedDB)
+// -------------------------------------------------------------------------
+
+function openPendingServerStoreDb() {
+  return openIdb(
+    PENDING_SERVER_STORE_DB_NAME,
+    [PENDING_SERVER_STORE_NAME],
+    "Could not open the pending server-store database.",
+  );
 }
 
 async function writePendingServerStoreSave(body) {
@@ -545,15 +561,7 @@ async function recoverPendingServerStoreSaves(savedStore) {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Client-Id": record.client_id || CLIENT_ID,
-        },
-        body: record.body,
-      });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      await putTrainStore(record.body, record.client_id || CLIENT_ID);
     } catch (error) {
       return {
         recovery: true,
@@ -589,18 +597,11 @@ function supportsFileSystemAccess() {
 }
 
 function openFileHandleDb() {
-  return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
-      reject(new Error("IndexedDB is unavailable."));
-      return;
-    }
-    const request = indexedDB.open(FILE_HANDLE_DB_NAME, 1);
-    request.onupgradeneeded = () =>
-      request.result.createObjectStore(FILE_HANDLE_STORE_NAME);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error || new Error("Could not open IndexedDB."));
-  });
+  return openIdb(
+    FILE_HANDLE_DB_NAME,
+    [FILE_HANDLE_STORE_NAME],
+    "Could not open IndexedDB.",
+  );
 }
 
 async function idbDeleteValue(key) {
@@ -637,23 +638,11 @@ async function idbDeleteValue(key) {
 // rewritten, and days that disappeared are deleted.
 
 function openUserStoreDb() {
-  return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
-      reject(new Error("IndexedDB is unavailable."));
-      return;
-    }
-    const request = indexedDB.open(USER_STORE_DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(USER_STORE_DATES_STORE))
-        db.createObjectStore(USER_STORE_DATES_STORE);
-      if (!db.objectStoreNames.contains(USER_STORE_META_STORE))
-        db.createObjectStore(USER_STORE_META_STORE);
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error || new Error("Could not open the user store DB."));
-  });
+  return openIdb(
+    USER_STORE_DB_NAME,
+    [USER_STORE_DATES_STORE, USER_STORE_META_STORE],
+    "Could not open the user store DB.",
+  );
 }
 
 // Serialized per-day chunk texts from the last successful write, so the next
@@ -1017,18 +1006,11 @@ function getRailContentHash() {
 }
 
 function openRouteCacheDb() {
-  return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
-      reject(new Error("IndexedDB is unavailable."));
-      return;
-    }
-    const request = indexedDB.open(ROUTE_CACHE_DB_NAME, 1);
-    request.onupgradeneeded = () =>
-      request.result.createObjectStore(ROUTE_CACHE_STORE_NAME);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () =>
-      reject(request.error || new Error("Could not open route cache DB."));
-  });
+  return openIdb(
+    ROUTE_CACHE_DB_NAME,
+    [ROUTE_CACHE_STORE_NAME],
+    "Could not open route cache DB.",
+  );
 }
 
 // Bulk-load all persisted route geometry for the current rail network into the

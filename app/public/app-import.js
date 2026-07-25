@@ -313,34 +313,44 @@ async function replaceTrainStoreFromStoreProgressive(
 // A stale part (train edited without regenerating parts) just misses the cache
 // and falls back to the normal streaming solve for that one train.
 // ---------------------------------------------------------------------------
-let sampleManifestPromise = null;
-async function loadSampleManifest() {
-  if (!sampleManifestPromise) {
-    sampleManifestPromise = (async () => {
-      try {
-        // Revalidate the small manifest on every boot. Sample files are
-        // replaced in place on deploy, so accepting a still-fresh HTTP cache
-        // entry here can pin the browser to an older geometry set.
-        const manifest = await fetchJson(`${SAMPLE_DATA_API}/manifest`, {
-          cache: "no-cache",
-        });
-        if (
-          !manifest ||
-          manifest.format !== 1 ||
-          !Array.isArray(manifest.parts) ||
-          !manifest.parts.length ||
-          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
-        )
+// Memoized manifest fetch + validation, shared by the sample dataset and the
+// curated special-dataset loaders. The memo caches the settled promise for the
+// whole session — an unpublished/unreachable manifest memoizes as null and is
+// NOT retried later. `attachPartsApi` stamps parts_api for datasets living
+// outside SAMPLE_DATA_API, so makeTrainPartsSource fetches their parts from
+// the right place.
+function makeManifestLoader(api, { attachPartsApi = false } = {}) {
+  let manifestPromise = null;
+  return function loadManifest() {
+    if (!manifestPromise) {
+      manifestPromise = (async () => {
+        try {
+          // Revalidate the small manifest on every boot. Dataset files are
+          // replaced in place on deploy, so accepting a still-fresh HTTP cache
+          // entry here can pin the browser to an older geometry set.
+          const manifest = await fetchJson(`${api}/manifest`, {
+            cache: "no-cache",
+          });
+          if (
+            !manifest ||
+            manifest.format !== 1 ||
+            !Array.isArray(manifest.parts) ||
+            !manifest.parts.length ||
+            !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
+          )
+            return null;
+          return attachPartsApi ? { ...manifest, parts_api: api } : manifest;
+        } catch (err) {
+          // No dataset published (or unreachable).
           return null;
-        return manifest;
-      } catch (err) {
-        // No sample published (or unreachable).
-        return null;
-      }
-    })();
-  }
-  return sampleManifestPromise;
+        }
+      })();
+    }
+    return manifestPromise;
+  };
 }
+
+const loadSampleManifest = makeManifestLoader(SAMPLE_DATA_API);
 
 // The manifest's per-day index, defensively filtered to non-empty name lists.
 function sampleManifestDates(manifest) {
@@ -531,114 +541,79 @@ async function loadSampleData({ date = null, bootLoadOptions = null } = {}) {
   return result;
 }
 
-// Load the independent 2025-12-31 → 2026-01-01 New Year grand loop. Its
-// manifest lives outside SAMPLE_DATA_API, so bootStaticData's random-day
-// selection can never include it.
-let newYearGrandLoopManifestPromise = null;
-async function loadNewYearGrandLoopManifest() {
-  if (!newYearGrandLoopManifestPromise) {
-    newYearGrandLoopManifestPromise = (async () => {
-      try {
-        const manifest = await fetchJson(`${NEW_YEAR_GRAND_LOOP_API}/manifest`, {
-          cache: "no-cache",
-        });
-        if (
-          !manifest ||
-          manifest.format !== 1 ||
-          !Array.isArray(manifest.parts) ||
-          !manifest.parts.length ||
-          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
-        )
-          return null;
-        return { ...manifest, parts_api: NEW_YEAR_GRAND_LOOP_API };
-      } catch (err) {
-        return null;
-      }
-    })();
-  }
-  return newYearGrandLoopManifestPromise;
+// Loader for one independent curated dataset (e.g. the 2025-12-31 →
+// 2026-01-01 New Year grand loop). Each dataset's manifest lives outside
+// SAMPLE_DATA_API, so bootStaticData's random-day selection can never include
+// it; loading one is ephemeral exactly like the sample (nothing persists, the
+// whole itinerary shows on the combined 全部 view).
+function makeCuratedDatasetLoader({ api, mode, missingKey, sourceKey, loadedKey }) {
+  const loadManifest = makeManifestLoader(api, { attachPartsApi: true });
+  return async function loadCuratedDataset() {
+    const manifest = await loadManifest();
+    if (!manifest) throw new Error(I18N.t(missingKey));
+    // Flip the mode BEFORE the progressive load so any save triggered while
+    // the dataset streams in is dropped, never written over the user's store.
+    dataSourceMode = mode;
+    sampleModeDate = null;
+    sampleEditHintShown = false;
+    updateDataSourceUi();
+    const result = await replaceTrainStoreFromPartsProgressive(
+      manifest,
+      I18N.t(sourceKey),
+      {
+        showAllDates: true,
+        selectFirstTrain: false,
+        persistEachStep: false,
+        finalPersist: false,
+      },
+    );
+    updateDataSourceUi();
+    setStatus(
+      els.importStatus,
+      I18N.t(loadedKey, { count: result.count }),
+      "ok",
+    );
+    return result;
+  };
 }
 
-async function loadNewYearGrandLoopData() {
-  const manifest = await loadNewYearGrandLoopManifest();
-  if (!manifest) throw new Error(I18N.t("err.noNewYearGrandLoopData"));
-  dataSourceMode = "sample-new-year-grand-loop";
-  sampleModeDate = null;
-  sampleEditHintShown = false;
-  updateDataSourceUi();
-  const result = await replaceTrainStoreFromPartsProgressive(
-    manifest,
-    I18N.t("src.newYearGrandLoop"),
-    {
-      showAllDates: true,
-      selectFirstTrain: false,
-      persistEachStep: false,
-      finalPersist: false,
-    },
-  );
-  updateDataSourceUi();
-  setStatus(
-    els.importStatus,
-    I18N.t("status.newYearGrandLoopLoaded", { count: result.count }),
-    "ok",
-  );
-  return result;
-}
+const loadNewYearGrandLoopData = makeCuratedDatasetLoader({
+  api: NEW_YEAR_GRAND_LOOP_API,
+  mode: "sample-new-year-grand-loop",
+  missingKey: "err.noNewYearGrandLoopData",
+  sourceKey: "src.newYearGrandLoop",
+  loadedKey: "status.newYearGrandLoopLoaded",
+});
 
-let tokyoLimitedExpressLoopManifestPromise = null;
-async function loadTokyoLimitedExpressLoopManifest() {
-  if (!tokyoLimitedExpressLoopManifestPromise) {
-    tokyoLimitedExpressLoopManifestPromise = (async () => {
-      try {
-        const manifest = await fetchJson(
-          `${TOKYO_LIMITED_EXPRESS_LOOP_API}/manifest`,
-          { cache: "no-cache" },
-        );
-        if (
-          !manifest ||
-          manifest.format !== 1 ||
-          !Array.isArray(manifest.parts) ||
-          !manifest.parts.length ||
-          !ACCEPTED_SCHEMA_VERSIONS.includes(manifest.schema_version)
-        )
-          return null;
-        return {
-          ...manifest,
-          parts_api: TOKYO_LIMITED_EXPRESS_LOOP_API,
-        };
-      } catch (err) {
-        return null;
-      }
-    })();
-  }
-  return tokyoLimitedExpressLoopManifestPromise;
-}
+const loadTokyoLimitedExpressLoopData = makeCuratedDatasetLoader({
+  api: TOKYO_LIMITED_EXPRESS_LOOP_API,
+  mode: "sample-tokyo-limited-express-loop",
+  missingKey: "err.noTokyoLimitedExpressLoopData",
+  sourceKey: "src.tokyoLimitedExpressLoop",
+  loadedKey: "status.tokyoLimitedExpressLoopLoaded",
+});
 
-async function loadTokyoLimitedExpressLoopData() {
-  const manifest = await loadTokyoLimitedExpressLoopManifest();
-  if (!manifest) throw new Error(I18N.t("err.noTokyoLimitedExpressLoopData"));
-  dataSourceMode = "sample-tokyo-limited-express-loop";
-  sampleModeDate = null;
-  sampleEditHintShown = false;
-  updateDataSourceUi();
-  const result = await replaceTrainStoreFromPartsProgressive(
-    manifest,
-    I18N.t("src.tokyoLimitedExpressLoop"),
-    {
-      showAllDates: true,
-      selectFirstTrain: false,
-      persistEachStep: false,
-      finalPersist: false,
-    },
-  );
-  updateDataSourceUi();
-  setStatus(
-    els.importStatus,
-    I18N.t("status.tokyoLimitedExpressLoopLoaded", { count: result.count }),
-    "ok",
-  );
-  return result;
-}
+// The dataset-replacing 資料來源 buttons, wired by bindEvents() as one shared
+// handler each: confirm → disable → fit Japan → load → error status → refresh
+// the source UI. Loading any of these never touches the user's saved data,
+// but it DOES replace what is on screen — hence the per-button confirm.
+const CURATED_DATASET_BUTTONS = [
+  {
+    buttonId: "load-sample-all",
+    confirmKey: "confirm.loadSampleAll",
+    load: () => loadSampleData({ date: null }),
+  },
+  {
+    buttonId: "load-new-year-grand-loop",
+    confirmKey: "confirm.loadNewYearGrandLoop",
+    load: () => loadNewYearGrandLoopData(),
+  },
+  {
+    buttonId: "load-tokyo-limited-express-loop",
+    confirmKey: "confirm.loadTokyoLimitedExpressLoop",
+    load: () => loadTokyoLimitedExpressLoopData(),
+  },
+];
 
 // Bring the user's own saved data back on screen (leaves sample mode). The
 // sample view is discarded; the IndexedDB store was never touched by it.

@@ -41,7 +41,7 @@
           // behaving exactly as before.
           edate: r.edate || r.tdate || "",
           dspan: r.dspan || "|" + (r.tdate || "") + "|",
-          color: "rgb(" + r.color[0] + "," + r.color[1] + "," + r.color[2] + ")",
+          color: rgbCss(r.color),
           alpha: r.color.length > 3 ? r.color[3] / 255 : 1,
           width: r.width,
         },
@@ -49,109 +49,33 @@
     };
   }
 
-  // Pick geometry — STATE-AWARE. Hover must only trigger directly ON a
-  // visible line, never across the not-yet-expanded fan region:
-  //   collapsed  -> every record's hit geometry sits on the TRUE TRACK
-  //                 (where the line is actually drawn), narrow width;
-  //   fan open   -> ONLY the open group's member records move to their
-  //                 per-lane offset paths (matching the visibly fanned
-  //                 lines; the spacing-wide lanes tile the corridor so the
-  //                 pointer can slide between the parallel lines).
-  // `idx` maps a picked feature back to the full record in _records
-  // (tooltip lane info, click target, group key).
-  function routePickRecordsToFC(
-    records,
-    groupInfo,
-    openGroup,
-    fanDir,
-    fanSpacingDeg,
-    transition,
-  ) {
-    const features = records.map((r, i) => {
-      const tid = (r.train && r.train.id) || "";
-      const transitioning = Boolean(
-        transition &&
-          (r.groupKey === transition.fromGroup ||
-            r.groupKey === transition.toGroup),
-      );
-      const fanned = Boolean(
-        transitioning || (openGroup && r.groupKey === openGroup),
-      );
-      // Fanned hit areas follow the CURRENT dynamic fan direction (the
-      // smoothed-corridor perpendicular under the pointer) so they always
-      // sit on the visibly fanned lines; static pickPath is the fallback.
-      let coords = r.path;
-      if (fanned) {
-        if (transitioning) {
-          const off = transitionOffsetForTid(
-            transition,
-            tid,
-            fanSpacingDeg,
-            fanDir,
-          );
-          coords = r.path.map((p) => [p[0] + off.dx, p[1] + off.dy]);
-        } else if (fanDir && r.laneMult != null && fanSpacingDeg) {
-          const dx = fanDir.sx * r.laneMult * fanSpacingDeg;
-          const dy = fanDir.sy * r.laneMult * fanSpacingDeg;
-          coords = r.path.map((p) => [p[0] + dx, p[1] + dy]);
-        } else {
-          coords = r.pickPath || r.path;
-        }
-      }
-      return {
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: coords,
-        },
-        properties: {
-          idx: i,
-          tid,
-          pickWidth:
-            fanned && r.pickWidth != null
-              ? r.pickWidth
-              : Math.max(r.width + 8, 14),
-          nopick: r.nopick ? 1 : 0,
-        },
-      };
-    });
+  // STATIC pick geometry. Hover must only trigger directly ON a visible
+  // line, never across the not-yet-expanded fan region, so every record's
+  // hit geometry sits on the TRUE TRACK (where the line is actually drawn),
+  // narrow width. The open fan's per-lane hit areas live in the separate
+  // fan-scoped source (routePickFanFC below), so this dataset never depends
+  // on fan state or lane spacing. `idx` maps a picked feature back to the
+  // full record in _records (tooltip lane info, click target, group key).
+  function routePickRecordsToFC(records, groupInfo) {
+    const features = records.map((r, i) => ({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: r.path },
+      properties: {
+        idx: i,
+        tid: (r.train && r.train.id) || "",
+        pickWidth: Math.max(r.width + 8, 14),
+        nopick: r.nopick ? 1 : 0,
+      },
+    }));
     // Source-feature seams have no visible geometry between their endpoints,
     // but they are part of the same overlap corridor. Tiny pick-only bridges
-    // keep that corridor continuous both before and after the fan opens.
+    // keep that corridor continuous before the fan opens.
     if (groupInfo)
-      groupInfo.forEach((gi, groupKey) => {
+      groupInfo.forEach((gi) => {
         (gi.pickBridges || []).forEach((bridge) => {
-          const transitioning = Boolean(
-            transition &&
-              (groupKey === transition.fromGroup ||
-                groupKey === transition.toGroup),
-          );
-          const fanned = Boolean(
-            transitioning || (openGroup && groupKey === openGroup),
-          );
-          let coords = bridge.path;
-          if (fanned) {
-            let dx;
-            let dy;
-            if (transitioning) {
-              const off = transitionOffsetForTid(
-                transition,
-                bridge.tid,
-                fanSpacingDeg,
-                fanDir,
-              );
-              dx = off.dx;
-              dy = off.dy;
-            } else {
-              const d = fanDir || gi;
-              dx = d.sx * bridge.laneMult * fanSpacingDeg;
-              dy = d.sy * bridge.laneMult * fanSpacingDeg;
-            }
-            coords = bridge.path.map((p) => [p[0] + dx, p[1] + dy]);
-          }
           features.push({
             type: "Feature",
-            geometry: { type: "LineString", coordinates: coords },
+            geometry: { type: "LineString", coordinates: bridge.path },
             properties: {
               idx: bridge.idx,
               tid: bridge.tid,
@@ -166,7 +90,7 @@
 
   // FAN-ONLY pick geometry: just the open group's (or the transitioning
   // groups') member records, translated into their per-lane paths — the
-  // dynamic complement of routePickRecordsToFC(records, groupInfo, null, ...).
+  // dynamic complement of the static routePickRecordsToFC dataset above.
   // Uploaded into its own small source so opening/closing a fan never
   // re-tiles the whole static pick dataset. `idx` still indexes _records.
   function routePickFanFC(records, groupInfo, openGroup, fanDir, fanSpacingDeg, transition) {
@@ -369,6 +293,9 @@
     );
   }
 
+  // Arc-length point sampling on a fitted curve ({pts, cum, totalMeters}).
+  // Exported: the app family's station-join probing delegates here, so this
+  // binary-search sampler stays the single implementation.
   function curvePointAt(curve, metres) {
     const pts = curve.pts;
     const cum = curve.cum;
@@ -836,6 +763,7 @@
     routeExpandFC,
     routeExpandTransitionFC,
     transitionOffsetForTid,
+    curvePointAt,
     fanPerpAt,
     fitCurvesToFC,
     diagnoseFitCurves,

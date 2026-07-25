@@ -107,7 +107,11 @@ function selectDateBucket(date) {
   renderEditor();
   updateSelectionHighlight();
   scrollActiveDateButtonIntoView();
-  if (focusZoomEnabled && date !== ALL_DATES) fitDateBounds(date);
+  // Whole-day auto-focus skips hidden trains; the single-train fit does not.
+  if (focusZoomEnabled && date !== ALL_DATES)
+    fitTrainsBounds(getTrainsForDate(trainStore.trains, date), {
+      onlyVisible: true,
+    });
 }
 
 // Two-stage train pick shared by the sidebar card and the on-map route line.
@@ -329,7 +333,7 @@ function selectTrain(id, { fit = false } = {}) {
   perfMeasure("renderEditor", renderEditor);
   perfMeasure("renderTrainLayers", renderTrainLayers);
   scheduleExportTextareaRefresh();
-  if (fit && train) fitTrainBounds(train);
+  if (fit && train) fitTrainsBounds([train]);
 }
 
 // Bring the highlighted sidebar card into view after a map-driven selection.
@@ -349,32 +353,6 @@ function scrollActiveDateButtonIntoView() {
   if (active && typeof active.scrollIntoView === "function") {
     active.scrollIntoView({ block: "nearest", inline: "center" });
   }
-}
-
-// Auto-focus the map on every train of a given date (its whole-day view).
-function fitDateBounds(date) {
-  if (!map) return;
-  const dayTrains = getTrainsForDate(trainStore.trains, date).filter(
-    (t) => t.visible !== false,
-  );
-  const features = [];
-  dayTrains.forEach((train) => {
-    getMatchedRouteFeatures(train).forEach((feature) => features.push(feature));
-  });
-  const bounds = featureCollectionBounds(features);
-  if (bounds) {
-    smoothFitBounds(bounds, { maxZoom: 11 });
-    return;
-  }
-  const points = [];
-  dayTrains.forEach((train) =>
-    (train.stops || []).forEach((stop) => {
-      const ll = resolveStationForTrain(stop, train);
-      if (ll) points.push(toLatLng(ll));
-    }),
-  );
-  const ptBounds = latLngPointsBounds(points);
-  if (ptBounds) smoothFitBounds(ptBounds, { maxZoom: 11 });
 }
 
 // Render minutes-from-midnight back to "HH:mm" (wrapping next-day times).

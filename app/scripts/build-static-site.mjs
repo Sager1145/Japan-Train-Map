@@ -1,19 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+// The server's dataset registry is the single owner of what api/ contains.
+const { DATA_FILES, PART_DATASETS } = require("../server/datasets.js");
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_APP_DIR = path.join(SCRIPT_DIR, "..");
 const DEFAULT_OUTPUT_DIR = path.join(DEFAULT_APP_DIR, "..", "_site");
 
-export const DATASET_NAMES = [
-  "rail-sections",
-  "stations",
-  "default-trains",
-  "matched-routes",
-  "matched-stops",
-  "station-readings",
-];
+export const DATASET_NAMES = Object.keys(DATA_FILES);
 
 async function pathExists(filePath) {
   try {
@@ -51,19 +49,28 @@ async function copyPrecomputedDataDir(sourceDir, destinationDir) {
 // templates need a `.json` suffix. Applied to EVERY staged app*.js file:
 // the templates have already migrated between app modules once (app.js →
 // app-persistence.js/app-events.js during the frontend split), and rewriting
-// the whole family keeps the contract immune to that drift.
+// the whole family keeps the contract immune to that drift. Returns the
+// replacement count so the caller can verify the templates still exist
+// SOMEWHERE in the family (a zero total would ship backend-shaped URLs that
+// 404 on Pages).
 function rewriteApiTemplates(source) {
-  return source
-    .split("`${API_BASE}/${path}`")
-    .join("`${API_BASE}/${path}.json`")
-    .split("`${API_BASE}/${TRAIN_STORE_API}`")
-    .join("`${API_BASE}/${TRAIN_STORE_API}.json`");
+  let rewritten = source;
+  let count = 0;
+  for (const [from, to] of [
+    ["`${API_BASE}/${path}`", "`${API_BASE}/${path}.json`"],
+    ["`${API_BASE}/${TRAIN_STORE_API}`", "`${API_BASE}/${TRAIN_STORE_API}.json`"],
+  ]) {
+    const pieces = rewritten.split(from);
+    count += pieces.length - 1;
+    rewritten = pieces.join(to);
+  }
+  return { source: rewritten, count };
 }
 
 // app.js additionally carries the HAS_BACKEND flag that gates every
 // backend-only call (SSE live refresh, server autosave/clear).
-function rewriteStaticApp(source) {
-  const rewritten = rewriteApiTemplates(source);
+function rewriteStaticApp(appSource) {
+  const { source: rewritten, count } = rewriteApiTemplates(appSource);
   const flipped = rewritten
     .split("const HAS_BACKEND = true;")
     .join("const HAS_BACKEND = false;");
@@ -72,7 +79,7 @@ function rewriteStaticApp(source) {
       "HAS_BACKEND flag not found in app.js — refusing to ship a static build that would 404 on /api/events",
     );
   }
-  return flipped;
+  return { source: flipped, count };
 }
 
 export async function buildStaticSite({
@@ -82,15 +89,6 @@ export async function buildStaticSite({
 } = {}) {
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
-  const sampleDataDir = path.join(dataDir, "sample-data");
-  const newYearGrandLoopDataDir = path.join(
-    dataDir,
-    "new-year-grand-loop-data",
-  );
-  const tokyoLimitedExpressLoopDataDir = path.join(
-    dataDir,
-    "tokyo-limited-express-loop-data",
-  );
   const outputParent = path.dirname(outputDir);
   const outputName = path.basename(outputDir);
   const buildId = `${process.pid}-${Date.now()}`;
@@ -124,45 +122,28 @@ export async function buildStaticSite({
     // train-store.json is deliberately NOT published: on the static site it is
     // only the source the sample-data parts are generated from. User data lives
     // in the browser (IndexedDB); the sample is served from api/sample-data/.
-    if (!(await pathExists(path.join(sampleDataDir, "manifest.json")))) {
-      throw new Error(
-        "Precomputed sample data is missing; run scripts/precompute-train-parts.mjs first.",
-      );
+    for (const dataset of PART_DATASETS) {
+      const sourceDir = path.join(dataDir, dataset.dir);
+      if (!(await pathExists(path.join(sourceDir, "manifest.json")))) {
+        throw new Error(dataset.missingDataError);
+      }
+      await copyPrecomputedDataDir(sourceDir, path.join(apiDir, dataset.dir));
     }
-    await copyPrecomputedDataDir(
-      sampleDataDir,
-      path.join(apiDir, "sample-data"),
-    );
-    if (!(await pathExists(path.join(newYearGrandLoopDataDir, "manifest.json")))) {
-      throw new Error(
-        "Precomputed New Year grand-loop data is missing; run npm run precompute:new-year-grand-loop first.",
-      );
-    }
-    await copyPrecomputedDataDir(
-      newYearGrandLoopDataDir,
-      path.join(apiDir, "new-year-grand-loop-data"),
-    );
-    if (
-      !(await pathExists(
-        path.join(tokyoLimitedExpressLoopDataDir, "manifest.json"),
-      ))
-    ) {
-      throw new Error(
-        "Precomputed Tokyo limited-express loop data is missing; run npm run precompute:tokyo-limited-express-loop first.",
-      );
-    }
-    await copyPrecomputedDataDir(
-      tokyoLimitedExpressLoopDataDir,
-      path.join(apiDir, "tokyo-limited-express-loop-data"),
-    );
 
+    let apiTemplateRewrites = 0;
     for (const name of await fs.readdir(stagingDir)) {
       if (!(name.startsWith("app") && name.endsWith(".js"))) continue;
       const filePath = path.join(stagingDir, name);
       const source = await fs.readFile(filePath, "utf8");
-      const rewritten =
+      const { source: rewritten, count } =
         name === "app.js" ? rewriteStaticApp(source) : rewriteApiTemplates(source);
+      apiTemplateRewrites += count;
       if (rewritten !== source) await fs.writeFile(filePath, rewritten);
+    }
+    if (apiTemplateRewrites === 0) {
+      throw new Error(
+        "No ${API_BASE} fetch template found in the app*.js family — refusing to ship a static build whose API URLs would 404 on Pages.",
+      );
     }
 
     const indexPath = path.join(stagingDir, "index.html");

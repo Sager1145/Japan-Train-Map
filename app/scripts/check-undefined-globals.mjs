@@ -1,20 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { Linter } from "eslint";
 import globals from "globals";
+import {
+  PUBLIC_DIR,
+  readOrderedAppScripts,
+} from "./lib/app-family-sandbox.mjs";
 
-const APP_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PUBLIC_DIR = path.join(APP_DIR, "public");
-const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
-const scriptNames = [...html.matchAll(/<script\s+src="([^"]+)"/g)]
-  .map((match) => match[1].split(/[?#]/, 1)[0])
-  .filter(
-    (name) =>
-      !name.includes("/") &&
-      name.endsWith(".js") &&
-      fs.existsSync(path.join(PUBLIC_DIR, name)),
-  );
+// Unlike the vm replay consumers, this pass lints EVERY first-party root
+// script that exists on disk (i18n.js, railmap*.js, ...), not just the
+// app-*.js family — hence the custom filter.
+const scriptNames = readOrderedAppScripts({
+  filter: (name) =>
+    !name.includes("/") &&
+    name.endsWith(".js") &&
+    fs.existsSync(path.join(PUBLIC_DIR, name)),
+});
 
 // These files are classic scripts sharing one browser global environment.
 // Linting them one-by-one reports every legitimate cross-file reference as

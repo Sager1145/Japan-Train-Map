@@ -243,3 +243,11 @@ function resolveStationCandidates(stopOrName) {
   return nameCandidates.length ? nameCandidates : codeCandidates;
 }
 
+// CommonJS export tail (precedent: app-core.js / rail-network.js) so the Node
+// build scripts can share the station-name normalization rule. In the browser
+// (and the precompute VM replay) `module` is undefined and the functions above
+// are already plain globals, so this is inert there.
+if (typeof module === "object" && module.exports) {
+  module.exports = { normalizeStationName };
+}
+

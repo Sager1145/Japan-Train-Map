@@ -96,52 +96,20 @@ const HSR_RECLASSIFY_OU_CORRIDORS = [
   { display: "秋田新幹線", from: [140.47996, 39.46546], to: [140.12947, 39.71836] },
 ];
 
-// Minimal binary min-heap for the corridor trace, kept local so app-stats has
-// no load-order dependency on the route solver's heap.
-class StatsMinHeap {
-  constructor() {
-    this._h = [];
-  }
-  get size() {
-    return this._h.length;
-  }
-  push(priority, value) {
-    const h = this._h;
-    h.push([priority, value]);
-    let i = h.length - 1;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (h[p][0] <= h[i][0]) break;
-      [h[p], h[i]] = [h[i], h[p]];
-      i = p;
-    }
-  }
-  pop() {
-    const h = this._h;
-    const top = h[0];
-    const last = h.pop();
-    if (h.length) {
-      h[0] = last;
-      let i = 0;
-      const n = h.length;
-      for (;;) {
-        const l = 2 * i + 1;
-        const r = l + 1;
-        let s = i;
-        if (l < n && h[l][0] < h[s][0]) s = l;
-        if (r < n && h[r][0] < h[s][0]) s = r;
-        if (s === i) break;
-        [h[s], h[i]] = [h[i], h[s]];
-        i = s;
-      }
-    }
-    return top;
-  }
-}
+// Tuple min-heap for the corridor trace: AppCore's shared [priority, value]
+// heap (the route solver keeps its own object-shaped heap — different API).
+const StatsMinHeap = window.AppCore.TupleMinHeap;
 
-function statsNodeKey(coord) {
-  return statsQuant(coord[0]) + "," + statsQuant(coord[1]);
-}
+// N02 5-decimal grid + shared geometry primitives. AppCore (app-core.js) is
+// the single owner of the grid rule: N02 mixes 5-decimal and full-precision
+// 8-decimal vertices (e.g. 北陸新幹線), and the route solver's graph, the deck
+// segment keys and the build-time station expansion all quantize through the
+// same functions — so edge keys here match ridden-route geometry byte for
+// byte. Local aliases keep the hot loops' call sites short.
+const statsQuant = window.AppCore.quant5;
+const statsNodeKey = window.AppCore.coordKey5;
+const statsEdgeKey = window.AppCore.edgeKey5;
+const statsEdgeKm = window.AppCore.equirectKm;
 
 // Nearest subgraph node to an endpoint (station) coordinate, so a corridor snaps
 // onto its line even when the station point isn't itself a graph vertex. Returns
@@ -199,29 +167,8 @@ function statsZeroCatKm() {
   return o;
 }
 
-function statsEdgeKm(ax, ay, bx, by) {
-  const kx = 111.32 * Math.cos((((ay + by) / 2) * Math.PI) / 180);
-  const dx = (ax - bx) * kx;
-  const dy = (ay - by) * 110.574;
-  return Math.hypot(dx, dy);
-}
-
-// N02 coordinates mix 5-decimal (most lines) and full-precision 8-decimal
-// vertices (e.g. 北陸新幹線), while the route solver's graph normalizes all
-// nodes to 5 decimals — so edge keys MUST quantize to the same 5-decimal grid
-// on both sides or full-precision lines never match their ridden routes.
-function statsQuant(v) {
-  return Math.round(v * 1e5) / 1e5;
-}
-function statsEdgeKey(a, b) {
-  const ax = statsQuant(a[0]);
-  const ay = statsQuant(a[1]);
-  const bx = statsQuant(b[0]);
-  const by = statsQuant(b[1]);
-  return ax < bx || (ax === bx && ay < by)
-    ? ax + "," + ay + "|" + bx + "," + by
-    : bx + "," + by + "|" + ax + "," + ay;
-}
+// (statsQuant / statsNodeKey / statsEdgeKey / statsEdgeKm are aliases of the
+// AppCore grid primitives — declared above, next to StatsMinHeap.)
 
 // Built once from rail-sections (the untouched N02-25 data) and reused for
 // every stats refresh: edge key -> index into parallel km/mask arrays.
@@ -408,12 +355,7 @@ function aggregateMileageStats(idx, entries) {
 // end-before-start wraps overnight). null = no usable times.
 function trainRideMinutes(train) {
   const stops = train.stops || [];
-  const ridden = [];
-  stops.forEach((stop, idx) => {
-    if (!stop || stop.stop_type === "pass_through") return;
-    if (!effectiveStopRide(stops, idx)) return;
-    ridden.push(idx);
-  });
+  const ridden = effectivelyRiddenStopIndexes(stops);
   if (ridden.length < 2) return null;
   const first = stops[ridden[0]];
   const last = stops[ridden[ridden.length - 1]];

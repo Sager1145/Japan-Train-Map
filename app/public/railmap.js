@@ -1045,6 +1045,10 @@
           holdRadiusPx: HOVER_FAN_HOLD_PX,
           switchRadiusPx: HOVER_GROUP_SWITCH_PX,
           zoom: this._map ? +this._map.getZoom().toFixed(2) : null,
+          // Debug approximation on the 256px-tile zoom convention (raw
+          // getZoom()) — intentionally 2× the 512px (z + 1) convention that
+          // app-overlap-lanes.js's overlapOffsetDeg uses for real lane
+          // spacing. Report-only precision; do not "fix" one to the other.
           stickyRadiusApproxMeters:
             this._map && state && state.point
               ? +(
@@ -1097,10 +1101,6 @@
           routePickRecordsToFC(
             this._visible ? this._records : [],
             this._groupInfo,
-            null,
-            null,
-            0,
-            null,
           ),
         );
       // The fan source mirrors the current fan state against the NEW records.

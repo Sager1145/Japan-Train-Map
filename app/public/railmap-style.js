@@ -120,11 +120,27 @@
   // stationRadiusExpression's 2.4/5 & 1.4/3 ratios). `radiusBoost` widens the
   // SEL layers' dots (focus emphasis without any record rebuild); `sel` layers
   // also force full opacity so a selected off-date train's dots un-dim.
+  // The one marker-size zoom ramp (full size at z12, ×0.48 at z5) shared by
+  // every point marker — circle radii and the cross-day diamond icon scale
+  // must shrink in lockstep or the diamond reads over/under-sized next to
+  // its neighbouring stop dots.
+  function zoomMarkerRamp(expr) {
+    return [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      5,
+      ["*", expr, 0.48],
+      12,
+      expr,
+    ];
+  }
+
   function markerRadiusExpr(radiusBoost) {
     const r = radiusBoost
       ? ["+", ["get", "radius"], radiusBoost]
       : ["get", "radius"];
-    return ["interpolate", ["linear"], ["zoom"], 5, ["*", r, 0.48], 12, r];
+    return zoomMarkerRamp(r);
   }
 
   // Selected marker growth stays role-aware: a terminal keeps the full focus
@@ -145,8 +161,7 @@
   // own radius — on the same zoom ramp as every circle marker.
   const XDAY_ICON_BASE_RADIUS = 10;
   function xdayIconSizeExpr() {
-    const scale = ["/", ["get", "radius"], XDAY_ICON_BASE_RADIUS];
-    return ["interpolate", ["linear"], ["zoom"], 5, ["*", scale, 0.48], 12, scale];
+    return zoomMarkerRamp(["/", ["get", "radius"], XDAY_ICON_BASE_RADIUS]);
   }
 
   const SELECTED_STOP_STROKE_SCALE = [

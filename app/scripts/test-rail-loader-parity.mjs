@@ -10,6 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import {
+  EXPECTED_RENDER_HASH,
+  renderRelevantSnapshot,
+} from "./lib/render-snapshot.mjs";
 
 const require = createRequire(import.meta.url);
 const RailNetwork = require("../public/rail-network.js");
@@ -19,22 +23,6 @@ const RAIL_PACKAGE_PATH = path.join(
   "../public/rail/jp-2025.json",
 );
 const LEGACY_PACKAGE_PATH = `${RAIL_PACKAGE_PATH}.legacy.bak`;
-const EXPECTED_RENDER_HASH =
-  "5501a86e437556287c713d71b0177251f1fd87d0968bdb5531528e919ea4a7cd";
-
-function renderRelevantSnapshot(network) {
-  return {
-    version: network.version,
-    segments: network.segments.features,
-    stations: network.stations.features,
-    lines: [...network.lineById.entries()],
-    stationRows: [...network.stationById.entries()],
-    groups: [...network.groupMembers.entries()].map(([key, rows]) => [
-      key,
-      rows.map((row) => row.stationId),
-    ]),
-  };
-}
 
 function oldLoad(pkg) {
   const lineById = new Map();

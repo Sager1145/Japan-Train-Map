@@ -9,6 +9,26 @@ function datasetEtag(stat) {
   return `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
 }
 
+// Stream filePath into an Express response with the shared teardown plumbing:
+// a failure before headers went out gets a JSON 500 (`errorMessage` is the
+// user-visible body, so callers pass their exact route string); after headers
+// the response can only be destroyed. The close handler matters: pipe() never
+// destroys the source when the client disconnects, so every aborted multi-MB
+// transfer would leak one open fd for the server's lifetime.
+function streamFile(res, filePath, { logger = console, logLabel, errorMessage }) {
+  const stream = fs.createReadStream(filePath);
+  stream.on("error", (err) => {
+    logger.error(logLabel, err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: errorMessage });
+    } else {
+      res.destroy();
+    }
+  });
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+}
+
 function createFileDelivery({ logger = console } = {}) {
   const gzipBuilds = new Map();
 
@@ -79,19 +99,11 @@ function createFileDelivery({ logger = console } = {}) {
       }
     }
 
-    const stream = fs.createReadStream(streamPath);
-    stream.on("error", (err) => {
-      logger.error(`Error streaming ${label}:`, err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to read file" });
-      } else {
-        res.destroy();
-      }
+    streamFile(res, streamPath, {
+      logger,
+      logLabel: `Error streaming ${label}:`,
+      errorMessage: "Failed to read file",
     });
-    // pipe() never destroys the source when the client disconnects; every
-    // aborted multi-MB transfer leaked one open fd for the server's lifetime.
-    res.on("close", () => stream.destroy());
-    stream.pipe(res);
   }
 
   return { serveGzippable };
@@ -100,4 +112,5 @@ function createFileDelivery({ logger = console } = {}) {
 module.exports = {
   createFileDelivery,
   datasetEtag,
+  streamFile,
 };

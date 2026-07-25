@@ -14,7 +14,17 @@
 //    two adjacent stations never come out swapped.
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+// Shared N02 5-decimal grid + geometry primitives: AppCore (public/app-core.js)
+// is the single owner of the grid rule, so this build-time graph quantizes
+// exactly like the in-browser solver/stats and station lookups tolerate the
+// same spelling variants the app tolerates.
+const { quant5: q, coordKey5: nk, equirectKm, TupleMinHeap: MinHeap } =
+  require("../../public/app-core.js");
+const { normalizeStationName } = require("../../public/app-stations.js");
 
 const DATA_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,12 +33,7 @@ const DATA_DIR = path.join(
   "data",
 );
 
-const q = (v) => Math.round(v * 1e5) / 1e5;
-const nk = (c) => `${q(c[0])},${q(c[1])}`;
-function edgeKm(a, b) {
-  const kx = 111.32 * Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180);
-  return Math.hypot((a[0] - b[0]) * kx, (a[1] - b[1]) * 110.574);
-}
+const edgeKm = (a, b) => equirectKm(a[0], a[1], b[0], b[1]);
 
 let _rail = null;
 let _stations = null;
@@ -54,46 +59,7 @@ function loadData() {
   return { rail: _rail, stations: _stations };
 }
 
-// Min-heap keyed by numeric priority.
-class MinHeap {
-  constructor() {
-    this.h = [];
-  }
-  get size() {
-    return this.h.length;
-  }
-  push(p, v) {
-    const h = this.h;
-    h.push([p, v]);
-    let i = h.length - 1;
-    while (i > 0) {
-      const parent = (i - 1) >> 1;
-      if (h[parent][0] <= h[i][0]) break;
-      [h[parent], h[i]] = [h[i], h[parent]];
-      i = parent;
-    }
-  }
-  pop() {
-    const h = this.h;
-    const top = h[0];
-    const last = h.pop();
-    if (h.length) {
-      h[0] = last;
-      let i = 0;
-      for (;;) {
-        const l = 2 * i + 1;
-        const r = l + 1;
-        let s = i;
-        if (l < h.length && h[l][0] < h[s][0]) s = l;
-        if (r < h.length && h[r][0] < h[s][0]) s = r;
-        if (s === i) break;
-        [h[s], h[i]] = [h[i], h[s]];
-        i = s;
-      }
-    }
-    return top;
-  }
-}
+// (MinHeap is AppCore.TupleMinHeap — the shared [priority, value] tuple heap.)
 
 // Build the multi-line subgraph + node→station map + code→nodes index.
 function buildGraph(lineNames) {
@@ -214,15 +180,26 @@ export function expandRouteStations(fromCode, toCode, lineNames) {
 export function findStationCode(name, lineNames) {
   const { stations } = loadData();
   const lines = new Set(lineNames || []);
-  const feature = (stations.features || []).find((candidate) => {
-    const properties = candidate.properties || {};
-    return (
-      properties.N02_005 === name &&
-      (!lines.size || lines.has(String(properties.N02_003))) &&
-      properties.N02_005c
-    );
-  });
-  return feature?.properties?.N02_005c || null;
+  const findByName = (matchesName) =>
+    (stations.features || []).find((candidate) => {
+      const properties = candidate.properties || {};
+      return (
+        matchesName(properties.N02_005) &&
+        (!lines.size || lines.has(String(properties.N02_003))) &&
+        properties.N02_005c
+      );
+    });
+  // Exact N02_005 match first (so no previously-succeeding lookup can change),
+  // then the app's tolerant normalization (NFKC + ヶ/ヵ/ゖ/ゕ + whitespace) for
+  // the spelling variants N02 and hand-written specs disagree on. A true miss
+  // still returns null so callers keep their loud failure.
+  const exact = findByName((candidate) => candidate === name);
+  if (exact) return exact.properties.N02_005c;
+  const normalizedName = normalizeStationName(name);
+  const normalized = findByName(
+    (candidate) => normalizeStationName(candidate) === normalizedName,
+  );
+  return normalized?.properties?.N02_005c || null;
 }
 
 // Expand explicitly split physical route pieces. This keeps line constraints

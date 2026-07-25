@@ -384,17 +384,14 @@ function deckGetTooltip(info) {
         if (net) RailMap._tooltipRecord = null;
       });
     }
-    const times = [];
-    if (pr.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(pr.arrival)}`);
-    if (pr.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(pr.departure)}`);
-    // The stop's date rides along after its times.
-    if (times.length && o.train) {
-      const d = dateLabel(getTrainDate(o.train));
-      if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
-    }
-    const timeHtml = times.length
-      ? `<div class="rp-popup-times">${times.join("\u3000")}</div>`
-      : "";
+    // The stop's date rides along after its times (popupTimesHtml).
+    const timeHtml = popupTimesHtml(
+      [
+        ["tag.arr", pr.arrival],
+        ["tag.dep", pr.departure],
+      ],
+      o.train ? dateLabel(getTrainDate(o.train)) : "",
+    );
     const code = pr.n02_station_code || pr.N02_005c || null;
     return {
       html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(I18N.placeName(name, code))}</span></div>${timeHtml}</div>`,
@@ -412,21 +409,20 @@ function deckGetTooltip(info) {
   const dest = t.destination || "";
   const oStop = (t.stops || []).find((x) => x.stop_type === "origin");
   const dStop = (t.stops || []).find((x) => x.stop_type === "destination");
-  const times = [];
-  if (oStop && oStop.departure) times.push(`${I18N.t("tag.dep")} ${escapeHtml(oStop.departure)}`);
-  if (dStop && dStop.arrival) times.push(`${I18N.t("tag.arr")} ${escapeHtml(dStop.arrival)}`);
-  // The train's running date rides along after its times.
-  {
-    const d = dateLabel(getTrainDate(t));
-    if (d) times.push(`<span class="rp-popup-date">${escapeHtml(d)}</span>`);
-  }
+  // Departure BEFORE arrival here (a route reads origin \u2192 destination), and
+  // the running date shows even when neither endpoint carries a time.
+  const timeHtml = popupTimesHtml(
+    [
+      ["tag.dep", oStop && oStop.departure],
+      ["tag.arr", dStop && dStop.arrival],
+    ],
+    dateLabel(getTrainDate(t)),
+    { dateAlways: true },
+  );
   const metaHtml = meta
     ? `<span class="rp-popup-roma">${escapeHtml(meta)}</span>`
     : "";
   const routeHtml = `<div class="rp-popup-route">${escapeHtml(I18N.placeName(origin, oStop && stopStationCode(oStop)))} \u2192 ${escapeHtml(I18N.placeName(dest, dStop && stopStationCode(dStop)))}</div>`;
-  const timeHtml = times.length
-    ? `<div class="rp-popup-times">${times.join("\u3000")}</div>`
-    : "";
   // Hovering an overlapped stretch: show which parallel lane this train is
   // (date order, left/top = earliest) and hint that sliding sideways switches.
   const overlapHtml =

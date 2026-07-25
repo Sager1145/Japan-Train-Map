@@ -3,22 +3,14 @@
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
-const { createFileDelivery } = require("./file-delivery");
+const { DATA_FILES, PART_DATASETS } = require("./datasets");
+const { createFileDelivery, streamFile } = require("./file-delivery");
 const { createLiveEvents } = require("./live-events");
 const {
   DEFAULT_SCHEMA_VERSION,
   coerceStore,
   createTrainStore,
 } = require("./train-store");
-
-const DATA_FILES = {
-  "rail-sections": "rail-sections.json",
-  stations: "stations.json",
-  "default-trains": "default-trains.json",
-  "matched-routes": "matched-routes.json",
-  "matched-stops": "matched-stops.json",
-  "station-readings": "station-readings.json",
-};
 
 const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
 const STATIC_CACHE_CONTROL = {
@@ -36,15 +28,6 @@ function createApp({
 } = {}) {
   const app = express();
   const trainStore = createTrainStore(path.join(dataDir, "train-store.json"));
-  const sampleDataDir = path.join(dataDir, "sample-data");
-  const newYearGrandLoopDataDir = path.join(
-    dataDir,
-    "new-year-grand-loop-data",
-  );
-  const tokyoLimitedExpressLoopDataDir = path.join(
-    dataDir,
-    "tokyo-limited-express-loop-data",
-  );
   const { serveGzippable } = createFileDelivery({ logger });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
@@ -68,78 +51,32 @@ function createApp({
     });
   }
 
-  app.get("/api/sample-data/:name", async (req, res) => {
-    const name = String(req.params.name || "").replace(/\.json$/, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      return res.status(400).json({ error: "Invalid sample data name." });
-    }
-
-    const filePath = path.join(sampleDataDir, `${name}.json`);
-    let stat;
-    try {
-      stat = await fs.promises.stat(filePath);
-    } catch (err) {
-      return res
-        .status(404)
-        .json({ error: `Sample data file not found: ${name}` });
-    }
-    await serveGzippable(
-      req,
-      res,
-      filePath,
-      stat,
-      "no-cache",
-      `sample-data/${name}.json`,
-    );
-  });
-
-  app.get("/api/new-year-grand-loop-data/:name", async (req, res) => {
-    const name = String(req.params.name || "").replace(/\.json$/, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      return res.status(400).json({ error: "Invalid grand-loop data name." });
-    }
-    const filePath = path.join(newYearGrandLoopDataDir, `${name}.json`);
-    let stat;
-    try {
-      stat = await fs.promises.stat(filePath);
-    } catch (err) {
-      return res
-        .status(404)
-        .json({ error: `Grand-loop data file not found: ${name}` });
-    }
-    await serveGzippable(
-      req,
-      res,
-      filePath,
-      stat,
-      "no-cache",
-      `new-year-grand-loop-data/${name}.json`,
-    );
-  });
-
-  app.get("/api/tokyo-limited-express-loop-data/:name", async (req, res) => {
-    const name = String(req.params.name || "").replace(/\.json$/, "");
-    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
-      return res.status(400).json({ error: "Invalid Tokyo loop data name." });
-    }
-    const filePath = path.join(tokyoLimitedExpressLoopDataDir, `${name}.json`);
-    let stat;
-    try {
-      stat = await fs.promises.stat(filePath);
-    } catch (err) {
-      return res
-        .status(404)
-        .json({ error: `Tokyo loop data file not found: ${name}` });
-    }
-    await serveGzippable(
-      req,
-      res,
-      filePath,
-      stat,
-      "no-cache",
-      `tokyo-limited-express-loop-data/${name}.json`,
-    );
-  });
+  for (const dataset of PART_DATASETS) {
+    const datasetDir = path.join(dataDir, dataset.dir);
+    app.get(`/api/${dataset.dir}/:name`, async (req, res) => {
+      const name = String(req.params.name || "").replace(/\.json$/, "");
+      if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+        return res.status(400).json({ error: dataset.invalidNameError });
+      }
+      const filePath = path.join(datasetDir, `${name}.json`);
+      let stat;
+      try {
+        stat = await fs.promises.stat(filePath);
+      } catch (err) {
+        return res
+          .status(404)
+          .json({ error: `${dataset.notFoundLabel} file not found: ${name}` });
+      }
+      await serveGzippable(
+        req,
+        res,
+        filePath,
+        stat,
+        "no-cache",
+        `${dataset.dir}/${name}.json`,
+      );
+    });
+  }
 
   app.get("/api", (req, res) => {
     res.json({
@@ -160,21 +97,15 @@ function createApp({
       return res.status(404).json({ error: "No saved train store yet." });
     }
 
+    // Deliberately NOT serveGzippable: user data must never be cached (no
+    // ETag, no-store) and never gets a .gz sidecar written next to it.
     res.type("application/json");
     res.setHeader("Cache-Control", "no-store");
-    const stream = fs.createReadStream(trainStore.filePath);
-    stream.on("error", (err) => {
-      logger.error("Error reading train-store.json:", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Failed to read train store." });
-      } else {
-        res.destroy();
-      }
+    streamFile(res, trainStore.filePath, {
+      logger,
+      logLabel: "Error reading train-store.json:",
+      errorMessage: "Failed to read train store.",
     });
-    // pipe() never destroys the source when the client disconnects, leaking
-    // one open fd per aborted transfer.
-    res.on("close", () => stream.destroy());
-    stream.pipe(res);
   });
 
   app.put(

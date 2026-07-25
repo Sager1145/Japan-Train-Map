@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultRoutePolicy } from "./lib/build-loop-train.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -61,16 +62,16 @@ function makeTrain({
     direction,
     visible: true,
     style: { color },
-    route_policy: {
-      mode: "single_primary_route",
+    // Override order matches the key order already committed in
+    // train-store.json (JSON.stringify preserves it, so it is part of the
+    // rewrite-in-place byte contract).
+    route_policy: defaultRoutePolicy({
       jr_only: company.startsWith("JR"),
-      allow_alternatives: false,
-      allow_browser_straight_line_fallback: false,
       allowed_institution_type_codes: institutionTypes,
       preferred_line_names: lineNames,
       preferred_operator_names: [operator],
       institution_filter_mode: "soft",
-    },
+    }),
     route_sections: stations.slice(0, -1).map((item, index) => ({
       from_n02_station_code: item.code,
       to_n02_station_code: stations[index + 1].code,

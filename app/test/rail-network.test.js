@@ -18,24 +18,13 @@ const EXPECTED_COUNTS = Object.freeze({
   lines: 594,
   groups: 8967,
 });
-const EXPECTED_RENDER_HASH =
-  "5501a86e437556287c713d71b0177251f1fd87d0968bdb5531528e919ea4a7cd";
-
-function renderRelevantSnapshot(network) {
-  return {
-    version: network.version,
-    segments: network.segments.features,
-    stations: network.stations.features,
-    lines: [...network.lineById.entries()],
-    stationRows: [...network.stationById.entries()],
-    groups: [...network.groupMembers.entries()].map(([key, rows]) => [
-      key,
-      rows.map((row) => row.stationId),
-    ]),
-  };
-}
-
-test("compact rail package produces the characterized render model", () => {
+test("compact rail package produces the characterized render model", async () => {
+  // Snapshot + expected hash are shared with scripts/test-rail-loader-parity.mjs
+  // (one hash update per package regeneration). The shared module is ESM and
+  // this file is CJS, hence the dynamic import.
+  const { EXPECTED_RENDER_HASH, renderRelevantSnapshot } = await import(
+    "../scripts/lib/render-snapshot.mjs"
+  );
   const compactPackage = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
   const network =
     RailNetwork.buildNetworkFromCompactPackage(compactPackage);

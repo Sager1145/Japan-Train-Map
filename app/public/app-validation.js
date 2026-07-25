@@ -255,7 +255,7 @@ function validateTrain(train, index, ids) {
     }
   }
   const color = train.style?.color;
-  if (color && !/^#[0-9a-fA-F]{6}$/.test(color))
+  if (color && !isValidTrainColor(color))
     throw new Error(`${prefix}: style.color must be #RRGGBB.`);
   warnBranchLeak(train);
 }

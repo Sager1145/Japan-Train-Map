@@ -1,10 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  expandRouteStationPieces,
-  findStationCode,
-} from "./lib/expand-route-stations.mjs";
+import { makeLoopTrain, writeLoopStore } from "./lib/build-loop-train.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT = path.join(
@@ -109,106 +105,23 @@ function makeTrain(service) {
     lineNames,
     color,
   ] = service;
-  const details = SERVICE_DETAILS[order] || {};
-  let currentName = origin;
-  let currentCode = originCode;
-  const pieceSpecs = details.routePieces || [
-    { to: destination, lineNames },
-  ];
-  const pieces = pieceSpecs.map((pieceSpec) => {
-    const toCode =
-      pieceSpec.to === destination
-        ? destinationCode
-        : findStationCode(pieceSpec.to, pieceSpec.lineNames);
-    if (!toCode) {
-      throw new Error(
-        `${order}: N02 station code not found for ${pieceSpec.to}`,
-      );
-    }
-    const piece = {
-      from: currentName,
-      to: pieceSpec.to,
-      from_n02_station_code: currentCode,
-      to_n02_station_code: toCode,
-      line_names: pieceSpec.lineNames,
-    };
-    currentName = pieceSpec.to;
-    currentCode = toCode;
-    return piece;
-  });
-  const expanded = expandRouteStationPieces(pieces);
-  if (
-    !expanded ||
-    expanded.stations[0]?.name !== origin ||
-    expanded.stations.at(-1)?.name !== destination
-  ) {
-    throw new Error(`${order}: failed to expand ${origin} -> ${destination}`);
-  }
-  const passengerStops = details.passengerStops
-    ? new Set(details.passengerStops)
-    : null;
-  const stops = expanded.stations.map((station, index) => {
-    const isOrigin = index === 0;
-    const isDestination = index === expanded.stations.length - 1;
-    const isPassengerStop =
-      isOrigin ||
-      isDestination ||
-      !passengerStops ||
-      passengerStops.has(station.name);
-    const times = details.times?.[station.name] || {};
-    return {
-      name: station.name,
-      n02_station_code: station.code,
-      arrival: isOrigin
-        ? null
-        : isDestination
-          ? arrival
-          : times.arrival || null,
-      departure: isDestination
-        ? null
-        : isOrigin
-          ? departure
-          : times.departure || null,
-      stop_type: isOrigin
-        ? "origin"
-        : isDestination
-          ? "destination"
-          : isPassengerStop
-            ? "passenger_stop"
-            : "pass_through",
-      ride_segment: true,
-    };
-  });
-  return {
+  return makeLoopTrain({
+    order,
     id: `tokyo_limited_express_loop_20260529_${order}`,
     date: DATE,
     number,
-    train_type: trainType,
-    company: details.company || "JR東日本",
+    trainType,
     origin,
+    originCode,
+    departure,
     destination,
-    direction: destination,
-    visible: true,
-    style: { color },
-    route_policy: {
-      mode: "single_primary_route",
-      jr_only: true,
-      allow_alternatives: false,
-      allow_browser_straight_line_fallback: false,
-      preferred_line_names: lineNames,
-      preferred_operator_names: [OPERATOR],
-      institution_filter_mode: "soft",
-      allowed_institution_type_codes: ["2"],
-    },
-    route_sections: expanded.sections.map((section) => ({
-      ...section,
-      operator_names: [OPERATOR],
-    })),
-    stops,
-  };
+    destinationCode,
+    arrival,
+    lineNames,
+    color,
+    operator: OPERATOR,
+    details: SERVICE_DETAILS[order] || {},
+  });
 }
 
-const store = { schema_version: "1.3", trains: services.map(makeTrain) };
-fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
-fs.writeFileSync(OUTPUT, `${JSON.stringify(store, null, 2)}\n`);
-console.log(`Wrote ${store.trains.length} trains to ${OUTPUT}`);
+writeLoopStore(OUTPUT, services.map(makeTrain));
