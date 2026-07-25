@@ -10,6 +10,94 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
+  // ---- protocol/schema constants (jsonspec) ------------------------------
+  // Shared by the browser (app-config.js re-exports them as bare globals) and
+  // the Node server backstop (server/train-store.js requires this file), so a
+  // schema bump can never drift between the two sides.
+  const SCHEMA_VERSION = "1.3";
+  const ACCEPTED_SCHEMA_VERSIONS = Object.freeze(["1.3"]);
+  // Train ids flow into route_id, route cache keys and DOM ids, so they are
+  // restricted to the charset documented in jsonspec §3.2.
+  const TRAIN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+  // Bucket for trains whose date could neither be supplied nor inferred.
+  const UNDATED = "undated";
+
+  // ---- N02 5-decimal grid + shared geometry primitives -------------------
+  // N02 coordinates mix 5-decimal (most lines) and full-precision 8-decimal
+  // vertices (e.g. 北陸新幹線). Every cross-module coordinate identity —
+  // route-solver graph nodes, stats edge matching, deck-record segment keys,
+  // the build-time station expansion — MUST quantize to the same 5-decimal
+  // grid or full-precision lines never match their ridden routes, so the rule
+  // lives here exactly once.
+  function quant5(v) {
+    return Math.round(v * 1e5) / 1e5;
+  }
+  // "lon,lat" node key on the 5-decimal grid.
+  function coordKey5(coord) {
+    return quant5(coord[0]) + "," + quant5(coord[1]);
+  }
+  // Direction-independent segment key: the two node keys, smaller first.
+  function edgeKey5(a, b) {
+    const ax = quant5(a[0]);
+    const ay = quant5(a[1]);
+    const bx = quant5(b[0]);
+    const by = quant5(b[1]);
+    return ax < bx || (ax === bx && ay < by)
+      ? ax + "," + ay + "|" + bx + "," + by
+      : bx + "," + by + "|" + ax + "," + ay;
+  }
+  // Equirectangular km between two lon/lat points: the cheap distance used
+  // for graph edge weights and stats sums (the route solver's haversine
+  // `distanceMeters` stays separate — different accuracy class on purpose).
+  function equirectKm(ax, ay, bx, by) {
+    const kx = 111.32 * Math.cos((((ay + by) / 2) * Math.PI) / 180);
+    return Math.hypot((ax - bx) * kx, (ay - by) * 110.574);
+  }
+
+  // Minimal binary min-heap over [priority, value] tuples, shared by the
+  // stats corridor trace and the build-time station expansion. (The route
+  // solver keeps its own object-shaped heap — different item API.)
+  class TupleMinHeap {
+    constructor() {
+      this._h = [];
+    }
+    get size() {
+      return this._h.length;
+    }
+    push(priority, value) {
+      const h = this._h;
+      h.push([priority, value]);
+      let i = h.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (h[p][0] <= h[i][0]) break;
+        [h[p], h[i]] = [h[i], h[p]];
+        i = p;
+      }
+    }
+    pop() {
+      const h = this._h;
+      const top = h[0];
+      const last = h.pop();
+      if (h.length) {
+        h[0] = last;
+        let i = 0;
+        const n = h.length;
+        for (;;) {
+          const l = 2 * i + 1;
+          const r = l + 1;
+          let s = i;
+          if (l < n && h[l][0] < h[s][0]) s = l;
+          if (r < n && h[r][0] < h[s][0]) s = r;
+          if (s === i) break;
+          [h[s], h[i]] = [h[i], h[s]];
+          i = s;
+        }
+      }
+      return top;
+    }
+  }
+
   function isValidDateString(value) {
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
       return false;
@@ -35,7 +123,7 @@
   function normalizeTrainDate(
     train,
     fallbackDate = null,
-    undatedValue = "undated",
+    undatedValue = UNDATED,
   ) {
     const explicit = normalizeDateString(train && train.date);
     if (explicit) return explicit;
@@ -168,14 +256,14 @@
     return Infinity;
   }
 
-  function dateSortKey(date, undatedValue = "undated") {
+  function dateSortKey(date, undatedValue = UNDATED) {
     return date === undatedValue ? "￿" : date;
   }
 
   function compareTrainsByDateAndDeparture(
     a,
     b,
-    undatedValue = "undated",
+    undatedValue = UNDATED,
   ) {
     const dateA = dateSortKey(
       normalizeTrainDate(a, null, undatedValue),
@@ -193,8 +281,14 @@
     return String(a.id).localeCompare(String(b.id));
   }
 
+  // Blank means "no time": undefined, empty and whitespace-only entries all
+  // collapse to null, and real times shed stray padding — the same rule the
+  // stop editor applies on input, so imported JSON can't disagree with it.
   function normalizeNullableTime(value) {
-    return value === undefined || value === "" ? null : value;
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
   }
 
   function makeUniqueTrainId(baseId, existingIds) {
@@ -272,9 +366,18 @@
   }
 
   return Object.freeze({
+    ACCEPTED_SCHEMA_VERSIONS,
+    SCHEMA_VERSION,
+    TRAIN_ID_PATTERN,
+    TupleMinHeap,
+    UNDATED,
     addDaysToDateString,
     compareTrainsByDateAndDeparture,
+    coordKey5,
     dateSortKey,
+    edgeKey5,
+    equirectKm,
+    quant5,
     dayIndexForSegment,
     dayIndexForStop,
     getTrainDepartureMinutes,
