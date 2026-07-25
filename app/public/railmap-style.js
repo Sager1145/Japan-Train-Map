@@ -171,6 +171,25 @@
     };
   }
 
+  // Stop-dot LOD: below `stopMarkerMinzoom` the intermediate stop dots (every
+  // role except "terminal" — the black stop-centers included) don't draw. The
+  // gate can't be a layer `minzoom`, because the stops layers also carry the
+  // terminal markers, which must stay visible at every zoom — and it can't be
+  // a ["zoom"] filter expression either: the vendored MapLibre build only
+  // evaluates filter zoom when a tile is parsed, which for this geojson
+  // circle source empirically never re-gates on zoom (verified: a bare
+  // [">=",["zoom"],7] filter still rendered every dot at zoom 6). So the gate
+  // is a plain role filter that RailMap re-applies whenever the view crosses
+  // the threshold (see the zoom watcher in attach()). Configured once by
+  // buildBaseStyle (opts.stopMinzoom, 0 = no LOD); shared with
+  // _applyMarkerSelectionFilters so both filter builders agree.
+  let stopMarkerMinzoom = 0;
+  function stopMarkerZoomGate(zoom) {
+    if (!(stopMarkerMinzoom > 0)) return null;
+    if (Number(zoom) >= stopMarkerMinzoom) return null;
+    return ["==", ["get", "role"], "terminal"];
+  }
+
   // ───────────────────────────── the base style (style.ts buildBaseStyle) ────────────────
   function buildBaseStyle(opts) {
     const basemap = opts.basemap || null;
@@ -208,6 +227,25 @@
     // Pass-through dot LOD: below this zoom the (numerous) white dots simply
     // don't draw — a layer property, so crossing it re-renders nothing.
     const passMinzoom = Math.max(0, Number(opts.passMinzoom || 0));
+    // Stop-dot LOD (see stopMarkerZoomGate): the intermediate stop dots follow
+    // at a LOWER threshold, so zooming out sheds pass-throughs first and stops
+    // later, while terminals never disappear.
+    stopMarkerMinzoom = Math.max(0, Number(opts.stopMinzoom || 0));
+    // Stops-layer filter shared by the base and SEL variants: category, tid
+    // ownership, and the stop-dot LOD gate. The map always boots at the
+    // nationwide overview (zoom 4, below any sensible threshold), so build
+    // the boot filters gated; attach() re-derives them from the live zoom
+    // right away, correcting any boot path that starts zoomed in.
+    const stopsLayerFilter = (mine) => {
+      const filter = [
+        "all",
+        ["==", ["get", "category"], "stop"],
+        [mine ? "==" : "!=", ["get", "tid"], NO_TRAIN],
+      ];
+      const zoomGate = stopMarkerZoomGate(0);
+      if (zoomGate) filter.push(zoomGate);
+      return filter;
+    };
 
     const layers = [];
     // Plain background used for the explicit no-basemap mode and graceful
@@ -375,11 +413,7 @@
       id: TRAIN_STOPS_LAYER,
       type: "circle",
       source: TRAIN_MARKERS_SOURCE,
-      filter: [
-        "all",
-        ["==", ["get", "category"], "stop"],
-        ["!=", ["get", "tid"], NO_TRAIN],
-      ],
+      filter: stopsLayerFilter(false),
       layout: {
         "circle-sort-key": [
           "case",
@@ -502,11 +536,7 @@
       id: TRAIN_SEL_STOPS_LAYER,
       type: "circle",
       source: TRAIN_MARKERS_SOURCE,
-      filter: [
-        "all",
-        ["==", ["get", "category"], "stop"],
-        ["==", ["get", "tid"], NO_TRAIN],
-      ],
+      filter: stopsLayerFilter(true),
       layout: {
         "circle-sort-key": [
           "case",
@@ -622,6 +652,7 @@
 
   global.RailMapStyle = {
     buildBaseStyle,
+    stopMarkerZoomGate,
     zoomScaledWidth,
     RIDDEN_WIDTH_SCALE,
     markerRadiusExpr,

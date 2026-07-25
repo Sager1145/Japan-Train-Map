@@ -378,6 +378,15 @@ let cachedRouteItems = null,
 // NOTE: MapLibre zoom convention (world in one 512px tile at z0) — one level
 // lower than the old Leaflet number for the same view.
 const PASSTHROUGH_MIN_ZOOM = 9;
+// Intermediate stop dots thin out next on the way out: below this zoom the
+// stopping-station dots (their black centers included) stop drawing too, so a
+// zoomed-out national view keeps only the route lines and terminal markers.
+// Must stay strictly BELOW PASSTHROUGH_MIN_ZOOM (stops outlive pass-throughs
+// while zooming out). Unlike the pass LOD this can't be a layer minzoom —
+// terminals share the stops layers and are never hidden — so RailMap rebuilds
+// the stops filters when the view crosses this threshold (never on pan, and a
+// no-op float compare on other zoom frames).
+const STOP_MIN_ZOOM = 7;
 let cachedOrderedTrains = [];
 let importInProgress = false;
 

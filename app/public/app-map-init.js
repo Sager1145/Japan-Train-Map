@@ -320,6 +320,10 @@ async function initMap(mapAssetsReady) {
     // Pass-through dot LOD: the numerous white dots only draw from this zoom
     // (layer minzoom — no marker rebuild when the view crosses it).
     passMinzoom: PASSTHROUGH_MIN_ZOOM,
+    // Stop-dot LOD: intermediate stop dots follow at a lower threshold
+    // (filter-level, rebuilt by RailMap on threshold crossings, since
+    // terminals share those layers and always draw).
+    stopMinzoom: STOP_MIN_ZOOM,
   });
   const isSmallScreen = window.matchMedia("(max-width: 900px)").matches;
   map = new maplibregl.Map({

@@ -55,6 +55,7 @@
   } = global.RailMapBasemap;
   const {
     buildBaseStyle,
+    stopMarkerZoomGate,
     zoomScaledWidth,
     RIDDEN_WIDTH_SCALE,
     markerRadiusExpr,
@@ -259,6 +260,16 @@
       // that landed before attach() only stored state (no map to filter yet),
       // and setData never re-applies these filters.
       this._applyBaseFilters();
+      // Stop-dot LOD: the gate is a plain role filter (filter ["zoom"]
+      // expressions never re-gate on zoom in this MapLibre build — see
+      // stopMarkerZoomGate), so RailMap owns the crossing itself. The
+      // per-frame check is a float compare; setFilter runs only on the flip.
+      this._applyMarkerSelectionFilters();
+      map.on("zoom", () => {
+        const gated = stopMarkerZoomGate(map.getZoom()) != null;
+        if (gated !== this._stopMarkersGated)
+          this._applyMarkerSelectionFilters();
+      });
       return this;
     },
 
@@ -541,6 +552,10 @@
       const m = this._map;
       if (!m) return;
       const id = this._selectedTrainId || NO_TRAIN;
+      // Keep the attach() zoom watcher's flip detection in sync with what
+      // these filters actually encode.
+      const stopZoomGate = stopMarkerZoomGate(m.getZoom());
+      this._stopMarkersGated = stopZoomGate != null;
       const shown = this._markerVisibility || {
         stop: true,
         terminal: true,
@@ -561,6 +576,12 @@
           [mine ? "==" : "!=", ["get", "tid"], id],
         ];
         if (cat === "stop" && stopRoleFilter) filters.push(stopRoleFilter);
+        // Stop-dot zoom LOD, evaluated against the LIVE zoom: setFilter
+        // replaces the boot-time filter wholesale, so every rebuild must
+        // re-derive the gate or intermediate stop dots would resurface at low
+        // zoom after a selection change or marker toggle. The zoom watcher in
+        // attach() calls back in here when the view crosses the threshold.
+        if (cat === "stop" && stopZoomGate) filters.push(stopZoomGate);
         return filters;
       };
       if (m.getLayer(TRAIN_PASS_LAYER))
