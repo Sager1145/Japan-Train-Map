@@ -111,20 +111,39 @@
     for (const m of members) add(m.lineId);
     if (rows.length === 0 && lineIdFallback) add(lineIdFallback);
     rows.sort((a, b) => a.label.localeCompare(b.label));
+    const name = st ? st.name : stationId;
     return {
-      name: st ? st.name : stationId,
+      name,
       nameRoma: st && st.nameRoma ? st.nameRoma : "",
+      // Header readings from the curated station-readings reference (kana /
+      // romaji / Chinese per the app's 顯示 toggles) when the app's i18n layer
+      // is present, one per line under the name; null keeps the standalone
+      // railmap behavior (single nameRoma subline).
+      readings:
+        global.I18N && typeof global.I18N.nameReadingsList === "function"
+          ? global.I18N.nameReadingsList(name, st ? st.stationId : stationId)
+          : null,
       lines: rows,
     };
   }
   function stationPopupHtml(model, opts) {
-    const header = model.nameRoma
-      ? '<span class="rp-popup-ja">' +
-        escHtml(model.name) +
-        '</span><span class="rp-popup-roma">' +
-        escHtml(model.nameRoma) +
-        "</span>"
-      : '<span class="rp-popup-ja">' + escHtml(model.name) + "</span>";
+    // readings === null -> standalone railmap (no app i18n): keep nameRoma.
+    // readings === []   -> app context with every reading toggle off: no sublines.
+    // Each reading renders as its OWN line under the name (.rp-popup-head is a
+    // column flexbox), so the popup grows with however many are enabled.
+    const subs =
+      model.readings != null
+        ? model.readings
+        : model.nameRoma
+          ? [model.nameRoma]
+          : [];
+    const header =
+      '<span class="rp-popup-ja">' +
+      escHtml(model.name) +
+      "</span>" +
+      subs
+        .map((s) => '<span class="rp-popup-roma">' + escHtml(s) + "</span>")
+        .join("");
     const rows = model.lines
       .map((r) => {
         const co = r.company

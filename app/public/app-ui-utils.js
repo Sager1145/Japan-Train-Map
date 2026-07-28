@@ -58,7 +58,9 @@ function buildStopPopup(stopFeature, train) {
   return popupHtml(`${train.number || ""}`, [
     [I18N.t("popup.trainId"), train.id],
     [I18N.t("popup.typeCompany"), trainTypeCompanyLabel(train) || "-"],
-    [I18N.t("popup.station"), p.name],
+    // Station name from the readings reference list (kana / romaji / Chinese
+    // per the 顯示 toggles), each reading stacked under the name.
+    [I18N.t("popup.station"), stationNameCellHtml(p.name, p.n02_station_code)],
     [I18N.t("popup.arrival"), p.arrival || "-"],
     [I18N.t("popup.departure"), p.departure || "-"],
     [I18N.t("popup.stopType"), stopTypeLabel],
@@ -101,12 +103,28 @@ function segmentNumberLabel(train, properties) {
 }
 
 function popupHtml(title, rows) {
+  // A value may be pre-rendered HTML ({ html: "..." } — already escaped by
+  // its builder) for multi-line cells like a station name with its readings
+  // stacked underneath; plain strings stay escaped here as before.
   return `<div class="popup-title">${escapeHtml(title)}</div><div class="popup-grid">${rows
     .map(
       ([key, value]) =>
-        `<span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong>`,
+        `<span>${escapeHtml(key)}</span><strong>${
+          value && typeof value === "object" && "html" in value
+            ? value.html
+            : escapeHtml(value)
+        }</strong>`,
     )
     .join("")}</div>`;
+}
+
+// Station name cell: base name, then each enabled reading (kana / romaji /
+// Chinese) on its own line underneath — never bracket-appended.
+function stationNameCellHtml(name, code) {
+  const readings = I18N.nameReadingsList(name, code)
+    .map((r) => `<span class="popup-reading">${escapeHtml(r)}</span>`)
+    .join("");
+  return { html: `${escapeHtml(name)}${readings}` };
 }
 
 // =========================================================================

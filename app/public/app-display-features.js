@@ -95,11 +95,11 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   if (!stop) return null;
   const feature = getStopFeature(stop, train);
   if (!feature) return null;
-  const name = I18N.placeName(
-    feature.properties.name || stopName(stop),
-    stationCode(feature),
-  );
+  const name = feature.properties.name || stopName(stop);
   if (!name) return null;
+  // Enabled readings (kana / romaji / Chinese) stack one per line UNDER the
+  // name — never appended in brackets.
+  const readings = I18N.nameReadingsList(name, stationCode(feature));
   const latlng = toLatLng(feature);
   const time = kind === "origin" ? stop.departure : stop.arrival;
   const timeTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
@@ -112,18 +112,35 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   const timeHtml = time
     ? ` <span class="station-label-time">${escapeHtml(timeTag)} ${escapeHtml(time)}</span>`
     : "";
+  const readingsHtml = readings
+    .map(
+      (r) => `<span class="station-label-reading">${escapeHtml(r)}</span>`,
+    )
+    .join("");
   const plain =
     (badgeText ? badgeText + " " : "") +
     name +
     (time ? ` ${timeTag} ${time}` : "");
+  // Estimated rendered width (px): the widest of the name/time line and the
+  // reading lines, plus horizontal padding (+ badge chip). Text wider than the
+  // CSS max-width (340px) WRAPS instead of truncating, so estimate the wrapped
+  // line count too — the overlap layout needs the real box height to keep
+  // stacked labels from covering each other.
+  const mainWidth = measureLabelTextWidth(plain) + (badgeText ? 38 : 20);
+  const readingsWidth =
+    readings.reduce((w, r) => Math.max(w, measureLabelTextWidth(r)), 0) + 20;
+  const fullWidth = Math.max(mainWidth, readingsWidth);
+  const mainLines = Math.max(1, Math.min(3, Math.ceil(mainWidth / 340)));
   return {
     latlng,
     tid: train.id,
-    html: `${badgeHtml}${escapeHtml(name)}${timeHtml}`,
+    html: `${badgeHtml}${escapeHtml(name)}${timeHtml}${readingsHtml}`,
     key: `${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}|${kind}`,
     dayEndpoint: !!opts.dayEndpoint,
-    // Estimated rendered width (px): text + horizontal padding (+ badge chip).
-    width: Math.min(300, measureLabelTextWidth(plain) + (badgeText ? 38 : 20)),
+    width: Math.min(340, fullWidth),
+    // Estimated box height: ~18px per name/time line, ~15px per reading line,
+    // plus padding/border.
+    height: 6 + 18 * mainLines + 15 * readings.length,
   };
 }
 
@@ -279,7 +296,6 @@ function updateEndpointLabels() {
 // marker render (including the zoomend handler), so no per-pan work is needed.
 function layoutEndpointLabels(specs) {
   const BASE = 10; // gap from the dot to the first label
-  const H = 20; // estimated label box height (single line)
   const PAD = 4; // gap kept between neighbouring boxes
   const placed = [];
   const hits = (a, b) =>
@@ -289,6 +305,9 @@ function layoutEndpointLabels(specs) {
       ? map.project([spec.latlng[1], spec.latlng[0]])
       : { x: 0, y: 0 };
     const halfW = spec.width / 2;
+    // Per-spec box height: wrapped labels are taller than single-line ones
+    // (estimated in buildEndpointLabelSpec).
+    const H = spec.height || 20;
     let picked = null;
     for (let k = 0; k < 8 && !picked; k++) {
       const step = BASE + k * (H + PAD);
@@ -393,8 +412,12 @@ function deckGetTooltip(info) {
       o.train ? dateLabel(getTrainDate(o.train)) : "",
     );
     const code = pr.n02_station_code || pr.N02_005c || null;
+    // Readings stack under the name (same layout as the C5 station popup).
+    const readingsHtml = I18N.nameReadingsList(name, code)
+      .map((r) => `<span class="rp-popup-roma">${escapeHtml(r)}</span>`)
+      .join("");
     return {
-      html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(I18N.placeName(name, code))}</span></div>${timeHtml}</div>`,
+      html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(name)}</span>${readingsHtml}</div>${timeHtml}</div>`,
       style: DECK_TIP_RAILPRINT,
     };
   }
@@ -422,7 +445,22 @@ function deckGetTooltip(info) {
   const metaHtml = meta
     ? `<span class="rp-popup-roma">${escapeHtml(meta)}</span>`
     : "";
-  const routeHtml = `<div class="rp-popup-route">${escapeHtml(I18N.placeName(origin, oStop && stopStationCode(oStop)))} \u2192 ${escapeHtml(I18N.placeName(dest, dStop && stopStationCode(dStop)))}</div>`;
+  // Origin \u2192 destination, then one mirrored "reading \u2192 reading" line per
+  // enabled reading type UNDER it (kana / romaji / Chinese) \u2014 readings never
+  // ride inline in brackets. Lines align by TYPE across the two endpoints; an
+  // endpoint without that reading falls back to its base name (a skipped
+  // Chinese reading means the Chinese name IS the base name).
+  const oReadings = I18N.nameReadingsTyped(origin, oStop && stopStationCode(oStop));
+  const dReadings = I18N.nameReadingsTyped(dest, dStop && stopStationCode(dStop));
+  const readingTypes = [...new Set([...oReadings, ...dReadings].map((p) => p.type))];
+  const readingLinesHtml = readingTypes
+    .map((type) => {
+      const o2 = oReadings.find((p) => p.type === type);
+      const d2 = dReadings.find((p) => p.type === type);
+      return `<div class="map-line-tip-reading">${escapeHtml(o2 ? o2.text : origin)} \u2192 ${escapeHtml(d2 ? d2.text : dest)}</div>`;
+    })
+    .join("");
+  const routeHtml = `<div class="rp-popup-route">${escapeHtml(origin)} \u2192 ${escapeHtml(dest)}${readingLinesHtml}</div>`;
   // Hovering an overlapped stretch: show which parallel lane this train is
   // (date order, left/top = earliest) and hint that sliding sideways switches.
   const overlapHtml =

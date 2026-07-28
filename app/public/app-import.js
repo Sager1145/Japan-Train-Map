@@ -71,6 +71,10 @@ async function runProgressiveAppend(
   const yieldIfNeeded = async () => {
     if (now() - frameStart < FRAME_BUDGET_MS) return false;
     trimRegionalGraphCache(REGIONAL_GRAPH_LOAD_NODE_BUDGET);
+    // Every painted frame carries live date-bar / list-header counts, so the
+    // sidebar numbers track the cards streaming in instead of sitting at 0
+    // until the final renderAll().
+    renderProgressiveCounts();
     await waitForImportPaint();
     frameStart = now();
     return true;

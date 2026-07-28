@@ -202,12 +202,17 @@
     return fill(raw, params);
   }
 
-  // Proper-name display:
+  // Proper-name display. Defaults (no explicit toggle prefs):
   //   EN       -> "東京 (Tōkyō)" (Japanese + romanized gloss)
   //   ZH-Hant  -> "東京（とうきょう）" (Japanese + kana reading)
   //   ZH-Hans  -> same presentation; source proper nouns stay unchanged
   //   JA       -> original Japanese only
-  // Station readings (kana + romaji) keyed by N02 station code, loaded at
+  // The 顯示 panel exposes three independent reading toggles (kana / romaji /
+  // Chinese), pushed in via setNameReadings(); when set they replace the
+  // locale defaults above and every enabled reading is appended, joined by
+  // " / ". Chinese names come from the readings table's zh_Hant / zh_Hans
+  // fields (picked by UI language).
+  // Station readings (kana + romaji + zh) keyed by N02 station code, loaded at
   // runtime from /api/station-readings and injected via setStationReadings().
   // Station注音 no longer lives inline in the dictionaries below — those keep
   // only limited-express SERVICE names and line names. placeName() prefers the
@@ -243,16 +248,65 @@
     }
     return null;
   }
+  // Explicit reading toggles from the 顯示 panel ({kana, romaji, zh} booleans);
+  // null = no explicit choice yet, follow the locale defaults.
+  let nameReadingPrefs = null;
+  function setNameReadings(prefs) {
+    nameReadingPrefs =
+      prefs && typeof prefs === "object"
+        ? { kana: !!prefs.kana, romaji: !!prefs.romaji, zh: !!prefs.zh }
+        : null;
+  }
+  function activeReadingPrefs() {
+    if (nameReadingPrefs) return nameReadingPrefs;
+    return {
+      kana: currentLang === "zh-Hant" || currentLang === "zh-Hans",
+      romaji: currentLang === "en",
+      zh: false,
+    };
+  }
+  // The enabled readings for a name, typed: [{type: "kana"|"romaji"|"zh",
+  // text}] in that fixed order, minus any reading that equals the base name.
+  // Station-name display sites stack the texts one per line UNDER the name;
+  // the typed form lets paired displays (origin → destination) align the same
+  // reading type on the same line.
+  function nameReadingsTyped(jp, code) {
+    if (!jp) return [];
+    const prefs = activeReadingPrefs();
+    const r = stationReading(code, jp);
+    const parts = [];
+    if (prefs.kana) {
+      const kana = (r && r.kana) || KANA[jp];
+      if (kana && kana !== jp) parts.push({ type: "kana", text: kana });
+    }
+    if (prefs.romaji) {
+      const romaji = (r && r.romaji) || NAMES[jp];
+      if (romaji && romaji !== jp) parts.push({ type: "romaji", text: romaji });
+    }
+    if (prefs.zh && r) {
+      const zh =
+        currentLang === "zh-Hans"
+          ? r.zh_Hans || r.zh_Hant
+          : r.zh_Hant || r.zh_Hans;
+      if (zh && zh !== jp) parts.push({ type: "zh", text: zh });
+    }
+    return parts;
+  }
+  function nameReadingsList(jp, code) {
+    return nameReadingsTyped(jp, code).map((p) => p.text);
+  }
+  function nameReadings(jp, code) {
+    return nameReadingsList(jp, code).join(" / ");
+  }
   function placeName(jp, code) {
     if (!jp) return jp || "";
-    if (currentLang === "ja") return jp;
-    const r = stationReading(code, jp);
-    if (currentLang === "en") {
-      const en = (r && r.romaji) || NAMES[jp];
-      return en ? jp + " (" + en + ")" : jp;
-    }
-    const kana = (r && r.kana) || KANA[jp];
-    return kana ? jp + "（" + kana + "）" : jp;
+    const readings = nameReadings(jp, code);
+    if (!readings) return jp;
+    // Half-width brackets in the Latin-script locales, full-width in Chinese
+    // (matches the previous per-locale presentation).
+    return currentLang === "zh-Hant" || currentLang === "zh-Hans"
+      ? jp + "（" + readings + "）"
+      : jp + " (" + readings + ")";
   }
   const trainName = placeName; // same dictionary covers service names
 
@@ -345,8 +399,13 @@
     t: t,
     placeName: placeName,
     trainName: trainName,
+    nameReadings: nameReadings,
+    nameReadingsList: nameReadingsList,
+    nameReadingsTyped: nameReadingsTyped,
+    setNameReadings: setNameReadings,
     setStationReadings: setStationReadings,
     setLang: setLang,
+    getLang: () => currentLang,
     onChange: onChange,
     applyStatic: applyStatic,
   };

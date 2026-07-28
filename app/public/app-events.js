@@ -371,7 +371,7 @@ function bindEvents() {
   // JS-generated bits: display-panel labels, the focus button, the date bar,
   // train list/cards, editor, import target and the on-map labels.)
   if (window.I18N && typeof I18N.onChange === "function") {
-    I18N.onChange(() => {
+    I18N.onChange((lang) => {
       updateThemeSelect();
       updateSidebarToggleLabel();
       DISPLAY_CONTROLS.forEach((cfg) => {
@@ -383,6 +383,10 @@ function bindEvents() {
       updateFitCurveRebuildButton();
       updateFocusZoomButton();
       updateDataSourceUi();
+      // Reading toggles the user never customized keep following the UI
+      // language (and their checkboxes update to match).
+      syncNameReadingDefaultsToLang(lang);
+      persistDisplaySettings();
       // renderAll() -> renderTrainLayers -> renderTrainMarkers already re-runs
       // updateEndpointLabels(), so no separate call is needed here.
       renderAll();

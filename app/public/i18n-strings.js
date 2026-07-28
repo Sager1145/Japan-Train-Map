@@ -88,6 +88,9 @@
     "disp.fitCurves": { zh: "顯示擬合曲線（除錯）", en: "Show Fitted Curves (Debug)" },
     "disp.rebuildFitCurves": { zh: "重建擬合曲線", en: "Rebuild Fitted Curves" },
     "disp.hoverRegions": { zh: "顯示 Hover 監測範圍（除錯）", en: "Show Hover Regions (Debug)" },
+    "disp.nameReadingKana": { zh: "站名假名顯示", en: "Station Kana Readings" },
+    "disp.nameReadingRomaji": { zh: "站名羅馬字顯示", en: "Station Romaji Readings" },
+    "disp.nameReadingZh": { zh: "站名中文顯示", en: "Station Chinese Names" },
 
     // JSON import / local data
     "sec.import": { zh: "JSON 匯入／本地資料", en: "JSON Import / Local Data" },
@@ -541,6 +544,32 @@
     "status.allDeleted": { zh: "已刪除所有列車。", en: "All trains deleted." },
     "status.fieldsSaved": { zh: "已套用欄位。", en: "Fields saved." },
 
+    // route solve status (編輯 panel field-status line)
+    "status.routeGenerating": {
+      zh: "正在為 {train} 生成 N02 鐵路路線…",
+      en: "Generating N02 railway route for {train}...",
+    },
+    "status.routeGenerated": {
+      zh: "已為 {train} 生成 {count} 段 N02 路線。",
+      en: "Generated {count} N02 route segment(s) for {train}.",
+    },
+    "status.routeGeneratedSkipped": {
+      zh: "已為 {train} 生成 {count} 段 N02 路線；{skipped} 段無法生成，已略過。",
+      en: "Generated {count} N02 route segment(s) for {train}; {skipped} segment(s) skipped.",
+    },
+    "status.routeGenerateFailed": {
+      zh: "無法為 {train} 生成 N02 鐵路路線：{failed} 段失敗。",
+      en: "Unable to generate N02 railway route for {train}. {failed} segment(s) failed.",
+    },
+    "status.routeNoPath": {
+      zh: "無法從內建 N02 資料生成鐵路路徑，請檢查車站代碼或 route_policy 設定；不會以直線代替。",
+      en: "No N02 railway path could be generated from embedded N02 data. Check station codes / route_policy. No fake straight line was drawn.",
+    },
+    "status.routeSectionsRebuilt": {
+      zh: "已依停站重建路線：共 {count} 段。乘車區間以外的停站與區段將完全隱藏。",
+      en: "Route sections rebuilt. {count} segment(s) calculated. Stops/segments outside the ridden range are hidden entirely.",
+    },
+
     // dates / list
     "date.all": { zh: "全部", en: "All" },
     "date.undated": { zh: "未分配日期", en: "Undated" },
@@ -666,6 +695,9 @@
     "disp.fitCurveMaxDeviation": "元線からの最大許容偏差",
     "disp.fullCrossDay": "日をまたぐ行程を全区間実線で表示",
     "disp.fitCurves": "フィッティング曲線を表示（デバッグ）",
+    "disp.nameReadingKana": "駅名のかな読みを表示",
+    "disp.nameReadingRomaji": "駅名のローマ字を表示",
+    "disp.nameReadingZh": "駅名の中国語表記を表示",
     "disp.rebuildFitCurves": "フィッティング曲線を再構築",
     "disp.hoverRegions": "Hover 監視範囲を表示（デバッグ）",
     "sec.import": "JSON 読み込み／ローカルデータ",
@@ -894,6 +926,16 @@
     "confirm.deleteAll": "すべての列車を削除しますか？",
     "status.allDeleted": "すべての列車を削除しました。",
     "status.fieldsSaved": "項目を適用しました。",
+    "status.routeGenerating": "{train} の N02 鉄道経路を生成しています…",
+    "status.routeGenerated": "{train} の N02 経路を {count} 区間生成しました。",
+    "status.routeGeneratedSkipped":
+      "{train} の N02 経路を {count} 区間生成しました（{skipped} 区間はスキップ）。",
+    "status.routeGenerateFailed":
+      "{train} の N02 経路を生成できませんでした（{failed} 区間失敗）。",
+    "status.routeNoPath":
+      "内蔵 N02 データから経路を生成できませんでした。駅コード／route_policy を確認してください。直線での代替描画は行いません。",
+    "status.routeSectionsRebuilt":
+      "停車駅から経路を再構築しました：{count} 区間。乗車区間外の駅／区間は非表示になります。",
     "date.all": "すべて",
     "date.undated": "日付未設定",
     "list.allTitle": "すべての列車（{count}）",

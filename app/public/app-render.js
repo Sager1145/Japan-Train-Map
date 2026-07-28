@@ -80,6 +80,22 @@ function renderDateButtons() {
   }
 }
 
+// Live count refresh while a progressive load streams cards in. The single
+// authoritative renderAll() only runs at the END of the load, so without this
+// the date bar sits at 「全部 0」 (and the 全部 list header at （0）) for the
+// whole load while the list visibly grows — counts and list contradicting
+// each other. Called from the loader's frame-budget yield, so it runs at most
+// once per painted frame; rebuilding the ≤ (dates+1) chip bar is trivially
+// cheap next to the route solves around it. The full list/card rebuild stays
+// where it was — only the numbers go live.
+function renderProgressiveCounts() {
+  renderDateButtons();
+  if (els.listTitle && selectedDate === ALL_DATES)
+    els.listTitle.textContent = I18N.t("list.allTitle", {
+      count: trainStore.trains.length,
+    });
+}
+
 // Switch the sidebar date filter. Does NOT reload the basemap or drop any
 // imported train — it only changes which trains the list shows (and, when
 // the "map follows date" toggle is on, which trains draw).

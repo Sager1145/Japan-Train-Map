@@ -49,6 +49,14 @@ const DISPLAY_DEFAULTS = {
   showFullCrossDay: false,
   showFitCurves: false, // topmost black/white dashed fitted-curve debug overlay
   showHoverRegions: false, // topmost hover pick / hysteresis region debug overlay
+  // Station-name reading annotations (labels / popups): three INDEPENDENT
+  // toggles. Until the user touches one (nameReadingsCustomized), they follow
+  // the UI language — zh shows kana, en shows romaji, ja shows none — the
+  // exact presentation placeName() hardwired before the toggles existed.
+  nameReadingKana: false,
+  nameReadingRomaji: false,
+  nameReadingZh: false,
+  nameReadingsCustomized: false,
 };
 // Live working copy (mutated by the UI; seeded from localStorage on boot).
 const DISPLAY = { ...DISPLAY_DEFAULTS };
@@ -84,11 +92,43 @@ const DISPLAY_CONTROLS = [
   { key: "fitCurveMaxDeviation", labelKey: "disp.fitCurveMaxDeviation", min: 100, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
 ];
 // Checkbox toggles for the submenu (booleans, rendered under the sliders).
+// refreshNames toggles change how station names annotate (kana / romaji /
+// Chinese readings) — they push their state into I18N and refresh the on-map
+// endpoint labels; popups/tooltips rebuild per interaction anyway.
 const DISPLAY_TOGGLES = [
   { key: "showFullCrossDay", labelKey: "disp.fullCrossDay", rebuild: false },
   { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false },
   { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false },
+  { key: "nameReadingKana", labelKey: "disp.nameReadingKana", rebuild: false, refreshNames: true },
+  { key: "nameReadingRomaji", labelKey: "disp.nameReadingRomaji", rebuild: false, refreshNames: true },
+  { key: "nameReadingZh", labelKey: "disp.nameReadingZh", rebuild: false, refreshNames: true },
 ];
+
+// Push the current reading-toggle state into I18N so placeName()/nameReadings()
+// annotate accordingly everywhere (labels, popups, tooltips).
+function pushNameReadingPrefs() {
+  if (window.I18N && typeof I18N.setNameReadings === "function")
+    I18N.setNameReadings({
+      kana: DISPLAY.nameReadingKana,
+      romaji: DISPLAY.nameReadingRomaji,
+      zh: DISPLAY.nameReadingZh,
+    });
+}
+
+// Until the user explicitly customizes the reading toggles, they track the UI
+// language (the pre-toggle behavior). Called at boot and on language switch.
+function syncNameReadingDefaultsToLang(lang) {
+  if (!DISPLAY.nameReadingsCustomized) {
+    DISPLAY.nameReadingKana = lang === "zh-Hant" || lang === "zh-Hans";
+    DISPLAY.nameReadingRomaji = lang === "en";
+    DISPLAY.nameReadingZh = false;
+    DISPLAY_TOGGLES.forEach((cfg) => {
+      if (cfg.refreshNames && cfg._input)
+        cfg._input.checked = Boolean(DISPLAY[cfg.key]);
+    });
+  }
+  pushNameReadingPrefs();
+}
 const THEME_MEDIA = window.matchMedia("(prefers-color-scheme: dark)");
 const REDUCED_MOTION_MEDIA = window.matchMedia(
   "(prefers-reduced-motion: reduce)",
@@ -175,27 +215,35 @@ function loadDisplaySettings() {
     const current = localStorage.getItem(DISPLAY_STORAGE_KEY);
     const migrated = !current;
     const raw = current || localStorage.getItem(PREVIOUS_DISPLAY_STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      for (const k of Object.keys(DISPLAY_DEFAULTS)) {
-        const def = DISPLAY_DEFAULTS[k];
-        const v = parsed[k];
-        // Keep existing visual preferences while deliberately seeding the new
-        // much broader v3 curve-fit defaults for users upgrading from v2.
-        if (migrated && k.indexOf("fitCurve") === 0) continue;
-        if (typeof def === "boolean") {
-          if (typeof v === "boolean") DISPLAY[k] = v;
-        } else if (typeof def === "string") {
-          if (typeof v === "string") DISPLAY[k] = v;
-        } else if (typeof v === "number" && isFinite(v)) {
-          DISPLAY[k] = v;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        for (const k of Object.keys(DISPLAY_DEFAULTS)) {
+          const def = DISPLAY_DEFAULTS[k];
+          const v = parsed[k];
+          // Keep existing visual preferences while deliberately seeding the new
+          // much broader v3 curve-fit defaults for users upgrading from v2.
+          if (migrated && k.indexOf("fitCurve") === 0) continue;
+          if (typeof def === "boolean") {
+            if (typeof v === "boolean") DISPLAY[k] = v;
+          } else if (typeof def === "string") {
+            if (typeof v === "string") DISPLAY[k] = v;
+          } else if (typeof v === "number" && isFinite(v)) {
+            DISPLAY[k] = v;
+          }
         }
       }
     }
   } catch (err) {
     // Non-fatal: disabled storage just means defaults.
   }
+  // Reading toggles: non-customized users keep following the UI language;
+  // customized users get their saved choice pushed into I18N as-is.
+  syncNameReadingDefaultsToLang(
+    window.I18N && typeof I18N.getLang === "function"
+      ? I18N.getLang()
+      : "zh-Hant",
+  );
 }
 
 function persistDisplaySettings() {
@@ -310,7 +358,17 @@ function setupDisplaySettingsPanel() {
     span.textContent = I18N.t(cfg.labelKey);
     input.addEventListener("change", () => {
       DISPLAY[cfg.key] = input.checked;
+      if (cfg.refreshNames) {
+        // First explicit choice pins the toggles: they stop tracking the UI
+        // language from here on (persisted with the rest of DISPLAY).
+        DISPLAY.nameReadingsCustomized = true;
+        pushNameReadingPrefs();
+      }
       applyDisplaySettings({ rebuild: cfg.rebuild !== false });
+      // Reading changes redraw the on-map endpoint labels immediately;
+      // popups/tooltips pick the new setting up on their next build.
+      if (cfg.refreshNames && typeof updateEndpointLabels === "function")
+        updateEndpointLabels();
     });
     wrap.appendChild(input);
     wrap.appendChild(span);
@@ -333,6 +391,12 @@ function setupDisplaySettingsPanel() {
       applyPendingFitCurveSettings();
       fitCurveSettingsDirty = false;
       updateFitCurveRebuildButton();
+      // Back to language-tracking reading defaults (customized flag reset).
+      syncNameReadingDefaultsToLang(
+        window.I18N && typeof I18N.getLang === "function"
+          ? I18N.getLang()
+          : "zh-Hant",
+      );
       applyDisplayTheme();
       applyDisplaySettings();
     });

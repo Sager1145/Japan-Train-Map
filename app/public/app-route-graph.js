@@ -156,11 +156,15 @@ function prepareTrainRouteSolve(train) {
     return { done: true, result: [] };
   }
 
-  setStatus(
-    els.fieldStatus,
-    `Generating N02 railway route for ${train.number || train.id}...`,
-    "warn",
-  );
+  // During a progressive load this fires once per cold-solved train; writing
+  // it to the editor's status line would flash 159 messages and leave the last
+  // one stranded there. Only user-triggered (post-boot) solves show status.
+  if (!importInProgress)
+    setStatus(
+      els.fieldStatus,
+      I18N.t("status.routeGenerating", { train: train.number || train.id }),
+      "warn",
+    );
   return { done: false, ...context };
 }
 
@@ -227,11 +231,18 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
       `Unable to generate N02 railway route for train ${train.id}.`,
       warnings,
     );
-    setStatus(
-      els.fieldStatus,
-      `Unable to generate N02 railway route for ${train.number || train.id}. ${warnings.length} segment(s) failed.`,
-      "warn",
-    );
+    // The console.warn above keeps the full detail; the status line is
+    // user-facing feedback and stays quiet during a progressive load (the
+    // editor isn't showing this train, and the last message would go stale).
+    if (!importInProgress)
+      setStatus(
+        els.fieldStatus,
+        I18N.t("status.routeGenerateFailed", {
+          train: train.number || train.id,
+          failed: warnings.length,
+        }),
+        "warn",
+      );
     // Remember the failure so re-renders / prewarms / live refreshes in this
     // session (and future sessions, via IndexedDB) don't re-run the same doomed
     // graph build + Dijkstra. Cleared implicitly when the train's data changes
@@ -271,11 +282,24 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
   );
   concrete.forEach((feature) => matchedRoutesGeoJson.features.push(feature));
 
-  setStatus(
-    els.fieldStatus,
-    `Generated ${concrete.length} N02 route segment(s) for ${train.number || train.id}${warnings.length ? `; ${warnings.length} segment(s) skipped.` : "."}`,
-    warnings.length ? "warn" : "ok",
-  );
+  // Same suppression as prepareTrainRouteSolve: boot-time solves are not
+  // editor feedback. Post-boot solves (user edited/rebuilt a route) still
+  // report, localized.
+  if (!importInProgress)
+    setStatus(
+      els.fieldStatus,
+      warnings.length
+        ? I18N.t("status.routeGeneratedSkipped", {
+            train: train.number || train.id,
+            count: concrete.length,
+            skipped: warnings.length,
+          })
+        : I18N.t("status.routeGenerated", {
+            train: train.number || train.id,
+            count: concrete.length,
+          }),
+      warnings.length ? "warn" : "ok",
+    );
   return concrete;
 }
 

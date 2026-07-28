@@ -136,7 +136,7 @@ function getMatchedRouteFeatures(train) {
       );
       setStatus(
         els.fieldStatus,
-        "No N02 railway path could be generated from embedded N02 data. Check station codes / route_policy. No fake straight line was drawn.",
+        I18N.t("status.routeNoPath"),
         "warn",
       );
     }

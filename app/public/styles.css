@@ -372,6 +372,9 @@ header {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* Long titles (the English locale) push the switchers onto their own row
+     instead of squeezing the h1 into a one-word-per-line column. */
+  flex-wrap: wrap;
 }
 
 .header-actions {
@@ -1367,6 +1370,8 @@ tr.branch-junction td {
 .popup-title {
   font-weight: 700;
   margin-bottom: 4px;
+  /* Long titles (station readings, train ids) wrap — never overflow. */
+  overflow-wrap: anywhere;
 }
 .popup-grid {
   display: grid;
@@ -1376,6 +1381,20 @@ tr.branch-junction td {
 }
 .popup-grid span:nth-child(odd) {
   color: var(--ink-muted);
+}
+.popup-grid span:nth-child(even) {
+  /* Values (ids, readings, line names) wrap inside the popup width instead
+     of stretching or clipping it. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Reading lines stacked under a station name inside a popup cell. */
+.popup-reading {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.3;
 }
 
 @media (max-width: 900px) {
@@ -1589,10 +1608,13 @@ tr.branch-junction td {
   box-shadow: var(--shadow-lg);
   /* Fade with the map's hover/selection spotlight instead of snapping. */
   transition: opacity 0.4s ease;
-  white-space: nowrap;
-  max-width: min(240px, calc(100vw - 24px));
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Long names (kana / romaji readings) wrap onto extra lines instead of
+     truncating with an ellipsis — the label must always show its full text.
+     The overlap layout estimates the wrapped height (see
+     buildEndpointLabelSpec), so stacked labels still clear each other. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: min(340px, calc(100vw - 24px));
   pointer-events: none;
 }
 /* Day-endpoint labels (start / end of the selected day) — emphasised so they
@@ -1635,6 +1657,16 @@ tr.branch-junction td {
   font-size: var(--font-sm);
   font-weight: 500;
   margin-left: 2px;
+}
+
+/* One line per enabled reading (kana / romaji / Chinese) under the station
+   name inside an endpoint label — the marker box grows with them. */
+.station-label-reading {
+  display: block;
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  font-weight: 400;
+  line-height: 1.25;
 }
 
 /* ---- Unified map information control (legend + data credits) -------- */
@@ -2036,6 +2068,13 @@ tr.branch-junction td {
 .rp-popup-date {
   opacity: 0.8;
 }
+/* Mirrored "reading → reading" lines under the origin → destination line in
+   the route-segment hover card. */
+.map-line-tip-reading {
+  color: var(--ink-muted);
+  font-size: var(--font-sm);
+  line-height: 1.3;
+}
 .rp-line-list {
   list-style: none;
   margin: 6px 0 0;
@@ -2057,18 +2096,18 @@ tr.branch-junction td {
 .rp-line-name {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Long bilingual line names wrap to extra lines — never ellipsize. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .rp-line-co {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 0.85em;
   color: var(--ink-muted);
-  white-space: nowrap;
-  max-width: 7em;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Same rule as the line name: wrap instead of truncating. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .rp-line-logo {
   height: 16px;
@@ -2221,7 +2260,12 @@ tr.branch-junction td {
   border: var(--hairline);
   border-radius: var(--radius-button);
   box-shadow: var(--shadow-lg);
-  white-space: nowrap;
+  /* Long train / endpoint names wrap within a sane card width instead of
+     one endless line running off the viewport. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 24px));
   pointer-events: none;
 }
 
