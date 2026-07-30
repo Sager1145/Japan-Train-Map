@@ -3,6 +3,14 @@
   "configurations": [
     {
       "name": "train-map",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:static"],
+      "cwd": "app",
+      "port": 4000,
+      "autoPort": true
+    },
+    {
+      "name": "train-map-backend",
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "cwd": "app",

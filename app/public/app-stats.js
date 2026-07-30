@@ -21,18 +21,21 @@
 //   地下鐵   = recorded BY OPERATOR: every line run by the metro companies /
 //              municipal subway operators below (軌道 classes 21/22 — 都電・
 //              市電 trams — excluded even for these operators)
-//   私鐵     = codes 4+5 minus the metro operators above
+//   路面電車 = 軌道 classes 21/22 that are NOT run by a metro operator
+//   私鐵     = codes 4+5 minus the metro operators and minus the trams above
 const STAT_MASK_HSR = 1;
 const STAT_MASK_CONV = 2;
 const STAT_MASK_JR = 4;
 const STAT_MASK_METRO = 8;
 const STAT_MASK_PRIV = 16;
+const STAT_MASK_TRAM = 32;
 const STAT_CATEGORIES = [
   { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
   { mask: STAT_MASK_CONV, i18n: "stat.conv" },
   { mask: STAT_MASK_JR, i18n: "stat.jr" },
   { mask: STAT_MASK_METRO, i18n: "stat.metro" },
   { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+  { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
 ];
 // 地下鐵 operators (N02_004 names): the two metro companies + every municipal
 // subway operator in Japan.
@@ -53,6 +56,19 @@ const METRO_OPERATOR_NAMES = new Set([
 // tram exclusion must be scoped to 東京都 — never applied operator-wide.
 const TRAM_RAILWAY_CLASSES = new Set(["21", "22"]);
 
+// The coverage masks deliberately OVERLAP (JR is the union of 新幹線 + JR在來線,
+// and 普通鐵道 means "everything that is not 新幹線"), which is right for
+// percentages but wrong for asking "what kind of track is this section?".
+// This collapses an edge's mask to exactly ONE bucket, most specific first, so
+// a section can be attributed to a single mode.
+function exclusiveTrackBucket(mask) {
+  if (mask & STAT_MASK_HSR) return STAT_MASK_HSR;
+  if (mask & STAT_MASK_METRO) return STAT_MASK_METRO;
+  if (mask & STAT_MASK_TRAM) return STAT_MASK_TRAM;
+  if (mask & STAT_MASK_PRIV) return STAT_MASK_PRIV;
+  return STAT_MASK_CONV; // JR 在來線 (and any unclassified conventional track)
+}
+
 function classifyN02SectionMask(props) {
   const code = String(props.N02_002 || "");
   const cls = String(props.N02_001 || "");
@@ -65,7 +81,13 @@ function classifyN02SectionMask(props) {
     METRO_OPERATOR_NAMES.has(op) &&
     !(op === "東京都" && TRAM_RAILWAY_CLASSES.has(cls));
   if (isMetro) mask |= STAT_MASK_METRO;
-  if ((code === "4" || code === "5") && !isMetro) mask |= STAT_MASK_PRIV;
+  // 路面電車 is its own category: every 軌道 line that is not one of the metro
+  // operators' (Osaka Metro's subways are legally 軌道 too). Trams are then
+  // held OUT of 私鐵・第三部門 so the two rows do not double-count each other.
+  const isTram = TRAM_RAILWAY_CLASSES.has(cls) && !isMetro;
+  if (isTram) mask |= STAT_MASK_TRAM;
+  if ((code === "4" || code === "5") && !isMetro && !isTram)
+    mask |= STAT_MASK_PRIV;
   return mask;
 }
 
@@ -209,9 +231,15 @@ function pruneStatsTrainCache() {
 function collectTrainStatsEntry(train, idx) {
   const sig = statsTrainSig(train);
   const cached = _statsTrainCache.get(train.id);
-  if (cached && cached.sig === sig && cached.km !== undefined) return cached;
+  // `segments` is part of the cached shape, so an entry cached by an older
+  // build (no segments) is treated as a miss and rebuilt.
+  if (cached && cached.sig === sig && cached.segments !== undefined)
+    return cached;
   const edges = [];
   const spans = []; // [spanKey, km, mask]
+  // One record per matched route feature = one station-to-station ridden
+  // interval, which is the unit the 最常乘坐區間 section counts.
+  const segments = []; // [{ from, to, km, mask }]
   const MAX_BRIDGE_KM = 4;
   const recordSpan = (from, to, km, mask) => {
     if (km > 0) spans.push([statsEdgeKey(from, to), km, mask]);
@@ -256,9 +284,44 @@ function collectTrainStatsEntry(train, idx) {
   for (const f of features) {
     if (!f || !f.geometry) continue;
     if (!f.properties || f.properties.ride_segment !== true) continue;
+    // Remember where this feature's contribution starts so its own km and
+    // category mask can be summed back out of the shared accumulators.
+    const edgeStart = edges.length;
+    const spanStart = spans.length;
     if (f.geometry.type === "LineString") walk(f.geometry.coordinates);
     else if (f.geometry.type === "MultiLineString")
       f.geometry.coordinates.forEach(walk);
+    const from = f.properties.from;
+    const to = f.properties.to;
+    if (from && to && from !== to) {
+      let segKm = 0;
+      // Attribute the section to the mode carrying the MOST of its distance.
+      // OR-ing every edge's mask instead would file a JR section under 私鐵 and
+      // 地下鐵 the moment its geometry clipped one parallel edge in a dense
+      // terminal area — which is exactly what it used to do.
+      const kmByBucket = new Map();
+      const addKm = (mask, km) => {
+        const b = exclusiveTrackBucket(mask);
+        kmByBucket.set(b, (kmByBucket.get(b) || 0) + km);
+      };
+      for (let i = edgeStart; i < edges.length; i += 1) {
+        segKm += idx.km[edges[i]];
+        addKm(idx.mask[edges[i]], idx.km[edges[i]]);
+      }
+      for (let i = spanStart; i < spans.length; i += 1) {
+        segKm += spans[i][1];
+        if (spans[i][2]) addKm(spans[i][2], spans[i][1]);
+      }
+      let bucket = 0;
+      let bestKm = -1;
+      for (const [b, km] of kmByBucket) {
+        if (km > bestKm) {
+          bestKm = km;
+          bucket = b;
+        }
+      }
+      segments.push({ from, to, km: segKm, bucket });
+    }
   }
   // This train's OWN cumulative ridden distance (repeat segments count each
   // time — it pairs with ride time / ride count in the service-type rows,
@@ -266,7 +329,7 @@ function collectTrainStatsEntry(train, idx) {
   let km = 0;
   for (const e of edges) km += idx.km[e];
   for (const [, spanKm] of spans) km += spanKm;
-  const entry = { sig, edges, spans, km };
+  const entry = { sig, edges, spans, km, segments };
   _statsTrainCache.set(train.id, entry);
   return entry;
 }
@@ -385,6 +448,56 @@ function formatStatDuration(minutes) {
     : I18N.t("fmt.durationM", { m });
 }
 
+// ── 最常乘坐區間: how often each station-to-station interval was ridden ──────
+//
+// The unit is one matched route feature = one ridden interval between two
+// adjacent stops (jsonspec §14.1), which is what "車站-車站之間的區間" means.
+// A ride is counted per train, so riding 三島→沼津 on four different days is
+// four rides. Direction is folded together: 三島→沼津 and 沼津→三島 are the
+// same physical section, so they share one row.
+//
+// Returns { byMask: Map<mask, sorted rows> }, each row
+// { from, to, count, km } — km is the interval's own length (not multiplied
+// by the ride count), so it reads as "this section, ridden N times".
+function topRiddenSegments(entries) {
+  const acc = new Map(); // key -> { from, to, count, km, mask }
+  for (const en of entries) {
+    for (const sg of en.segments || []) {
+      const pair = [sg.from, sg.to];
+      const key = pair.slice().sort().join(" ");
+      const cur = acc.get(key);
+      if (cur) {
+        cur.count += 1;
+        // Keep the longest measurement: a partially-solved repeat ride must
+        // not shrink the section's recorded length.
+        if (sg.km > cur.km) {
+          cur.km = sg.km;
+          cur.bucket = sg.bucket; // the best-measured ride also decides the mode
+        }
+      } else {
+        acc.set(key, {
+          from: sg.from,
+          to: sg.to,
+          count: 1,
+          km: sg.km,
+          bucket: sg.bucket,
+        });
+      }
+    }
+  }
+  const byMask = new Map(STAT_CATEGORIES.map((c) => [c.mask, []]));
+  const all = [];
+  for (const row of acc.values()) {
+    all.push(row);
+    // One section lands in exactly one mode row.
+    if (byMask.has(row.bucket)) byMask.get(row.bucket).push(row);
+  }
+  const byRides = (a, b) => b.count - a.count || b.km - a.km;
+  for (const rows of byMask.values()) rows.sort(byRides);
+  all.sort(byRides);
+  return { byMask, all };
+}
+
 // View model shared by the sync path and the time-sliced job: the all-time
 // aggregate plus (when a concrete date bucket is active) that day's own
 // km/time aggregate, computed from the SAME per-train cache entries.
@@ -392,6 +505,7 @@ function buildMileageStatsView(idx, trains, entries) {
   const overall = aggregateMileageStats(idx, entries);
   overall.rideMinutes = sumRideMinutes(trains);
   overall.services = serviceGroupStats(trains, entries);
+  overall.topSegments = topRiddenSegments(entries);
   let daily = null;
   if (selectedDate && selectedDate !== ALL_DATES) {
     const dayTrains = [];
@@ -491,8 +605,16 @@ function markerCategoryForStation(stationFeature) {
   return "priv";
 }
 
+// Short distances keep one decimal: a 2-digit figure rounded to a whole km
+// loses a meaningful share of itself (8.6 km reading as "9"), while anything
+// from 100 km up is precise enough whole.
 function formatStatKm(km) {
-  return Math.round(km).toLocaleString();
+  const v = Number(km) || 0;
+  if (Math.abs(v) < 100) return (Math.round(v * 10) / 10).toLocaleString(undefined, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return Math.round(v).toLocaleString();
 }
 function formatStatPct(pct) {
   return pct > 0 && pct < 10 ? pct.toFixed(1) : String(Math.round(pct));
@@ -890,7 +1012,66 @@ function renderMileageStatsDom(view) {
     `<div class="divider"></div>
      <h3 class="subhead">${escapeHtml(I18N.t("stats.actualTitle"))}</h3>` +
     serviceRowsHtml(s.services) +
-    timeRow;
+    timeRow +
+    topSegmentsHtml(s.topSegments);
+}
+
+// ── 最常乘坐區間 rows, one per category ───────────────────────────────────────
+// The head shows that category's single most-ridden section; the rest expand
+// in a 依次數 list. Categories with nothing ridden are omitted entirely rather
+// than rendering an empty row.
+const TOP_SEGMENT_LIMIT = 12;
+// This section leads with 全部鐵道 (every ridden interval, no category filter)
+// and then splits by mode. It deliberately does NOT reuse STAT_CATEGORIES:
+// the coverage rows carry a JR（含新幹線）row that is a UNION of two other rows,
+// which is meaningful for coverage percentages but would just duplicate
+// sections here.
+// Each row is one EXCLUSIVE mode (see exclusiveTrackBucket), so a section
+// appears under exactly one of them — hence 在來線 here reads as JR在來線
+// rather than the coverage section's "everything that is not 新幹線".
+const TOP_SEGMENT_CATEGORIES = [
+  { mask: null, i18n: "stat.allrail" },
+  { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+  { mask: STAT_MASK_CONV, i18n: "stat.jrconv" },
+  { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+  { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+  { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+];
+function topSegmentsHtml(top) {
+  if (!top || !top.byMask) return "";
+  const sectionLabel = (row) =>
+    `${I18N.placeName(row.from)} ↔ ${I18N.placeName(row.to)}`;
+  const blocks = TOP_SEGMENT_CATEGORIES.map((c) => {
+    const rows = (c.mask === null ? top.all : top.byMask.get(c.mask)) || [];
+    if (!rows.length) return "";
+    const best = rows[0];
+    const rest = rows
+      .slice(0, TOP_SEGMENT_LIMIT)
+      .map(
+        (r) => `
+        <div class="stat-subrow">
+          <span class="stat-sublabel">${escapeHtml(sectionLabel(r))}</span>
+          <span class="stat-subval">${escapeHtml(I18N.t("stat.rides", { n: r.count }))} · ${formatStatKm(r.km)} km</span>
+        </div>`,
+      )
+      .join("");
+    const more =
+      rows.length > 1
+        ? `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byCount"))}（${rows.length}）</summary><div class="stat-subrows">${rest}</div></details>`
+        : "";
+    return `
+      <div class="stat-row">
+        <div class="stat-row-head">
+          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
+          <span class="stat-val"><span class="stat-km">${escapeHtml(sectionLabel(best))} · ${escapeHtml(I18N.t("stat.rides", { n: best.count }))}</span></span>
+        </div>
+        ${more}
+      </div>`;
+  }).join("");
+  if (!blocks) return "";
+  return `<div class="divider"></div>
+     <h3 class="subhead">${escapeHtml(I18N.t("stats.topSegmentsTitle"))}</h3>
+     <p class="hint">${escapeHtml(I18N.t("stats.topSegmentsHint"))}</p>${blocks}`;
 }
 
 // 有料特急 / 其他列車 rows: cumulative distance + time + ride count for each

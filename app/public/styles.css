@@ -1099,9 +1099,11 @@ button:disabled {
 .stat-sublabel {
   font-size: var(--font-sm);
   color: var(--ink-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Long line names and station-pair labels (which carry readings when those
+     toggles are on) wrap instead of truncating — same rule as the popups. */
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 /* Operating company the breakdown rows are grouped by — dimmer than the line
    name so the list still reads as a list of lines. */
