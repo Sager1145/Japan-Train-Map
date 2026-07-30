@@ -40748,6 +40748,1510 @@
           "ride_segment": true
         }
       ]
+    },
+    {
+      "id": "20260730_01_ichibata_taisha",
+      "date": "2026-07-30",
+      "number": "一畑電車 大社線（Ichibata Taisha Line）（時刻推定）",
+      "train_type": "普通",
+      "company": "一畑電車",
+      "origin": "出雲大社前",
+      "destination": "川跡",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#e11d48"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "4"
+        ],
+        "preferred_line_names": [
+          "大社線"
+        ],
+        "preferred_operator_names": [
+          "一畑電車"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "出雲大社前",
+          "to": "浜山公園北口",
+          "from_n02_station_code": "004855",
+          "to_n02_station_code": "004864",
+          "line_names": [
+            "大社線"
+          ]
+        },
+        {
+          "from": "浜山公園北口",
+          "to": "遥堪",
+          "from_n02_station_code": "004864",
+          "to_n02_station_code": "004863",
+          "line_names": [
+            "大社線"
+          ]
+        },
+        {
+          "from": "遥堪",
+          "to": "高浜",
+          "from_n02_station_code": "004863",
+          "to_n02_station_code": "004858",
+          "line_names": [
+            "大社線"
+          ]
+        },
+        {
+          "from": "高浜",
+          "to": "川跡",
+          "from_n02_station_code": "004858",
+          "to_n02_station_code": "004848",
+          "line_names": [
+            "大社線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "出雲大社前",
+          "n02_station_code": "004855",
+          "arrival": null,
+          "departure": "13:20",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "浜山公園北口",
+          "n02_station_code": "004864",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "遥堪",
+          "n02_station_code": "004863",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "高浜",
+          "n02_station_code": "004858",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "川跡",
+          "n02_station_code": "004848",
+          "arrival": "13:31",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_02_ichibata_kitamatsue",
+      "date": "2026-07-30",
+      "number": "一畑電車 北松江線（Ichibata Kita-Matsue Line）（時刻推定）",
+      "train_type": "普通",
+      "company": "一畑電車",
+      "origin": "川跡",
+      "destination": "電鉄出雲市",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#f97316"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "4"
+        ],
+        "preferred_line_names": [
+          "北松江線"
+        ],
+        "preferred_operator_names": [
+          "一畑電車"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "川跡",
+          "to": "武志",
+          "from_n02_station_code": "004849",
+          "to_n02_station_code": "004868",
+          "line_names": [
+            "北松江線"
+          ]
+        },
+        {
+          "from": "武志",
+          "to": "大津町",
+          "from_n02_station_code": "004868",
+          "to_n02_station_code": "004916",
+          "line_names": [
+            "北松江線"
+          ]
+        },
+        {
+          "from": "大津町",
+          "to": "出雲科学館パークタウン前",
+          "from_n02_station_code": "004916",
+          "to_n02_station_code": "004936",
+          "line_names": [
+            "北松江線"
+          ]
+        },
+        {
+          "from": "出雲科学館パークタウン前",
+          "to": "電鉄出雲市",
+          "from_n02_station_code": "004936",
+          "to_n02_station_code": "004940",
+          "line_names": [
+            "北松江線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "川跡",
+          "n02_station_code": "004849",
+          "arrival": null,
+          "departure": "13:35",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "武志",
+          "n02_station_code": "004868",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "大津町",
+          "n02_station_code": "004916",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "出雲科学館パークタウン前",
+          "n02_station_code": "004936",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "電鉄出雲市",
+          "n02_station_code": "004940",
+          "arrival": "13:43",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_03_yakumo22",
+      "date": "2026-07-30",
+      "number": "やくも22号（Yakumo 22）",
+      "train_type": "特急",
+      "company": "JR西日本",
+      "origin": "出雲市",
+      "destination": "岡山",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#7c3aed"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "山陰線",
+          "伯備線",
+          "山陽線"
+        ],
+        "preferred_operator_names": [
+          "西日本旅客鉄道"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "出雲市",
+          "to": "直江",
+          "from_n02_station_code": "004943",
+          "to_n02_station_code": "004879",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "直江",
+          "to": "荘原",
+          "from_n02_station_code": "004879",
+          "to_n02_station_code": "004854",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "荘原",
+          "to": "宍道",
+          "from_n02_station_code": "004854",
+          "to_n02_station_code": "004793",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "宍道",
+          "to": "来待",
+          "from_n02_station_code": "004793",
+          "to_n02_station_code": "004764",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "来待",
+          "to": "玉造温泉",
+          "from_n02_station_code": "004764",
+          "to_n02_station_code": "004736",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "玉造温泉",
+          "to": "乃木",
+          "from_n02_station_code": "004736",
+          "to_n02_station_code": "004690",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "乃木",
+          "to": "松江",
+          "from_n02_station_code": "004690",
+          "to_n02_station_code": "004638",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "松江",
+          "to": "東松江",
+          "from_n02_station_code": "004638",
+          "to_n02_station_code": "004697",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "東松江",
+          "to": "揖屋",
+          "from_n02_station_code": "004697",
+          "to_n02_station_code": "004750",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "揖屋",
+          "to": "荒島",
+          "from_n02_station_code": "004750",
+          "to_n02_station_code": "004731",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "荒島",
+          "to": "安来",
+          "from_n02_station_code": "004731",
+          "to_n02_station_code": "004748",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "安来",
+          "to": "米子",
+          "from_n02_station_code": "004748",
+          "to_n02_station_code": "004759",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "米子",
+          "to": "東山公園",
+          "from_n02_station_code": "004759",
+          "to_n02_station_code": "004735",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "東山公園",
+          "to": "伯耆大山",
+          "from_n02_station_code": "004735",
+          "to_n02_station_code": "004738",
+          "line_names": [
+            "山陰線"
+          ]
+        },
+        {
+          "from": "伯耆大山",
+          "to": "岸本",
+          "from_n02_station_code": "004738",
+          "to_n02_station_code": "004869",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "岸本",
+          "to": "伯耆溝口",
+          "from_n02_station_code": "004869",
+          "to_n02_station_code": "004972",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "伯耆溝口",
+          "to": "江尾",
+          "from_n02_station_code": "004972",
+          "to_n02_station_code": "005152",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "江尾",
+          "to": "武庫",
+          "from_n02_station_code": "005152",
+          "to_n02_station_code": "005184",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "武庫",
+          "to": "根雨",
+          "from_n02_station_code": "005184",
+          "to_n02_station_code": "005255",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "根雨",
+          "to": "黒坂",
+          "from_n02_station_code": "005255",
+          "to_n02_station_code": "005330",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "黒坂",
+          "to": "上菅",
+          "from_n02_station_code": "005330",
+          "to_n02_station_code": "005379",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "上菅",
+          "to": "生山",
+          "from_n02_station_code": "005379",
+          "to_n02_station_code": "005452",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "生山",
+          "to": "上石見",
+          "from_n02_station_code": "005452",
+          "to_n02_station_code": "005662",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "上石見",
+          "to": "新郷",
+          "from_n02_station_code": "005662",
+          "to_n02_station_code": "005737",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "新郷",
+          "to": "足立",
+          "from_n02_station_code": "005737",
+          "to_n02_station_code": "005858",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "足立",
+          "to": "備中神代",
+          "from_n02_station_code": "005858",
+          "to_n02_station_code": "006034",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "備中神代",
+          "to": "布原",
+          "from_n02_station_code": "006034",
+          "to_n02_station_code": "006067",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "布原",
+          "to": "新見",
+          "from_n02_station_code": "006067",
+          "to_n02_station_code": "006070",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "新見",
+          "to": "石蟹",
+          "from_n02_station_code": "006070",
+          "to_n02_station_code": "006179",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "石蟹",
+          "to": "井倉",
+          "from_n02_station_code": "006179",
+          "to_n02_station_code": "006233",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "井倉",
+          "to": "方谷",
+          "from_n02_station_code": "006233",
+          "to_n02_station_code": "006374",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "方谷",
+          "to": "備中川面",
+          "from_n02_station_code": "006374",
+          "to_n02_station_code": "006434",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "備中川面",
+          "to": "木野山",
+          "from_n02_station_code": "006434",
+          "to_n02_station_code": "006518",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "木野山",
+          "to": "備中高梁",
+          "from_n02_station_code": "006518",
+          "to_n02_station_code": "006686",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "備中高梁",
+          "to": "備中広瀬",
+          "from_n02_station_code": "006686",
+          "to_n02_station_code": "006803",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "備中広瀬",
+          "to": "美袋",
+          "from_n02_station_code": "006803",
+          "to_n02_station_code": "006973",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "美袋",
+          "to": "日羽",
+          "from_n02_station_code": "006973",
+          "to_n02_station_code": "006999",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "日羽",
+          "to": "豪渓",
+          "from_n02_station_code": "006999",
+          "to_n02_station_code": "007044",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "豪渓",
+          "to": "総社",
+          "from_n02_station_code": "007044",
+          "to_n02_station_code": "007264",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "総社",
+          "to": "清音",
+          "from_n02_station_code": "007264",
+          "to_n02_station_code": "007455",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "清音",
+          "to": "倉敷",
+          "from_n02_station_code": "007455",
+          "to_n02_station_code": "007598",
+          "line_names": [
+            "伯備線"
+          ]
+        },
+        {
+          "from": "倉敷",
+          "to": "中庄",
+          "from_n02_station_code": "007598",
+          "to_n02_station_code": "007527",
+          "line_names": [
+            "山陽線"
+          ]
+        },
+        {
+          "from": "中庄",
+          "to": "庭瀬",
+          "from_n02_station_code": "007527",
+          "to_n02_station_code": "007461",
+          "line_names": [
+            "山陽線"
+          ]
+        },
+        {
+          "from": "庭瀬",
+          "to": "北長瀬",
+          "from_n02_station_code": "007461",
+          "to_n02_station_code": "007413",
+          "line_names": [
+            "山陽線"
+          ]
+        },
+        {
+          "from": "北長瀬",
+          "to": "岡山",
+          "from_n02_station_code": "007413",
+          "to_n02_station_code": "007313",
+          "line_names": [
+            "山陽線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "出雲市",
+          "n02_station_code": "004943",
+          "arrival": null,
+          "departure": "14:37",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "直江",
+          "n02_station_code": "004879",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "荘原",
+          "n02_station_code": "004854",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "宍道",
+          "n02_station_code": "004793",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "来待",
+          "n02_station_code": "004764",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "玉造温泉",
+          "n02_station_code": "004736",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "乃木",
+          "n02_station_code": "004690",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "松江",
+          "n02_station_code": "004638",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東松江",
+          "n02_station_code": "004697",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "揖屋",
+          "n02_station_code": "004750",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "荒島",
+          "n02_station_code": "004731",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "安来",
+          "n02_station_code": "004748",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "米子",
+          "n02_station_code": "004759",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "東山公園",
+          "n02_station_code": "004735",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "伯耆大山",
+          "n02_station_code": "004738",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "岸本",
+          "n02_station_code": "004869",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "伯耆溝口",
+          "n02_station_code": "004972",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "江尾",
+          "n02_station_code": "005152",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "武庫",
+          "n02_station_code": "005184",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "根雨",
+          "n02_station_code": "005255",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "黒坂",
+          "n02_station_code": "005330",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "上菅",
+          "n02_station_code": "005379",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "生山",
+          "n02_station_code": "005452",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "上石見",
+          "n02_station_code": "005662",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新郷",
+          "n02_station_code": "005737",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "足立",
+          "n02_station_code": "005858",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "備中神代",
+          "n02_station_code": "006034",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "布原",
+          "n02_station_code": "006067",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新見",
+          "n02_station_code": "006070",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "石蟹",
+          "n02_station_code": "006179",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "井倉",
+          "n02_station_code": "006233",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "方谷",
+          "n02_station_code": "006374",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "備中川面",
+          "n02_station_code": "006434",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "木野山",
+          "n02_station_code": "006518",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "備中高梁",
+          "n02_station_code": "006686",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "備中広瀬",
+          "n02_station_code": "006803",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "美袋",
+          "n02_station_code": "006973",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "日羽",
+          "n02_station_code": "006999",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豪渓",
+          "n02_station_code": "007044",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "総社",
+          "n02_station_code": "007264",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "清音",
+          "n02_station_code": "007455",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "倉敷",
+          "n02_station_code": "007598",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "中庄",
+          "n02_station_code": "007527",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "庭瀬",
+          "n02_station_code": "007461",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北長瀬",
+          "n02_station_code": "007413",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "岡山",
+          "n02_station_code": "007313",
+          "arrival": "17:47",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_04_sakura762",
+      "date": "2026-07-30",
+      "number": "さくら762号（Sakura 762）",
+      "train_type": "新幹線",
+      "company": "JR西日本",
+      "origin": "岡山",
+      "destination": "新大阪",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#db2777"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "1"
+        ],
+        "preferred_line_names": [
+          "山陽新幹線"
+        ],
+        "preferred_operator_names": [
+          "西日本旅客鉄道"
+        ]
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "007329",
+          "to_n02_station_code": "006911",
+          "line_names": [
+            "山陽新幹線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "岡山",
+          "n02_station_code": "007329",
+          "arrival": null,
+          "departure": "18:14",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "新大阪",
+          "n02_station_code": "006911",
+          "arrival": "18:59",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_05_shinkaisoku_osaka",
+      "date": "2026-07-30",
+      "number": "新快速（Special Rapid）（時刻推定）",
+      "train_type": "新快速",
+      "company": "JR西日本",
+      "origin": "新大阪",
+      "destination": "大阪",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#2563eb"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "東海道線"
+        ],
+        "preferred_operator_names": [
+          "西日本旅客鉄道"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "新大阪",
+          "to": "大阪",
+          "from_n02_station_code": "006910",
+          "to_n02_station_code": "007068",
+          "line_names": [
+            "東海道線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "新大阪",
+          "n02_station_code": "006910",
+          "arrival": null,
+          "departure": "19:05",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "大阪",
+          "n02_station_code": "007068",
+          "arrival": "19:09",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_06_osaka_loop",
+      "date": "2026-07-30",
+      "number": "大阪環状線（Osaka Loop Line）（時刻推定）",
+      "train_type": "普通",
+      "company": "JR西日本",
+      "origin": "大阪",
+      "destination": "新今宮",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#16a34a"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": true,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "2"
+        ],
+        "preferred_line_names": [
+          "大阪環状線"
+        ],
+        "preferred_operator_names": [
+          "西日本旅客鉄道"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "大阪",
+          "to": "福島",
+          "from_n02_station_code": "007069",
+          "to_n02_station_code": "007091",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "福島",
+          "to": "野田",
+          "from_n02_station_code": "007091",
+          "to_n02_station_code": "007159",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "野田",
+          "to": "西九条",
+          "from_n02_station_code": "007159",
+          "to_n02_station_code": "007188",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "西九条",
+          "to": "弁天町",
+          "from_n02_station_code": "007188",
+          "to_n02_station_code": "007285",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "弁天町",
+          "to": "大正",
+          "from_n02_station_code": "007285",
+          "to_n02_station_code": "007336",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "大正",
+          "to": "芦原橋",
+          "from_n02_station_code": "007336",
+          "to_n02_station_code": "007379",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "芦原橋",
+          "to": "今宮",
+          "from_n02_station_code": "007379",
+          "to_n02_station_code": "007408",
+          "line_names": [
+            "大阪環状線"
+          ]
+        },
+        {
+          "from": "今宮",
+          "to": "新今宮",
+          "from_n02_station_code": "007408",
+          "to_n02_station_code": "007424",
+          "line_names": [
+            "大阪環状線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "大阪",
+          "n02_station_code": "007069",
+          "arrival": null,
+          "departure": "19:15",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "福島",
+          "n02_station_code": "007091",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "野田",
+          "n02_station_code": "007159",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "西九条",
+          "n02_station_code": "007188",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "弁天町",
+          "n02_station_code": "007285",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "大正",
+          "n02_station_code": "007336",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "芦原橋",
+          "n02_station_code": "007379",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "今宮",
+          "n02_station_code": "007408",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "新今宮",
+          "n02_station_code": "007424",
+          "arrival": "19:31",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260730_07_nankai_sakai",
+      "date": "2026-07-30",
+      "number": "南海本線（Nankai Main Line）（時刻推定）",
+      "train_type": "普通",
+      "company": "南海電気鉄道",
+      "origin": "新今宮",
+      "destination": "堺",
+      "direction": "unknown",
+      "visible": true,
+      "style": {
+        "color": "#0891b2"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "institution_filter_mode": "soft",
+        "allowed_institution_type_codes": [
+          "4"
+        ],
+        "preferred_line_names": [
+          "南海本線"
+        ],
+        "preferred_operator_names": [
+          "南海電気鉄道"
+        ]
+      },
+      "route_sections": [
+        {
+          "from": "新今宮",
+          "to": "萩ノ茶屋",
+          "from_n02_station_code": "007419",
+          "to_n02_station_code": "007452",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "萩ノ茶屋",
+          "to": "天下茶屋",
+          "from_n02_station_code": "007452",
+          "to_n02_station_code": "007483",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "天下茶屋",
+          "to": "岸里玉出",
+          "from_n02_station_code": "007483",
+          "to_n02_station_code": "007518",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "岸里玉出",
+          "to": "粉浜",
+          "from_n02_station_code": "007518",
+          "to_n02_station_code": "007554",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "粉浜",
+          "to": "住吉大社",
+          "from_n02_station_code": "007554",
+          "to_n02_station_code": "007573",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "住吉大社",
+          "to": "住ノ江",
+          "from_n02_station_code": "007573",
+          "to_n02_station_code": "007593",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "住ノ江",
+          "to": "七道",
+          "from_n02_station_code": "007593",
+          "to_n02_station_code": "007626",
+          "line_names": [
+            "南海本線"
+          ]
+        },
+        {
+          "from": "七道",
+          "to": "堺",
+          "from_n02_station_code": "007626",
+          "to_n02_station_code": "007649",
+          "line_names": [
+            "南海本線"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "新今宮",
+          "n02_station_code": "007419",
+          "arrival": null,
+          "departure": "19:40",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "萩ノ茶屋",
+          "n02_station_code": "007452",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "天下茶屋",
+          "n02_station_code": "007483",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "岸里玉出",
+          "n02_station_code": "007518",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "粉浜",
+          "n02_station_code": "007554",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "住吉大社",
+          "n02_station_code": "007573",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "住ノ江",
+          "n02_station_code": "007593",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "七道",
+          "n02_station_code": "007626",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "堺",
+          "n02_station_code": "007649",
+          "arrival": "19:50",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
     }
   ]
 }
