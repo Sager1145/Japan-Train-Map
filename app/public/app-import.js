@@ -751,4 +751,8 @@ function updateDataSourceUi() {
     restoreBtn.hidden = !isSampleMode();
     restoreBtn.disabled = !userStoreAvailable;
   }
+  // The panel context line carries the sample-data badge — a source switch
+  // (保存為我的資料 / loading a sample) must refresh it even when no list
+  // re-render happens, or it keeps claiming the WRONG source.
+  if (typeof updatePanelContextChip === "function") updatePanelContextChip();
 }
