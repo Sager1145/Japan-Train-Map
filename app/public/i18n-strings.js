@@ -550,6 +550,14 @@
     },
     "status.clearFail": { zh: "清除保存資料失敗：{msg}", en: "Failed to clear saved data: {msg}" },
     "confirm.deleteTrain": { zh: "確定刪除選取的列車？", en: "Delete selected train?" },
+    "confirm.deleteTrainDetail": {
+      zh: "確定刪除 {date} 的「{number}」（{stops} 個停站）？此操作無法復原。",
+      en: "Delete “{number}” on {date} ({stops} stops)? This cannot be undone.",
+    },
+    "status.shared": {
+      zh: "已透過系統分享匯出",
+      en: "Exported via the system share sheet",
+    },
     "confirm.deleteAll": { zh: "確定刪除所有列車？", en: "Delete all trains?" },
     "choose.overlap": {
       zh: "此處有多條重疊路線，請選擇列車：",
@@ -949,6 +957,9 @@
     "status.clearedAll": "保存済みデータとローカルファイル権限を消去しました。次回はサンプル／初期データを読み込みます。",
     "status.clearFail": "保存データの消去に失敗しました：{msg}",
     "confirm.deleteTrain": "選択中の列車を削除しますか？",
+    "confirm.deleteTrainDetail":
+      "{date} の「{number}」（停車駅 {stops}）を削除しますか？この操作は元に戻せません。",
+    "status.shared": "共有シートからエクスポートしました",
     "confirm.deleteAll": "すべての列車を削除しますか？",
     "choose.overlap": "この地点では複数の路線が重なっています。列車を選択してください：",
     "chip.sample": "サンプルデータ",

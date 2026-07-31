@@ -608,10 +608,19 @@ function bindEvents() {
     .getElementById("duplicate-train")
     .addEventListener("click", () => duplicateTrain(selectedTrainId));
   document.getElementById("delete-train").addEventListener("click", async () => {
-    if (
-      selectedTrainId &&
-      (await uiConfirm(I18N.t("confirm.deleteTrain"), { danger: true }))
-    )
+    if (!selectedTrainId) return;
+    // Name the victim in the confirm: on a phone the selected card may be
+    // scrolled out of view, so "delete selected train?" alone invites
+    // deleting the wrong one.
+    const train = getTrain(selectedTrainId);
+    const message = train
+      ? I18N.t("confirm.deleteTrainDetail", {
+          date: dateLabel(getTrainDate(train)),
+          number: listPrimaryName(train.number || train.id),
+          stops: String(train.stops?.length || 0),
+        })
+      : I18N.t("confirm.deleteTrain");
+    if (await uiConfirm(message, { danger: true }))
       deleteTrain(selectedTrainId);
   });
   document
@@ -668,7 +677,31 @@ function bindEvents() {
   // were byte-for-byte identical, so they now literally share one function.
   const saveLocalJsonHandler = async () => {
     try {
-      await writeLocalJsonFile(exportTrainStore(), true);
+      const jsonText = exportTrainStore();
+      // Touch devices go through the system share sheet first (存到「檔案」/
+      // AirDrop / …) — the anonymous-download fallback on iOS Safari buries
+      // the file in a hard-to-find list. Desktop keeps the save picker.
+      if (
+        window.matchMedia("(pointer: coarse)").matches &&
+        typeof navigator.canShare === "function" &&
+        typeof navigator.share === "function" &&
+        typeof File === "function"
+      ) {
+        const file = new File([jsonText], LOCAL_JSON_FILENAME, {
+          type: "application/json",
+        });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] });
+            setStatus(els.jsonStatus, I18N.t("status.shared"), "ok");
+            return;
+          } catch (error) {
+            if (error && error.name === "AbortError") return; // user cancelled
+            // Share engine refused the payload — fall back to save/download.
+          }
+        }
+      }
+      await writeLocalJsonFile(jsonText, true);
       setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
     } catch (error) {
       setStatus(els.jsonStatus, error.message, "err");
