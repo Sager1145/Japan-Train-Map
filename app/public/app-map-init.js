@@ -360,7 +360,7 @@ async function initMap(mapAssetsReady) {
   // The drawer overlays a fixed-size WebGL viewport. Camera padding keeps the
   // initial view centred in the uncovered area without resizing or distorting
   // the canvas.
-  applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
+  applySidebarMapPadding(sidebarCurrentSize(), 0);
   if (map.touchZoomRotate && map.touchZoomRotate.disableRotation)
     map.touchZoomRotate.disableRotation();
   map.addControl(

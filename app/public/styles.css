@@ -270,6 +270,14 @@ html[data-sidebar="collapsed"] #app {
     3px 0 10px rgba(0, 0, 0, 0.14);
 }
 
+/* Invisible expanded hit box: the visual handle stays slim, but pointer
+   events land from 10px around it (fat-finger tolerance for the drag). */
+.sidebar-edge-tab::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
 .sidebar-edge-tab-grip {
   display: flex;
   align-items: center;
@@ -1401,11 +1409,23 @@ tr.branch-junction td {
 
 @media (max-width: 900px) {
   #app {
-    --sidebar-open-size: 58vh;
+    /* Three-detent bottom panel (peek / half / full). The ELEMENT keeps the
+       full-detent height and slides via transform, exactly like the desktop
+       drawer; a detent only changes how much of it stays on-screen
+       (--sidebar-size — set inline by setSidebarPanelState and the drag).
+       --panel-clip is the off-screen remainder, fed back into the scroll
+       reserve below. */
+    --panel-half: 50dvh;
+    --panel-full: calc(100dvh - env(safe-area-inset-top) - 10px);
+    --panel-clip: calc(var(--sidebar-open-size) - var(--sidebar-size));
+    --sidebar-open-size: var(--panel-full);
+    --sidebar-size: var(--panel-half);
   }
 
   #sidebar {
     inset: auto 0 0 0;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     min-width: 0;
     max-width: none;
@@ -1418,9 +1438,42 @@ tr.branch-junction td {
       calc(var(--sidebar-open-size) - var(--sidebar-size))
     );
     transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-    /* viewport-fit=cover extends the bottom drawer under the home indicator;
-       reserve that space so the last row of controls stays tappable. */
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    /* The top 26px strip hosts the grab handle (which rides INSIDE the panel
+       on mobile — see .sidebar-edge-tab below — so it can never leave the
+       viewport at the full detent); the sticky nav row follows. The bottom
+       reserve grows by the panel's off-screen remainder so scrolled content
+       clears the viewport edge and the home indicator at every detent. */
+    padding-top: 26px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom) + var(--panel-clip, 0px));
+  }
+
+  /* Column-flex children keep their natural height; the panel itself is the
+     scroll container. */
+  #sidebar > * {
+    flex: 0 0 auto;
+  }
+
+  /* The nav row leads the panel on mobile: the peek detent shows just this
+     row, making it the de-facto bottom navigation. It stays sticky so tabs
+     remain reachable while the panel content scrolls at half/full. */
+  #sidebar .workspace-nav {
+    order: -1;
+    top: 0;
+    margin: 0 -14px 4px;
+    padding: 10px 14px 8px;
+  }
+
+  #sidebar .workspace-nav a {
+    min-height: 44px;
+  }
+
+  /* The app header (title, language/theme) moves to the panel footer on
+     mobile — reachable by scrolling, out of the peek/half hot path. */
+  #sidebar > header {
+    order: 99;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: var(--hairline);
   }
 
   /* The map fills under the status bar / notch (viewport-fit=cover); nudge the
@@ -1441,15 +1494,19 @@ tr.branch-junction td {
     );
   }
 
+  /* Bottom-sheet grab bar: rides just inside the panel's top edge (6px below
+     it, within the 26px strip reserved above the nav), so it stays tappable
+     at every detent — at full an OUTSIDE tab would sit off-screen under the
+     notch. When the panel is hidden, max() pins it to the viewport bottom. */
   .sidebar-edge-tab {
     top: auto;
-    bottom: var(--sidebar-size);
+    bottom: max(calc(var(--sidebar-size) - 30px), 0px);
     left: 50%;
     width: 62px;
     height: 24px;
     border-left: var(--hairline);
-    border-bottom: 0;
-    border-radius: var(--radius-button) var(--radius-button) 0 0;
+    border-bottom: var(--hairline);
+    border-radius: var(--radius-button);
     cursor: ns-resize;
     transform: translateX(-50%);
     transition:
@@ -1482,12 +1539,37 @@ tr.branch-junction td {
     width: 22px;
     height: 2px;
   }
+  /* Let the inner scroll areas grow with the panel: at the full detent the
+     old fixed caps wasted most of the height. */
   .train-list {
-    max-height: 260px;
+    max-height: max(260px, 42dvh);
   }
 
   .table-scroll {
-    max-height: 420px;
+    max-height: max(420px, 55dvh);
+  }
+}
+
+/* Touch-first target sizes (44px project standard, per WCAG 2.5.8 with the
+   Apple HIG margin) — coarse pointers only, so compact mouse-driven layouts
+   are untouched even on narrow desktop windows. */
+@media (max-width: 900px) and (pointer: coarse) {
+  #sidebar button,
+  #sidebar select,
+  #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    min-height: 44px;
+  }
+
+  /* Checkboxes keep their compact glyph but sit inside a 24px minimum box
+     (their label row is the real target). */
+  #sidebar input[type="checkbox"] {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .sidebar-edge-tab {
+    width: 84px;
+    height: 30px;
   }
 }
 

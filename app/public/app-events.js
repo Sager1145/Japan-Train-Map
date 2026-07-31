@@ -16,7 +16,11 @@
 //  the DOM (display:none only), so all JS bindings keep working while hidden.
 // =========================================================================
 const SIDEBAR_VISIBILITY_KEY = "n02-train-manager-sidebar-visible-v1";
+const SIDEBAR_PANEL_STATE_KEY = "n02-train-manager-panel-state-v1";
+// Mobile bottom-panel detents, in cycling order (tap on the handle).
+const SIDEBAR_PANEL_STATES = ["peek", "half", "full"];
 let sidebarVisible = true;
+let sidebarPanelState = "half";
 let sidebarToggleReady = false;
 let sidebarMapPaddingRaf = null;
 let sidebarPendingMapSize = null;
@@ -36,15 +40,75 @@ function sidebarFullSize() {
     if (measured > 0) return measured;
   }
   return sidebarUsesVerticalDrag()
-    ? Math.max(1, window.innerHeight * 0.58)
+    ? Math.max(1, window.innerHeight * 0.92)
     : 480;
 }
 
-function sidebarViewportPadding(size = sidebarVisible ? sidebarFullSize() : 0) {
-  const safeSize = Math.max(0, Number(size) || 0);
+// env(safe-area-inset-bottom) is not readable from JS; measure it once via a
+// probe element. Reset on resize — rotation changes the inset.
+let sidebarSafeAreaBottom = null;
+function safeAreaBottomPx() {
+  if (sidebarSafeAreaBottom !== null) return sidebarSafeAreaBottom;
+  if (!document.body || typeof document.createElement !== "function") return 0;
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;";
+  document.body.appendChild(probe);
+  sidebarSafeAreaBottom = probe.getBoundingClientRect().height;
+  probe.remove();
+  return sidebarSafeAreaBottom;
+}
+
+// One mobile detent in px. peek = the grab-handle strip (26px, mirrors the
+// #sidebar mobile padding-top) plus the sticky nav row — the de-facto bottom
+// navigation — held clear of the home indicator.
+function sidebarPanelSizePx(state) {
+  const full = sidebarFullSize();
+  if (state === "full") return full;
+  if (state === "half")
+    return Math.min(full, Math.round(window.innerHeight * 0.5));
+  const nav = document.querySelector("#sidebar .workspace-nav");
+  const navHeight = nav ? nav.getBoundingClientRect().height : 60;
+  return Math.min(full, Math.ceil(26 + navHeight + safeAreaBottomPx()));
+}
+
+// The footprint the map camera should currently compensate for.
+function sidebarCurrentSize() {
+  if (!sidebarVisible) return 0;
   return sidebarUsesVerticalDrag()
-    ? { top: 0, right: 0, bottom: safeSize, left: 0 }
-    : { top: 0, right: 0, bottom: 0, left: safeSize };
+    ? sidebarPanelSizePx(sidebarPanelState)
+    : sidebarFullSize();
+}
+
+function sidebarViewportPadding(size = sidebarCurrentSize()) {
+  const safeSize = Math.max(0, Number(size) || 0);
+  if (!sidebarUsesVerticalDrag())
+    return { top: 0, right: 0, bottom: 0, left: safeSize };
+  // The full detent covers the map entirely — padding beyond ~55% of the
+  // viewport only degenerates the camera, so cap what it compensates for.
+  return {
+    top: 0,
+    right: 0,
+    bottom: Math.min(safeSize, Math.round(window.innerHeight * 0.55)),
+    left: 0,
+  };
+}
+
+// Reflect the current mobile detent on #app: inline --sidebar-size drives the
+// CSS transform, data-panel is a styling hook. Desktop clears both so the
+// stylesheet's binary expanded/collapsed sizing rules.
+function syncSidebarPanelStyle(app = document.getElementById("app")) {
+  if (!app) return;
+  if (sidebarUsesVerticalDrag() && sidebarVisible) {
+    app.dataset.panel = sidebarPanelState;
+    app.style.setProperty(
+      "--sidebar-size",
+      `${sidebarPanelSizePx(sidebarPanelState)}px`,
+    );
+  } else {
+    delete app.dataset.panel;
+    app.style.removeProperty("--sidebar-size");
+  }
 }
 
 // Returns the EFFECTIVE animation duration (0 when the padding was applied
@@ -109,7 +173,7 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   document.documentElement.dataset.sidebar = sidebarVisible
     ? "expanded"
     : "collapsed";
-  app.style.removeProperty("--sidebar-size");
+  syncSidebarPanelStyle(app);
   const sidebar = document.getElementById("sidebar");
   if (sidebar) {
     // pointer-events:none (CSS) only blocks the mouse — a collapsed drawer
@@ -138,7 +202,7 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   }
   cancelScheduledSidebarMapPadding();
   const easedMs = applySidebarMapPadding(
-    sidebarVisible ? sidebarFullSize() : 0,
+    sidebarCurrentSize(),
     animate ? 320 : 0,
   );
   // The resting padding (the uncovered viewport) just changed, so the Japan
@@ -146,6 +210,39 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   // expanding left minZoom too high to frame Japan beside the sidebar.
   // Recompute after the padding ease lands (its easeTo ends in a moveend;
   // an interrupted ease also fires moveend, and the recompute is idempotent).
+  if (map) {
+    if (easedMs > 0 && typeof map.once === "function")
+      map.once("moveend", () => applyJapanMapConstraints());
+    else applyJapanMapConstraints();
+  }
+}
+
+// Switch the mobile panel to a detent (peek / half / full). From hidden it
+// re-opens straight onto the requested detent. On desktop only the stored
+// preference changes — the drawer there stays binary.
+function setSidebarPanelState(state, { persist = true, animate = true } = {}) {
+  if (!SIDEBAR_PANEL_STATES.includes(state)) state = "half";
+  sidebarPanelState = state;
+  if (persist) {
+    try {
+      localStorage.setItem(SIDEBAR_PANEL_STATE_KEY, state);
+    } catch (_) {}
+  }
+  if (!sidebarUsesVerticalDrag()) return;
+  if (!sidebarVisible) {
+    setSidebarVisible(true, { animate });
+    return;
+  }
+  const app = document.getElementById("app");
+  if (!app) return;
+  syncSidebarPanelStyle(app);
+  cancelScheduledSidebarMapPadding();
+  const easedMs = applySidebarMapPadding(
+    sidebarCurrentSize(),
+    animate ? 320 : 0,
+  );
+  // Same staleness rule as setSidebarVisible: the resting padding changed,
+  // so recompute the Japan zoom/bounds envelope once it lands.
   if (map) {
     if (easedMs > 0 && typeof map.once === "function")
       map.once("moveend", () => applyJapanMapConstraints());
@@ -164,12 +261,29 @@ function setupSidebarToggle() {
   } catch (_) {
     sidebarVisible = true;
   }
+  try {
+    const savedPanel = localStorage.getItem(SIDEBAR_PANEL_STATE_KEY);
+    if (SIDEBAR_PANEL_STATES.includes(savedPanel))
+      sidebarPanelState = savedPanel;
+  } catch (_) {}
   setSidebarVisible(sidebarVisible, { persist: false, animate: false });
 
   tab.addEventListener("click", (event) => {
     if (suppressSidebarClick) {
       suppressSidebarClick = false;
       event.preventDefault();
+      return;
+    }
+    if (sidebarUsesVerticalDrag()) {
+      // Tap cycles the detents; from hidden it restores the last one.
+      if (!sidebarVisible) setSidebarVisible(true);
+      else
+        setSidebarPanelState(
+          SIDEBAR_PANEL_STATES[
+            (SIDEBAR_PANEL_STATES.indexOf(sidebarPanelState) + 1) %
+              SIDEBAR_PANEL_STATES.length
+          ],
+        );
       return;
     }
     setSidebarVisible(!sidebarVisible);
@@ -179,14 +293,22 @@ function setupSidebarToggle() {
     if (!event.isPrimary || event.button !== 0) return;
     const vertical = sidebarUsesVerticalDrag();
     const fullSize = sidebarFullSize();
+    // The drag tracks from where the panel actually IS: the current detent on
+    // mobile (starting from fullSize would snap the panel to full under the
+    // finger), the binary open size on desktop.
+    const startSize = !sidebarVisible
+      ? 0
+      : vertical
+        ? sidebarPanelSizePx(sidebarPanelState)
+        : fullSize;
     sidebarDragState = {
       pointerId: event.pointerId,
       vertical,
       fullSize,
       startX: event.clientX,
       startY: event.clientY,
-      startSize: sidebarVisible ? fullSize : 0,
-      currentSize: sidebarVisible ? fullSize : 0,
+      startSize,
+      currentSize: startSize,
       moved: false,
       detachWindowFallback: null,
     };
@@ -255,18 +377,38 @@ function setupSidebarToggle() {
     } catch (_) {}
     app.classList.remove("sidebar-dragging");
     if (drag.moved && !cancelled) {
-      // A little under halfway feels deliberate while still making it easy to
-      // pull a completely hidden menu back into view from the edge tab.
-      const nextVisible = drag.currentSize >= drag.fullSize * 0.42;
       suppressSidebarClick = true;
       setTimeout(() => {
         suppressSidebarClick = false;
       }, 0);
-      setSidebarVisible(nextVisible);
+      if (drag.vertical) {
+        // Snap to the nearest detent; releasing below half of peek hides the
+        // panel entirely (full-screen map).
+        const detents = SIDEBAR_PANEL_STATES.map((state) => [
+          state,
+          sidebarPanelSizePx(state),
+        ]);
+        if (drag.currentSize < detents[0][1] * 0.5) {
+          setSidebarVisible(false);
+        } else {
+          let best = detents[0];
+          for (const candidate of detents)
+            if (
+              Math.abs(candidate[1] - drag.currentSize) <
+              Math.abs(best[1] - drag.currentSize)
+            )
+              best = candidate;
+          setSidebarPanelState(best[0]);
+        }
+      } else {
+        // Desktop keeps the binary drawer: a little under halfway feels
+        // deliberate while still making it easy to pull a hidden menu back.
+        setSidebarVisible(drag.currentSize >= drag.fullSize * 0.42);
+      }
     } else {
-      app.style.removeProperty("--sidebar-size");
+      syncSidebarPanelStyle(app);
       cancelScheduledSidebarMapPadding();
-      applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
+      applySidebarMapPadding(sidebarCurrentSize(), 0);
     }
   };
   tab.addEventListener("pointerup", (event) => finishDrag(event));
@@ -290,14 +432,57 @@ function setupSidebarToggle() {
     clearTimeout(sidebarWindowResizeTimer);
     sidebarWindowResizeTimer = setTimeout(() => {
       sidebarWindowResizeTimer = null;
+      // Rotation / breakpoint crossings change the safe-area inset and every
+      // detent's px value — refresh both before the padding is re-applied.
+      sidebarSafeAreaBottom = null;
+      syncSidebarPanelStyle(app);
       // Padding BEFORE resize: crossing the 900px breakpoint flips the drawer
       // axis (left ↔ bottom padding), and map.resize() fires the 'resize'
       // handler that recomputes the Japan constraints — it must read the new
       // footprint, not the stale one.
-      applySidebarMapPadding(sidebarVisible ? sidebarFullSize() : 0, 0);
+      applySidebarMapPadding(sidebarCurrentSize(), 0);
       if (map && typeof map.resize === "function") map.resize();
     }, 80);
   });
+
+  // ---- Soft keyboard (mobile) ----
+  // Focusing a text field raises the panel to the full detent — the keyboard
+  // halves the visible viewport, and peek/half leave no room to edit. The
+  // --kb-inset custom property tracks the keyboard height for bottom-anchored
+  // chrome (consumed by the editor's action bars).
+  const sidebarEl = document.getElementById("sidebar");
+  if (sidebarEl)
+    sidebarEl.addEventListener("focusin", (event) => {
+      if (!sidebarUsesVerticalDrag() || !sidebarVisible) return;
+      const target = event.target;
+      if (!target || typeof target.matches !== "function") return;
+      if (!target.matches("input, textarea, select")) return;
+      if (
+        target.matches(
+          '[type="checkbox"], [type="radio"], [type="color"], [type="file"]',
+        )
+      )
+        return;
+      if (sidebarPanelState !== "full") setSidebarPanelState("full");
+    });
+  if (window.visualViewport) {
+    const viewport = window.visualViewport;
+    const updateKeyboardInset = () => {
+      if (!sidebarUsesVerticalDrag()) {
+        app.style.removeProperty("--kb-inset");
+        return;
+      }
+      const inset = Math.max(
+        0,
+        Math.round(window.innerHeight - viewport.height - viewport.offsetTop),
+      );
+      // Below ~80px it is browser chrome collapsing, not a keyboard.
+      if (inset > 80) app.style.setProperty("--kb-inset", `${inset}px`);
+      else app.style.removeProperty("--kb-inset");
+    };
+    viewport.addEventListener("resize", updateKeyboardInset);
+    viewport.addEventListener("scroll", updateKeyboardInset);
+  }
 }
 
 const WORKSPACE_TABS = [
@@ -349,6 +534,16 @@ function setupWorkspaceTabs() {
     if (!link) return;
     ev.preventDefault();
     setActiveWorkspaceTab((link.getAttribute("href") || "").slice(1));
+    // A tab TAPPED from the peek detent means "open that workspace" — raise
+    // the panel so its content is actually visible. Only here, not in
+    // setActiveWorkspaceTab: boot/hashchange restoration must not overwrite
+    // a deliberately parked peek panel.
+    if (
+      sidebarUsesVerticalDrag() &&
+      sidebarVisible &&
+      sidebarPanelState === "peek"
+    )
+      setSidebarPanelState("half");
   });
   window.addEventListener("hashchange", () =>
     setActiveWorkspaceTab(location.hash.slice(1), { updateHash: false }),
