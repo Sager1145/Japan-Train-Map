@@ -1195,6 +1195,9 @@ function buildDeckMarkerRecords(orderedTrains) {
 function handleDeckMarkerClick(info) {
   const hit = interactiveTrainFromClick(info);
   if (!hit) return;
+  // A stage-1 click (day activation) opens no popup of its own — close any
+  // popup left from a previous stop so it can't outlive its context.
+  closeClickPopup();
   pickTrain(hit.train.id);
   if (hit.selectsNow && info.coordinate && map) {
     openClickPopup(info.coordinate, buildStopPopup(hit.feature, hit.train));

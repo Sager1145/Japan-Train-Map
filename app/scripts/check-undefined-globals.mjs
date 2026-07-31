@@ -54,6 +54,7 @@ const messages = linter.verify(source, {
       maplibregl: "readonly",
       uiConfirm: "readonly",
       uiPrompt: "readonly",
+      uiChoose: "readonly",
     },
   },
   rules: {

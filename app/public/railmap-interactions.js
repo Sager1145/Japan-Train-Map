@@ -211,6 +211,41 @@
             });
           return;
         }
+        // AMBIGUOUS TOUCH TAP: coarse pointers have no hover stage to
+        // disambiguate crossing lines, so a route tap that covers several
+        // distinct trains hands the full candidate set to the app for an
+        // explicit choice instead of silently taking the query's first line.
+        // A sticky hit means the fan/hover already disambiguated; marker taps
+        // are precise by nature.
+        if (
+          hit.kind === "route" &&
+          !hit.sticky &&
+          coarsePointer.matches &&
+          self._handlers.onRouteChoices
+        ) {
+          const box = [
+            [e.point.x - TOUCH_ROUTE_PAD_PX, e.point.y - TOUCH_ROUTE_PAD_PX],
+            [e.point.x + TOUCH_ROUTE_PAD_PX, e.point.y + TOUCH_ROUTE_PAD_PX],
+          ];
+          const layers = [TRAIN_PICK_FAN_LAYER, TRAIN_PICK_LAYER].filter(
+            (id) => map.getLayer(id),
+          );
+          const seenTids = new Set();
+          const candidates = [];
+          map.queryRenderedFeatures(box, { layers }).forEach((f) => {
+            const rec = self._records[f.properties.idx];
+            if (!rec || !rec.train || seenTids.has(rec.train.id)) return;
+            seenTids.add(rec.train.id);
+            candidates.push(rec);
+          });
+          if (candidates.length > 1) {
+            self._handlers.onRouteChoices({
+              records: candidates,
+              coordinate: [e.lngLat.lng, e.lngLat.lat],
+            });
+            return;
+          }
+        }
         const info = {
           object: hit.record,
           coordinate: [e.lngLat.lng, e.lngLat.lat],

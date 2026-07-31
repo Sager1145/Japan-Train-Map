@@ -2277,6 +2277,64 @@ tr.branch-junction td {
   outline: none;
   border-color: var(--rail-lit);
 }
+/* uiChoose candidate list (e.g. overlapping route lines under one map tap):
+   full-width tappable rows at the 44px touch standard, scrollable when the
+   crossing carries many trains. */
+.rp-modal-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(46dvh, 380px);
+  margin: -4px 0 16px;
+  overflow-y: auto;
+  overscroll-behavior: none;
+}
+.rp-modal-choice {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--ink);
+  background: var(--surface-subtle);
+  border: var(--hairline);
+  border-radius: var(--radius-button);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.rp-modal-choice:hover,
+.rp-modal-choice:focus-visible {
+  border-color: var(--rail-lit);
+  background: var(--white);
+}
+.rp-modal-choice-swatch {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+}
+.rp-modal-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rp-modal-choice-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.rp-modal-choice-sub {
+  font-size: var(--font-sm);
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+
 .rp-modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -551,6 +551,10 @@
     "status.clearFail": { zh: "清除保存資料失敗：{msg}", en: "Failed to clear saved data: {msg}" },
     "confirm.deleteTrain": { zh: "確定刪除選取的列車？", en: "Delete selected train?" },
     "confirm.deleteAll": { zh: "確定刪除所有列車？", en: "Delete all trains?" },
+    "choose.overlap": {
+      zh: "此處有多條重疊路線，請選擇列車：",
+      en: "Several routes overlap here — choose a train:",
+    },
     "status.allDeleted": { zh: "已刪除所有列車。", en: "All trains deleted." },
     "status.fieldsSaved": { zh: "已套用欄位。", en: "Fields saved." },
 
@@ -942,6 +946,7 @@
     "status.clearFail": "保存データの消去に失敗しました：{msg}",
     "confirm.deleteTrain": "選択中の列車を削除しますか？",
     "confirm.deleteAll": "すべての列車を削除しますか？",
+    "choose.overlap": "この地点では複数の路線が重なっています。列車を選択してください：",
     "status.allDeleted": "すべての列車を削除しました。",
     "status.fieldsSaved": "項目を適用しました。",
     "status.routeGenerating": "{train} の N02 鉄道経路を生成しています…",

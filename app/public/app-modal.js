@@ -12,6 +12,9 @@
  *   uiConfirm(message, { danger, okText, cancelText }) -> Promise<boolean>
  *   uiPrompt(message, defaultValue, { placeholder, okText, cancelText })
  *                                              -> Promise<string|null>
+ *   uiChoose(message, items, { cancelText })   -> Promise<number|null>
+ *     items: [{ label, sublabel, color }] — a tappable list (touch-first
+ *     disambiguation, e.g. overlapping route lines under one map tap).
  * Dialogs are serialized (a second call queues behind the first) so two never
  * stack, and each resolves its promise instead of blocking — no freeze.
  */
@@ -200,6 +203,59 @@
     return present(render).then((v) => (v == null ? null : v));
   }
 
+  function uiChoose(message, items, opts = {}) {
+    const render = (dialog, finish) => {
+      const d = doc();
+      dialog.appendChild(messageNode(message));
+      const list = d.createElement("div");
+      list.className = "rp-modal-choices";
+      (items || []).forEach((item, index) => {
+        const btn = d.createElement("button");
+        btn.type = "button";
+        btn.className = "rp-modal-choice";
+        if (item.color) {
+          const swatch = d.createElement("span");
+          swatch.className = "rp-modal-choice-swatch";
+          swatch.style.background = item.color;
+          btn.appendChild(swatch);
+        }
+        const text = d.createElement("span");
+        text.className = "rp-modal-choice-text";
+        const title = d.createElement("span");
+        title.className = "rp-modal-choice-title";
+        title.textContent = item.label == null ? "" : String(item.label);
+        text.appendChild(title);
+        if (item.sublabel) {
+          const sub = d.createElement("span");
+          sub.className = "rp-modal-choice-sub";
+          sub.textContent = String(item.sublabel);
+          text.appendChild(sub);
+        }
+        btn.appendChild(text);
+        btn.addEventListener("click", () => finish(index));
+        list.appendChild(btn);
+      });
+      dialog.appendChild(list);
+      const actions = d.createElement("div");
+      actions.className = "rp-modal-actions";
+      const cancel = d.createElement("button");
+      cancel.type = "button";
+      cancel.className = "rp-modal-btn";
+      cancel.textContent = opts.cancelText || label("modal.cancel", "取消");
+      cancel.addEventListener("click", () => finish(null));
+      actions.appendChild(cancel);
+      dialog.appendChild(actions);
+      // No getAcceptValue: Enter only activates the focused list button.
+      render.initialFocus = () => {
+        const first = list.querySelector("button");
+        if (first) first.focus();
+      };
+    };
+    render.cancelValue = null;
+    return present(render).then((v) => (typeof v === "number" ? v : null));
+  }
+
   global.uiConfirm = uiConfirm;
   global.uiPrompt = uiPrompt;
+  global.uiChoose = uiChoose;
 })(typeof window !== "undefined" ? window : this);

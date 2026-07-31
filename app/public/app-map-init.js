@@ -387,6 +387,7 @@ async function initMap(mapAssetsReady) {
     network,
     {
       onClick: handleDeckRouteClick,
+      onRouteChoices: handleDeckRouteChoices,
       onMarkerClick: handleDeckMarkerClick,
       onBackgroundClick: handleMapBackgroundClick,
       onHover: handleDeckHover,
@@ -545,10 +546,18 @@ async function initMap(mapAssetsReady) {
 let _clickPopup = null;
 function openClickPopup(coordinate, html) {
   if (_clickPopup) _clickPopup.remove();
-  _clickPopup = new maplibregl.Popup({ maxWidth: "320px" })
+  // closeOnClick:false — the blank-tap handler owns dismissal as its FIRST
+  // stage (close the popup, change nothing else), so a stray tap can't both
+  // close the popup AND pop the selection context in one go.
+  const popup = new maplibregl.Popup({ maxWidth: "320px", closeOnClick: false })
     .setLngLat(coordinate)
     .setHTML(html)
     .addTo(map);
+  // The X button bypasses closeClickPopup — keep the tracker in sync.
+  popup.on("close", () => {
+    if (_clickPopup === popup) _clickPopup = null;
+  });
+  _clickPopup = popup;
 }
 function closeClickPopup() {
   if (_clickPopup) {
@@ -559,12 +568,17 @@ function closeClickPopup() {
 
 // Blank-map click (no route lane / station dot under the pointer) steps the
 // view BACK one level instead of jumping straight to "全部":
+//   0. a stop popup is open     -> close only the popup, keep the selection;
 //   1. a train is selected      -> clear the selection, stay on its day
 //                                  (the whole day's routes re-appear solid);
 //   2. a concrete day, no train -> back to the all-dates view ("全部");
 //   3. already "全部", nothing selected -> no-op (idle clicks re-render
 //      nothing).
 function handleMapBackgroundClick() {
+  if (_clickPopup) {
+    closeClickPopup();
+    return;
+  }
   if (selectedTrainId || focusedTrainId) {
     const day = selectedDate; // selection always lives on a concrete day
     selectDateBucket(day);
@@ -596,5 +610,47 @@ function interactiveTrainFromClick(info) {
 function handleDeckRouteClick(info) {
   const hit = interactiveTrainFromClick(info);
   if (!hit) return;
+  // Moving on to a line dismisses a stop popup left open by a marker click
+  // (parity with the old closeOnClick behavior).
+  closeClickPopup();
   pickTrain(hit.train.id);
+}
+
+// Ambiguous coarse-pointer tap over CROSSING route lines. Touch has no hover
+// stage to disambiguate, so railmap hands over every distinct train under the
+// tap; list them for an explicit choice. Picking one both activates its day
+// and selects it — the user already disambiguated, so the two-stage pick
+// would only cost an extra tap.
+function handleDeckRouteChoices(info) {
+  const records = (info && info.records) || [];
+  // Same off-date guard as a direct click on each line.
+  const candidates = records
+    .map((record) => interactiveTrainFromClick({ object: record }))
+    .filter(Boolean)
+    .map((hit) => hit.train);
+  if (!candidates.length) return;
+  if (candidates.length === 1 || typeof uiChoose !== "function") {
+    closeClickPopup();
+    pickTrain(candidates[0].id);
+    return;
+  }
+  closeClickPopup();
+  const items = candidates.map((train) => ({
+    label: [
+      dateLabel(getTrainDate(train)),
+      listPrimaryName(train.number || train.id),
+      listPrimaryName(trainTypeCompanyLabel(train)),
+    ]
+      .filter(Boolean)
+      .join("・"),
+    sublabel: `${listPrimaryName(train.origin || "?")} → ${listPrimaryName(train.destination || "?")}`,
+    color: train.style?.color || DEFAULT_TRAIN_COLOR,
+  }));
+  uiChoose(I18N.t("choose.overlap"), items).then((index) => {
+    if (index == null) return;
+    const train = candidates[index];
+    if (!getTrain(train.id)) return; // deleted while the dialog was open
+    selectDateBucket(getTrainDate(train));
+    selectTrain(train.id, { fit: focusZoomEnabled });
+  });
 }
