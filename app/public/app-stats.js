@@ -334,7 +334,13 @@ function collectTrainStatsEntry(train, idx) {
           bucket = b;
         }
       }
-      segments.push({ from, to, km: segKm, bucket });
+      // The edges this interval actually covers, sorted so containment can be
+      // tested as a set-subset later (see dropContainedSections). Edge ids are
+      // the unit of "same track": two intervals that share none cannot contain
+      // one another, which is what keeps 新幹線 from swallowing the 在來線
+      // running beside it.
+      const segEdges = edges.slice(edgeStart).sort((a, b) => a - b);
+      segments.push({ from, to, km: segKm, bucket, edgeIds: segEdges });
     }
   }
   // This train's OWN cumulative ridden distance (repeat segments count each
@@ -487,6 +493,7 @@ function topRiddenSegments(entries) {
         if (sg.km > cur.km) {
           cur.km = sg.km;
           cur.bucket = sg.bucket; // the best-measured ride also decides the mode
+          cur.edgeIds = sg.edgeIds; // …and its edges define the section's extent
         }
       } else {
         acc.set(key, {
@@ -495,6 +502,7 @@ function topRiddenSegments(entries) {
           count: 1,
           km: sg.km,
           bucket: sg.bucket,
+          edgeIds: sg.edgeIds,
         });
       }
     }
@@ -507,9 +515,50 @@ function topRiddenSegments(entries) {
     if (byMask.has(row.bucket)) byMask.get(row.bucket).push(row);
   }
   const byRides = (a, b) => b.count - a.count || b.km - a.km;
-  for (const rows of byMask.values()) rows.sort(byRides);
+  for (const [mask, rows] of byMask) {
+    rows.sort(byRides);
+    byMask.set(mask, dropContainedSections(rows));
+  }
   all.sort(byRides);
-  return { byMask, all };
+  return { byMask, all: dropContainedSections(all) };
+}
+
+// True when every edge of `inner` also appears in `outer` — i.e. `inner` is a
+// stretch of the very same track. Both arrays are sorted ascending, so this is
+// a linear merge rather than a Set build per comparison.
+function isEdgeSubset(inner, outer) {
+  if (!inner || !outer || !inner.length || inner.length > outer.length)
+    return false;
+  let j = 0;
+  for (let i = 0; i < inner.length; i += 1) {
+    const want = inner[i];
+    while (j < outer.length && outer[j] < want) j += 1;
+    if (j >= outer.length || outer[j] !== want) return false;
+    j += 1;
+  }
+  return true;
+}
+
+// Riding A→D necessarily rides B→C inside it, so listing both says the same
+// trip twice. Walking the already ride-sorted list and dropping any section
+// contained in one ALREADY KEPT means the longer section wins only when it is
+// ridden at least as often; a short section ridden more than the long one it
+// sits inside still ranks first and keeps the long one as a separate entry.
+// The bucket check is belt-and-braces on top of the edge test: sections of
+// different modes never share edges anyway.
+function dropContainedSections(rows) {
+  const kept = [];
+  for (const row of rows) {
+    let contained = false;
+    for (const k of kept) {
+      if (k.bucket === row.bucket && isEdgeSubset(row.edgeIds, k.edgeIds)) {
+        contained = true;
+        break;
+      }
+    }
+    if (!contained) kept.push(row);
+  }
+  return kept;
 }
 
 // View model shared by the sync path and the time-sliced job: the all-time

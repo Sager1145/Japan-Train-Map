@@ -481,3 +481,46 @@ test("out-and-back geometry keeps the later cross-day traversal", () => {
     days: [0, 1],
   });
 });
+
+// A→D is ridden with B→C inside it, so listing both reports the same trip
+// twice. The suppression only runs downward: the longer section wins when it
+// is ridden at least as often, and a short section ridden MORE than the long
+// one it sits inside keeps both rows.
+test("最常乘坐區間 drops sections contained in a more-ridden one", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const row = (from, to, count, edgeIds, bucket) =>
+        ({ from, to, count, km: edgeIds.length, bucket, edgeIds });
+      const HSR = STAT_MASK_HSR, CONV = STAT_MASK_CONV;
+      // Same track, long section ridden more -> the inner one goes.
+      const absorbed = dropContainedSections([
+        row("A", "D", 5, [1, 2, 3], CONV),
+        row("B", "C", 3, [2], CONV),
+      ]).map((r) => r.from + r.to);
+      // Same track, inner section ridden more -> both stay.
+      const kept = dropContainedSections([
+        row("B", "C", 9, [2], CONV),
+        row("A", "D", 4, [1, 2, 3], CONV),
+      ]).map((r) => r.from + r.to);
+      // Different mode: 新幹線 must never swallow a 在來線 section.
+      const crossMode = dropContainedSections([
+        row("A", "D", 5, [1, 2, 3], HSR),
+        row("B", "C", 3, [2], CONV),
+      ]).map((r) => r.from + r.to);
+      // Overlapping but neither contained -> both stay.
+      const overlap = dropContainedSections([
+        row("A", "C", 5, [1, 2], CONV),
+        row("B", "D", 4, [2, 3], CONV),
+      ]).map((r) => r.from + r.to);
+      return { absorbed, kept, crossMode, overlap };
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    absorbed: ["AD"],
+    kept: ["BC", "AD"],
+    crossMode: ["AD", "BC"],
+    overlap: ["AC", "BD"],
+  });
+});
