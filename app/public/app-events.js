@@ -59,17 +59,17 @@ function safeAreaBottomPx() {
   return sidebarSafeAreaBottom;
 }
 
-// One mobile detent in px. peek = the grab-handle strip (26px, mirrors the
-// #sidebar mobile padding-top) plus the sticky nav row — the de-facto bottom
-// navigation — held clear of the home indicator.
+// One mobile detent in px. peek = the sticky nav row — the de-facto bottom
+// navigation, whose own padding already includes the grab-handle strip —
+// held clear of the home indicator.
 function sidebarPanelSizePx(state) {
   const full = sidebarFullSize();
   if (state === "full") return full;
   if (state === "half")
     return Math.min(full, Math.round(window.innerHeight * 0.5));
   const nav = document.querySelector("#sidebar .workspace-nav");
-  const navHeight = nav ? nav.getBoundingClientRect().height : 60;
-  return Math.min(full, Math.ceil(26 + navHeight + safeAreaBottomPx()));
+  const navHeight = nav ? nav.getBoundingClientRect().height : 86;
+  return Math.min(full, Math.ceil(navHeight + safeAreaBottomPx()));
 }
 
 // The footprint the map camera should currently compensate for.

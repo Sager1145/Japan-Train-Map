@@ -134,20 +134,22 @@ function renderStopsTable(train) {
     }
   });
 
+  // data-label carries the (localized) column header into each cell: the
+  // mobile card layout hides <thead> and renders these as per-field captions.
   const editableRow = (stop, index, color) => {
     const tr = document.createElement("tr");
     tr.style.borderLeft = `4px solid ${color}`;
     tr.innerHTML = `
           <td>${index + 1}</td>
           <td><input data-stop-field="name" data-stop-index="${index}" value="${escapeAttr(stopName(stop))}"></td>
-          <td><input data-stop-field="arrival" data-stop-index="${index}" value="${escapeAttr(stop.arrival ?? "")}"></td>
-          <td><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
-          <td>
+          <td data-label="${escapeAttr(I18N.t("th.arr"))}"><input data-stop-field="arrival" data-stop-index="${index}" value="${escapeAttr(stop.arrival ?? "")}"></td>
+          <td data-label="${escapeAttr(I18N.t("th.dep"))}"><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
+          <td data-label="${escapeAttr(I18N.t("th.type"))}">
             <select data-stop-field="stop_type" data-stop-index="${index}">
               ${STOP_TYPES.map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${I18N.t("stoptype." + type)}</option>`).join("")}
             </select>
           </td>
-          <td>
+          <td data-label="${escapeAttr(I18N.t("th.ride"))}">
             <input
               type="checkbox"
               data-stop-field="ride_segment"
@@ -194,9 +196,9 @@ function renderStopsTable(train) {
         tr.innerHTML = `
               <td>${i + 1}</td>
               <td>${escapeHtml(stopName(stop))} <span class="branch-tag">${escapeHtml(I18N.t("branch.junction"))}</span></td>
-              <td>${escapeHtml(stop.arrival ?? "")}</td>
-              <td>${escapeHtml(stop.departure ?? "")}</td>
-              <td>${escapeHtml(I18N.t("stoptype." + stop.stop_type))}</td>
+              <td data-label="${escapeAttr(I18N.t("th.arr"))}">${escapeHtml(stop.arrival ?? "")}</td>
+              <td data-label="${escapeAttr(I18N.t("th.dep"))}">${escapeHtml(stop.departure ?? "")}</td>
+              <td data-label="${escapeAttr(I18N.t("th.type"))}">${escapeHtml(I18N.t("stoptype." + stop.stop_type))}</td>
               <td></td><td></td>`;
         els.stopsBody.appendChild(tr);
         continue;
