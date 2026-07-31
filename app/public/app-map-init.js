@@ -334,6 +334,7 @@ async function initMap(mapAssetsReady) {
     attributionControl: false,
     dragRotate: false,
     pitchWithRotate: false,
+    touchPitch: false,
     center: [138.2, 36.4],
     zoom: 4,
     // Cap the device pixel ratio. A DPR-3 iPhone would otherwise allocate a
@@ -517,11 +518,24 @@ async function initMap(mapAssetsReady) {
     { passive: false },
   );
   // Safari reports a trackpad pinch as gesture* events instead; blocking the
-  // default suppresses its full-page zoom the same way.
+  // default suppresses its full-page zoom the same way. On touch devices the
+  // same gesture* events fire for finger pinches ANYWHERE on the page, so
+  // there the block only covers the map — a document-wide preventDefault
+  // would disable Safari's accessibility pinch zoom over the sidebar.
+  const coarsePointer = window.matchMedia("(pointer: coarse)");
   ["gesturestart", "gesturechange", "gestureend"].forEach((type) =>
-    document.addEventListener(type, (e) => e.preventDefault(), {
-      passive: false,
-    }),
+    document.addEventListener(
+      type,
+      (e) => {
+        if (
+          coarsePointer.matches &&
+          (!map || !map.getContainer().contains(e.target))
+        )
+          return;
+        e.preventDefault();
+      },
+      { passive: false },
+    ),
   );
 }
 

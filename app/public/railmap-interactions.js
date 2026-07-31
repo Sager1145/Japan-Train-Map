@@ -61,6 +61,20 @@
       // lines crossing beneath it are invisible to picking; only once the
       // pointer actually LEAVES the sticky geometry does the normal
       // resolution (foreign lines / ground) apply again.
+      // Touch has no hover stage to engage the sticky grab box, so taps get
+      // fatter pads up front: routes reach ~22px from the finger (16px pad on
+      // top of the pick lane's own half-width), station dots 12px — still
+      // only winning close in so they don't grab from afar.
+      // (matchMedia is absent in the headless harnesses that attach railmap —
+      // fan smoke test, precompute replay — so fall back to the fine-pointer
+      // pads there.)
+      const coarsePointer =
+        typeof window.matchMedia === "function"
+          ? window.matchMedia("(pointer: coarse)")
+          : { matches: false };
+      const TOUCH_ROUTE_PAD_PX = 16;
+      const TOUCH_MARKER_PAD_PX = 12;
+
       function queryAt(point, preferLanes, stickyTids) {
         const sticky = stickyTids && stickyTids.length ? stickyTids : null;
         const markerLayers = [
@@ -77,17 +91,24 @@
         const pickLayers = [TRAIN_PICK_FAN_LAYER, TRAIN_PICK_LAYER].filter(
           (id) => map.getLayer(id),
         );
+        const markerPad = coarsePointer.matches
+          ? TOUCH_MARKER_PAD_PX
+          : HOVER_PICK_PAD_PX;
         const bbox = [
-          [point.x - HOVER_PICK_PAD_PX, point.y - HOVER_PICK_PAD_PX],
-          [point.x + HOVER_PICK_PAD_PX, point.y + HOVER_PICK_PAD_PX],
+          [point.x - markerPad, point.y - markerPad],
+          [point.x + markerPad, point.y + markerPad],
         ];
-        // Enlarged ROUTE grab box while a hover is already engaged (hover
-        // queries only — clicks and fresh hovers keep the tight pad).
-        // Markers keep the tight bbox so station dots don't grab from afar.
+        // Engaged-hover ROUTE grab box (hover queries only — clicks and fresh
+        // hovers keep their base pad). Markers keep the tighter bbox so
+        // station dots don't grab from afar.
         const routePad =
-          preferLanes && sticky ? HOVER_STICKY_PAD_PX : HOVER_PICK_PAD_PX;
+          preferLanes && sticky
+            ? HOVER_STICKY_PAD_PX
+            : coarsePointer.matches
+              ? TOUCH_ROUTE_PAD_PX
+              : HOVER_PICK_PAD_PX;
         const routeBbox =
-          routePad === HOVER_PICK_PAD_PX
+          routePad === markerPad
             ? bbox
             : [
                 [point.x - routePad, point.y - routePad],
