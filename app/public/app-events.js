@@ -436,6 +436,15 @@ function setupSidebarToggle() {
       // detent's px value — refresh both before the padding is re-applied.
       sidebarSafeAreaBottom = null;
       syncSidebarPanelStyle(app);
+      // Crossing INTO the desktop layout re-opens the mobile-collapsed
+      // sections (raw JSON areas, advanced display knobs) so the flat
+      // desktop panels come back complete. Never auto-closes the other way.
+      if (!sidebarUsesVerticalDrag())
+        document
+          .querySelectorAll("details.collapse-desktop-open")
+          .forEach((d) => {
+            d.open = true;
+          });
       // Padding BEFORE resize: crossing the 900px breakpoint flips the drawer
       // axis (left ↔ bottom padding), and map.resize() fires the 'resize'
       // handler that recomputes the Japan constraints — it must read the new
@@ -561,6 +570,11 @@ setupWorkspaceTabs();
 function bindEvents() {
   setupDisplaySettingsPanel();
   setupWorkspaceTabs();
+  // Big secondary blocks (raw JSON areas, advanced display knobs) ship
+  // collapsed; wide screens open them to keep the flat desktop layout.
+  document.querySelectorAll("details.collapse-desktop-open").forEach((d) => {
+    if (!sidebarUsesVerticalDrag()) d.open = true;
+  });
   // Re-render every dynamically-built UI string when the language changes.
   // (Static [data-i18n] DOM is handled by I18N.applyStatic; this covers the
   // JS-generated bits: display-panel labels, the focus button, the date bar,
@@ -742,6 +756,10 @@ function bindEvents() {
     });
   document.getElementById("export-json").addEventListener("click", () => {
     els.json.value = exportTrainStore();
+    // The preview lives in a details block that ships collapsed on mobile —
+    // exporting INTO a hidden textarea would look like a no-op.
+    const exportDetails = document.getElementById("export-json-details");
+    if (exportDetails) exportDetails.open = true;
     setStatus(
       els.jsonStatus,
       I18N.t("status.exported"),

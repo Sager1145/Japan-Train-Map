@@ -187,6 +187,7 @@ function renderTrainList() {
         ? I18N.t("empty.dateSearch")
         : I18N.t("empty.dateNone");
     els.list.appendChild(empty);
+    updatePanelContextChip();
     return;
   }
 
@@ -197,6 +198,7 @@ function renderTrainList() {
     fragment.appendChild(buildTrainListItemElement(train, showingAll)),
   );
   els.list.appendChild(fragment);
+  updatePanelContextChip();
 }
 
 // Build ONE sidebar card. Shared by the full renderTrainList() and the
@@ -307,6 +309,32 @@ function trainMatchesQuery(train, query) {
   return parts.join(" ").toLowerCase().includes(query);
 }
 
+// Mobile-only context line in the panel's grab-handle strip: data source
+// (sample data warning) plus the current date / selected train. It is what
+// keeps the peek detent informative — the panel face shows WHERE you are
+// even when only the nav row is visible.
+function updatePanelContextChip() {
+  const chip = document.getElementById("panel-context");
+  if (!chip) return;
+  const parts = [];
+  if (
+    typeof HAS_BACKEND !== "undefined" &&
+    !HAS_BACKEND &&
+    typeof isSampleMode === "function" &&
+    isSampleMode()
+  )
+    parts.push(I18N.t("chip.sample"));
+  const train = getTrain();
+  if (train)
+    parts.push(
+      `${dateLabel(getTrainDate(train))} · ${listPrimaryName(train.number || train.id)}`,
+    );
+  else if (selectedDate !== ALL_DATES)
+    parts.push(I18N.t("list.dateTitle", { date: dateLabel(selectedDate) }));
+  else parts.push(I18N.t("list.allTitle", { count: trainStore.trains.length }));
+  chip.textContent = parts.join("・");
+}
+
 // Toggle the `.selected` / `.focused` classes on the existing list cards
 // instead of rebuilding the whole list. Selecting a train used to call
 // renderAll() — a full date-bar + list + editor + map rebuild — just to move
@@ -320,6 +348,7 @@ function updateSelectionHighlight() {
     el.classList.toggle("selected", id === selectedTrainId);
     el.classList.toggle("focused", id === focusedTrainId);
   }
+  updatePanelContextChip();
 }
 
 // Select + focus a train with the minimum work needed: update the list

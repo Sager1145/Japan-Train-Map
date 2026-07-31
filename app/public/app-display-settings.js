@@ -76,20 +76,23 @@ const formatFitDistance = (x) =>
   x >= 1000 ? (x / 1000).toFixed(1) + "km" : Math.round(x) + "m";
 // Slider definitions for the "顯示調節" submenu (built dynamically in JS so the
 // HTML stays tiny and every control is wired the same way).
+// `advanced: true` renders the control inside the collapsible 進階 group
+// (collapsed on mobile, auto-opened on desktop by bindEvents) — the common
+// visual knobs stay on the panel's first screen.
 const DISPLAY_CONTROLS = [
   { key: "routeWidthScale", labelKey: "disp.routeWidthScale", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
   { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
   { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
-  { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px" },
-  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => (x * 0.4).toFixed(1) + "px" },
-  { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px" },
-  { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
-  { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x },
   { key: "mapOpacity", labelKey: "disp.mapOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "fitCurvePrecision", labelKey: "disp.fitCurvePrecision", min: 0.5, max: 2, step: 0.1, fmt: (x) => x.toFixed(1) + "×", manualFitRebuild: true },
-  { key: "fitCurveMinRadius", labelKey: "disp.fitCurveMinRadius", min: 200, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
-  { key: "fitCurveMinDetail", labelKey: "disp.fitCurveMinDetail", min: 100, max: 20000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
-  { key: "fitCurveMaxDeviation", labelKey: "disp.fitCurveMaxDeviation", min: 100, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true },
+  { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px", advanced: true },
+  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => (x * 0.4).toFixed(1) + "px", advanced: true },
+  { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px", advanced: true },
+  { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×", advanced: true },
+  { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x, advanced: true },
+  { key: "fitCurvePrecision", labelKey: "disp.fitCurvePrecision", min: 0.5, max: 2, step: 0.1, fmt: (x) => x.toFixed(1) + "×", manualFitRebuild: true, advanced: true },
+  { key: "fitCurveMinRadius", labelKey: "disp.fitCurveMinRadius", min: 200, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true, advanced: true },
+  { key: "fitCurveMinDetail", labelKey: "disp.fitCurveMinDetail", min: 100, max: 20000, step: 100, fmt: formatFitDistance, manualFitRebuild: true, advanced: true },
+  { key: "fitCurveMaxDeviation", labelKey: "disp.fitCurveMaxDeviation", min: 100, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true, advanced: true },
 ];
 // Checkbox toggles for the submenu (booleans, rendered under the sliders).
 // refreshNames toggles change how station names annotate (kana / romaji /
@@ -97,8 +100,10 @@ const DISPLAY_CONTROLS = [
 // endpoint labels; popups/tooltips rebuild per interaction anyway.
 const DISPLAY_TOGGLES = [
   { key: "showFullCrossDay", labelKey: "disp.fullCrossDay", rebuild: false },
-  { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false },
-  { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false },
+  // Debug overlays (fit-curve wireframe, hover hit regions) are desktop
+  // diagnosis tools — they live in the 進階 group.
+  { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false, advanced: true },
+  { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false, advanced: true },
   { key: "nameReadingKana", labelKey: "disp.nameReadingKana", rebuild: false, refreshNames: true },
   { key: "nameReadingRomaji", labelKey: "disp.nameReadingRomaji", rebuild: false, refreshNames: true },
   { key: "nameReadingZh", labelKey: "disp.nameReadingZh", rebuild: false, refreshNames: true },
@@ -295,6 +300,16 @@ function setupDisplaySettingsPanel() {
   const body = document.getElementById("display-settings-body");
   if (!body) return;
   body.innerHTML = "";
+  // The 進階 group: marker geometry, fit-curve tuning and debug overlays.
+  // Collapsed on mobile; bindEvents auto-opens it on desktop.
+  const advanced = document.createElement("details");
+  advanced.className = "display-advanced collapse-desktop-open";
+  const advancedSummary = document.createElement("summary");
+  advancedSummary.className = "subhead-toggle";
+  advancedSummary.dataset.i18n = "disp.advanced";
+  advancedSummary.textContent = I18N.t("disp.advanced");
+  advanced.appendChild(advancedSummary);
+  const homeOf = (cfg) => (cfg.advanced ? advanced : body);
   DISPLAY_CONTROLS.forEach((cfg) => {
     const wrap = document.createElement("label");
     wrap.className = "display-control";
@@ -329,7 +344,7 @@ function setupDisplaySettingsPanel() {
     head.appendChild(val);
     wrap.appendChild(head);
     wrap.appendChild(input);
-    body.appendChild(wrap);
+    homeOf(cfg).appendChild(wrap);
     cfg._input = input;
     cfg._val = val;
     cfg._name = name;
@@ -347,7 +362,9 @@ function setupDisplaySettingsPanel() {
   });
   updateFitCurveRebuildButton();
   rebuildWrap.appendChild(fitCurveRebuildButton);
-  body.appendChild(rebuildWrap);
+  // The rebuild button applies the fit-curve sliders, all of which live in
+  // the 進階 group.
+  advanced.appendChild(rebuildWrap);
   DISPLAY_TOGGLES.forEach((cfg) => {
     const wrap = document.createElement("label");
     wrap.className = "inline-check display-toggle";
@@ -372,10 +389,11 @@ function setupDisplaySettingsPanel() {
     });
     wrap.appendChild(input);
     wrap.appendChild(span);
-    body.appendChild(wrap);
+    homeOf(cfg).appendChild(wrap);
     cfg._input = input;
     cfg._span = span;
   });
+  body.appendChild(advanced);
   const reset = document.getElementById("display-settings-reset");
   if (reset) {
     reset.addEventListener("click", () => {

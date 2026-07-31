@@ -83,6 +83,10 @@
         </header>
 
         <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
+          <!-- Mobile-only context line in the grab-handle strip: data source
+               (sample vs mine) + current date / selected train. Hidden and
+               out of the grid on desktop. -->
+          <span class="panel-context" id="panel-context" aria-hidden="true"></span>
           <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
           <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
           <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
@@ -210,13 +214,18 @@
               <div class="divider"></div>
             </div>
             <h3 class="subhead" data-i18n="sec.import">JSON 匯入／本地資料</h3>
-            <textarea
-              class="import-json-area"
-              id="import-json-input"
-              data-i18n-ph="ph.importJson"
-              placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件'
-              spellcheck="false"
-            ></textarea>
+            <!-- The big paste area ships collapsed on mobile (bindEvents opens
+                 every details.collapse-desktop-open on wide screens). -->
+            <details class="collapse-desktop-open" id="import-json-details">
+              <summary class="subhead-toggle" data-i18n="sec.importPaste">貼上 JSON 文字</summary>
+              <textarea
+                class="import-json-area"
+                id="import-json-input"
+                data-i18n-ph="ph.importJson"
+                placeholder='貼上完整 store：{"schema_version":"1.2","trains":[...]}，也可貼上列車陣列或單一列車物件'
+                spellcheck="false"
+              ></textarea>
+            </details>
             <div class="toolbar">
               <button class="primary" id="apply-import-json" data-i18n="btn.apply">
                 開始載入／逐條匯入
@@ -243,11 +252,14 @@
             <div class="status" id="import-status"></div>
             <div class="divider"></div>
             <h3 class="subhead" data-i18n="sec.export">JSON 匯出</h3>
-            <textarea
-              id="train-json-input"
-              readonly
-              spellcheck="false"
-            ></textarea>
+            <details class="collapse-desktop-open" id="export-json-details">
+              <summary class="subhead-toggle" data-i18n="sec.rawPreview">原始 JSON 預覽</summary>
+              <textarea
+                id="train-json-input"
+                readonly
+                spellcheck="false"
+              ></textarea>
+            </details>
             <div class="toolbar">
               <button id="export-json" data-i18n="btn.exportJson">匯出 JSON</button>
               <button id="download-json" data-i18n="btn.downloadJson">下載 JSON</button>

@@ -497,6 +497,28 @@ h1 {
   color: var(--white);
 }
 
+/* Mobile-only context line (data source + current date/train) rendered in
+   the panel's grab-handle strip — hidden on desktop where the header and
+   list title already carry this. */
+.panel-context {
+  display: none;
+}
+
+/* Collapsible secondary sections (raw JSON areas, advanced display knobs).
+   bindEvents opens details.collapse-desktop-open on wide screens. */
+summary.subhead-toggle {
+  margin: 12px 0 8px;
+  color: var(--rail-text);
+  font-size: var(--font-md);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+summary.subhead-toggle:hover {
+  color: var(--rail-lit);
+}
+
 /* Tab panels: inactive cards stay in the DOM (all JS bindings keep working)
    but are hidden entirely. */
 .card.tab-hidden {
@@ -1469,6 +1491,22 @@ tr.branch-junction td {
 
   #sidebar .workspace-nav a {
     min-height: 44px;
+  }
+
+  /* Context line in the grab-handle strip, left of the centered handle.
+     Absolutely positioned so the nav's 5-column grid never sees it. */
+  #sidebar .workspace-nav .panel-context {
+    display: block;
+    position: absolute;
+    top: 9px;
+    left: 14px;
+    max-width: calc(50% - 46px);
+    overflow: hidden;
+    color: var(--ink-muted);
+    font-size: var(--font-xs);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    pointer-events: none;
   }
 
   /* The app header (title, language/theme) moves to the panel footer on
