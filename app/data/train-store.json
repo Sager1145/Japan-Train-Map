@@ -41827,8 +41827,8 @@
       ]
     },
     {
-      "id": "20260801_01_nankai_shinimamiya",
-      "date": "2026-08-01",
+      "id": "20260731_01_nankai_shinimamiya",
+      "date": "2026-07-31",
       "number": "南海本線（Nankai Main Line）（時刻推定）",
       "train_type": "普通",
       "company": "南海電気鉄道",
@@ -42005,8 +42005,8 @@
       ]
     },
     {
-      "id": "20260801_02_rapit_alpha3",
-      "date": "2026-08-01",
+      "id": "20260731_02_rapit_alpha3",
+      "date": "2026-07-31",
       "number": "ラピートα3号（Rapi:t α3）",
       "train_type": "特急",
       "company": "南海電気鉄道",
@@ -42534,6 +42534,912 @@
           "name": "関西空港",
           "n02_station_code": "007959",
           "arrival": "07:08",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_03_yui_naha_akamine",
+      "date": "2026-07-31",
+      "number": "ゆいレール（那覇空港→赤嶺）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "那覇空港",
+      "destination": "赤嶺",
+      "direction": "赤嶺",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010138",
+          "to_n02_station_code": "010142",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "那覇空港",
+          "n02_station_code": "010138",
+          "arrival": null,
+          "departure": "10:52",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "赤嶺",
+          "n02_station_code": "010142",
+          "arrival": "10:55",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_04_yui_akamine_naha",
+      "date": "2026-07-31",
+      "number": "ゆいレール（赤嶺→那覇空港）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "赤嶺",
+      "destination": "那覇空港",
+      "direction": "那覇空港",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010142",
+          "to_n02_station_code": "010138",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "赤嶺",
+          "n02_station_code": "010142",
+          "arrival": null,
+          "departure": "11:15",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "那覇空港",
+          "n02_station_code": "010138",
+          "arrival": "11:18",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_05_yui_tedako_shuri",
+      "date": "2026-07-31",
+      "number": "ゆいレール（てだこ浦西→首里）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "てだこ浦西",
+      "destination": "首里",
+      "direction": "首里",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010125",
+          "to_n02_station_code": "010124",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010124",
+          "to_n02_station_code": "010126",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010126",
+          "to_n02_station_code": "010129",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010129",
+          "to_n02_station_code": "010132",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "てだこ浦西",
+          "n02_station_code": "010125",
+          "arrival": null,
+          "departure": "18:06",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "浦添前田",
+          "n02_station_code": "010124",
+          "arrival": "18:08",
+          "departure": "18:08",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "経塚",
+          "n02_station_code": "010126",
+          "arrival": "18:10",
+          "departure": "18:10",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "石嶺",
+          "n02_station_code": "010129",
+          "arrival": "18:13",
+          "departure": "18:13",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "首里",
+          "n02_station_code": "010132",
+          "arrival": "18:15",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_06_yui_shuri_miebashi",
+      "date": "2026-07-31",
+      "number": "ゆいレール（首里→美栄橋）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "首里",
+      "destination": "美栄橋",
+      "direction": "美栄橋",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010132",
+          "to_n02_station_code": "010130",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010130",
+          "to_n02_station_code": "010128",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010128",
+          "to_n02_station_code": "010127",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010127",
+          "to_n02_station_code": "010131",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010131",
+          "to_n02_station_code": "010135",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010135",
+          "to_n02_station_code": "010134",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010134",
+          "to_n02_station_code": "010133",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "首里",
+          "n02_station_code": "010132",
+          "arrival": null,
+          "departure": "19:53",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "儀保",
+          "n02_station_code": "010130",
+          "arrival": "19:55",
+          "departure": "19:55",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "市立病院前",
+          "n02_station_code": "010128",
+          "arrival": "19:57",
+          "departure": "19:57",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "古島",
+          "n02_station_code": "010127",
+          "arrival": "19:59",
+          "departure": "19:59",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "おもろまち",
+          "n02_station_code": "010131",
+          "arrival": "20:01",
+          "departure": "20:01",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "安里",
+          "n02_station_code": "010135",
+          "arrival": "20:03",
+          "departure": "20:03",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "牧志",
+          "n02_station_code": "010134",
+          "arrival": "20:06",
+          "departure": "20:06",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "美栄橋",
+          "n02_station_code": "010133",
+          "arrival": "20:08",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_07_yui_miebashi_naha",
+      "date": "2026-07-31",
+      "number": "ゆいレール（美栄橋→那覇空港）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "美栄橋",
+      "destination": "那覇空港",
+      "direction": "那覇空港",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010133",
+          "to_n02_station_code": "010136",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010136",
+          "to_n02_station_code": "010137",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010137",
+          "to_n02_station_code": "010139",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010139",
+          "to_n02_station_code": "010140",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010140",
+          "to_n02_station_code": "010141",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010141",
+          "to_n02_station_code": "010142",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010142",
+          "to_n02_station_code": "010138",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "美栄橋",
+          "n02_station_code": "010133",
+          "arrival": null,
+          "departure": "22:03",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "県庁前",
+          "n02_station_code": "010136",
+          "arrival": "22:05",
+          "departure": "22:05",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "旭橋",
+          "n02_station_code": "010137",
+          "arrival": "22:07",
+          "departure": "22:07",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "壺川",
+          "n02_station_code": "010139",
+          "arrival": "22:09",
+          "departure": "22:09",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "奥武山公園",
+          "n02_station_code": "010140",
+          "arrival": "22:11",
+          "departure": "22:11",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "小禄",
+          "n02_station_code": "010141",
+          "arrival": "22:13",
+          "departure": "22:13",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "赤嶺",
+          "n02_station_code": "010142",
+          "arrival": "22:15",
+          "departure": "22:15",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "那覇空港",
+          "n02_station_code": "010138",
+          "arrival": "22:18",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260731_08_yui_naha_miebashi",
+      "date": "2026-07-31",
+      "number": "ゆいレール（那覇空港→美栄橋）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "那覇空港",
+      "destination": "美栄橋",
+      "direction": "美栄橋",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010138",
+          "to_n02_station_code": "010142",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010142",
+          "to_n02_station_code": "010141",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010141",
+          "to_n02_station_code": "010140",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010140",
+          "to_n02_station_code": "010139",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010139",
+          "to_n02_station_code": "010137",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010137",
+          "to_n02_station_code": "010136",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010136",
+          "to_n02_station_code": "010133",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "那覇空港",
+          "n02_station_code": "010138",
+          "arrival": null,
+          "departure": "22:48",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "赤嶺",
+          "n02_station_code": "010142",
+          "arrival": "22:51",
+          "departure": "22:51",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "小禄",
+          "n02_station_code": "010141",
+          "arrival": "22:52",
+          "departure": "22:52",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "奥武山公園",
+          "n02_station_code": "010140",
+          "arrival": "22:54",
+          "departure": "22:54",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "壺川",
+          "n02_station_code": "010139",
+          "arrival": "22:56",
+          "departure": "22:56",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "旭橋",
+          "n02_station_code": "010137",
+          "arrival": "22:58",
+          "departure": "22:58",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "県庁前",
+          "n02_station_code": "010136",
+          "arrival": "23:00",
+          "departure": "23:00",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "美栄橋",
+          "n02_station_code": "010133",
+          "arrival": "23:02",
+          "departure": null,
+          "stop_type": "destination",
+          "ride_segment": true
+        }
+      ]
+    },
+    {
+      "id": "20260801_01_yui_miebashi_naha",
+      "date": "2026-08-01",
+      "number": "ゆいレール（美栄橋→那覇空港）",
+      "train_type": "モノレール",
+      "company": "沖縄都市モノレール",
+      "origin": "美栄橋",
+      "destination": "那覇空港",
+      "direction": "那覇空港",
+      "visible": true,
+      "style": {
+        "color": "#009fe8"
+      },
+      "route_policy": {
+        "mode": "single_primary_route",
+        "jr_only": false,
+        "allow_alternatives": false,
+        "allow_browser_straight_line_fallback": false,
+        "allowed_institution_type_codes": [
+          "5"
+        ],
+        "preferred_line_names": [
+          "沖縄都市モノレール線"
+        ],
+        "preferred_operator_names": [
+          "沖縄都市モノレール"
+        ],
+        "institution_filter_mode": "soft"
+      },
+      "route_sections": [
+        {
+          "from_n02_station_code": "010133",
+          "to_n02_station_code": "010136",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010136",
+          "to_n02_station_code": "010137",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010137",
+          "to_n02_station_code": "010139",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010139",
+          "to_n02_station_code": "010140",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010140",
+          "to_n02_station_code": "010141",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010141",
+          "to_n02_station_code": "010142",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        },
+        {
+          "from_n02_station_code": "010142",
+          "to_n02_station_code": "010138",
+          "line_names": [
+            "沖縄都市モノレール線"
+          ],
+          "operator_names": [
+            "沖縄都市モノレール"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "name": "美栄橋",
+          "n02_station_code": "010133",
+          "arrival": null,
+          "departure": "07:10",
+          "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "県庁前",
+          "n02_station_code": "010136",
+          "arrival": "07:12",
+          "departure": "07:12",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "旭橋",
+          "n02_station_code": "010137",
+          "arrival": "07:14",
+          "departure": "07:14",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "壺川",
+          "n02_station_code": "010139",
+          "arrival": "07:16",
+          "departure": "07:16",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "奥武山公園",
+          "n02_station_code": "010140",
+          "arrival": "07:19",
+          "departure": "07:19",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "小禄",
+          "n02_station_code": "010141",
+          "arrival": "07:21",
+          "departure": "07:21",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "赤嶺",
+          "n02_station_code": "010142",
+          "arrival": "07:23",
+          "departure": "07:23",
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "那覇空港",
+          "n02_station_code": "010138",
+          "arrival": "07:26",
           "departure": null,
           "stop_type": "destination",
           "ride_segment": true

@@ -54,7 +54,18 @@ const METRO_OPERATOR_NAMES = new Set([
 // 都電荒川線 is the ONLY street tram run by a metro-list operator (東京都).
 // NOTE: Osaka Metro's subway lines are legally 軌道 (class 21) too, so the
 // tram exclusion must be scoped to 東京都 — never applied operator-wide.
-const TRAM_RAILWAY_CLASSES = new Set(["21", "22"]);
+// Only class 21 (軌道) is a street tram. Class 22 is a SUSPENDED MONORAIL built
+// under the same 軌道法 — 千葉都市モノレール is its only holder in N02, and it
+// belongs with the other monorails in 私鐵・第三部門, not with the trams.
+const TRAM_RAILWAY_CLASSES = new Set(["21"]);
+// Heavy-rail lines that happen to be licensed under 軌道法 (class 21) but are
+// nothing like a street tram: full-size trains, mostly through-services onto
+// subways. Without this they would all be counted as 路面電車.
+const TRAM_CLASS_HEAVY_RAIL_LINES = new Set([
+  "北大阪急行電鉄|南北線", // through-service with Osaka Metro 御堂筋線
+  "近畿日本鉄道|けいはんな線", // through-service with Osaka Metro 中央線
+  "名古屋鉄道|豊川線", // ordinary 名鉄 line, 軌道法 only for historic reasons
+]);
 
 // The coverage masks deliberately OVERLAP (JR is the union of 新幹線 + JR在來線,
 // and 普通鐵道 means "everything that is not 新幹線"), which is right for
@@ -84,7 +95,10 @@ function classifyN02SectionMask(props) {
   // 路面電車 is its own category: every 軌道 line that is not one of the metro
   // operators' (Osaka Metro's subways are legally 軌道 too). Trams are then
   // held OUT of 私鐵・第三部門 so the two rows do not double-count each other.
-  const isTram = TRAM_RAILWAY_CLASSES.has(cls) && !isMetro;
+  const isTram =
+    TRAM_RAILWAY_CLASSES.has(cls) &&
+    !isMetro &&
+    !TRAM_CLASS_HEAVY_RAIL_LINES.has(`${op}|${props.N02_003 || ""}`);
   if (isTram) mask |= STAT_MASK_TRAM;
   if ((code === "4" || code === "5") && !isMetro && !isTram)
     mask |= STAT_MASK_PRIV;
