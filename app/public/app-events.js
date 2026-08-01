@@ -28,8 +28,11 @@ let sidebarWindowResizeTimer = null;
 let sidebarDragState = null;
 let suppressSidebarClick = false;
 
+// COMPACT tier only (phones in portrait): the bottom three-detent sheet.
+// Medium widths (iPad portrait/splits, landscape phones, 600–1023px) keep
+// the desktop-shaped side drawer — see the matching styles.css tiers.
 function sidebarUsesVerticalDrag() {
-  return window.matchMedia("(max-width: 900px)").matches;
+  return window.matchMedia("(max-width: 599px)").matches;
 }
 
 function sidebarFullSize() {

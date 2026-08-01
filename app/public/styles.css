@@ -1429,7 +1429,12 @@ tr.branch-junction td {
   line-height: 1.3;
 }
 
-@media (max-width: 900px) {
+/* ---- COMPACT screens (<600px): phones in portrait. Bottom sheet with the
+   nav row as de-facto bottom navigation. Wider viewports — iPad portrait
+   (768–834px), landscape phones (667–930px), iPad splits — read better with
+   the desktop-shaped SIDE panel (see the medium tier below), so the width
+   gate deliberately sits at 600px rather than tablet width. */
+@media (max-width: 599px) {
   #app {
     /* Three-detent bottom panel (peek / half / full). The ELEMENT keeps the
        full-detent height and slides via transform, exactly like the desktop
@@ -1700,10 +1705,27 @@ tr.branch-junction td {
   }
 }
 
+/* ---- MEDIUM screens (600–1023px): iPad portrait, iPad splits, landscape
+   phones. The drawer keeps the DESKTOP shape — side panel with the nav under
+   the header — but narrower, so the map keeps a workable share of a tablet
+   or a short landscape viewport. */
+@media (min-width: 600px) and (max-width: 1023px) {
+  #app {
+    --sidebar-open-size: min(400px, 55vw);
+  }
+
+  #sidebar {
+    /* viewport-fit=cover: keep the last controls clear of an iPad's home
+       indicator. */
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
+}
+
 /* Touch-first target sizes (44px project standard, per WCAG 2.5.8 with the
-   Apple HIG margin) — coarse pointers only, so compact mouse-driven layouts
-   are untouched even on narrow desktop windows. */
-@media (max-width: 900px) and (pointer: coarse) {
+   Apple HIG margin) — coarse pointers only, at EVERY width (an iPad's side
+   panel needs finger-sized controls as much as a phone), so mouse-driven
+   layouts are untouched even in narrow windows. */
+@media (pointer: coarse) {
   #sidebar button,
   #sidebar select,
   #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
@@ -1721,7 +1743,11 @@ tr.branch-junction td {
   #sidebar button.icon {
     min-width: 44px;
   }
+}
 
+/* The bottom sheet's grab bar (compact tier only — wider tiers keep the
+   slim vertical side handle). */
+@media (max-width: 599px) and (pointer: coarse) {
   .sidebar-edge-tab {
     width: 84px;
     height: 30px;
