@@ -134,6 +134,10 @@
       en: "Sample data is for browsing only — changes to it are never saved. Your own data is stored in this browser and auto-saves as you edit.",
     },
     "btn.loadSampleAll": { zh: "載入全部示例資料", en: "Load Full Sample Data" },
+    "btn.loadSampleAllTw": {
+      zh: "載入台灣示例資料",
+      en: "Load Taiwan Sample Data",
+    },
     "btn.loadNewYearGrandLoop": {
       zh: "載入跨年大回行程",
       en: "Load New Year Grand Loop",
@@ -281,6 +285,10 @@
     "stat.allrail": { zh: "全部鐵道", en: "All Railways" },
     "stat.jrconv": { zh: "JR在來線", en: "JR Conventional" },
     "stats.loading": { zh: "正在載入路網資料…", en: "Loading rail network…" },
+    "stats.unavailableCountry": {
+      zh: "統計目前僅支援日本的路網資料。",
+      en: "Statistics are currently available for the Japan rail network only.",
+    },
     "stats.dailyTitle": { zh: "當日統計（{date}）", en: "Selected Day ({date})" },
     "stats.overallTitle": { zh: "全部統計", en: "All-Time Total" },
     "stats.coverageTitle": { zh: "路網覆蓋率", en: "Network Coverage" },
@@ -784,6 +792,7 @@
     "hint.dataSource":
       "サンプルデータは閲覧専用で、変更は保存されません。自分のデータはこのブラウザに保存され、編集すると自動保存されます。",
     "btn.loadSampleAll": "サンプルデータを全て読み込む",
+    "btn.loadSampleAllTw": "台湾サンプルデータを読み込む",
     "btn.loadNewYearGrandLoop": "年越し大回り行程を読み込む",
     "btn.loadTokyoLimitedExpressLoop": "東京特急大回り行程を読み込む",
     "btn.restoreMine": "自分のデータを復元",
@@ -871,6 +880,7 @@
     "stat.jrconv": "JR在来線",
     "stat.rides": "{n} 回",
     "stats.loading": "鉄道路線データを読み込み中…",
+    "stats.unavailableCountry": "統計は現在、日本の路線網データのみ対応しています。",
     "stats.empty": "乗車記録がありません。",
     "stats.hint": "全列車で実際に乗車した区間を重複を除いて集計します。総延長は国土数値情報 N02-25 の全国鉄道網に基づきます。",
     "sec.list": "列車一覧",

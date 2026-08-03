@@ -889,6 +889,14 @@ async function runMileageStatsJob() {
   const headline = document.getElementById("stats-headline");
   const rows = document.getElementById("stats-rows");
   if (!headline || !rows) return;
+  // The coverage graph is built from the Japan-only N02 datasets; for any
+  // other active country say so instead of downloading the 12 MB
+  // rail-sections file to compute a meaningless all-zero table.
+  if (!activeCountryHasRouteSolver()) {
+    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.unavailableCountry"))}</div>`;
+    rows.innerHTML = "";
+    return;
+  }
   if (!railSectionsGeoJson) {
     headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.loading"))}</div>`;
     rows.innerHTML = "";

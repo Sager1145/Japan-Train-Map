@@ -156,6 +156,15 @@ function prepareTrainRouteSolve(train) {
     return { done: true, result: [] };
   }
 
+  // No solver dataset for the active country (see activeCountryHasRouteSolver):
+  // a cache miss is FINAL here. Returning done/empty (without negative-caching)
+  // lets getMatchedRouteFeatures fall back to the precomputed matched-routes
+  // geometry, and keeps the 12 MB Japan-only rail-sections download + a
+  // wrong-country solve out of every non-Japan load.
+  if (!activeCountryHasRouteSolver()) {
+    return { done: true, result: [] };
+  }
+
   // During a progressive load this fires once per cold-solved train; writing
   // it to the editor's status line would flash 159 messages and leave the last
   // one stranded there. Only user-triggered (post-boot) solves show status.

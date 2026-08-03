@@ -709,6 +709,13 @@ summary.subhead-toggle:hover {
   flex-wrap: wrap;
 }
 
+/* display:flex above would otherwise override the [hidden] UA style — the
+   per-country data-source toolbars rely on the attribute to swap layouts. */
+.toolbar[hidden],
+.row[hidden] {
+  display: none;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

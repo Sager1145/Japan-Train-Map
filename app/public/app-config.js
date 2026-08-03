@@ -7,6 +7,13 @@
 // =========================================================================
 
 const LOCAL_JSON_FILENAME = "n02-train-store.json";
+// Country-scoped export filename (Japan keeps the historical name), so a saved
+// Taiwan store can never be mistaken for — or overwrite — a Japan export.
+function countryLocalJsonFilename() {
+  return typeof activeCountry !== "undefined" && activeCountry !== "jp"
+    ? `n02-train-store-${activeCountry}.json`
+    : LOCAL_JSON_FILENAME;
+}
 
 // =========================================================================
 //  §1.  Performance instrumentation (opt-in via PERF_DEBUG)
@@ -91,13 +98,29 @@ function loadActiveCountry() {
 function countryDbName(base) {
   return activeCountry === "tw" ? `${base}-tw` : base;
 }
+// The in-browser route solver (and the mileage statistics built on the same
+// graph) run on the N02 rail-sections + stations datasets, which cover JAPAN
+// only. Other countries ship their route geometry precomputed (matched-routes
+// / stored user routes); a cache miss there must NOT fall through to solving
+// foreign stops against the Japanese network — same-named stations exist in
+// both countries (松山, 板橋, …) and a "successful" solve would draw lines in
+// the wrong country.
+function activeCountryHasRouteSolver() {
+  return activeCountry === "jp";
+}
 // Static (GitHub Pages) deploy: api/sample-data/ holds the published SAMPLE
 // dataset — a manifest (with a per-date index) plus one part file per train.
 // It is read-only demo content: the user's own data never touches it. User
 // data on the static deploy is persisted in IndexedDB instead (see
 // USER_STORE_DB_NAME below), chunked ONE RECORD PER CALENDAR DAY so each edit
 // rewrites only the day(s) it touched, never one monolithic blob.
+//
+// Each country has a FULLY SEPARATE sample dataset (like everything else about
+// its data): Japan keeps the historical unsuffixed api/sample-data/, Taiwan
+// publishes api/sample-data-tw/ (npm run precompute:tw). The 資料 card shows
+// only the ACTIVE country's loaders.
 const SAMPLE_DATA_API = "sample-data";
+const COUNTRY_SAMPLE_DATA_APIS = { jp: SAMPLE_DATA_API, tw: "sample-data-tw" };
 const NEW_YEAR_GRAND_LOOP_API = "new-year-grand-loop-data";
 const TOKYO_LIMITED_EXPRESS_LOOP_API = "tokyo-limited-express-loop-data";
 const USER_STORE_DB_NAME = "n02-user-train-store-db";

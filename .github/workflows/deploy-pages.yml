@@ -69,6 +69,16 @@ jobs:
       - name: Precompute sample data (per-train route parts)
         run: node app/scripts/precompute-train-parts.mjs
 
+      # Taiwan's sample is a FULLY SEPARATE dataset (api/sample-data-tw/),
+      # generated from its own store. Its trains sit outside the N02 network,
+      # so the precompute embeds the curated matched-routes geometry instead
+      # of a solver result.
+      - name: Precompute Taiwan sample data
+        run: |
+          PRECOMPUTE_STORE=app/data/train-store-tw.json \
+          PRECOMPUTE_OUT_DIR=app/data/sample-data-tw \
+            node app/scripts/precompute-train-parts.mjs
+
       # The two special-sample loops ship as their own datasets (the 資料 card
       # loads each on demand), so they need the same offline solve. Each store
       # is written by its generator script, then precomputed into its own

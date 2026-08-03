@@ -226,10 +226,18 @@
             <div id="data-source-block" hidden>
               <h3 class="subhead" data-i18n="sec.dataSource">資料來源</h3>
               <div class="data-source-status" id="data-source-status"></div>
-              <div class="toolbar">
+              <!-- Per-country dataset toolbars: each country's layout lists only
+                   its OWN sample datasets; updateDataSourceUi() shows the row
+                   matching the active country. -->
+              <div class="toolbar" id="data-source-buttons-jp">
                 <button id="load-sample-all" data-i18n="btn.loadSampleAll">載入全部示例資料</button>
                 <button id="load-new-year-grand-loop" data-i18n="btn.loadNewYearGrandLoop">載入跨年大回行程</button>
                 <button id="load-tokyo-limited-express-loop" data-i18n="btn.loadTokyoLimitedExpressLoop">載入東京特急大回行程</button>
+              </div>
+              <div class="toolbar" id="data-source-buttons-tw" hidden>
+                <button id="load-sample-all-tw" data-i18n="btn.loadSampleAllTw">載入台灣示例資料</button>
+              </div>
+              <div class="toolbar">
                 <button id="restore-user-store" data-i18n="btn.restoreMine" hidden>恢復我的資料</button>
                 <button class="primary" id="save-as-user-store" data-i18n="btn.saveAsMine" hidden>保存為我的資料</button>
               </div>

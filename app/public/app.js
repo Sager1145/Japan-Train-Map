@@ -540,7 +540,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   // pressure during the load window the parts system exists to protect. The
   // mileage-stats panel lazy-loads rail-sections on first open (see
   // runMileageStatsJob), so nothing else needs this eager warm-up either.
-  if (HAS_BACKEND) {
+  // The solver's datasets are Japan-only; when another country is active the
+  // solver can never run (prepareTrainRouteSolve gates it), so warming the
+  // 12 MB rail-sections here would be pure wasted download + memory.
+  if (HAS_BACKEND && activeCountryHasRouteSolver()) {
     ensureSolverReady()
       .then(() => scheduleRouteGraphPrebuild())
       .catch((err) =>
@@ -683,6 +686,11 @@ function subscribeToStoreEvents() {
 }
 
 async function handleExternalStoreChange(detail) {
+  // Re-check the event's target store at USE time, not only at receive time:
+  // an event deferred below can be drained AFTER a country switch re-pointed
+  // TRAIN_STORE_API, and acting on the OLD country's event then (worst case a
+  // `cleared` event) would wrongly replace the NEW country's view.
+  if (detail && detail.store && detail.store !== TRAIN_STORE_API) return;
   // If a progressive import is mid-flight, defer; drainPendingLiveReload()
   // catches up as soon as the import's finally-block clears importInProgress.
   if (importInProgress) {

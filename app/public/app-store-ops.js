@@ -19,7 +19,13 @@
 // would reload fewer trains than were actually loaded). Every mutating handler
 // funnels through this guard: while an import runs it no-ops with a brief hint.
 function importBusy() {
-  if (!importInProgress) return false;
+  // A country switch owns the store globals exactly like a progressive import
+  // does — but it also RE-POINTS every persistence target (TRAIN_STORE_API,
+  // the country-scoped IndexedDB names) mid-flight. An edit slipping into its
+  // async windows (flush drain, server fetch) would mutate a store that is
+  // about to be replaced and could autosave old-country data into the new
+  // country's store, so mutations are blocked for the whole switch too.
+  if (!importInProgress && !countrySwitchInFlight) return false;
   if (els.importStatus) setStatus(els.importStatus, I18N.t("status.importBusy"), "warn");
   return true;
 }
@@ -236,7 +242,7 @@ function routeSectionMatchesStopPair(section, fromStop, toStop) {
     stopName(toStop) === (section.to || ""),
   );
 
-  // N02 station codes are line-specific.  A stop can be displayed with one
+  // Official source station codes are line/operator-specific. A stop can be displayed with one
   // line-code while the route_section intentionally uses another line-code
   // for the same physical station transfer/through-running point.  Treat a
   // same-name adjacent pair as the same route section instead of forcing the
@@ -601,7 +607,63 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
 //  §20.  Blank-train factory, id helpers & persist/render glue
 // =========================================================================
 
+// The blank-train scaffold is COUNTRY-SPECIFIC data: Japan keeps its 東京→熱海
+// starter (whose N02 codes the solver can route immediately); Taiwan starts
+// from the airport-MRT corridor with TDX StationUIDs, so a new Taiwan train
+// never carries Japanese stops into the Taiwan store.
 function createBlankTrain() {
+  return activeCountry === "tw" ? createBlankTrainTw() : createBlankTrainJp();
+}
+
+function createBlankTrainTw() {
+  return {
+    id: "TW-LE",
+    number: "",
+    train_type: "直達車",
+    company: "桃園大眾捷運股份有限公司",
+    origin: "台北車站",
+    destination: "機場第二航廈站",
+    direction: "down",
+    visible: true,
+    style: {
+      color: "#8246af",
+    },
+    route_policy: {
+      mode: "single_primary_route",
+      jr_only: false,
+      allow_alternatives: false,
+      allow_browser_straight_line_fallback: false,
+      allowed_institution_type_codes: [
+        ...DEFAULT_ALLOWED_INSTITUTION_TYPE_CODES,
+      ],
+      preferred_line_names: ["桃園機場捷運"],
+      preferred_operator_names: ["桃園大眾捷運股份有限公司"],
+    },
+    // No route_sections scaffold: Taiwan geometry comes from the curated
+    // matched-routes channel (per train_id), not the N02 solver.
+    route_sections: [],
+    stops: [
+      {
+        name: "台北車站",
+        n02_station_code: "TYMC-A1",
+        arrival: null,
+        departure: null,
+        stop_type: "origin",
+        ride_segment: true,
+      },
+      {
+        name: "機場第二航廈站",
+        n02_station_code: "TYMC-A13",
+        arrival: null,
+        departure: null,
+        stop_type: "destination",
+        ride_segment: true,
+      },
+    ],
+  };
+}
+
+function createBlankTrainJp() {
   return {
     id: "LE",
     number: "",
@@ -691,4 +753,3 @@ function persistAndRender() {
   saveTrainStore();
   renderAll();
 }
-

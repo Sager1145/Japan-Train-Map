@@ -362,7 +362,19 @@ function makeManifestLoader(api, { attachPartsApi = false } = {}) {
   };
 }
 
-const loadSampleManifest = makeManifestLoader(SAMPLE_DATA_API);
+// One memoized manifest loader PER COUNTRY: the sample datasets are fully
+// separate (api/sample-data vs api/sample-data-tw), and one session can visit
+// both countries. parts_api is attached so makeTrainPartsSource fetches each
+// manifest's parts from its own country's directory.
+const sampleManifestLoaders = Object.fromEntries(
+  Object.entries(COUNTRY_SAMPLE_DATA_APIS).map(([country, api]) => [
+    country,
+    makeManifestLoader(api, { attachPartsApi: true }),
+  ]),
+);
+function loadSampleManifest() {
+  return (sampleManifestLoaders[activeCountry] || sampleManifestLoaders.jp)();
+}
 
 // The manifest's per-day index, defensively filtered to non-empty name lists.
 function sampleManifestDates(manifest) {
@@ -616,6 +628,14 @@ const CURATED_DATASET_BUTTONS = [
     load: () => loadSampleData({ date: null }),
   },
   {
+    // Taiwan's own toolbar (only one country's toolbar is visible at a time,
+    // so this always loads the Taiwan sample — loadSampleData resolves the
+    // ACTIVE country's manifest).
+    buttonId: "load-sample-all-tw",
+    confirmKey: "confirm.loadSampleAll",
+    load: () => loadSampleData({ date: null }),
+  },
+  {
     buttonId: "load-new-year-grand-loop",
     confirmKey: "confirm.loadNewYearGrandLoop",
     load: () => loadNewYearGrandLoopData(),
@@ -694,20 +714,9 @@ async function bootStaticData(bootLoadOptions) {
     return;
   }
   userStoreAvailable = false;
-  if (activeCountry !== "jp") {
-    // Every bundled sample/default is a Japan dataset; another country with
-    // no saved data starts with an empty, autosaving user store instead.
-    dataSourceMode = "user";
-    sampleModeDate = null;
-    updateDataSourceUi();
-    await replaceTrainStoreFromStoreProgressive(
-      countryFallbackStore(),
-      countryFallbackLabel(),
-      { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
-    );
-    updateDataSourceUi();
-    return;
-  }
+  // ONE RANDOM day of the ACTIVE country's OWN published sample — each country
+  // has a fully separate dataset (COUNTRY_SAMPLE_DATA_APIS), so a Taiwan boot
+  // can never show Japanese demo data and vice versa.
   try {
     const manifest = await loadSampleManifest();
     if (manifest) {
@@ -720,6 +729,20 @@ async function bootStaticData(bootLoadOptions) {
     }
   } catch (err) {
     console.warn("Sample data boot failed; falling back to defaults.", err);
+  }
+  if (activeCountry !== "jp") {
+    // No sample published for this country: start with an empty, autosaving
+    // user store (the built-in defaults are a Japan dataset).
+    dataSourceMode = "user";
+    sampleModeDate = null;
+    updateDataSourceUi();
+    await replaceTrainStoreFromStoreProgressive(
+      countryFallbackStore(),
+      countryFallbackLabel(),
+      { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
+    );
+    updateDataSourceUi();
+    return;
   }
   // No sample published/reachable: show the built-in defaults, still ephemeral.
   dataSourceMode = "sample-all";
@@ -775,20 +798,32 @@ async function switchActiveCountry(next) {
   if (!SUPPORTED_COUNTRIES.includes(next) || next === activeCountry) return;
   // A progressive load owns the store globals; switching mid-flight would
   // interleave two replacements. The select snaps back via the caller.
-  if (countrySwitchInFlight || importInProgress) return;
+  if (countrySwitchInFlight || importInProgress) {
+    // Tell the user WHY the select snapped back instead of refusing mutely.
+    if (els.importStatus)
+      setStatus(els.importStatus, I18N.t("status.importBusy"), "warn");
+    return;
+  }
   countrySwitchInFlight = true;
   updateCountrySelect();
   try {
     // Land any pending edits in the OLD country's store before re-pointing
-    // every persistence target at the new one.
+    // every persistence target at the new one. flushServerStoreSave() drains
+    // follow-up writes too (its finally awaits them); the journal queue is
+    // awaited as well so no staged recovery copy can land in the NEW
+    // country's pending DB after the switch re-points countryDbName.
     try {
       await flushServerStoreSave();
+      await pendingServerStoreJournalQueue;
     } catch (err) {
       console.warn(
         "Could not flush pending saves before the country switch.",
         err,
       );
     }
+    // Snapshot the OLD country's date-filter state under its own key before
+    // re-pointing activeCountry (the storage key is country-scoped).
+    persistUiDateState();
     activeCountry = next;
     try {
       localStorage.setItem(COUNTRY_STORAGE_KEY, next);
@@ -803,12 +838,37 @@ async function switchActiveCountry(next) {
         : Promise.resolve(null);
     resetPersistenceStateForCountrySwitch();
     exitStoreRecoveryMode();
+    // Purge this session's solver artifacts. Route cache keys and the
+    // matched-routes features appended by commitTrainRouteSolve don't encode
+    // a country, so a same-named station pair (松山→板橋 exists in BOTH
+    // countries) or a reused train id ("LE") in the new country could
+    // otherwise pick up the OLD country's geometry from this session.
+    // Persisted (IndexedDB) entries stay: resetting solverReadyPromise makes
+    // the next Japan-side solve re-warm them in bulk, so a JP→TW→JP round
+    // trip doesn't degenerate into a full cold re-solve.
+    runtimeRouteCache.clear();
+    runtimeRouteNegativeCache.clear();
+    _pendingRouteSolves.clear();
+    solverReadyPromise = null;
+    if (matchedRoutesGeoJson && Array.isArray(matchedRoutesGeoJson.features)) {
+      matchedRoutesGeoJson.features = matchedRoutesGeoJson.features.filter(
+        (feature) =>
+          !String((feature.properties || {}).route_id || "").endsWith(
+            "-runtime-primary",
+          ),
+      );
+    }
     selectedTrainId = null;
     focusedTrainId = null;
     dataSourceMode = "user";
     sampleModeDate = null;
     sampleEditHintShown = false;
     userStoreAvailable = false;
+    // Bring in the NEW country's own date-filter state (selected day + manual
+    // dates are per-country data; display toggles keep their values), and flip
+    // the 資料 card to the new country's button layout right away.
+    applyUiDateStateForCountrySwitch();
+    updateDataSourceUi();
     // Re-frame the map over the new country BEFORE its data streams in.
     // Release the OLD country's pan/zoom cage first (its maxBounds/minZoom
     // would block or clamp the flight), glide over, then cage to the new
@@ -870,28 +930,28 @@ function updateDataSourceUi() {
     key = "mode.tokyoLimitedExpressLoop";
   statusEl.textContent = I18N.t(key, { date: sampleModeDate || "" });
   statusEl.classList.toggle("sample-active", isSampleMode());
+  // Per-country button layouts: each country's toolbar contains only its OWN
+  // datasets (index.html keeps one toolbar per country), so a switch swaps the
+  // whole row instead of hiding individual foreign buttons.
+  const jpToolbar = document.getElementById("data-source-buttons-jp");
+  const twToolbar = document.getElementById("data-source-buttons-tw");
+  if (jpToolbar) jpToolbar.hidden = activeCountry !== "jp";
+  if (twToolbar) twToolbar.hidden = activeCountry !== "tw";
   const loadAllBtn = document.getElementById("load-sample-all");
+  const loadAllTwBtn = document.getElementById("load-sample-all-tw");
   const loadNewYearBtn = document.getElementById("load-new-year-grand-loop");
   const loadTokyoLtdExpBtn = document.getElementById(
     "load-tokyo-limited-express-loop",
   );
   const saveMineBtn = document.getElementById("save-as-user-store");
   const restoreBtn = document.getElementById("restore-user-store");
-  // Every bundled sample is a Japan dataset — hide the loaders elsewhere.
-  const jpDatasets = activeCountry === "jp";
-  if (loadAllBtn) {
-    loadAllBtn.hidden = !jpDatasets;
-    loadAllBtn.disabled = dataSourceMode === "sample-all";
-  }
-  if (loadNewYearBtn) {
-    loadNewYearBtn.hidden = !jpDatasets;
+  if (loadAllBtn) loadAllBtn.disabled = dataSourceMode === "sample-all";
+  if (loadAllTwBtn) loadAllTwBtn.disabled = dataSourceMode === "sample-all";
+  if (loadNewYearBtn)
     loadNewYearBtn.disabled = dataSourceMode === "sample-new-year-grand-loop";
-  }
-  if (loadTokyoLtdExpBtn) {
-    loadTokyoLtdExpBtn.hidden = !jpDatasets;
+  if (loadTokyoLtdExpBtn)
     loadTokyoLtdExpBtn.disabled =
       dataSourceMode === "sample-tokyo-limited-express-loop";
-  }
   if (saveMineBtn) saveMineBtn.hidden = !isSampleMode();
   if (restoreBtn) {
     restoreBtn.hidden = !isSampleMode();

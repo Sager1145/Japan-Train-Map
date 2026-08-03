@@ -14,6 +14,7 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
   const partsDir = path.join(dataDir, "sample-data");
+  const twPartsDir = path.join(dataDir, "sample-data-tw");
   const newYearPartsDir = path.join(dataDir, "new-year-grand-loop-data");
   const tokyoLoopPartsDir = path.join(
     dataDir,
@@ -22,6 +23,7 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
+  await fs.mkdir(twPartsDir, { recursive: true });
   await fs.mkdir(newYearPartsDir, { recursive: true });
   await fs.mkdir(tokyoLoopPartsDir, { recursive: true });
 
@@ -76,6 +78,19 @@ async function createFixture({ includeTrainStore = true } = {}) {
   await fs.writeFile(
     path.join(partsDir, "part-000.json"),
     JSON.stringify({ format: 1, train: {}, route: null }),
+  );
+  await fs.writeFile(
+    path.join(twPartsDir, "manifest.json"),
+    JSON.stringify({
+      format: 1,
+      total: 1,
+      parts: ["part-000"],
+      dates: { "2026-08-02": ["part-000"] },
+    }),
+  );
+  await fs.writeFile(
+    path.join(twPartsDir, "part-000.json"),
+    JSON.stringify({ format: 1, train: { id: "tw-sample" }, route: null }),
   );
   await fs.writeFile(
     path.join(newYearPartsDir, "manifest.json"),

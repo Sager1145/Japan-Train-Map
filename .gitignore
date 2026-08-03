@@ -12,6 +12,7 @@ app/data/*.json.gz
 # the Pages deploy workflow runs it on every push, so the output is never
 # committed. Run it manually for local static-build testing.
 app/data/sample-data/
+app/data/sample-data-tw/
 
 # Same deal for the special-sample loops: the stores in app/data/special-samples/
 # ARE committed (they are the source, written by scripts/generate-*-loop.mjs),

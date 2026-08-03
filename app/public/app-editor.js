@@ -222,6 +222,12 @@ function renderStopsTable(train) {
     cb.addEventListener("change", (event) => {
       const t = getTrain();
       if (!t) return;
+      // Same guard as every other mutating handler; the redraw snaps the
+      // already-flipped checkbox back to the stored state.
+      if (importBusy()) {
+        renderStopsTable(t);
+        return;
+      }
       const value = event.target.checked;
       for (let i = b.startIdx; i <= b.endIdx; i += 1) {
         if (ownerOf[i] === bi && isStoppingStation(t.stops[i])) {
@@ -243,6 +249,12 @@ function renderStopsTable(train) {
       const index = Number(event.target.dataset.stopIndex);
       const field = event.target.dataset.stopField;
       if (!train?.stops?.[index]) return;
+      // Same guard as every other mutating handler; the redraw snaps the
+      // edited control back to the stored state.
+      if (importBusy()) {
+        renderStopsTable(train);
+        return;
+      }
 
       let refreshStopsTable = false;
       // Snapshot for revert: field-level stop edits used to bypass validation

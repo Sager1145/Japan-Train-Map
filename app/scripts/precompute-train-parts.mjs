@@ -91,7 +91,30 @@ const DRIVER_SOURCE = `
       if (runtimeRouteCache.has(cacheKey)) {
         route = { cache_key: cacheKey, features: runtimeRouteCache.get(cacheKey) };
       } else if (runtimeRouteNegativeCache.has(cacheKey)) {
-        route = { cache_key: cacheKey, unsolvable: true };
+        // The solver could not route this train — e.g. its stops live outside
+        // the N02 network entirely (Taiwan itineraries, hand-authored
+        // corridors). Fall back to the curated matched-routes geometry when it
+        // covers this train: embedding it makes the part seed the client cache
+        // exactly like a solved train (same features the render fallback would
+        // draw), instead of publishing a persistent "unsolvable" marker for
+        // geometry we in fact have.
+        const matched = (__host.matchedRoutes.features || [])
+          .filter((feature) => {
+            const props = feature.properties || {};
+            return props.train_id === id && props.is_primary !== false;
+          })
+          .sort(
+            (a, b) =>
+              Number(a.properties?.segment_index ?? 0) -
+              Number(b.properties?.segment_index ?? 0),
+          );
+        if (matched.length) {
+          runtimeRouteNegativeCache.delete(cacheKey);
+          runtimeRouteCache.set(cacheKey, matched);
+          route = { cache_key: cacheKey, features: matched };
+        } else {
+          route = { cache_key: cacheKey, unsolvable: true };
+        }
       } else {
         throw new Error(
           \`Route solve for train \${id} produced neither a positive nor negative cache entry.\`,
@@ -109,7 +132,10 @@ const DRIVER_SOURCE = `
       id,
       raw,
       route,
-      featureCount: features.length,
+      featureCount:
+        route && Array.isArray(route.features)
+          ? route.features.length
+          : features.length,
       ms,
     });
     results.push({ id, solved: Boolean(route && !route.unsolvable), featureCount: features.length });
@@ -186,6 +212,9 @@ async function main() {
   const railSections = readJson(path.join(DATA_DIR, "rail-sections.json"));
   const stations = readJson(path.join(DATA_DIR, "stations.json"));
   const matchedStops = readJson(path.join(DATA_DIR, "matched-stops.json"));
+  // Curated per-train geometry — the offline fallback for trains the solver
+  // cannot route (see the unsolvable branch in the driver).
+  const matchedRoutes = readJson(path.join(DATA_DIR, "matched-routes.json"));
   let trainStoreText = fs.readFileSync(
     STORE_PATH,
     "utf8",
@@ -240,6 +269,7 @@ async function main() {
     railSections,
     stations,
     matchedStops,
+    matchedRoutes,
     trainStoreText,
     onTrainSolved({ index, id, raw, route, featureCount, ms }) {
       const name = `part-${String(sliceStart + index).padStart(3, "0")}`;

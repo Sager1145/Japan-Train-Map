@@ -98,12 +98,20 @@ function segmentDateForTrain(span, segmentIndex) {
 // ---- selectedDate / manualDates persistence (pure UI state) -------------
 // Kept in localStorage (not the train store) so the canonical store schema
 // stays exactly { schema_version, trains:[...] } as required.
+// The date filter is DATA-side state, so it is COUNTRY-SCOPED like the stores
+// themselves (Japan keeps the historical unsuffixed key): Taiwan's manual
+// dates and selected day never leak into Japan's date bar and vice versa.
 const UI_STATE_STORAGE_KEY = "n02-train-manager-ui-state";
+function uiDateStateStorageKey() {
+  return typeof activeCountry !== "undefined" && activeCountry !== "jp"
+    ? `${UI_STATE_STORAGE_KEY}-${activeCountry}`
+    : UI_STATE_STORAGE_KEY;
+}
 
 function persistUiDateState() {
   try {
     localStorage.setItem(
-      UI_STATE_STORAGE_KEY,
+      uiDateStateStorageKey(),
       JSON.stringify({
         selectedDate,
         manualDates,
@@ -120,7 +128,7 @@ function persistUiDateState() {
 // with no saved filter simply keeps the "全部" default).
 function restoreUiDateState() {
   try {
-    const raw = localStorage.getItem(UI_STATE_STORAGE_KEY);
+    const raw = localStorage.getItem(uiDateStateStorageKey());
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
@@ -142,6 +150,22 @@ function restoreUiDateState() {
     // Ignore malformed saved UI state.
   }
   return false;
+}
+
+// A country switch swaps the date-filter DATA: drop the old country's
+// selection, then restore the NEW country's persisted selectedDate /
+// manualDates (defaults when it has none). The two behavior toggles
+// (地圖僅顯示當前日期 / auto-focus) are DISPLAY settings and keep their
+// on-screen values — restoreUiDateState may have read the other country's
+// persisted copies, so they are re-asserted afterwards.
+function applyUiDateStateForCountrySwitch() {
+  const keepFollow = mapFollowsSelectedDate;
+  const keepFocus = focusZoomEnabled;
+  selectedDate = ALL_DATES;
+  manualDates = [];
+  restoreUiDateState();
+  mapFollowsSelectedDate = keepFollow;
+  focusZoomEnabled = keepFocus;
 }
 
 // Ensure selectedDate still points at something renderable after the train

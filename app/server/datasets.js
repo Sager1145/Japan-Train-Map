@@ -28,6 +28,15 @@ const PART_DATASETS = [
       "Precomputed sample data is missing; run scripts/precompute-train-parts.mjs first.",
   },
   {
+    // Taiwan keeps a FULLY SEPARATE sample dataset (each country's 資料 card
+    // only offers its own country's data; see COUNTRY_SAMPLE_DATA_APIS).
+    dir: "sample-data-tw",
+    invalidNameError: "Invalid Taiwan sample data name.",
+    notFoundLabel: "Taiwan sample data",
+    missingDataError:
+      "Precomputed Taiwan sample data is missing; run npm run precompute:tw first.",
+  },
+  {
     dir: "new-year-grand-loop-data",
     invalidNameError: "Invalid grand-loop data name.",
     notFoundLabel: "Grand-loop data",

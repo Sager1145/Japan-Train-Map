@@ -708,6 +708,7 @@ function bindEvents() {
   document
     .getElementById("open-local-json")
     .addEventListener("click", async () => {
+      if (importBusy()) return;
       try {
         fitActiveCountryOverview();
         setImportProgress(0, 1, I18N.t("prog.openingLocal"));
@@ -732,7 +733,7 @@ function bindEvents() {
         typeof navigator.share === "function" &&
         typeof File === "function"
       ) {
-        const file = new File([jsonText], LOCAL_JSON_FILENAME, {
+        const file = new File([jsonText], countryLocalJsonFilename(), {
           type: "application/json",
         });
         if (navigator.canShare({ files: [file] })) {
@@ -747,7 +748,11 @@ function bindEvents() {
         }
       }
       await writeLocalJsonFile(jsonText, true);
-      setStatus(els.jsonStatus, I18N.t("status.savedTo", { name: LOCAL_JSON_FILENAME }), "ok");
+      setStatus(
+        els.jsonStatus,
+        I18N.t("status.savedTo", { name: countryLocalJsonFilename() }),
+        "ok",
+      );
     } catch (error) {
       setStatus(els.jsonStatus, error.message, "err");
     }
@@ -758,6 +763,7 @@ function bindEvents() {
   els.localJsonFileInput.addEventListener("change", async () => {
     const file = els.localJsonFileInput.files?.[0];
     if (!file) return;
+    if (importBusy()) return;
     try {
       // No trailing renderAll(): replaceTrainStoreFromJsonText() already
       // repaints once via finalizeProgressiveLoad().
@@ -776,8 +782,9 @@ function bindEvents() {
     .getElementById("apply-import-json")
     .addEventListener("click", async () => {
       // The progressive import owns the importInProgress lock; the handler only
-      // pre-checks it (cheap reject) and disables the button against double-clicks.
-      if (importInProgress) return;
+      // pre-checks it (cheap reject, also busy during a country switch) and
+      // disables the button against double-clicks.
+      if (importBusy()) return;
       const applyButton = document.getElementById("apply-import-json");
       applyButton.disabled = true;
       try {
@@ -862,7 +869,7 @@ function bindEvents() {
     const btn = document.getElementById(buttonId);
     if (!btn) return;
     btn.addEventListener("click", async () => {
-      if (importInProgress) return;
+      if (importBusy()) return;
       if (!(await uiConfirm(I18N.t(confirmKey)))) return;
       btn.disabled = true;
       try {
@@ -878,7 +885,7 @@ function bindEvents() {
   const restoreUserStoreBtn = document.getElementById("restore-user-store");
   if (restoreUserStoreBtn)
     restoreUserStoreBtn.addEventListener("click", async () => {
-      if (importInProgress) return;
+      if (importBusy()) return;
       if (!(await uiConfirm(I18N.t("confirm.restoreMine")))) return;
       try {
         fitActiveCountryOverview();

@@ -242,9 +242,14 @@ async function flushServerStoreSave() {
     } finally {
       serverStoreSaveInFlight = false;
       // A newer change may have arrived while this request was in flight
-      // (either already serialized, or just flagged dirty). Flush it.
+      // (either already serialized, or just flagged dirty). Flush it — and
+      // AWAIT it, so `await flushServerStoreSave()` only settles once the
+      // store is fully drained. A country switch relies on this: its
+      // follow-up write must land in the OLD country's store, not fire
+      // detached and resolve TRAIN_STORE_API / countryDbName after the
+      // switch has re-pointed them at the new country.
       if (pendingServerStoreText !== null || storeSaveDirty)
-        flushServerStoreSave();
+        await flushServerStoreSave();
     }
   })();
   return serverStoreSavePromise;
@@ -309,7 +314,11 @@ async function flushUserStoreSave() {
     } finally {
       userStoreSaveInFlight = false;
       // A newer change may have arrived while this write was in flight.
-      if (storeSaveDirty) flushUserStoreSave();
+      // Awaited for the same reason as the server flush above: callers that
+      // await the flush (country switch, clear-storage) must observe a fully
+      // drained store, not a detached follow-up write that resolves the
+      // country-scoped DB name after a switch.
+      if (storeSaveDirty) await flushUserStoreSave();
     }
   })();
   return userStoreSavePromise;
@@ -1174,7 +1183,7 @@ async function writeLocalJsonFile(
   promptIfMissing = true,
 ) {
   if (!supportsFileSystemAccess()) {
-    downloadText(LOCAL_JSON_FILENAME, jsonText, "application/json");
+    downloadText(countryLocalJsonFilename(), jsonText, "application/json");
     setStatus(
       els.jsonStatus,
       I18N.t("status.noFsApi"),
@@ -1185,7 +1194,7 @@ async function writeLocalJsonFile(
 
   if (!localJsonFileHandle && promptIfMissing) {
     localJsonFileHandle = await window.showSaveFilePicker({
-      suggestedName: LOCAL_JSON_FILENAME,
+      suggestedName: countryLocalJsonFilename(),
       types: [
         {
           description: "Train store JSON",
