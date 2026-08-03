@@ -40,6 +40,14 @@ SNAP_METERS = 14.0
 MAX_STATION_OFFSET_KM = 2.0
 PARALLEL_TRACK_SLACK_KM = 0.250
 MAX_CANDIDATES = 64
+# Station anchors pay this multiple of their offset in the routing objective.
+# At 1:1 an anchor pulled along the track is free (the offset saved equals the
+# path shortened), which systematically shaved every terminal and skewed
+# interval boundaries; at 3:1 the nearest anchor wins unless the track truly
+# is elsewhere.
+OFFSET_WEIGHT = 3.0
+# A routed via point must sit on the official graph within this distance.
+VIA_SNAP_KM = 0.08
 OFFICIAL_ROMA_SOURCE = 3
 MAX_OUTPUT_EDGE_KM = 0.2
 MAX_OFFICIAL_DEVIATION_METERS = 20.0
@@ -72,6 +80,11 @@ class LineSpec:
     is_hsr: bool = False
     is_loop: bool = False
     max_detour_ratio: float = 4.0
+    # Ordered official-track via coordinates per interval index.  They force
+    # the route through spiral loops and switchback tails that a plain
+    # shortest path would cut (Dushan spiral, the Alishan zigzags); every via
+    # must lie on the line's scoped official geometry.
+    via_points: Optional[Dict[int, Tuple[Coord, ...]]] = None
 
 
 @dataclass(frozen=True)
@@ -541,6 +554,11 @@ def build_graph(
     if len(penalties) != len(parts):
         raise RuntimeError("official shape penalty/part mismatch")
     for part, penalty in zip(parts, penalties):
+        # Collinear subdivision so long published edges (viaduct/tunnel
+        # records of a kilometre or more) still carry graph nodes near the
+        # stations they pass; anchors would otherwise land at the far edge
+        # ends (水安宮 sat 415 m from its nearest node).
+        part = subdivide_part(part, 0.2)
         nodes = [node_for(point) for point in part]
         for left, right in zip(nodes, nodes[1:]):
             if left == right:
@@ -699,6 +717,22 @@ def normalize_group_name(name: str) -> str:
     return value
 
 
+def subdivide_part(part: Sequence[Coord], max_edge_km: float) -> List[Coord]:
+    """Insert collinear points so no input edge exceeds max_edge_km."""
+    output = [part[0]]
+    for left, right in zip(part, part[1:]):
+        steps = max(1, math.ceil(haversine(left, right) / max_edge_km))
+        for step in range(1, steps + 1):
+            ratio = step / steps
+            output.append(
+                (
+                    left[0] + (right[0] - left[0]) * ratio,
+                    left[1] + (right[1] - left[1]) * ratio,
+                )
+            )
+    return output
+
+
 def densify_official_edge(coords: Sequence[Coord]) -> List[Coord]:
     """Subdivide a published official edge without changing its alignment."""
     output = [coords[0]]
@@ -771,6 +805,74 @@ def build_group_ids(stations: Iterable[Station]) -> Dict[str, str]:
     return output
 
 
+def weighted_offsets(
+    rows: Sequence[Tuple[int, float]]
+) -> List[Tuple[int, float]]:
+    """Scale station-anchor offsets so shaving track never pays for itself."""
+    return [(node, offset * OFFSET_WEIGHT) for node, offset in rows]
+
+
+def nearest_graph_node(graph: RailGraph, point: Coord) -> Tuple[float, int]:
+    best: Optional[Tuple[float, int]] = None
+    for node, coord in enumerate(graph.coords):
+        distance = haversine(point, coord)
+        if best is None or (distance, node) < best:
+            best = (distance, node)
+    if best is None:
+        raise RuntimeError("official graph is empty")
+    return best
+
+
+def route_with_vias(
+    spec: LineSpec,
+    stations: Sequence[Station],
+    graph: RailGraph,
+    candidates: Sequence[Sequence[Tuple[int, float]]],
+) -> List[RouteResult]:
+    """Route every interval through its ordered official via points.
+
+    Vias exist to keep spiral loops and switchback tails (which a shortest
+    path would cut) in the display line; every station anchors at its nearest
+    official node and every leg is routed separately."""
+    anchors = [min(rows, key=lambda row: (row[1], row[0]))[0] for rows in candidates]
+    routes: List[RouteResult] = []
+    for index in range(len(stations) - 1):
+        stops = [anchors[index]]
+        for via in (spec.via_points or {}).get(index, ()):
+            distance, node = nearest_graph_node(graph, via)
+            if distance > VIA_SNAP_KM:
+                raise RuntimeError(
+                    f"{spec.line_id}: via point {via} is {distance * 1000:.0f} m "
+                    "away from the line's official geometry"
+                )
+            stops.append(node)
+        stops.append(anchors[index + 1])
+        coords: List[Coord] = []
+        total_km = 0.0
+        max_edge = 0.0
+        for left, right in zip(stops, stops[1:]):
+            if left == right:
+                continue
+            leg = find_route(graph, [(left, 0.0)], [(right, 0.0)])
+            if leg is None:
+                raise RuntimeError(
+                    f"{spec.line_id}: official geometry cannot reach a via point "
+                    f"between {stations[index].name} and {stations[index + 1].name}"
+                )
+            total_km += leg.km
+            max_edge = max(max_edge, leg.max_edge_km)
+            coords.extend(leg.coords if not coords else leg.coords[1:])
+        if len(coords) < 2:
+            raise RuntimeError(
+                f"{spec.line_id}: empty via route between "
+                f"{stations[index].name} and {stations[index + 1].name}"
+            )
+        routes.append(
+            RouteResult(tuple(coords), stops[0], stops[-1], total_km, max_edge)
+        )
+    return routes
+
+
 def route_line(
     spec: LineSpec, stations: Sequence[Station], graph: RailGraph
 ) -> Tuple[List[List[object]], Dict[str, float]]:
@@ -830,7 +932,9 @@ def route_line(
     ]
     pair_count = len(stations) if spec.is_loop else len(stations) - 1
     routes: List[RouteResult] = []
-    if spec.is_loop:
+    if spec.via_points:
+        routes = route_with_vias(spec, stations, graph, candidates)
+    elif spec.is_loop:
         previous_end: Optional[int] = None
         first_start: Optional[int] = None
         for index in range(pair_count):
@@ -838,12 +942,12 @@ def route_line(
             starts = (
                 [(previous_end, 0.0)]
                 if previous_end is not None
-                else candidates[index]
+                else weighted_offsets(candidates[index])
             )
             ends = (
                 [(first_start, 0.0)]
                 if next_index == 0 and first_start is not None
-                else candidates[next_index]
+                else weighted_offsets(candidates[next_index])
             )
             route = find_route(graph, starts, ends)
             if route is None:
@@ -859,11 +963,13 @@ def route_line(
         start_scores: Dict[int, float] = {}
         for node, offset in candidates[0]:
             start_scores[node] = min(
-                offset, start_scores.get(node, float("inf"))
+                offset * OFFSET_WEIGHT, start_scores.get(node, float("inf"))
             )
         transitions: List[Dict[int, Tuple[float, int, RouteResult]]] = []
         for next_rows in candidates[1:]:
-            transition = find_transition_routes(graph, start_scores, next_rows)
+            transition = find_transition_routes(
+                graph, start_scores, weighted_offsets(next_rows)
+            )
             if not transition:
                 raise RuntimeError(
                     f"{spec.line_id}: official shape cannot advance through all stations"
@@ -1146,9 +1252,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
         for row in source_data[f"{system}:shape"]:
             line_id = str(row["LineID"])
-            shape_parts.setdefault((system, line_id), []).extend(
-                parse_wkt_parts(str(row["Geometry"]))
-            )
+            parts = parse_wkt_parts(str(row["Geometry"]))
+            if system == "TRA":
+                # The TRA shapes contain multi-kilometre straight chords where
+                # the record is coarse (e.g. the realigned 壽豐-豐田 section is
+                # one 6.2 km chord).  Subdividing keeps the exact published
+                # alignment while letting the graph snap the chord onto the
+                # NLSC centreline wherever both exist, so the chord only ever
+                # bridges genuine NLSC breaks instead of being drawn whole.
+                parts = [subdivide_part(part, 0.1) for part in parts]
+            shape_parts.setdefault((system, line_id), []).extend(parts)
 
     # PTX currently publishes K03 and K04 of Ankeng LRT at effectively the
     # same coordinate.  The current NLSC official station layer has the
@@ -1593,6 +1706,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "神木",
         "阿里山",
     )
+    # Official-track via points that keep the published alignment's spiral
+    # and switchbacks in the display line.  Interval indexes are positions in
+    # the station list (0 = 嘉義→北門).  Every coordinate lies on the scoped
+    # official geometry; the resulting interval lengths match the AFR 營業里程
+    # table (afrch.forest.gov.tw/0000120): 樟腦寮→獨立山 4.10 km,
+    # 獨立山→梨園寮 4.00 km, 屏遮那→二萬平 6.98 km (two switchback tails),
+    # 二萬平→阿里山 4.44 km (station-throat reversal tail).
+    alishan_main_vias: Dict[int, Tuple[Coord, ...]] = {
+        # 樟腦寮→獨立山: the Dulishan spiral's three loops.
+        5: (
+            (120.602321, 23.530515),
+            (120.60924, 23.534054),
+            (120.610938, 23.537219),
+            (120.60973, 23.537383),
+            (120.608077, 23.535966),
+            (120.605552, 23.539132),
+        ),
+        # 獨立山→梨園寮: the spiral's exit loop over itself.
+        6: ((120.603786, 23.535006),),
+        # 屏遮那→二萬平: both zigzag reversal tails.
+        13: (
+            (120.795836, 23.521625),
+            (120.789319, 23.513787),
+        ),
+        # 神木→阿里山: the reversal tail west of Alishan station.
+        15: ((120.802671, 23.508749),),
+    }
     afr_specs = (
         LineSpec(
             "tw-alsr-alishan",
@@ -1604,6 +1744,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             (("TRA", "4080"),) + tuple(afr_ref(name) for name in afr_main_names),
             (("AFR", "MAIN"),),
             max_detour_ratio=24.0,
+            via_points=alishan_main_vias,
         ),
         LineSpec(
             "tw-alsr-zhaoping",
@@ -1637,6 +1778,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             (afr_ref("阿里山"), afr_ref("對高岳"), afr_ref("祝山")),
             (("AFR", "ZHUSHAN"),),
             max_detour_ratio=24.0,
+            # 對高岳→祝山: the Zhushan terminal loop; with it the branch
+            # totals ~6.0 km against the official 6.25 km line length.
+            via_points={1: ((120.82319, 23.509633),)},
         ),
     )
     specs = specs + afr_specs
@@ -1749,7 +1893,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     for shape_ref, official_parts in taipei_parts.items():
         existing_count = len(shape_parts[shape_ref])
         shape_parts[shape_ref].extend(official_parts)
-        shape_part_penalties[shape_ref] = [1.0] * existing_count + [0.5] * len(
+        # Prefer the detailed Taipei GIS curves only on equal length: a
+        # sub-1.0 factor deep enough to reward detours (0.5 did) made the
+        # router draw longer paths on the preferred source (景安→永安市場 grew
+        # to 1.7 km against a 1.17 km straight line).
+        shape_part_penalties[shape_ref] = [1.0] * existing_count + [0.95] * len(
             official_parts
         )
     nlsc_tra_names: Dict[str, Tuple[str, ...]] = {
@@ -1783,10 +1931,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         nlsc_parts_by_name.setdefault(name, []).extend(converted)
     # Never put unrelated railway names in one graph.  NLSC is the preferred
     # civil centreline and the matching TDX LineID may only close gaps inside
-    # that same passenger line.
+    # that same passenger line.  The penalty must stay low enough that a real
+    # NLSC break is bridged by the TDX shape instead of a multi-kilometre
+    # official-track detour: at 12x the router preferred a 9 km double-back on
+    # the Taitung line over the 2.8 km TDX bridge through 豐田.
     for shape_ref, parts in tuple(shape_parts.items()):
         if shape_ref[0] == "TRA":
-            shape_part_penalties[shape_ref] = [12.0] * len(parts)
+            shape_part_penalties[shape_ref] = [2.5] * len(parts)
     for key, names in nlsc_tra_names.items():
         parts = []
         for name in names:
@@ -1960,7 +2111,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     package: Dict[str, object] = {
         "format": "compact-v1",
-        "version": "2025.4.0",
+        "version": "2025.4.1",
         "generatedAt": utc_timestamp(update_times),
         "crs": "WGS84",
         "country": "TW",

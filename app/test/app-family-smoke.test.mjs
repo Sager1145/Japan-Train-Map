@@ -12,6 +12,7 @@
 // defaults), and while recovery is active autosave must be inert.
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { IDBFactory } from "fake-indexeddb";
@@ -33,6 +34,31 @@ function loadAppFamily({ indexedDB } = {}) {
   evaluateAppScripts(context);
   return { context, i18nListeners };
 }
+
+test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", () => {
+  const { context } = loadAppFamily();
+  assert.equal(vm.runInContext('stationCodeSystem("003770")', context), "N02");
+  assert.equal(vm.runInContext('stationCodeSystem("TYMC-A13")', context), "TDX");
+  assert.equal(vm.runInContext('stationCodeSystem("tw-official-tymc-a13")', context), null);
+  context.__taiwanStore = JSON.parse(
+    fs.readFileSync(new URL("../data/train-store-tw.json", import.meta.url), "utf8"),
+  );
+  const result = vm.runInContext(
+    `(() => {
+      const parsed = parseImportedCanonicalStore(__taiwanStore);
+      const normalized = {
+        schema_version: SCHEMA_VERSION,
+        trains: parsed.trains.map((train) => normalizeImportedTrain(train)),
+      };
+      validateTrainStore(normalized);
+      return normalized;
+    })()`,
+    context,
+  );
+  assert.equal(result.trains.length, 1);
+  assert.equal(result.trains[0].stops.length, 13);
+  assert.equal(result.trains[0].route_sections.length, 12);
+});
 
 test("every language-change listener runs without undefined identifiers", () => {
   const { context, i18nListeners } = loadAppFamily();

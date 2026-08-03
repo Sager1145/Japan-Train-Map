@@ -27,9 +27,36 @@ function stationCode(feature) {
   return p.n02_station_code || p.N02_005c || null;
 }
 
+// jsonspec 1.3 keeps the historical serialized key `n02_station_code` for
+// backwards compatibility, but the value follows the active official railway
+// source: six-digit N02_005c in Japan, TDX StationUID in Taiwan (TYMC-A13,
+// TRA-1000, ...).  Keep format detection centralized so validation and popup
+// labels cannot drift.
+function stationCodeSystem(code) {
+  const value = String(code || "").trim();
+  if (/^\d{6}$/.test(value)) return "N02";
+  if (/^[A-Z][A-Z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/.test(value))
+    return "TDX";
+  return null;
+}
+
+function isValidSourceStationCode(code) {
+  return code === null || code === undefined || stationCodeSystem(code) !== null;
+}
+
+function stationCodeFieldLabel(code) {
+  return stationCodeSystem(code) === "TDX" ? "TDX StationUID" : "N02_005c";
+}
+
 function stationGroupCode(feature) {
   const p = feature.properties || {};
-  return p.n02_group_code || p.N02_005g || null;
+  return (
+    p.n02_group_code ||
+    p.N02_005g ||
+    p.official_station_group_id ||
+    p.stationGroupId ||
+    null
+  );
 }
 
 function stationLineName(feature) {
@@ -195,7 +222,7 @@ function resolveStationCandidates(stopOrName) {
   const cleanName = name ? String(name).trim() : "";
   const cleanCode = code ? String(code).trim() : "";
 
-  // A station code is line-specific in N02.  Do not union code matches with
+  // A source station code is line/operator-specific. Do not union code matches with
   // same-name matches, otherwise an inconsistent imported pair such as
   // { name: "千葉", n02_station_code: "003859" } can mix 越中島 and 千葉
   // candidates and make Dijkstra jump to the wrong city/line.
@@ -211,7 +238,7 @@ function resolveStationCandidates(stopOrName) {
     );
     if (codeAndNameCandidates.length) return codeAndNameCandidates;
     console.warn(
-      "N02 station code/name mismatch; falling back to station name candidates.",
+      "Station source code/name mismatch; falling back to station name candidates.",
       {
         name: cleanName,
         n02_station_code: cleanCode,
@@ -235,5 +262,3 @@ function resolveStationCandidates(stopOrName) {
     : [];
   return nameCandidates.length ? nameCandidates : codeCandidates;
 }
-
-

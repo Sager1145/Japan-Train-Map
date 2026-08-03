@@ -173,6 +173,11 @@ function validateTrain(train, index, ids) {
         `${prefix} stop ${stopIndex + 1}: ride_segment must be boolean.`,
       );
     }
+    if (!isValidSourceStationCode(stop.n02_station_code)) {
+      throw new Error(
+        `${prefix} stop ${stopIndex + 1}: n02_station_code must be a six-digit N02_005c, a TDX StationUID, or null.`,
+      );
+    }
     ["arrival", "departure"].forEach((field) => {
       if (
         stop[field] !== null &&
@@ -194,9 +199,16 @@ function validateTrain(train, index, ids) {
         !(section.to || section.to_n02_station_code)
       ) {
         throw new Error(
-          `${prefix} route section ${sectionIndex + 1}: from/to names or N02 station codes are required.`,
+          `${prefix} route section ${sectionIndex + 1}: from/to names or official station codes are required.`,
         );
       }
+      ["from_n02_station_code", "to_n02_station_code"].forEach((field) => {
+        if (!isValidSourceStationCode(section[field])) {
+          throw new Error(
+            `${prefix} route section ${sectionIndex + 1}: ${field} must be a six-digit N02_005c, a TDX StationUID, or null.`,
+          );
+        }
+      });
       ["line_names", "operator_names"].forEach((field) => {
         const values = section[field] || [];
         if (
@@ -259,4 +271,3 @@ function validateTrain(train, index, ids) {
     throw new Error(`${prefix}: style.color must be #RRGGBB.`);
   warnBranchLeak(train);
 }
-

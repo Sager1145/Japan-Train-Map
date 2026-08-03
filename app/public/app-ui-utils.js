@@ -35,7 +35,7 @@ function popupTimesHtml(entries, date, { dateAlways = false } = {}) {
 function buildStationLinesPopup(pr, train) {
   const net = typeof RailMap !== "undefined" ? RailMap._network : null;
   if (!net || typeof RailMapPopup === "undefined") return null;
-  const group = pr.n02_group_code || pr.N02_005g;
+  const group = stationGroupCode({ properties: pr });
   const members = group ? net.groupMembers.get(String(group)) : null;
   if (!members || !members.length) return null;
   const model = RailMapPopup.buildPopupModel(net, members[0].stationId);
@@ -68,9 +68,13 @@ function buildStopPopup(stopFeature, train) {
       I18N.t("popup.rideSegment"),
       p.ride_segment === true ? I18N.t("popup.yes") : I18N.t("popup.noPale"),
     ],
-    // N02_005c / N02_005g are N02 field codes — kept literal on purpose.
-    ["N02_005c", p.n02_station_code || "-"],
-    ["N02_005g", p.n02_group_code || "-"],
+    [stationCodeFieldLabel(p.n02_station_code), p.n02_station_code || "-"],
+    [
+      stationCodeSystem(p.n02_station_code) === "TDX"
+        ? "Station group"
+        : "N02_005g",
+      p.n02_group_code || p.official_station_group_id || "-",
+    ],
     [I18N.t("popup.line"), p.line_name || "-"],
     [I18N.t("popup.operator"), p.operator || "-"],
     [

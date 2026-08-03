@@ -8,6 +8,11 @@ const test = require("node:test");
 const RailNetwork = require("../public/rail-network.js");
 
 const PACKAGE_PATH = path.join(__dirname, "../public/rail/tw-2025.json");
+const TW_STORE_PATH = path.join(__dirname, "../data/train-store-tw.json");
+const MATCHED_ROUTES_PATH = path.join(__dirname, "../data/matched-routes.json");
+const MATCHED_STOPS_PATH = path.join(__dirname, "../data/matched-stops.json");
+const TYMC_SAMPLE_ID =
+  "20260802_01_taoyuan_airport_mrt_express_t2_taipei";
 const EXPECTED_COUNTS = Object.freeze({
   lines: 38,
   stations: 585,
@@ -33,6 +38,41 @@ function haversineKm(left, right) {
   return 6371.0088 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+function reconstructedLineSegments(line) {
+  let previousLastCoordinate = null;
+  return line.segments.map((segment) => {
+    const coordinates = segment[1]
+      ? [previousLastCoordinate].concat(segment[2])
+      : segment[2];
+    previousLastCoordinate = coordinates.at(-1);
+    return coordinates;
+  });
+}
+
+function officialPathBetween(line, fromName, toName) {
+  const names = line.stations.map((station) => station[1]);
+  const fromIndex = names.indexOf(fromName);
+  const toIndex = names.indexOf(toName);
+  assert.notEqual(fromIndex, -1, `${fromName} missing from official line`);
+  assert.notEqual(toIndex, -1, `${toName} missing from official line`);
+  const segments = reconstructedLineSegments(line);
+  const output = [];
+  const append = (coordinates) => {
+    const next = coordinates.map((coordinate) => [...coordinate]);
+    if (output.length && next.length && output.at(-1).join() === next[0].join())
+      next.shift();
+    output.push(...next);
+  };
+  if (fromIndex < toIndex) {
+    for (let index = fromIndex; index < toIndex; index += 1)
+      append(segments[index]);
+  } else {
+    for (let index = fromIndex - 1; index >= toIndex; index -= 1)
+      append([...segments[index]].reverse());
+  }
+  return output;
+}
+
 test("Taiwan 2025 package matches compact-v1 and its characterized network", () => {
   const source = fs.readFileSync(PACKAGE_PATH);
   const compactPackage = JSON.parse(source);
@@ -47,7 +87,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     },
     {
       format: "compact-v1",
-      version: "2025.4.0",
+      version: "2025.4.1",
       generatedAt: "2026-08-03T04:38:19.000Z",
       crs: "WGS84",
       country: "TW",
@@ -62,8 +102,8 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   assert.equal(officialComparison.scope, "LineID/RAILNAME/MRTCODE/LRTCODE");
   assert.equal(officialComparison.lines, EXPECTED_COUNTS.lines);
   assert.equal(Object.keys(officialComparison.byLine).length, EXPECTED_COUNTS.lines);
-  assert.equal(officialComparison.vertices, 34_948);
-  assert.equal(officialComparison.edgeMidpoints, 34_400);
+  assert.equal(officialComparison.vertices, 35_466);
+  assert.equal(officialComparison.edgeMidpoints, 34_918);
   assert.ok(
     officialComparison.maxDeviationMeters <= officialComparison.toleranceMeters,
   );
@@ -147,7 +187,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   }
   assert.equal(stationCount, EXPECTED_COUNTS.stations);
   assert.equal(segmentCount, EXPECTED_COUNTS.segments);
-  assert.equal(Math.round(totalKm * 10) / 10, 1788.4);
+  assert.equal(Math.round(totalKm * 10) / 10, 1798.5);
   assert.ok(edgeCount >= 34_000, `only ${edgeCount} geometry edges`);
   assert.ok(maxEdgeKm < 0.2, `${maxEdgeKm} km output edge`);
   assert.equal(maxUnsharedJoinKm, 0, `${maxUnsharedJoinKm} km station gap`);
@@ -189,4 +229,125 @@ test("Taipei Main Station is grouped across high speed, TRA, and metro", () => {
     return row[0];
   });
   assert.equal(new Set(groupIds).size, 1);
+});
+
+test("Taoyuan Airport MRT sample uses the official TYMC route and stations", () => {
+  const compactPackage = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const line = lineById(compactPackage, "tw-tym-a");
+  const store = JSON.parse(fs.readFileSync(TW_STORE_PATH, "utf8"));
+  const routes = JSON.parse(fs.readFileSync(MATCHED_ROUTES_PATH, "utf8"));
+  const stops = JSON.parse(fs.readFileSync(MATCHED_STOPS_PATH, "utf8"));
+  const train = store.trains.find((row) => row.id === TYMC_SAMPLE_ID);
+  assert.ok(train);
+
+  const expectedStops = [
+    ["TYMC-A13", "機場第二航廈站", "origin", "13:25"],
+    ["TYMC-A12", "機場第一航廈站", "passenger_stop", "13:28"],
+    ["TYMC-A11", "坑口站", "pass_through", null],
+    ["TYMC-A10", "山鼻站", "pass_through", null],
+    ["TYMC-A9", "林口站", "pass_through", null],
+    ["TYMC-A8", "長庚醫院站", "passenger_stop", "13:41"],
+    ["TYMC-A7", "體育大學站", "pass_through", null],
+    ["TYMC-A6", "泰山貴和站", "pass_through", null],
+    ["TYMC-A5", "泰山站", "pass_through", null],
+    ["TYMC-A4", "新莊副都心站", "pass_through", null],
+    ["TYMC-A3", "新北產業園區站", "passenger_stop", "13:55"],
+    ["TYMC-A2", "三重站", "pass_through", null],
+    ["TYMC-A1", "台北車站", "destination", "14:04"],
+  ];
+  assert.deepEqual(
+    train.stops.map((stop) => [
+      stop.n02_station_code,
+      stop.name,
+      stop.stop_type,
+      stop.departure || stop.arrival,
+    ]),
+    expectedStops,
+  );
+  assert.equal(train.direction, "up");
+  assert.equal(train.route_sections.length, train.stops.length - 1);
+  train.route_sections.forEach((section, index) => {
+    assert.equal(section.from, train.stops[index].name);
+    assert.equal(section.to, train.stops[index + 1].name);
+    assert.equal(
+      section.from_n02_station_code,
+      train.stops[index].n02_station_code,
+    );
+    assert.equal(
+      section.to_n02_station_code,
+      train.stops[index + 1].n02_station_code,
+    );
+  });
+  assert.deepEqual(train.route_policy.preferred_line_names, ["桃園機場捷運"]);
+  assert.deepEqual(train.route_policy.preferred_operator_names, [
+    "桃園大眾捷運股份有限公司",
+  ]);
+
+  const sampleRoutes = routes.features
+    .filter((feature) => feature.properties.train_id === TYMC_SAMPLE_ID)
+    .sort((left, right) =>
+      left.properties.segment_index - right.properties.segment_index,
+    );
+  assert.equal(sampleRoutes.length, 12);
+  for (const feature of sampleRoutes) {
+    const properties = feature.properties;
+    assert.equal(properties.route_choice, "official_line_slice");
+    assert.equal(properties.official_line_id, "A");
+    assert.equal(properties.station_code_system, "TDX");
+    assert.equal(
+      properties.from_official_station_uid,
+      train.stops[properties.segment_index].n02_station_code,
+    );
+    assert.equal(
+      properties.to_official_station_uid,
+      train.stops[properties.segment_index + 1].n02_station_code,
+    );
+    assert.equal(
+      properties.from_official_station_group_id,
+      line.stations.find((station) => station[1] === properties.from)[0],
+    );
+    assert.equal(
+      properties.to_official_station_group_id,
+      line.stations.find((station) => station[1] === properties.to)[0],
+    );
+    assert.equal(properties.official_package_version, compactPackage.version);
+    assert.equal(
+      properties.official_shape_sha256,
+      compactPackage.geometrySource.sourceSha256["TYMC:shape"],
+    );
+    assert.doesNotMatch(JSON.stringify(feature), /openstreetmap|osm_/i);
+    assert.deepEqual(
+      feature.geometry.coordinates,
+      officialPathBetween(line, properties.from, properties.to),
+      `${properties.from} -> ${properties.to}`,
+    );
+  }
+
+  const stationByName = new Map(
+    line.stations.map((station) => [station[1], [station[2], station[3]]]),
+  );
+  const stationGroupByName = new Map(
+    line.stations.map((station) => [station[1], station[0]]),
+  );
+  const sampleStops = stops.features.filter(
+    (feature) => feature.properties.train_id === TYMC_SAMPLE_ID,
+  );
+  assert.equal(sampleStops.length, 13);
+  for (const feature of sampleStops) {
+    assert.doesNotMatch(JSON.stringify(feature), /openstreetmap|osm_/i);
+    assert.equal(feature.properties.line_name, "桃園機場捷運");
+    assert.equal(feature.properties.station_code_system, "TDX");
+    assert.equal(
+      feature.properties.official_station_uid,
+      feature.properties.n02_station_code,
+    );
+    assert.equal(
+      feature.properties.official_station_group_id,
+      stationGroupByName.get(feature.properties.name),
+    );
+    assert.deepEqual(
+      feature.geometry.coordinates,
+      stationByName.get(feature.properties.name),
+    );
+  }
 });

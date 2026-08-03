@@ -1,12 +1,18 @@
-# N02 Limited Express Train JSON Specification
+# Railprint Train JSON Specification (Japan N02 / Taiwan TDX)
 
 版本：`1.3`
 文件名：`jsonspec.md`
-适用范围：单 HTML N02 铁路地图、列车 JSON 导入/导出、JR-only 特急路线渲染、乘坐区间显示、停靠站/通过站管理。
+适用范围：日本 N02 与台湾官方 TDX/PTX 铁路地图、列车 JSON 导入/导出、路线渲染、乘坐区间显示、停靠站/通过站管理。
+
+> **1.3 台湾兼容扩展**：为不破坏既有日本 store，canonical 字段名
+> `n02_station_code` / `from_n02_station_code` / `to_n02_station_code` 保持不变，
+> 但其值现在定义为「当前国家官方铁路数据源的站点代码」：日本写 `N02_005c`，
+> 台湾写 TDX/PTX `StationUID`（例如 `TYMC-A13`）。字段名是历史兼容名称，不能再据此
+> 假定值一定是六位数字；完整规则见第一部分 §2.3。
 
 > 本文档分为**两大部分**，各自独立编号：
 > **第一部分（§1–§17）** 描述列车 JSON 的格式、字段、导入/导出与校验；
-> **第二部分（§2–§23，数据源）** 描述底层 N02 / OSM 数据源及其字段语义。
+> **第二部分（§2–§23，数据源）** 描述底层日本 N02、台湾 TDX/PTX 与 OSM 底图数据源及其字段语义。
 > 引用「第 N 节」时按所在部分理解；跨部分引用会写明「数据源部分」。
 
 ---
@@ -33,9 +39,9 @@
 16. 完整示例
 17. 实现必须遵守的核心规则
 
-**第二部分 · 数据源（N02 / OSM）规范**
+**第二部分 · 数据源（日本 N02 / 台湾 TDX/PTX / OSM）规范**
 
-2. 数据源说明　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 站名对照表 `station-readings.json`**：汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
+2. 数据源说明（含 2.7 台湾官方 TDX/PTX）　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 站名对照表 `station-readings.json`**：汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
 
 ---
 
@@ -149,6 +155,30 @@
 }
 ```
 
+### 2.3 官方站点代码命名空间（日本 / 台湾）
+
+schema 1.3 的持久化键 `n02_station_code` 是历史兼容名称。它与 route section 的
+`from_n02_station_code` / `to_n02_station_code` 共同表示**当前国家官方铁路数据源的站点代码**：
+
+| 国家 | 官方数据源 | canonical 值 | 格式 / 示例 |
+| --- | --- | --- | --- |
+| 日本 | 国土数値情報 N02 | `N02_005c` | 六位数字，例如 `003770` |
+| 台湾 | 交通部 TDX/PTX | `StationUID` | `OperatorID-StationID`，例如 `TYMC-A13`、`TRA-1000` |
+
+规范要求：
+
+1. 同一 stop 与相邻 route section 端点必须使用同一个官方代码；无码时写 `null` 并保留站名。
+2. 台湾必须使用 TDX/PTX 原始 `StationUID`，不得把 `tw-official-*` 几何分组 ID、站名、OSM id
+   或自行编造的序号写入该字段。
+3. 日本代码匹配 `^\d{6}$`；台湾代码匹配
+   `^[A-Z][A-Z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`。
+4. 国家由当前数据 store / rail package 决定；1.3 不新增顶层 `country`，从而保持既有 store
+   严格顶层白名单与日本数据完全向后兼容。
+5. UI、校验器与构建器应把该字段称为「官方站点代码」；仅在已识别为日本代码时显示
+   `N02_005c`，台湾代码显示 `TDX StationUID`。
+
+> 兼容说明：本扩展只放宽值域，没有增加 canonical JSON 键，也没有改变每个 stop 的六字段形态。
+
 ---
 
 ## 3. Train 对象规范
@@ -253,7 +283,7 @@ id ASC             # 最终 tiebreaker
 
 **直通车约定**：跨公司直通运行的列车，在 `company` 中以 `/` 分隔写出**所有**参与公司（如 `京急電鉄/都営地下鉄`）。UI 检测到 `/` 即自动在显示处追加「直通」字样（清单、悬浮标签、popup），JSON 中**不需要**额外的直通字段。
 
-**对轨道渲染（寻路）的影响 —— 软偏好**：`train_type` 与 `company` 共同决定路线倾向渲染在哪条轨道上，但均为**软偏置**、不会造成断线；显式的 `route_policy` 永远优先：
+**对轨道渲染（寻路）的影响 —— 软偏好**：`train_type` 与 `company` 共同决定路线倾向渲染在哪条轨道上，但均为**软偏置**、不会造成断线；显式的 `route_policy` 永远优先。下面的事业者种别推导仅适用于日本 N02；台湾以官方 TDX `LineName` / `OperatorName` 和预计算官方 shape 为准：
 
 1. 当 `route_policy.allowed_institution_type_codes` 为缺省全量 `["1","2","3","4","5"]` 时，求解器按 `train_type` + `company` 推导出更窄的事业者种别偏好：含 `新幹線` → `["1"]`；JR 公司（非新干线）→ `["2"]`；`都営`/公营 → `["3"]`；地下鉄/私铁（メトロ、電鉄、京急、東急 等）→ `["4"]`；第三セクター → `["5"]`。推导出多个信号时取并集；无信号则保持全量。配合默认 `institution_filter_mode: "soft"`，非匹配轨道只是加罚、仍可借道。
 2. `company` 中的每家公司（`/` 拆分后）映射为 N02_004 运营者名并并入 `preferred_operator_names` 软偏好；常用简称自动换算为正式名（`JR西日本`→`西日本旅客鉄道`、`東京メトロ`→`東京地下鉄`、`都営地下鉄`→`東京都` 等），未知名称原样使用。
@@ -309,9 +339,9 @@ id ASC             # 最终 tiebreaker
 | `jr_only`                              | boolean |  否 | `false`                    | 顾问性标记，必须为 boolean；实际过滤由 `allowed_institution_type_codes` 决定（见 5.4） |
 | `allow_alternatives`                   | boolean |  否 | `false`                    | **必须**为 `false`，不允许候选路线并列显示                              |
 | `allow_browser_straight_line_fallback` | boolean |  否 | `false`                    | **必须**为 `false`，禁止用直线伪装铁路线                               |
-| `allowed_institution_type_codes`       | array   |  否 | `["1","2","3","4","5"]`    | 允许的 N02_002 事业者种别，**只能含 `1`/`2`/`3`/`4`/`5`**（见 5.2）     |
-| `preferred_line_names`                 | array   |  否 | `[]`                       | 偏好路线名（`N02_003`），软偏置（见 5.3）；必须为字符串数组                     |
-| `preferred_operator_names`             | array   |  否 | `[]`                       | 偏好运营公司（`N02_004`），软偏置（见 5.3）；必须为字符串数组                    |
+| `allowed_institution_type_codes`       | array   |  否 | `["1","2","3","4","5"]`    | 日本：允许的 N02_002 事业者种别；台湾：兼容保留并忽略。值只能含 `1`–`5`（见 5.2） |
+| `preferred_line_names`                 | array   |  否 | `[]`                       | 偏好路线名（日本 `N02_003`；台湾 TDX `LineName.Zh_tw`），软偏置（见 5.3） |
+| `preferred_operator_names`             | array   |  否 | `[]`                       | 偏好运营公司（日本 `N02_004`；台湾 TDX `OperatorName.Zh_tw`），软偏置（见 5.3） |
 | `institution_filter_mode`             | string  |  否 | `"soft"`                   | `soft` 或 `hard`（见 5.4）                                   |
 
 ### 5.2 `allowed_institution_type_codes` 取值
@@ -334,9 +364,13 @@ id ASC             # 最终 tiebreaker
 "allowed_institution_type_codes": ["2"]                        // 仅 JR 在来线
 ```
 
+台湾官方 rail package 没有 N02_002。台湾 store 为保持 1.3 canonical 形态仍保留该数组，
+但求解/预计算不得拿它过滤 TDX/PTX 线路；`jr_only` 必须为 `false`。台湾路线选择由
+`preferred_*` 和每段 `line_names` / `operator_names` 约束。
+
 ### 5.3 偏好提示：`preferred_line_names` / `preferred_operator_names`
 
-这两个数组是给 Dijkstra 寻路器的**软偏置**（不是硬约束）：偏离偏好线路/公司的边会被按距离比例加罚，使路线倾向于贴着指定线路/公司走，但当无可行偏好路径时仍可绕行。留空表示无偏好。
+这两个数组是给寻路器的**软偏置**（不是硬约束）：偏离偏好线路/公司的边会被按距离比例加罚，使路线倾向于贴着指定线路/公司走，但当无可行偏好路径时仍可绕行。留空表示无偏好。日本值来自 N02；台湾值必须使用官方 TDX/PTX 中文名称。
 
 > 提示区别于硬约束：若要**强制**某段必须走某条线/某家公司，应使用 `route_sections[].line_names` / `operator_names`（见第 6 节）。
 
@@ -371,26 +405,26 @@ id ASC             # 最终 tiebreaker
 
 ## 6. Route Sections 规范
 
-`route_sections` 表示相邻站之间的线路区间。它用于辅助前端和构建器匹配已计算的 N02 铁路线 geometry。
+`route_sections` 表示相邻站之间的线路区间。它用于辅助前端和构建器匹配当前国家官方铁路 geometry（日本 N02；台湾 TDX/PTX shape）。
 
 ### 6.1 字段
 
-每个 section 的起点必须**至少**有 `from` 或 `from_n02_station_code` 之一，终点同理（两者都缺会校验报错）。`line_names` / `operator_names` 为可选的**硬约束**提示。
+每个 section 的起点必须**至少**有 `from` 或 `from_n02_station_code` 之一，终点同理（两者都缺会校验报错）。这些 `*_n02_station_code` 键均遵循 §2.3 的跨数据源兼容语义；`line_names` / `operator_names` 为可选的**硬约束**提示。
 
 | 字段                      | 类型          | 必填 | 说明                                          |
 | ----------------------- | ----------- | -: | ------------------------------------------- |
 | `from`                  | string      |  否* | 区间起点站名（与 `from_n02_station_code` 至少有一个）      |
 | `to`                    | string      |  否* | 区间终点站名（与 `to_n02_station_code` 至少有一个）        |
-| `from_n02_station_code` | string/null |  否* | 起点 N02 駅コード（`N02_005c`）                      |
-| `to_n02_station_code`   | string/null |  否* | 终点 N02 駅コード（`N02_005c`）                      |
-| `line_names`            | array       |  否 | 限定该段必须走的路线名（`N02_003`）；字符串数组，留空表示不限。**跨/邻接分歧站的区间必填**（见 6.4） |
-| `operator_names`        | array       |  否 | 限定该段必须走的运营公司（`N02_004`）；字符串数组，留空表示不限         |
+| `from_n02_station_code` | string/null |  否* | 起点官方站点代码：日本 `N02_005c` / 台湾 TDX `StationUID`（见 2.3） |
+| `to_n02_station_code`   | string/null |  否* | 终点官方站点代码：日本 `N02_005c` / 台湾 TDX `StationUID`（见 2.3） |
+| `line_names`            | array       |  否 | 限定该段必须走的官方路线名；字符串数组，留空表示不限。**跨/邻接分歧站的区间必填**（见 6.4） |
+| `operator_names`        | array       |  否 | 限定该段必须走的官方运营公司；字符串数组，留空表示不限 |
 
 > `*` 起点/终点各自的「名称」与「码」二选一即可，并非同时必填。
 >
 > **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
 
-> **canonical 形态省略可推导的 `from` / `to` 名**：站名是**每站常量**，已由 `from/to` 码经站名对照表（见 13.4）唯一确定，且每个车站的名字已在其 `stops[].name` 上保留一份。因此**导出 / 持久化的 route_section 默认只写 `from_n02_station_code` / `to_n02_station_code`（+ 线路/公司提示），不再重复 `from` / `to` 站名**——避免同一站名在 stops 和每个 section 里反复出现（当前存档约省 10%）。加载时前端按码从站表补回 `from` / `to`，所以站名匹配、§6.4 分歧检测、tooltip 等逻辑照常工作。**端点无码**（无法由码还原）或名字与码的权威站名**不一致**（别名）时，`from` / `to` 名会**保留**。
+> **canonical 形态省略可推导的 `from` / `to` 名**：日本站名可由 `N02_005c` 经站名对照表（见数据源部分 13.4）还原时，导出可只写端点代码。台湾 TDX 代码尚未进入该对照表，因此台湾 route section 必须同时保留 `from` / `to` 名与 TDX `StationUID`。任何端点无码或名字与代码权威站名不一致时，也必须保留站名。
 
 ### 6.1b 支线车号 `number` / `name`（可选）
 
@@ -496,12 +530,12 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 
 ### 7.1 Stop 字段
 
-导入时每个 stop **只强制要求 `name`**；其余字段缺省时按下表默认值补全。规范化 / 导出后每个 stop 都包含全部 6 个字段（这也是「完整 stops」的含义，见第 12 节）。stop 出现 6 个字段以外的键会导致导入失败。
+导入时每个 stop **只强制要求 `name`**；其余字段缺省时按下表默认值补全。规范化 / 导出后每个 stop 都包含全部 6 个字段（即字段结构完整；站序完整规则见第 12 节）。stop 出现 6 个字段以外的键会导致导入失败。
 
 | 字段                 | 类型          | 导入必填 | 缺省默认值              | 说明                        |
 | ------------------ | ----------- | -: | ------------------ | ------------------------- |
 | `name`             | string      |  是 | —                  | 站名                        |
-| `n02_station_code` | string/null |  否 | `null`             | N02 駅コード，即 `N02_005c`     |
+| `n02_station_code` | string/null |  否 | `null`             | 官方站点代码：日本 `N02_005c` / 台湾 TDX `StationUID`（历史兼容键名，见 2.3） |
 | `arrival`          | string/null |  否 | `null`             | 到达时间，格式见第 10 节，可为 `null`  |
 | `departure`        | string/null |  否 | `null`             | 出发时间，格式见第 10 节，可为 `null`  |
 | `stop_type`        | string      |  否 | `"passenger_stop"` | 站点类型（见 7.2）               |
@@ -629,6 +663,11 @@ ride_segment=false
 下车站，`stops` 只保留两站之间（含端点）的停靠站、运转停靠站和通过站，
 `route_sections` 只保留这些 stops 之间的相邻区间。
 
+这里的「通过站」包含列车不停靠但物理经过的每一座官方车站。例如桃园机场捷运直达车
+A13→A1 虽只停 A13/A12/A8/A3/A1，仍必须把 A11/A10/A9/A7/A6/A5/A4/A2 写成
+`pass_through`，并把 route sections 拆成 12 个物理相邻站区间；不得用一条 A12→A8
+长区间跨过 A11/A10/A9。
+
 列车在上车前和下车后继续运行的站点及区间**不得写入**。不得为了记录列车运行全程，
 在 `stops` 中保留乘坐范围外的站点并将其设为 `ride_segment=false`。
 
@@ -704,17 +743,17 @@ ride_segment=false
 }
 ```
 
-2. 系统根据已匹配的线路 geometry 自动计算。
+2. 系统根据已匹配的官方线路 geometry 自动计算。
 
 ### 9.2 通过站缺失处理
 
-如果无法在 N02 Station 数据中查找到通过站，必须跳过。
+如果无法在当前国家官方 Station 数据（日本 N02 / 台湾 TDX/PTX）中查找到通过站，必须跳过。
 
 规则：
 
 ```text
 stop_type = pass_through
-且无法根据 name / n02_station_code 匹配到 N02 station
+且无法根据 name / n02_station_code 匹配到官方 station
 → 跳过该通过站
 → 不显示 marker
 → 不阻止导入
@@ -756,7 +795,7 @@ stop_type = pass_through
   "type": "pass_through_station_not_found",
   "train_id": "odr_001",
   "station_name": "横浜",
-  "message": "Pass-through station was not found in N02 station index and was skipped."
+  "message": "Pass-through station was not found in the official station index and was skipped."
 }
 ```
 
@@ -767,7 +806,7 @@ stop_type = pass_through
 > （`if (!stopFeature) return;`），既不报 error 也不发 warning；`validateTrain` 根本不做站点解析，
 > 所以没有任何代码路径能抛出下表的 error。下表是希望达到的目标，不是现状。
 
-| stop_type          | 找不到 N02 station 时（目标）  |
+| stop_type          | 找不到官方 station 时（目标）  |
 | ------------------ | --------------------- |
 | `origin`           | error                 |
 | `destination`      | error                 |
@@ -953,8 +992,10 @@ stop_type
 ride_segment
 ```
 
-“完整 stop”指每个已写入站点都具有上述 6 个字段，不是指保存该列车的完整运行全程。
-特急、新干线也只导出实际乘坐区间内的停靠站与通过站，详见 §8.5～§8.6。
+“完整 stop”有两层含义：每个已写入站点都具有上述 6 个字段；并且实际乘坐区间内
+列车物理经过的站点必须按顺序完整列出，停车站写相应停靠类型，不停车站写
+`pass_through`。它不表示保存该列车在乘坐范围外的完整运行全程。特急、新干线、
+台湾直达车也只导出实际乘坐区间内的停靠站与通过站，详见 §8.5～§8.6。
 
 ### 12.3 不允许导出 UI 临时字段
 
@@ -984,7 +1025,7 @@ operator_hint
 line_name_hint
 ```
 
-必须使用：
+必须使用（字段名因 1.3 向后兼容而保留；值域见 2.3）：
 
 ```text
 name
@@ -1085,7 +1126,7 @@ from station point → to station point 直接连线
 ## 14. matched_routes 规范
 
 `matched_routes` 不属于导入/导出的 canonical train store，但属于构建结果。
-它应按相邻停站区间拆分 feature。
+它应按 `stops` 中物理相邻站区间拆分 feature；`pass_through` 与其相邻站之间同样各占一段。
 
 ### 14.1 每个 segment 一个 feature
 
@@ -1120,6 +1161,12 @@ from station point → to station point 直接连线
 > 是否被接受，`route_template_key` 是路线模板缓存的回查键。
 > 由于 `matched_routes` 属于构建结果而非 canonical JSON（见 §14 开头与数据源部分 13.3），
 > 该字段集可随实现调整，消费方应按名取用、忽略未知字段。
+
+台湾官方预计算 feature 应额外保留可审计来源，例如 `station_code_system: "TDX"`、
+`official_line_id`、`official_shape_sha256`、`from_official_station_uid` /
+`to_official_station_uid`、`official_station_group_id`、许可与署名。TDX `StationUID` 用于
+canonical 对应，`tw-official-*` station group 只用于 Railprint 网络分组。其 geometry 必须是对应 TDX/PTX shape 的站间切片，
+不得使用 OSM 或站点间直线补线。
 
 ### 14.2 segment_index 对应关系
 
@@ -1197,6 +1244,7 @@ date 若出现：必须是合法 YYYY-MM-DD 或 "undated"
 style.color            若出现：必须匹配 ^#[0-9a-fA-F]{6}$
 route_sections         若出现：必须是 array；每段起点 from|from_n02_station_code 至少其一，
                        终点同理；line_names / operator_names 若出现须为字符串数组
+from/to_n02_station_code 若出现：须为六位 N02_005c、TDX StationUID 或 null（见 2.3）
 route_policy.mode                                 须恰为 "single_primary_route"
 route_policy.jr_only                              须为 boolean
 route_policy.allow_alternatives                   须为 false
@@ -1219,6 +1267,7 @@ ride_segment 是 boolean
 arrival 是字符串或 null
 departure 是字符串或 null
 n02_station_code 允许 null
+n02_station_code 非 null 时须为六位 N02_005c 或 TDX StationUID（见 2.3）
 ```
 
 （导入阶段更宽松：只要求 `name` 存在，其余按 7.1 补默认值。）
@@ -1226,7 +1275,7 @@ n02_station_code 允许 null
 ### 15.4 通过站校验
 
 ```text
-stop_type=pass_through 且 N02 匹配失败
+stop_type=pass_through 且当前国家官方 station 匹配失败
 → warning
 → skip
 ```
@@ -1350,7 +1399,7 @@ origin / destination / passenger_stop 匹配失败
 → 完全隐藏
 ```
 
-如果 `横浜` 作为 `pass_through` 无法在 N02 站点数据中找到：
+如果 `横浜` 作为 `pass_through` 无法在当前国家官方站点数据中找到：
 
 ```text
 跳过横浜通过站 marker
@@ -1376,29 +1425,36 @@ origin / destination / passenger_stop 匹配失败
 10. 找不到 origin / destination / passenger_stop 时应报错。
 11. 禁止使用站点直线 fallback 伪装铁路线。
 12. 每趟列车只允许一条 primary route。
-13. matched route 应按相邻停站拆成 segment features。
+13. matched route 应按 `stops` 中物理相邻站拆成 segment features（包括通过站两侧）。
 14. JR-only 匹配靠 `allowed_institution_type_codes = ["1","2"]`（或 `["2"]`）表达。
     `route_policy.jr_only` 只是**顾问性标记**：它被校验、被导出，但求解器不读它，
     单独把它置 `true` 不会改变任何寻路结果（见 §5.1 / §5.4）。
 15. 寻路只走列车真正经过的支线分支：分歧站处必须用 `route_sections[].line_names` 硬约束锁定实际分支，绝不自动纳入该线在分歧站上挂着的其它分支；折返车次须切分求解；通过站只能来自实际分支（见 §6.4）。
+16. `n02_station_code` 是 1.3 的历史兼容键：日本值为 N02_005c，台湾值为官方 TDX `StationUID`；不得混入 OSM id 或 `tw-official-*` 几何分组 ID。
+17. 台湾 route policy 的 N02 事业者种别字段不参与过滤；路线名、运营者、站序、站点与 geometry 只采用官方 TDX/PTX 数据。
+18. 实际乘坐区间内必须列出所有物理经过站；不停靠站标为 `pass_through`，matched route 按这些相邻站逐段切分。
 
 ---
 
-# 第二部分 · 数据源（N02 / OSM）规范
+# 第二部分 · 数据源（日本 N02 / 台湾 TDX/PTX / OSM）规范
 
-> 以下章节自成一套编号（§2–§23），描述列车 JSON 背后的 N02 铁路数据与 OSM 底图。
+> 以下章节自成一套编号（§2–§23），描述列车 JSON 背后的日本 N02、台湾 TDX/PTX 官方铁路数据与 OSM 底图。
 > 这些是「构建器 / 数据源」层面的约定，与第一部分的列车 JSON 字段相互配合。
 
 ## 2. 数据源说明 / Data Sources
 
-本系统使用两类数据源：
+本系统使用三类数据源：
 
 1. **国土交通省「国土数値情報 鉄道データ N02」**
-   用于铁路线路、车站、路线匹配、车站搜索、特急路线 overlay。
-2. **OpenStreetMap / OSM 风格底图**
+   用于日本铁路线路、车站、路线匹配、车站搜索、特急路线 overlay。
+2. **交通部运输资料流通服务 TDX/PTX 与台湾其他政府开放铁路资料**
+   用于台湾铁路、捷运、轻轨的官方站点、站序、路线名称、运营者与 shape geometry。
+3. **OpenStreetMap / OSM 风格底图**
    仅作为地图底图使用，不参与铁路拓扑、站点匹配、特急路线计算。
 
-其中，铁路计算与 JSON 规范的主数据源是 **N02**。OSM 只作为视觉底图。
+铁路计算与 JSON 规范的主数据源按国家切换：日本使用 **N02**，台湾使用官方
+**TDX/PTX / 政府开放资料**。OSM 只作为视觉底图，两个国家都不得用 OSM 铁路 geometry
+或站点间直线替代官方线路。
 
 ---
 
@@ -1592,6 +1648,34 @@ Station 不是 Point。
 ```
 
 因此，前端显示站点圆圈时，必须从 Station 的线形 geometry 计算显示点。
+
+---
+
+### 2.7 台湾官方铁路数据源
+
+| 项目 | 内容 |
+| --- | --- |
+| 主数据服务 | 交通部运输资料流通服务 TDX/PTX Rail / MRT API |
+| 站点主键 | TDX `StationUID`（`OperatorID-StationID`） |
+| 路线主键 | TDX `LineID`，与 operator/system 共同限定 |
+| 站名 / 路线名 | `StationName.Zh_tw` / `LineName.Zh_tw` |
+| 运营者 | 官方 operator 数据的 `OperatorName.Zh_tw` |
+| 几何 | 官方 Shape API；缺项只可由其他台湾政府开放铁路资料补足 |
+| 当前打包产物 | `app/public/rail/tw-2025.json`，`country: "TW"` |
+| 坐标系 | WGS84 |
+| 许可 | 政府资料开放授权条款第 1 版；构建产物保留来源、版本与 hash |
+
+台湾构建产物必须满足：
+
+```text
+geometrySource.officialOnly = 1
+geometrySource.osmSources = 0
+geometrySource.syntheticConnectors = 0
+```
+
+`tw-2025.json` 内的 `tw-official-*` 是跨线路共享的**几何站组 ID**，用于 Railprint 网络
+分组与 popup；canonical train store 必须写原始 TDX `StationUID`，两者不可混用。
+台湾官方 shape 与站点坐标进入 rail package / matched build，不直接嵌入 canonical train JSON。
 
 ---
 
@@ -2076,9 +2160,24 @@ N02_005g 不能覆盖不同名称但现实可换乘的站。
 | `N02_004`              | 运营公司 hint                |
 | geometry               | 真实铁路线形                   |
 
-### 13.3 JSON 不直接保存 N02 geometry
+### 13.2-TW 台湾 TDX/PTX 到 JSON / matched build
 
-canonical train JSON 不直接保存 N02 geometry。
+| 台湾官方字段 | JSON / 构建字段 | 说明 |
+| --- | --- | --- |
+| `StationUID` | `stops[].n02_station_code` | 1.3 历史兼容键，值保持原始 TDX UID |
+| `StationName.Zh_tw` | `stops[].name` | 官方繁体中文站名 |
+| `StationUID` | route section 的 `from/to_n02_station_code` | 相邻区间端点 |
+| `LineName.Zh_tw` | `line_names` / `preferred_line_names` | 官方路线名 |
+| `OperatorName.Zh_tw` | `operator_names` / `preferred_operator_names` | 官方运营者名 |
+| `Shape` geometry | `matched_routes` / `tw-2025.json` | 官方线形，不写入 canonical store |
+| station position | `matched_stops` / `tw-2025.json` | 官方站点坐标，不写入 canonical store |
+
+台湾直达/快速列车的时刻表只决定停车模式；官方 line station sequence 决定完整物理站序。
+合并两者时，时刻表未停车但位于乘坐区间内的站必须写为 `pass_through`。
+
+### 13.3 JSON 不直接保存官方 geometry
+
+canonical train JSON 不直接保存日本 N02 或台湾 TDX/PTX geometry。
 
 也就是说，以下内容不进入导出的 canonical JSON：
 
@@ -2693,3 +2792,6 @@ route_policy
 18. 使用 N02 必须显示国土交通省国土数值情報出典。
 19. 使用 OSM 底图必须显示 OpenStreetMap contributors。
 20. 不得从 OSM 官方瓦片服务器批量下载离线瓦片。
+21. 台湾铁路主数据必须来自 TDX/PTX 或其他台湾政府官方开放资料，且 `officialOnly=1`、`osmSources=0`、`syntheticConnectors=0`。
+22. 台湾 canonical `n02_station_code` 值为原始 TDX `StationUID`；`tw-official-*` 只用于 rail package 的几何站组。
+23. 台湾 matched route 必须按完整物理站序逐站切分官方 shape，不得跨越遗漏的通过站。
