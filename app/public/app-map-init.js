@@ -32,12 +32,18 @@ function buildMapLayersControl(hasBasemap) {
 
   const summary = document.createElement("summary");
   summary.className = "map-layers-summary";
+  summary.setAttribute("role", "button");
+  summary.setAttribute("aria-haspopup", "true");
+  summary.setAttribute("aria-expanded", "false");
+  summary.setAttribute("aria-controls", "map-layers-body");
   const summaryText = document.createElement("span");
   summary.appendChild(summaryText);
   wrap.appendChild(summary);
 
   const body = document.createElement("div");
   body.className = "map-layers-body";
+  body.id = "map-layers-body";
+  body.setAttribute("role", "group");
 
   const selectLabel = document.createElement("label");
   selectLabel.className = "map-basemap-field";
@@ -68,6 +74,8 @@ function buildMapLayersControl(hasBasemap) {
 
   const updateControlTranslations = () => {
     summaryText.textContent = I18N.t("map.layers");
+    summary.setAttribute("aria-label", I18N.t("map.layers"));
+    body.setAttribute("aria-label", I18N.t("map.layers"));
     selectLabelText.textContent = I18N.t("map.basemap");
     select.setAttribute("aria-label", I18N.t("map.basemap"));
     optionNodes.forEach(({ node, labelKey }, value) => {
@@ -139,6 +147,11 @@ function buildMapLayersControl(hasBasemap) {
       "map.allRailways",
       (v) => {
         networkOverlayWanted = v;
+        // Record intent immediately, even while the lazy fetch is in flight.
+        // RailMap uses this state to reload the correct package on a country
+        // switch and to recover from a prior failed network request.
+        RailMap.setNetworkVisible(v);
+        RailMap.setNetworkStationsVisible(v);
         if (v) {
           RailMap.ensureNetwork().then(() => {
             if (!networkOverlayWanted) return; // toggled back off during load
@@ -205,6 +218,27 @@ function buildMapLayersControl(hasBasemap) {
 
   wrap.appendChild(body);
   map.getContainer().appendChild(wrap);
+
+  // Match a system menu/popover: expose state to assistive technology,
+  // dismiss on Escape or an outside tap, and never stack it over the map-info
+  // popover. Multiple layer selections intentionally keep the menu open.
+  wrap.addEventListener("toggle", () => {
+    summary.setAttribute("aria-expanded", wrap.open ? "true" : "false");
+    map.getContainer().classList.toggle("layers-menu-open", wrap.open);
+    if (wrap.open) {
+      const info = map.getContainer().querySelector(".map-info-control");
+      if (info) info.open = false;
+    }
+  });
+  wrap.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && wrap.open) {
+      wrap.open = false;
+      summary.focus();
+    }
+  });
+  map.getContainer().addEventListener("pointerdown", (event) => {
+    if (wrap.open && !wrap.contains(event.target)) wrap.open = false;
+  });
 }
 
 // One compact, human-readable home for every map symbol explanation and data
@@ -284,6 +318,10 @@ function buildMapInfoControl() {
 
   control.addEventListener("toggle", () => {
     summary.setAttribute("aria-expanded", control.open ? "true" : "false");
+    if (control.open) {
+      const layers = map.getContainer().querySelector(".map-layers-control");
+      if (layers) layers.open = false;
+    }
   });
   control.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && control.open) {

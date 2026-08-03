@@ -19,6 +19,44 @@
   --danger-border: #e5c4c1;
   --danger-bg: #fbf1f0;
 
+  /* iOS-style semantic roles. The train-map orange remains the app tint, but
+     components consume semantic roles so light/dark appearances stay aligned. */
+  --ios-tint: #a63b15;
+  --ios-tint-hover: #7f2a0d;
+  --ios-tint-vibrant: #ff5522;
+  --ios-tint-soft: #f5e4dd;
+  --ios-label: #171312;
+  --ios-label-secondary: #625b58;
+  --ios-label-tertiary: #817976;
+  --ios-system-background: #ffffff;
+  --ios-secondary-background: #f7f7fa;
+  --ios-grouped-background: #f2f2f7;
+  --ios-secondary-grouped-background: #ffffff;
+  --ios-fill: #d8d8de;
+  --ios-fill-secondary: #e5e5ea;
+  --ios-fill-tertiary: #eeeef2;
+  --ios-separator: #c6c6c8;
+  --ios-material: #f2f2f7;
+  --ios-material-strong: #ffffff;
+  --ios-focus: #f0b8a4;
+  --ios-blue: #007aff;
+  --ios-green: #248a3d;
+  --ios-orange: #c65d00;
+  --ios-red: #d70015;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --ios-control-height: 36px;
+  --ios-touch-height: 40px;
+  --ios-tabbar-height: 64px;
+  --ios-blur: none;
+  --ios-focus-ring: 0 0 0 3px var(--ios-focus);
+
   /* Radius scale: xs (focus rings, mini chips/swatches) < small (compact
      table controls) < button (buttons, inputs, popups, floating chrome)
      < card (cards, panels, modal) < pill (fully rounded). Circles use 50%. */
@@ -34,25 +72,25 @@
 
   /* Elevation scale: sm (resting cards) < md (floating map chrome) < lg
      (popups, tooltips, panels) < xl (modal). Dark values below. */
-  --shadow-sm: 0 2px 10px rgba(26, 26, 26, 0.05);
-  --shadow-md: 0 2px 10px rgba(26, 26, 26, 0.14);
-  --shadow-lg: 0 6px 20px rgba(26, 26, 26, 0.2);
-  --shadow-xl: 0 14px 44px rgba(26, 26, 26, 0.26);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
   /* Accent halo for selected / pending states (follows theme accent). */
-  --ring-accent: 0 0 0 2px color-mix(in srgb, var(--rail-lit) 20%, transparent);
+  --ring-accent: 0 0 0 2px var(--ios-focus);
   /* Modal scrim behind .rp-modal. */
-  --overlay-bg: rgba(20, 14, 12, 0.42);
+  --overlay-bg: #2c2c2e;
 
   /* Type scale. Glyph-art sizes (7-9px ■/▾ marks, the 20px ⓘ) stay literal. */
   --font-xs: 10px;
   --font-sm: 11px;
-  --font-md: 12px;
-  --font-base: 13px;
-  --font-lg: 14px;
-  --font-xl: 17px;
-  --font-title: 18px;
-  --font-stat: 24px;
-  --font-hero: 30px;
+  --font-md: 13px;
+  --font-base: 14px;
+  --font-lg: 15px;
+  --font-xl: 16px;
+  --font-title: 20px;
+  --font-stat: 22px;
+  --font-hero: 28px;
 
   /* semantic states (kept from JRM; railprint has no danger hue) */
   --warn: #b66a00;
@@ -97,12 +135,36 @@ html[data-theme="dark"] {
   --muted: var(--ink-muted);
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
-  --shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 6px 22px rgba(0, 0, 0, 0.55);
-  --shadow-xl: 0 14px 44px rgba(0, 0, 0, 0.6);
-  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --overlay-bg: #000000;
   --shadow: var(--shadow-sm);
+
+  --ios-tint: #ff9a78;
+  --ios-tint-hover: #ffb096;
+  --ios-tint-vibrant: #ff7448;
+  --ios-tint-soft: #3a2721;
+  --ios-label: #f5f1ef;
+  --ios-label-secondary: #b7b3b1;
+  --ios-label-tertiary: #918b88;
+  --ios-system-background: #000000;
+  --ios-secondary-background: #1c1c1e;
+  --ios-grouped-background: #111113;
+  --ios-secondary-grouped-background: #1c1c1e;
+  --ios-fill: #545458;
+  --ios-fill-secondary: #3f3f43;
+  --ios-fill-tertiary: #303034;
+  --ios-separator: #545458;
+  --ios-material: #1c1c1e;
+  --ios-material-strong: #2c2c2e;
+  --ios-focus: #75412f;
+  --ios-blue: #0a84ff;
+  --ios-green: #30d158;
+  --ios-orange: #ff9f0a;
+  --ios-red: #ff453a;
+  --ios-focus-ring: 0 0 0 3px var(--ios-focus);
 }
 
 /* Theme changes use the same 460 ms linear blend as the two preloaded map
@@ -241,9 +303,9 @@ html[data-sidebar="collapsed"] #app {
   border: var(--hairline);
   border-left: 0;
   border-radius: 0 var(--radius-button) var(--radius-button) 0;
-  background: color-mix(in srgb, var(--white) 94%, transparent);
+  background: var(--white);
   color: var(--rail-text);
-  box-shadow: 3px 0 10px rgba(0, 0, 0, 0.14);
+  box-shadow: none;
   cursor: ew-resize;
   touch-action: none;
   transform: translateY(-50%);
@@ -251,7 +313,7 @@ html[data-sidebar="collapsed"] #app {
     left 0.32s cubic-bezier(0.22, 1, 0.36, 1),
     background 0.15s ease,
     border-color 0.15s ease;
-  backdrop-filter: blur(8px);
+  backdrop-filter: none;
   user-select: none;
 }
 
@@ -265,9 +327,7 @@ html[data-sidebar="collapsed"] #app {
   /* An outer outline is clipped when the collapsed tab sits at the viewport
      edge. Keep the keyboard focus indicator visible inside the handle. */
   outline: none;
-  box-shadow:
-    inset 0 0 0 2px var(--rail-text),
-    3px 0 10px rgba(0, 0, 0, 0.14);
+  box-shadow: inset 0 0 0 2px var(--rail-text);
 }
 
 /* Invisible expanded hit box: the visual handle stays slim, but pointer
@@ -296,8 +356,7 @@ html[data-sidebar="collapsed"] #app {
 #app.sidebar-dragging .sidebar-edge-tab {
   transition: none;
   background: var(--rail-bg);
-  box-shadow: inset 0 0 0 2px
-    color-mix(in srgb, var(--rail-lit) 45%, transparent);
+  box-shadow: inset 0 0 0 2px var(--ios-focus);
 }
 
 /* ---- UI layer scale ----------------------------------------------------
@@ -409,6 +468,7 @@ h1 {
   font-size: var(--font-xs);
 }
 
+.country-switch,
 .lang-switch,
 .theme-switch {
   display: flex;
@@ -417,6 +477,7 @@ h1 {
   flex: none;
 }
 
+.country-switch label,
 .lang-switch label,
 .theme-switch label {
   font-size: var(--font-sm);
@@ -425,6 +486,7 @@ h1 {
   color: var(--ink-muted);
 }
 
+.country-switch select,
 .lang-switch select,
 .theme-switch select {
   width: auto;
@@ -443,6 +505,10 @@ h1 {
   max-width: 94px;
 }
 
+.country-switch select {
+  max-width: 88px;
+}
+
 /* RailPrint-style workspace pills stay available while the sidebar scrolls. */
 .workspace-nav {
   position: sticky;
@@ -454,8 +520,8 @@ h1 {
   margin: 0 -2px 4px;
   padding: 10px 2px 8px;
   background: var(--bg);
-  background: color-mix(in srgb, var(--bg) 94%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
+  backdrop-filter: none;
 }
 
 .workspace-nav a {
@@ -598,8 +664,8 @@ summary.subhead-toggle:hover {
   min-height: 14px; /* room for the protruding tab when collapsed */
 }
 .card-details:not([open]) {
-  background: transparent;
-  border-color: transparent;
+  background: var(--ios-grouped-background);
+  border-color: var(--ios-separator);
   box-shadow: none;
 }
 .card-tab .chev {
@@ -631,7 +697,7 @@ summary.subhead-toggle:hover {
   height: 1px;
   margin: 8px -2px 4px;
   background: var(--rail-dim);
-  opacity: 0.7;
+  opacity: 1;
 }
 
 /* ---- Layout primitives -------------------------------------------------- */
@@ -766,7 +832,7 @@ button.icon {
 }
 
 button:disabled {
-  opacity: 0.45;
+  opacity: 1;
   cursor: not-allowed;
   transform: none;
 }
@@ -810,12 +876,12 @@ button:disabled {
   color: var(--white);
 }
 .date-btn .date-count {
-  opacity: 0.75;
+  opacity: 1;
   margin-left: 4px;
   font-size: var(--font-sm);
 }
 .date-btn.active .date-count {
-  opacity: 0.9;
+  opacity: 1;
 }
 
 .inline-check {
@@ -1140,7 +1206,7 @@ button:disabled {
 .stat-subco {
   margin-right: 6px;
   font-size: 0.85em;
-  opacity: 0.72;
+  opacity: 1;
 }
 .stat-subval {
   display: flex;
@@ -1560,7 +1626,7 @@ tr.branch-junction td {
       bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1),
       background 0.15s ease,
       border-color 0.15s ease;
-    box-shadow: 0 -3px 10px rgba(0, 0, 0, 0.14);
+    box-shadow: none;
   }
 
   .maplibregl-ctrl-bottom-right {
@@ -1573,9 +1639,7 @@ tr.branch-junction td {
   }
 
   .sidebar-edge-tab:focus-visible {
-    box-shadow:
-      inset 0 0 0 2px var(--rail-text),
-      0 -3px 10px rgba(0, 0, 0, 0.14);
+    box-shadow: inset 0 0 0 2px var(--rail-text);
   }
 
   .sidebar-edge-tab-grip {
@@ -1732,6 +1796,16 @@ tr.branch-junction td {
     min-height: 44px;
   }
 
+  /* iOS Safari ZOOMS THE WHOLE PAGE when a focused text field's font-size
+     is under 16px — and the zoom persists after blur. Pin every text-entry
+     control to 16px on touch devices (verified on the iOS 26.5 simulator). */
+  #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  #sidebar select,
+  #sidebar textarea,
+  .rp-modal-input {
+    font-size: 16px;
+  }
+
   /* Checkboxes keep their compact glyph but sit inside a 24px minimum box
      (their label row is the real target). */
   #sidebar input[type="checkbox"] {
@@ -1767,6 +1841,7 @@ tr.branch-junction td {
     font-size: var(--font-xl);
   }
 
+  .country-switch label,
   .lang-switch label,
   .theme-switch label {
     position: absolute;
@@ -1782,6 +1857,10 @@ tr.branch-junction td {
 
   .theme-switch select {
     max-width: 92px;
+  }
+
+  .country-switch select {
+    max-width: 84px;
   }
 
   .workspace-nav {
@@ -1860,6 +1939,20 @@ tr.branch-junction td {
   box-shadow: var(--ring-accent);
 }
 
+/* Helper copy in the fit-curve block: the coverage note is always-on muted
+   text; the pending hint only appears while slider changes await a rebuild. */
+.display-note {
+  margin: 4px 0 2px;
+  font-size: var(--font-sm);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.fit-curve-pending-hint {
+  color: var(--rail-lit);
+  flex-basis: 100%;
+}
+
 /* ---- Map hover / selection labels ----------------------------------- */
 /* Endpoint-label markers (maplibregl.Marker DOM elements). */
 .station-label {
@@ -1906,10 +1999,10 @@ tr.branch-junction td {
    The tooltip re-runs the animation whenever it goes display:none -> block. */
 @keyframes map-pop-fade-in {
   from {
-    opacity: 0;
+    transform: scale(0.98);
   }
   to {
-    opacity: 1;
+    transform: scale(1);
   }
 }
 .maplibregl-popup,
@@ -2331,7 +2424,7 @@ tr.branch-junction td {
   color: var(--ink);
 }
 .rp-popup-date {
-  opacity: 0.8;
+  opacity: 1;
 }
 /* Mirrored "reading → reading" lines under the origin → destination line in
    the route-segment hover card. */
@@ -2411,10 +2504,10 @@ tr.branch-junction td {
   justify-content: center;
   padding: 24px;
   background: var(--overlay-bg);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  opacity: 1;
+  transition: none;
 }
 .rp-modal-overlay.is-open {
   opacity: 1;
@@ -2619,6 +2712,2551 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
 }
 .maplibregl-popup-anchor-right .maplibregl-popup-tip {
   border-left-color: var(--white);
+}
+
+/* ==========================================================================
+   Unified iOS / iPadOS presentation layer
+   --------------------------------------------------------------------------
+   The existing selectors remain the behavioral contract for the editor and
+   map. This final cascade maps them onto one semantic component system: inset
+   groups for content, tinted controls, floating materials for navigation and
+   map chrome, and a persistent compact-width tab bar.
+   ========================================================================== */
+
+html,
+body {
+  color: var(--ios-label);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "SF Pro Display",
+    "Hiragino Sans",
+    "Noto Sans JP",
+    system-ui,
+    sans-serif;
+  background: var(--ios-grouped-background);
+}
+
+#sidebar {
+  padding: var(--space-3) var(--space-3) var(--space-6);
+  border-right-color: var(--ios-separator);
+  background: var(--ios-material);
+  color: var(--ios-label);
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+header {
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-1) 0;
+}
+
+.header-row {
+  gap: var(--space-3);
+}
+
+h1 {
+  gap: var(--space-2);
+  color: var(--ios-label);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  width: 9px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--ios-tint-vibrant);
+  color: transparent;
+  font-size: 0;
+}
+
+.hint,
+.status,
+.train-meta,
+.progress-text,
+.import-target {
+  color: var(--ios-label-secondary);
+}
+
+.country-switch label,
+.lang-switch label,
+.theme-switch label,
+label {
+  color: var(--ios-label-secondary);
+}
+
+.country-switch select,
+.lang-switch select,
+.theme-switch select {
+  min-height: 32px;
+  padding: 5px 28px 5px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Top-level navigation: a compact iPad-style material strip on regular widths
+   and a persistent tab bar in the compact tier below. */
+.workspace-nav {
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 6px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 16px;
+  background: var(--ios-material-strong);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.workspace-nav a {
+  gap: 5px;
+  min-height: 38px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--ios-material-strong);
+  color: var(--ios-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  transition:
+    transform 0.12s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.workspace-nav a:hover,
+.workspace-nav a:focus-visible {
+  border-color: transparent;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a:active {
+  transform: scale(0.96);
+}
+
+.workspace-nav a.active,
+.workspace-nav a.active:hover,
+.workspace-nav a.active:focus-visible {
+  border-color: transparent;
+  background: var(--ios-tint-soft);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a > span:first-child,
+.workspace-nav a.active > span:first-child {
+  position: relative;
+  display: block;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 0;
+}
+
+/* CSS-drawn, fixed-metric symbols avoid platform-dependent Unicode glyphs. */
+.workspace-nav a:nth-of-type(1) > span:first-child {
+  border: 1.7px solid currentColor;
+  border-radius: 5px;
+}
+.workspace-nav a:nth-of-type(1) > span:first-child::before {
+  content: "";
+  position: absolute;
+  inset: 4px 4px 7px;
+  border-radius: 1px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.workspace-nav a:nth-of-type(1) > span:first-child::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 9px 0 0 currentColor;
+}
+
+.workspace-nav a:nth-of-type(2) > span:first-child::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 8px;
+  width: 4px;
+  height: 15px;
+  border-radius: 2px 2px 1px 1px;
+  background: currentColor;
+  transform: rotate(42deg);
+}
+.workspace-nav a:nth-of-type(2) > span:first-child::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  width: 7px;
+  height: 1.7px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.workspace-nav a:nth-of-type(3) > span:first-child {
+  background:
+    linear-gradient(currentColor, currentColor) 2px 11px / 4px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) 8px 6px / 4px 12px no-repeat,
+    linear-gradient(currentColor, currentColor) 14px 2px / 4px 16px no-repeat;
+}
+.workspace-nav a:nth-of-type(3) > span:first-child::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  left: 0;
+  height: 1.5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.workspace-nav a:nth-of-type(4) > span:first-child::before,
+.workspace-nav a:nth-of-type(4) > span:first-child::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  width: 15px;
+  height: 7px;
+  border: 1.7px solid currentColor;
+}
+.workspace-nav a:nth-of-type(4) > span:first-child::before {
+  top: 2px;
+  border-width: 1.7px 1.7px 0 0;
+  transform: skewX(-26deg);
+}
+.workspace-nav a:nth-of-type(4) > span:first-child::after {
+  right: 2px;
+  bottom: 2px;
+  left: auto;
+  border-width: 0 0 1.7px 1.7px;
+  transform: skewX(-26deg);
+}
+
+.workspace-nav a:nth-of-type(5) > span:first-child {
+  border: 1.7px solid currentColor;
+  border-radius: 50%;
+  background: conic-gradient(currentColor 0 50%, transparent 50% 100%);
+}
+
+/* Inset-group content surfaces. */
+.card {
+  margin-top: var(--space-2);
+  border: 1px solid var(--ios-separator);
+  border-radius: 18px;
+  background: var(--ios-secondary-grouped-background);
+  box-shadow: none;
+}
+
+#sidebar > section.card {
+  margin-top: var(--space-2);
+}
+
+.card-body {
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.subhead,
+summary.subhead-toggle,
+.map-layers-subhead {
+  color: var(--ios-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.subhead::before,
+.map-layers-subhead span::before {
+  content: none;
+}
+
+/* A system popover remains visually exclusive; the information affordance
+   returns as soon as the layer menu closes. */
+#map.layers-menu-open .map-info-control {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+summary.subhead-toggle:hover {
+  color: var(--ios-tint);
+}
+
+.divider {
+  margin: var(--space-2) 0 var(--space-1);
+  background: var(--ios-separator);
+  opacity: 1;
+}
+
+.toolbar,
+.row {
+  gap: var(--space-2);
+}
+
+.form-grid {
+  gap: var(--space-3);
+}
+
+label {
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+input,
+select,
+textarea {
+  min-height: var(--ios-control-height);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+  caret-color: var(--ios-tint);
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  background: var(--ios-fill-secondary);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: transparent;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ios-label-tertiary);
+  opacity: 1;
+}
+
+input[type="color"] {
+  height: var(--ios-control-height);
+  padding: 4px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+button {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+  font-weight: 600;
+  transition:
+    transform 0.12s ease,
+    background-color 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+button:hover {
+  border-color: transparent;
+  background: var(--ios-fill);
+  color: var(--ios-label);
+}
+
+button:active:not(:disabled):not(.sidebar-edge-tab) {
+  transform: scale(0.965);
+}
+
+button.primary,
+.rp-modal-btn--primary {
+  border-color: transparent;
+  background: var(--ios-tint);
+  color: var(--ios-system-background);
+}
+
+button.primary:hover,
+.rp-modal-btn--primary:hover {
+  border-color: transparent;
+  background: var(--ios-tint-hover);
+  color: var(--ios-system-background);
+}
+
+html[data-theme="dark"] button.primary,
+html[data-theme="dark"] .rp-modal-btn--primary {
+  color: #1c1c1e;
+}
+
+button.danger {
+  border-color: transparent;
+  background: var(--ios-danger-soft);
+  color: var(--ios-red);
+}
+
+button.danger:hover {
+  border-color: transparent;
+  background: var(--ios-red);
+  color: var(--ios-red);
+}
+
+button:disabled {
+  opacity: 1;
+}
+
+button.icon {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* iOS checkmarks for selection semantics. Switches are reserved for settings. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 1.5px solid var(--ios-label-tertiary);
+  border-radius: 6px;
+  background: var(--ios-secondary-grouped-background);
+  cursor: pointer;
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--ios-system-background);
+  border-width: 0 2px 2px 0;
+  opacity: 1;
+  transform: rotate(45deg) scale(0.7);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+html[data-theme="dark"] input[type="checkbox"]:checked::after {
+  border-color: #1c1c1e;
+}
+
+.display-toggle {
+  display: flex;
+  min-height: var(--ios-touch-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 6px 0;
+  color: var(--ios-label);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.display-toggle span {
+  order: 1;
+}
+
+.display-toggle input[type="checkbox"] {
+  order: 2;
+  width: 46px;
+  min-width: 46px;
+  height: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-toggle input[type="checkbox"]::after {
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.display-toggle input[type="checkbox"]:checked {
+  background: var(--ios-green);
+}
+
+.display-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.display-control input[type="range"] {
+  height: var(--ios-touch-height);
+  min-height: var(--ios-touch-height);
+}
+
+.display-control input[type="range"]::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  margin-top: -10px;
+}
+
+.display-control input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+.date-bar {
+  flex-wrap: nowrap;
+  gap: 7px;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 0 5px;
+  scroll-padding-inline: var(--space-3);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.date-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.date-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.date-btn:hover {
+  border-color: transparent;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.date-btn.active {
+  border-color: transparent;
+  background: var(--ios-tint);
+  color: var(--ios-system-background);
+}
+
+html[data-theme="dark"] .date-btn.active {
+  color: #1c1c1e;
+}
+
+.inline-check {
+  min-height: 32px;
+  gap: var(--space-2);
+  color: var(--ios-label-secondary);
+}
+
+.train-list {
+  gap: var(--space-2);
+}
+
+.train-item {
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.train-item:hover {
+  border-color: transparent;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.train-item.selected {
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+.train-item.focused {
+  background: var(--ios-tint-soft);
+}
+
+.train-state,
+.train-date-badge,
+.branch-tag {
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label-secondary);
+}
+
+.list-empty {
+  border: 0;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label-secondary);
+}
+
+.data-source-status,
+.status.ok {
+  color: var(--ios-green);
+}
+.data-source-status.sample-active,
+.status.warn {
+  color: var(--ios-orange);
+}
+.status.err,
+.danger-head {
+  color: var(--ios-red);
+}
+
+.progress-track,
+.stats-track {
+  border: 0;
+  background: var(--ios-fill-secondary);
+}
+
+.progress-fill,
+.stats-fill {
+  background: var(--ios-tint);
+}
+
+.stats-pct,
+.stats-daily-km {
+  color: var(--ios-tint-vibrant);
+}
+
+.stats-daily-hero {
+  border: 0;
+  border-radius: 14px;
+  background: var(--ios-tint-soft);
+}
+
+.stat-pct,
+.display-control-val,
+.import-target strong {
+  color: var(--ios-tint);
+}
+
+.danger-zone {
+  border: 0;
+  border-radius: 14px;
+  background: var(--ios-danger-soft);
+}
+
+.danger-zone[open] {
+  background: var(--ios-danger-soft);
+}
+
+.table-scroll {
+  border-color: var(--ios-separator);
+  border-radius: 14px;
+  background: var(--ios-secondary-grouped-background);
+}
+
+th,
+td {
+  border-bottom-color: var(--ios-separator);
+}
+
+th {
+  background: var(--ios-secondary-background);
+  color: var(--ios-label-secondary);
+}
+
+tr.branch-header td {
+  background: var(--ios-tint-soft);
+}
+
+tr.branch-header strong {
+  color: var(--ios-tint);
+}
+
+tr.branch-junction td {
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label-secondary);
+}
+
+/* Range controls are normalized instead of inheriting each browser's track. */
+.display-control input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: var(--ios-secondary-grouped-background);
+}
+
+.display-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ios-tint);
+  box-shadow: none;
+}
+
+.display-control input[type="range"]::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-control input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ios-tint);
+  box-shadow: none;
+}
+
+/* Floating map chrome shares one material and elevation level. */
+.map-layers-control,
+.map-info-panel,
+.maplibregl-popup-content,
+.station-label,
+.map-line-tip,
+.rp-modal {
+  border-color: var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.map-layers-control {
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.map-layers-summary {
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--ios-tint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.map-layers-summary::before {
+  content: none;
+}
+
+.map-layers-summary::after {
+  color: var(--ios-label-secondary);
+}
+
+.map-layers-control label {
+  min-height: 36px;
+  color: var(--ios-label);
+}
+
+.map-info-summary {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.map-info-summary:hover,
+.map-info-summary:focus-visible,
+.map-info-control[open] .map-info-summary {
+  border-color: var(--ios-tint);
+  background: var(--ios-material-strong);
+}
+
+.map-info-panel {
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.map-info-header {
+  background: var(--ios-tint-soft);
+}
+
+.map-info-header h2,
+.map-info-legend-row strong,
+.map-info-source strong {
+  color: var(--ios-label);
+}
+
+.map-info-header p,
+.map-info-legend-row p,
+.map-info-source p {
+  color: var(--ios-label-secondary);
+}
+
+.map-info-section h3,
+.map-info-links a {
+  color: var(--ios-tint);
+}
+
+.map-info-source {
+  border-color: var(--ios-separator);
+  background: var(--ios-fill-tertiary);
+}
+
+.maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--ios-separator);
+  border-radius: 12px;
+  background: var(--ios-material-strong);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+html[data-theme="dark"] .maplibregl-ctrl-group {
+  background: var(--ios-material-strong);
+  box-shadow: 0 0 0 1px var(--ios-separator);
+}
+
+.station-label,
+.maplibregl-popup-content,
+.map-line-tip {
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.station-label--endpoint {
+  border-color: var(--ios-tint);
+}
+
+.station-label-badge {
+  border-radius: var(--radius-pill);
+  background: var(--ios-tint);
+  color: var(--ios-system-background);
+}
+
+.rp-modal-overlay {
+  background: var(--overlay-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.rp-modal {
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.rp-modal-input {
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.rp-modal-input:focus,
+.rp-modal-input:focus-visible {
+  outline: none;
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+.rp-modal-choice {
+  min-height: var(--ios-touch-height);
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.rp-modal-choice:hover,
+.rp-modal-choice:focus-visible {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint-soft);
+}
+
+.rp-modal-btn {
+  min-height: var(--ios-touch-height);
+  border: 0;
+  border-radius: 12px;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.rp-modal-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ios-focus-ring);
+}
+
+.rp-modal-btn--danger {
+  border-color: transparent;
+  background: var(--ios-red);
+  color: #ffffff;
+}
+
+.sidebar-edge-tab {
+  border-color: var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.sidebar-edge-tab:hover,
+.sidebar-edge-tab:focus-visible {
+  border-color: var(--ios-tint);
+  background: var(--ios-material-strong);
+}
+
+/* Compact width: persistent bottom tab bar inside the transformed sheet. Its
+   bottom offset mirrors the panel's clipped remainder, so it remains fixed to
+   the viewport at every detent without changing the DOM or event contract. */
+@media (max-width: 599px) {
+  #sidebar {
+    padding: 42px 14px
+      calc(
+        var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
+          var(--panel-clip, 0px)
+      );
+    border: 1px solid var(--ios-separator);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background: var(--ios-material);
+    box-shadow: none;
+  }
+
+  #sidebar .workspace-nav {
+    position: fixed;
+    inset: auto 0 var(--panel-clip, 0px);
+    z-index: 70;
+    order: initial;
+    height: calc(var(--ios-tabbar-height) + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--ios-separator);
+    border-radius: 0;
+    background: var(--ios-material-strong);
+    box-shadow: none;
+    -webkit-backdrop-filter: var(--ios-blur);
+    backdrop-filter: var(--ios-blur);
+  }
+
+  #sidebar .workspace-nav a {
+    flex-direction: column;
+    gap: 2px;
+    min-height: 52px;
+    padding: 3px 2px;
+    border-radius: 12px;
+    line-height: 1.05;
+  }
+
+  #sidebar .workspace-nav a > span:first-child {
+    flex-basis: 21px;
+    width: 21px;
+    height: 21px;
+  }
+
+  #sidebar .workspace-nav .panel-context {
+    display: none;
+  }
+
+  /* At the compact detent, reduce the sheet to the persistent tab bar. The
+     translated full-height panel otherwise leaves a clipped card sliver above
+     the bar, which reads as accidental overflow instead of a stable detent. */
+  #app[data-panel="peek"] #sidebar {
+    border-color: var(--ios-separator);
+    background: var(--ios-material);
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+    visibility: hidden;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  #sidebar > header {
+    order: 99;
+    margin: var(--space-5) 0 0;
+    padding: var(--space-4) 0 0;
+    border-top-color: var(--ios-separator);
+  }
+
+  #sidebar > section.card,
+  #sidebar > details.card {
+    margin-top: 0;
+  }
+
+  .card {
+    border-radius: 18px;
+  }
+
+  .card-body {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    min-height: var(--ios-touch-height);
+  }
+
+  .date-btn {
+    min-height: 36px;
+  }
+
+  .toolbar > button {
+    flex: 1 1 132px;
+  }
+
+  .sidebar-edge-tab {
+    bottom: max(calc(var(--sidebar-size) - 31px), 0px);
+    width: 54px;
+    height: 25px;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--ios-material);
+    box-shadow: none;
+  }
+
+  .sidebar-edge-tab-grip {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .sidebar-edge-tab-grip span {
+    display: none;
+  }
+
+  .sidebar-edge-tab-grip span:first-child {
+    display: block;
+    width: 36px;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: var(--ios-label-tertiary);
+  }
+
+  /* The old sticky rule used the clipped part of the transformed sheet as a
+     CSS bottom inset, which pulled the stop toolbar over Train Data at half. */
+  #train-editor .card-body > .toolbar:last-child {
+    position: static;
+    margin-top: var(--space-2);
+    padding: 0;
+    border-top: 0;
+    background: var(--ios-secondary-grouped-background);
+  }
+
+  .map-info-control {
+    bottom: calc(min(var(--sidebar-size), 55dvh) + 8px);
+    transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .maplibregl-ctrl-bottom-right {
+    bottom: min(var(--sidebar-size), 55dvh);
+  }
+
+  #app.sidebar-dragging .map-info-control {
+    transition: none;
+  }
+
+  .map-info-panel {
+    max-height: min(520px, calc(100dvh - min(var(--sidebar-size), 55dvh) - 68px));
+  }
+
+  .table-scroll tbody tr {
+    border-color: var(--ios-separator);
+    border-radius: 14px;
+    background: var(--ios-fill-tertiary);
+  }
+
+  .table-scroll tbody tr.branch-header {
+    background: var(--ios-tint-soft);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  #sidebar {
+    background: var(--ios-material);
+  }
+}
+
+@media (pointer: coarse) {
+  #sidebar button,
+  #sidebar select,
+  #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    min-height: var(--ios-touch-height);
+  }
+}
+
+/* ==========================================================================
+   iOS 27 solid-surface normalization
+   --------------------------------------------------------------------------
+   iOS 27 makes navigation stable across resizable scenes. This web version
+   keeps that structure and the system component proportions, but deliberately
+   uses only opaque semantic surfaces: no Liquid Glass, blur, translucency or
+   vibrancy. The same five-item bottom bar and menu grammar apply at every
+   viewport width.
+   ========================================================================== */
+
+:root {
+  --ios-danger-soft: #fbe9e7;
+  --ios-positive-soft: #e6f4e8;
+  --ios-warning-soft: #fff1d6;
+  --ios-nav-reserve: 86px;
+}
+
+html[data-theme="dark"] {
+  --ios-danger-soft: #3a2321;
+  --ios-positive-soft: #203627;
+  --ios-warning-soft: #3a3020;
+}
+
+/* Material effects are intentionally disabled everywhere, including map
+   chrome created after boot. Border and tone changes carry the hierarchy. */
+#sidebar,
+.workspace-nav,
+.sidebar-edge-tab,
+.map-layers-control,
+.map-info-summary,
+.map-info-panel,
+.maplibregl-ctrl-group,
+.maplibregl-popup-content,
+.station-label,
+.map-line-tip,
+.rp-modal-overlay,
+.rp-modal {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+html,
+body {
+  color: var(--ios-label);
+  background: var(--ios-grouped-background);
+  font-size: var(--font-base);
+}
+
+#sidebar {
+  padding: var(--space-3) var(--space-3)
+    calc(var(--ios-nav-reserve) + env(safe-area-inset-bottom));
+  border-color: var(--ios-separator);
+  background: var(--ios-material);
+}
+
+header {
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1) var(--space-1);
+}
+
+h1 {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.hint,
+.status,
+.train-meta,
+.progress-text,
+.import-target,
+.display-note {
+  color: var(--ios-label-secondary);
+  line-height: 1.45;
+}
+
+.country-switch select,
+.lang-switch select,
+.theme-switch select {
+  min-height: var(--ios-touch-height);
+  border: 1px solid var(--ios-separator);
+  background-color: var(--ios-material-strong);
+  color: var(--ios-label);
+  font-size: 12px;
+}
+
+#lang-select {
+  min-width: 128px;
+}
+
+#theme-select {
+  min-width: 88px;
+}
+
+/* Persistent bottom bar. The DOM node is a sibling of the scrollable sidebar,
+   so menu momentum and edge bounce can never move the navigation itself. */
+.workspace-nav,
+#sidebar .workspace-nav {
+  position: fixed;
+  inset: auto auto 12px 12px;
+  z-index: 90;
+  width: calc(var(--sidebar-open-size) - 24px);
+  height: 64px;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 16px;
+  background: var(--ios-material-strong);
+}
+
+.workspace-nav a,
+#sidebar .workspace-nav a {
+  flex-direction: column;
+  gap: 2px;
+  min-height: 50px;
+  padding: 4px 3px;
+  border: 1px solid var(--ios-material-strong);
+  border-radius: 12px;
+  background: var(--ios-material-strong);
+  color: var(--ios-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.05;
+}
+
+.workspace-nav a:hover,
+.workspace-nav a:focus-visible {
+  border-color: var(--ios-separator);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a.active,
+.workspace-nav a.active:hover,
+.workspace-nav a.active:focus-visible,
+#sidebar .workspace-nav a.active,
+#sidebar .workspace-nav a.active:hover,
+#sidebar .workspace-nav a.active:focus-visible {
+  border-color: var(--ios-focus);
+  background: var(--ios-tint-soft);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a > span:first-child,
+.workspace-nav a.active > span:first-child {
+  flex-basis: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Inset grouped content: a solid page surface, solid groups and separators. */
+.card,
+#sidebar > section.card,
+#sidebar > details.card {
+  margin-top: var(--space-2);
+  border: 1px solid var(--ios-separator);
+  border-radius: 14px;
+  background: var(--ios-secondary-grouped-background);
+  box-shadow: none;
+}
+
+.card-body {
+  gap: 10px;
+  padding: var(--space-3);
+}
+
+.subhead,
+summary.subhead-toggle,
+.map-layers-subhead {
+  color: var(--ios-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.divider {
+  background: var(--ios-separator);
+}
+
+label {
+  color: var(--ios-label-secondary);
+  font-size: 12px;
+}
+
+input,
+select,
+textarea,
+button,
+.rp-modal-btn,
+.rp-modal-choice {
+  min-height: var(--ios-touch-height);
+  font-size: 14px;
+}
+
+input,
+select,
+textarea,
+.rp-modal-input {
+  border: 1px solid var(--ios-separator);
+  border-radius: 10px;
+  background: var(--ios-secondary-background);
+  color: var(--ios-label);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  background: var(--ios-fill-tertiary);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.rp-modal-input:focus-visible {
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+button,
+.rp-modal-btn,
+.rp-modal-choice {
+  padding: 6px 12px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 10px;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+button:hover,
+.rp-modal-btn:hover,
+.rp-modal-choice:hover {
+  border-color: var(--ios-label-tertiary);
+  background: var(--ios-fill);
+  color: var(--ios-label);
+}
+
+button.primary,
+.rp-modal-btn--primary {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] button.primary,
+html[data-theme="dark"] .rp-modal-btn--primary,
+html[data-theme="dark"] .date-btn.active {
+  color: #1c1c1e;
+}
+
+button.danger {
+  border-color: var(--ios-red);
+  background: var(--ios-danger-soft);
+  color: var(--ios-red);
+}
+
+button.danger:hover {
+  border-color: var(--ios-red);
+  background: var(--ios-red);
+  color: #ffffff;
+}
+
+button:disabled,
+button.primary:disabled,
+button.danger:disabled {
+  border-color: var(--ios-separator);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label-tertiary);
+  opacity: 1;
+}
+
+button.icon {
+  width: var(--ios-touch-height);
+  min-width: var(--ios-touch-height);
+  min-height: var(--ios-touch-height);
+}
+
+input[type="checkbox"] {
+  border-color: var(--ios-label-tertiary);
+  background: var(--ios-secondary-grouped-background);
+}
+
+input[type="checkbox"]::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(0);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+.inline-check {
+  min-height: var(--ios-touch-height);
+}
+
+.display-toggle input[type="checkbox"] {
+  background: var(--ios-fill);
+}
+
+.display-toggle input[type="checkbox"]::after {
+  transform: none;
+}
+
+.display-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.date-btn {
+  min-height: var(--ios-touch-height);
+  border: 1px solid var(--ios-separator);
+  background: var(--ios-secondary-background);
+}
+
+.date-btn.active {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint);
+  color: #ffffff;
+}
+
+.train-item,
+.list-empty,
+.table-scroll tbody tr {
+  border-color: var(--ios-separator);
+  background: var(--ios-secondary-background);
+}
+
+.train-item {
+  min-height: 56px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.train-item.selected {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint-soft);
+  box-shadow: var(--ios-focus-ring);
+}
+
+.train-item.focused,
+.stats-daily-hero,
+tr.branch-header td,
+.table-scroll tbody tr.branch-header {
+  background: var(--ios-tint-soft);
+}
+
+.train-state,
+.train-date-badge,
+.branch-tag {
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label-secondary);
+}
+
+.danger-zone,
+.danger-zone[open] {
+  border: 1px solid var(--ios-red);
+  background: var(--ios-danger-soft);
+}
+
+.data-source-status,
+.status.ok {
+  color: var(--ios-green);
+  background: var(--ios-positive-soft);
+}
+
+.data-source-status.sample-active,
+.status.warn {
+  color: var(--ios-orange);
+  background: var(--ios-warning-soft);
+}
+
+.progress-track,
+.stats-track {
+  background: var(--ios-fill-secondary);
+}
+
+.table-scroll,
+th,
+td {
+  border-color: var(--ios-separator);
+}
+
+.table-scroll,
+th {
+  background: var(--ios-secondary-grouped-background);
+}
+
+/* Menus and popovers use the same large-list visual grammar on all sizes. */
+.map-layers-control,
+.map-info-summary,
+.map-info-panel,
+.maplibregl-ctrl-group,
+.maplibregl-popup-content,
+.station-label,
+.map-line-tip,
+.rp-modal {
+  border: 1px solid var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+}
+
+.map-layers-control,
+.map-info-panel,
+.rp-modal {
+  border-radius: 14px;
+}
+
+.map-layers-summary {
+  min-height: var(--ios-touch-height);
+  padding: 7px 10px;
+  color: var(--ios-tint);
+  font-size: 13px;
+}
+
+.map-layers-control:not([open]) .map-layers-summary {
+  min-height: var(--ios-touch-height);
+  padding: 7px 10px;
+}
+
+.map-layers-control[open] .map-layers-summary {
+  border-color: var(--ios-separator);
+}
+
+.map-layers-body {
+  gap: 0;
+  padding: 2px 10px 8px;
+  border-top: 1px solid var(--ios-separator);
+}
+
+.map-layers-control select {
+  min-height: var(--ios-touch-height);
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+.map-layers-control label {
+  min-height: var(--ios-touch-height);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+  font-size: 14px;
+}
+
+.map-layers-control label:last-child {
+  border-bottom: 0;
+}
+
+.map-info-summary {
+  width: var(--ios-touch-height);
+  height: var(--ios-touch-height);
+  border-radius: 50%;
+  color: var(--ios-tint);
+}
+
+.map-info-header {
+  border-bottom: 1px solid var(--ios-separator);
+  background: var(--ios-tint-soft);
+}
+
+.map-info-section + .map-info-section {
+  border-top: 1px solid var(--ios-separator);
+}
+
+.map-info-source {
+  border-color: var(--ios-separator);
+  background: var(--ios-secondary-background);
+}
+
+.maplibregl-ctrl-group {
+  border-radius: 10px;
+}
+
+.maplibregl-ctrl-group button {
+  width: var(--ios-touch-height);
+  height: var(--ios-touch-height);
+}
+
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--ios-separator);
+}
+
+.maplibregl-popup-content,
+.station-label,
+.map-line-tip {
+  border-radius: 12px;
+}
+
+.rp-modal-overlay,
+.rp-modal-overlay.is-open {
+  background: var(--overlay-bg);
+  opacity: 1;
+}
+
+.rp-modal {
+  padding: 16px;
+}
+
+.rp-modal-choice {
+  background: var(--ios-secondary-background);
+}
+
+.rp-modal-choice:hover,
+.rp-modal-choice:focus-visible {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint-soft);
+}
+
+.rp-modal-btn--danger {
+  border-color: var(--ios-red);
+  background: var(--ios-red);
+  color: #ffffff;
+}
+
+.sidebar-edge-tab,
+.sidebar-edge-tab:hover,
+.sidebar-edge-tab:focus-visible {
+  border-color: var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+}
+
+@media (max-width: 1023px) and (min-width: 600px) {
+  #sidebar {
+    padding-bottom: calc(
+      var(--ios-nav-reserve) + env(safe-area-inset-bottom)
+    );
+    background: var(--ios-material);
+  }
+
+  /* The medium tier has a 330–400pt sidebar. Reflow the seven-column stop
+     editor into the same labeled cards used on iPhone instead of requiring a
+     horizontal scroll gesture that hides actions. */
+  .table-scroll {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: var(--ios-secondary-grouped-background);
+    scrollbar-gutter: auto;
+  }
+
+  .table-scroll table,
+  .table-scroll tbody {
+    display: block;
+  }
+
+  .table-scroll thead {
+    display: none;
+  }
+
+  .table-scroll tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    align-items: end;
+    margin: 0 0 6px;
+    padding: 10px;
+    border: 1px solid var(--ios-separator);
+    border-radius: 12px;
+    background: var(--ios-secondary-background);
+  }
+
+  .table-scroll tbody td {
+    display: block;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .table-scroll tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    color: var(--ios-label-secondary);
+    font-size: 11px;
+  }
+
+  .table-scroll tbody tr > td:nth-child(1) {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: center;
+  }
+
+  .table-scroll tbody tr > td:nth-child(2) {
+    grid-row: 1;
+    grid-column: 2 / 5;
+  }
+
+  .table-scroll tbody tr > td:nth-child(3) {
+    grid-row: 2;
+    grid-column: 1 / 3;
+  }
+
+  .table-scroll tbody tr > td:nth-child(4) {
+    grid-row: 2;
+    grid-column: 3 / 5;
+  }
+
+  .table-scroll tbody tr > td:nth-child(5) {
+    grid-row: 3;
+    grid-column: 1 / 3;
+  }
+
+  .table-scroll tbody tr > td:nth-child(6) {
+    grid-row: 3;
+    grid-column: 3;
+  }
+
+  .table-scroll tbody tr > td:nth-child(7) {
+    grid-row: 3;
+    grid-column: 4;
+    justify-self: end;
+  }
+
+  .table-scroll tbody td input:not([type="checkbox"]),
+  .table-scroll tbody td select {
+    width: 100%;
+  }
+
+  .table-scroll tbody tr.branch-header {
+    display: block;
+    background: var(--ios-tint-soft);
+  }
+}
+
+@media (max-width: 599px) {
+  #sidebar {
+    padding: 38px 12px
+      calc(
+        var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
+          var(--panel-clip, 0px)
+      );
+    border-color: var(--ios-separator);
+    border-radius: 18px 18px 0 0;
+    background: var(--ios-material);
+  }
+
+  #sidebar .workspace-nav {
+    inset: auto 0 var(--panel-clip, 0px) 0;
+    width: 100%;
+    height: calc(var(--ios-tabbar-height) + env(safe-area-inset-bottom));
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 0;
+    background: var(--ios-material-strong);
+  }
+
+  #sidebar .workspace-nav a {
+    min-height: 50px;
+    border-radius: 10px;
+    font-size: 10px;
+  }
+
+  #app[data-panel="peek"] #sidebar {
+    border-color: var(--ios-separator);
+    background: var(--ios-material);
+  }
+
+  #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+    visibility: hidden;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  .sidebar-edge-tab,
+  .sidebar-edge-tab:hover,
+  .sidebar-edge-tab:focus-visible {
+    background: var(--ios-material);
+  }
+
+  .toolbar > button {
+    flex: 1 1 112px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 340px) {
+  #sidebar .workspace-nav {
+    padding-inline: 4px;
+  }
+
+  #sidebar .workspace-nav a {
+    padding-inline: 1px;
+    font-size: 10px;
+  }
+}
+
+/* ==========================================================================
+   Terminal-aware interaction and density
+   --------------------------------------------------------------------------
+   `data-ui-mode` is resolved from UA-CH/UA + pointer capabilities, with a
+   compact-window fallback and an explicit user override. Device mode owns the
+   drawer axis and hit-target density; viewport width only reflows content.
+   ========================================================================== */
+
+.ui-mode-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 12px;
+  background: var(--ios-secondary-background);
+}
+
+.ui-mode-setting > label {
+  color: var(--ios-label);
+  font-weight: 600;
+}
+
+.ui-mode-setting select {
+  min-width: 116px;
+}
+
+.ui-mode-setting .display-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-sm);
+}
+
+/* The menu is the platform scroll container. Keep native momentum and edge
+   elasticity (including iOS scroll-to-top rebound) while the page/map remain
+   locked in place behind it. */
+#sidebar {
+  overflow-y: auto;
+  scroll-behavior: auto;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile UI can apply on tablets and wide mobile browsers, not only a narrow
+   CSS viewport. It keeps iOS touch targets, a three-detent bottom sheet and a
+   persistent five-item bottom bar. */
+html[data-ui-mode="mobile"] #app {
+  --panel-half: 50dvh;
+  --panel-full: calc(100dvh - env(safe-area-inset-top) - 10px);
+  --panel-clip: calc(var(--sidebar-open-size) - var(--sidebar-size));
+  --sidebar-open-size: var(--panel-full);
+  --sidebar-size: var(--panel-half);
+}
+
+html[data-ui-mode="mobile"][data-sidebar="collapsed"] #app,
+html[data-ui-mode="mobile"] #app.sidebar-collapsed {
+  --sidebar-size: 0px;
+}
+
+html[data-ui-mode="mobile"] #sidebar {
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: var(--sidebar-open-size);
+  min-height: var(--sidebar-open-size);
+  max-height: var(--sidebar-open-size);
+  padding: 38px 12px
+    calc(
+      var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
+        var(--panel-clip, 0px)
+    );
+  border: 1px solid var(--ios-separator);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  background: var(--ios-material);
+  transform: translateY(
+    calc(var(--sidebar-open-size) - var(--sidebar-size))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="mobile"] #sidebar > * {
+  flex: 0 0 auto;
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-collapsed #sidebar {
+  /* The clipped scroll reserve grows the sheet's actual box when hidden.
+     Translate by that real box height so no material strip remains visible. */
+  transform: translateY(100%);
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-dragging #sidebar {
+  transform: translateY(
+    calc(var(--sidebar-open-size) - var(--sidebar-size))
+  );
+}
+
+html[data-ui-mode="mobile"] .workspace-nav {
+  --workspace-nav-height: calc(
+    var(--ios-tabbar-height) + env(safe-area-inset-bottom)
+  );
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 90;
+  order: initial;
+  width: 100%;
+  height: var(--workspace-nav-height);
+  margin: 0;
+  padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--ios-material-strong);
+  /* The tab bar remains viewport-fixed while open, then follows the sheet
+     only through its final bottom-edge retreat. During a drag, max() keeps
+     it fixed until the remaining sheet is shorter than the bar itself. */
+  transform: translateY(
+    max(0px, calc(var(--workspace-nav-height) - var(--sidebar-size)))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-dragging .workspace-nav {
+  transition: none;
+}
+
+html[data-ui-mode="mobile"][data-sidebar="collapsed"] .workspace-nav,
+html[data-ui-mode="mobile"] #app.sidebar-collapsed .workspace-nav {
+  pointer-events: none;
+}
+
+html[data-ui-mode="mobile"] .workspace-nav a {
+  flex-direction: column;
+  gap: 2px;
+  min-height: 50px;
+  padding: 3px 2px;
+  border-radius: 10px;
+  font-size: 10px;
+  line-height: 1.05;
+}
+
+html[data-ui-mode="mobile"] .workspace-nav .panel-context {
+  display: none;
+}
+
+html[data-ui-mode="mobile"] #sidebar > header {
+  order: 99;
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--ios-separator);
+}
+
+html[data-ui-mode="mobile"] #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+  visibility: hidden;
+  opacity: 1;
+  pointer-events: none;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab,
+html[data-ui-mode="mobile"] .sidebar-edge-tab:hover,
+html[data-ui-mode="mobile"] .sidebar-edge-tab:focus-visible {
+  top: auto;
+  bottom: max(calc(var(--sidebar-size) - 31px), 0px);
+  left: 50%;
+  width: 54px;
+  height: 25px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-material);
+  cursor: ns-resize;
+  transform: translateX(-50%);
+  transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip {
+  flex-direction: column;
+  gap: 0;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip span {
+  display: none;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip span:first-child {
+  display: block;
+  width: 36px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--ios-label-tertiary);
+}
+
+html[data-ui-mode="mobile"] .maplibregl-ctrl-top-left {
+  left: 0;
+  margin-top: env(safe-area-inset-top);
+  margin-left: calc(10px + env(safe-area-inset-left));
+}
+
+html[data-ui-mode="mobile"] .maplibregl-ctrl-bottom-right {
+  bottom: min(var(--sidebar-size), 55dvh);
+}
+
+html[data-ui-mode="mobile"] .map-info-control {
+  bottom: calc(min(var(--sidebar-size), 55dvh) + 8px);
+}
+
+html[data-ui-mode="mobile"] .map-info-panel {
+  max-height: min(
+    520px,
+    calc(100dvh - min(var(--sidebar-size), 55dvh) - 68px)
+  );
+}
+
+html[data-ui-mode="mobile"] .toolbar > button {
+  flex: 1 1 112px;
+}
+
+html[data-ui-mode="mobile"] .form-grid {
+  grid-template-columns: 1fr;
+}
+
+/* Desktop UI uses the same opaque iOS component grammar at a substantially
+   tighter information density. This also overrides narrow-width sheet rules
+   when a phone or tablet explicitly selects Desktop. */
+html[data-ui-mode="desktop"] {
+  --ios-control-height: 32px;
+  --ios-touch-height: 32px;
+  --ios-tabbar-height: 54px;
+  --ios-nav-reserve: 70px;
+  --font-xs: 9px;
+  --font-sm: 10px;
+  --font-md: 12px;
+  --font-base: 13px;
+  --font-lg: 14px;
+  --font-xl: 15px;
+  --font-title: 18px;
+  --font-stat: 20px;
+  --font-hero: 26px;
+}
+
+html[data-ui-mode="desktop"] #app {
+  --sidebar-open-size: min(400px, calc(100vw - 52px));
+  --sidebar-size: var(--sidebar-open-size);
+  --panel-clip: 0px;
+}
+
+html[data-ui-mode="desktop"][data-sidebar="collapsed"] #app,
+html[data-ui-mode="desktop"] #app.sidebar-collapsed {
+  --sidebar-size: 0px;
+}
+
+html[data-ui-mode="desktop"] #sidebar {
+  inset: 0 auto 0 0;
+  display: block;
+  width: var(--sidebar-open-size);
+  min-width: var(--sidebar-open-size);
+  max-width: var(--sidebar-open-size);
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: 8px 10px calc(var(--ios-nav-reserve) + env(safe-area-inset-bottom));
+  border: 0;
+  border-right: 1px solid var(--ios-separator);
+  border-radius: 0;
+  background: var(--ios-material);
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+}
+
+html[data-ui-mode="desktop"] #sidebar > * {
+  flex: initial;
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-collapsed #sidebar {
+  transform: translateX(calc(-1 * var(--sidebar-open-size)));
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-dragging #sidebar {
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+}
+
+html[data-ui-mode="desktop"] #sidebar > header {
+  order: initial;
+  margin: 0 0 4px;
+  padding: 4px 2px;
+  border-top: 0;
+}
+
+html[data-ui-mode="desktop"] h1 {
+  font-size: var(--font-title);
+}
+
+html[data-ui-mode="desktop"] input,
+html[data-ui-mode="desktop"] select,
+html[data-ui-mode="desktop"] textarea,
+html[data-ui-mode="desktop"] button,
+html[data-ui-mode="desktop"] .rp-modal-btn,
+html[data-ui-mode="desktop"] .rp-modal-choice {
+  min-height: var(--ios-control-height);
+  font-size: 13px;
+}
+
+html[data-ui-mode="desktop"] button,
+html[data-ui-mode="desktop"] .rp-modal-btn,
+html[data-ui-mode="desktop"] .rp-modal-choice {
+  padding: 4px 9px;
+  border-radius: 8px;
+}
+
+html[data-ui-mode="desktop"] button.icon {
+  width: var(--ios-control-height);
+  min-width: var(--ios-control-height);
+  min-height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .inline-check,
+html[data-ui-mode="desktop"] .date-btn {
+  min-height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .card-body {
+  gap: 8px;
+  padding: 10px;
+}
+
+html[data-ui-mode="desktop"] .train-item {
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav {
+  position: fixed;
+  inset: auto auto 10px 10px;
+  z-index: 90;
+  order: initial;
+  width: calc(var(--sidebar-open-size) - 20px);
+  height: 54px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 13px;
+  background: var(--ios-material-strong);
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-dragging .workspace-nav {
+  transition: none;
+}
+
+html[data-ui-mode="desktop"][data-sidebar="collapsed"] .workspace-nav,
+html[data-ui-mode="desktop"] #app.sidebar-collapsed .workspace-nav {
+  pointer-events: none;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav a {
+  flex-direction: column;
+  gap: 1px;
+  min-height: 44px;
+  padding: 2px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav a > span:first-child {
+  flex-basis: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav .panel-context {
+  display: none;
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab,
+html[data-ui-mode="desktop"] .sidebar-edge-tab:hover,
+html[data-ui-mode="desktop"] .sidebar-edge-tab:focus-visible {
+  top: 50%;
+  bottom: auto;
+  left: var(--sidebar-size);
+  width: 22px;
+  height: 56px;
+  border: 1px solid var(--ios-separator);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: var(--ios-material-strong);
+  cursor: ew-resize;
+  transform: translateY(-50%);
+  transition: left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip {
+  flex-direction: row;
+  gap: 3px;
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip span,
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip span:first-child {
+  display: block;
+  width: 2px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+html[data-ui-mode="desktop"] .maplibregl-ctrl-top-left {
+  left: var(--sidebar-size);
+  margin-top: 0;
+  margin-left: 0;
+}
+
+html[data-ui-mode="desktop"] .maplibregl-ctrl-bottom-right {
+  bottom: 0;
+}
+
+html[data-ui-mode="desktop"] .map-info-control {
+  bottom: 8px;
+}
+
+html[data-ui-mode="desktop"] .map-info-panel {
+  max-height: min(520px, calc(100dvh - 68px));
+}
+
+html[data-ui-mode="desktop"] .map-layers-summary,
+html[data-ui-mode="desktop"] .map-layers-control:not([open]) .map-layers-summary,
+html[data-ui-mode="desktop"] .map-layers-control select,
+html[data-ui-mode="desktop"] .map-layers-control label {
+  min-height: var(--ios-control-height);
+  font-size: 12px;
+}
+
+html[data-ui-mode="desktop"] .map-info-summary,
+html[data-ui-mode="desktop"] .maplibregl-ctrl-group button {
+  width: var(--ios-control-height);
+  height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .toolbar > button {
+  flex: 0 1 auto;
+}
+
+html[data-ui-mode="desktop"] #train-editor .card-body > .toolbar:last-child {
+  position: static;
+  margin-top: var(--space-2);
+  padding: 0;
+  border-top: 0;
+  background: var(--ios-secondary-grouped-background);
+}
+
+html[data-ui-mode="desktop"] .ui-mode-setting {
+  padding: 8px;
+  border-radius: 10px;
+}
+
+html[data-ui-mode="desktop"] .ui-mode-setting select {
+  min-width: 104px;
+}
+
+/* iOS map-layer menu ------------------------------------------------------
+   A compact pull-down button reveals one solid large-list menu. Mutually
+   exclusive basemaps use the platform select; independent visibility states
+   use trailing checkmarks, matching HIG toggled-menu semantics. */
+.map-layers-control,
+.map-layers-control[open],
+.map-layers-control:not([open]) {
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  border: 1px solid var(--ios-separator);
+  border-radius: var(--radius-pill);
+  background: var(--ios-material-strong);
+}
+
+.map-layers-summary,
+.map-layers-control:not([open]) .map-layers-summary {
+  gap: 8px;
+  min-height: var(--ios-touch-height);
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.map-layers-summary:hover,
+.map-layers-summary:focus-visible,
+.map-layers-control[open] .map-layers-summary {
+  border: 0;
+  background: var(--ios-tint-soft);
+}
+
+.map-layers-summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: -3px 1px 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  color: var(--ios-label-secondary);
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+}
+
+.map-layers-control[open] .map-layers-summary::after {
+  margin-top: 3px;
+  transform: rotate(225deg);
+}
+
+.map-layers-body {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: min(284px, calc(100vw - 20px));
+  max-height: calc(100dvh - 72px);
+  gap: 0;
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  border: 1px solid var(--ios-separator);
+  border-radius: 16px;
+  background: var(--ios-material-strong);
+  -webkit-overflow-scrolling: touch;
+}
+
+.map-layers-control .map-basemap-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, auto);
+  gap: 10px;
+  min-height: 42px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--ios-separator);
+  color: var(--ios-label);
+}
+
+.map-layers-control .map-basemap-field > span {
+  overflow: hidden;
+  color: var(--ios-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.map-layers-control .map-basemap-field select {
+  justify-self: end;
+  width: 100%;
+  max-width: 176px;
+  min-height: 32px;
+  margin: 0;
+  padding: 3px 22px 3px 6px;
+  border: 0;
+  border-radius: 8px;
+  background-color: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field) {
+  display: flex;
+  min-height: 38px;
+  gap: 10px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ios-separator);
+  border-radius: 0;
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field):hover,
+.map-layers-control .map-layers-body > label:not(.map-basemap-field):focus-within {
+  background: var(--ios-fill-tertiary);
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field) > span {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"] {
+  order: 2;
+  align-self: center;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0 2px 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]::after {
+  top: 1px;
+  left: 5px;
+  width: 6px;
+  height: 11px;
+  border-color: var(--ios-tint);
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: rotate(45deg) scale(0.7);
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]:checked {
+  background: transparent;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+html[data-theme="dark"][data-ui-mode]
+  .map-layers-control
+  input[type="checkbox"]:checked::after {
+  border-color: var(--ios-tint);
+}
+
+.map-layers-subhead {
+  margin: 6px -6px 0;
+  padding: 9px 14px 5px;
+  border-top: 6px solid var(--ios-grouped-background);
+  background: var(--ios-material-strong);
+  color: var(--ios-label-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.map-layers-subhead span::before {
+  content: none;
+}
+
+html[data-ui-mode="desktop"] .map-layers-summary,
+html[data-ui-mode="desktop"]
+  .map-layers-control:not([open])
+  .map-layers-summary {
+  min-height: var(--ios-control-height);
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+html[data-ui-mode="desktop"] .map-layers-body {
+  width: 260px;
+  padding: 5px;
+  border-radius: 14px;
+}
+
+html[data-ui-mode="desktop"]
+  .map-layers-control
+  .map-layers-body
+  > label:not(.map-basemap-field) {
+  min-height: 34px;
+  padding-block: 3px;
+  font-size: 12px;
+}
+
+html[data-ui-mode="desktop"] .map-layers-control .map-basemap-field {
+  min-height: 38px;
+}
+
+@media (max-width: 599px) {
+  html[data-ui-mode="mobile"] .map-layers-control[open] {
+    right: 8px;
+  }
+
+  html[data-ui-mode="mobile"] .map-layers-body {
+    width: calc(100vw - 16px);
+    max-height: max(
+      220px,
+      calc(100dvh - min(var(--sidebar-size), 55dvh) - 64px)
+    );
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  html[data-ui-mode="mobile"]
+    .map-layers-control
+    .map-layers-body
+    > label:not(.map-basemap-field) {
+    min-height: 44px;
+    padding: 5px 10px;
+    font-size: 15px;
+  }
+
+  html[data-ui-mode="mobile"] .map-layers-control .map-basemap-field {
+    min-height: 48px;
+    padding-inline: 10px;
+  }
+}
+
+/* Main-menu workspaces are pages, not nested cards. Keep their internal
+   grouped controls and separators, but remove every outer card treatment. */
+#sidebar > section.card,
+#sidebar > details.card {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

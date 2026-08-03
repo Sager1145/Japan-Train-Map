@@ -26,6 +26,7 @@ const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
 const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v3";
 const DISPLAY_DEFAULTS = {
   theme: "system", // system preference, explicit light, or explicit dark
+  uiMode: "auto", // automatic terminal detection, or an explicit mobile/desktop UI
   routeWidthScale: 1, // multiplies each train's route line width
   riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
   // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
@@ -142,6 +143,102 @@ let activeResolvedTheme = null;
 let themeSelectReady = false;
 let themeTransitionTimer = null;
 const THEME_TRANSITION_MS = 460;
+
+const UI_MODE_VALUES = ["auto", "mobile", "desktop"];
+const UI_MODE_COMPACT_MEDIA = window.matchMedia("(max-width: 599px)");
+let uiModeSelectReady = false;
+let uiModeResizeRaf = null;
+
+// Browser APIs intentionally expose a device class, not a precise hardware
+// model. Combine UA-CH/UA hints with input capabilities so iPadOS desktop-UA
+// devices and Android tablets still receive touch-first interaction.
+function detectTerminalClass() {
+  const nav = typeof navigator === "undefined" ? {} : navigator;
+  const ua = nav.userAgent || "";
+  const uaDataMobile = Boolean(nav.userAgentData && nav.userAgentData.mobile);
+  const phone =
+    uaDataMobile || /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua);
+  if (phone) return "phone";
+  const tablet =
+    /iPad|Android(?!.*Mobile)/i.test(ua) ||
+    (/Macintosh/i.test(ua) && Number(nav.maxTouchPoints) > 1) ||
+    (Number(nav.maxTouchPoints) > 1 &&
+      window.matchMedia("(any-pointer: coarse)").matches &&
+      window.matchMedia("(hover: none)").matches);
+  return tablet ? "tablet" : "computer";
+}
+
+function resolveUiMode(preference = DISPLAY.uiMode) {
+  if (preference === "mobile" || preference === "desktop") return preference;
+  return detectTerminalClass() !== "computer" || UI_MODE_COMPACT_MEDIA.matches
+    ? "mobile"
+    : "desktop";
+}
+
+function updateUiModeUi() {
+  const select = document.getElementById("ui-mode-select");
+  if (select)
+    select.value = UI_MODE_VALUES.includes(DISPLAY.uiMode)
+      ? DISPLAY.uiMode
+      : "auto";
+  const status = document.getElementById("ui-mode-status");
+  if (!status || !window.I18N) return;
+  const root = document.documentElement;
+  const device = root.dataset.deviceClass || detectTerminalClass();
+  const mode = root.dataset.uiMode || resolveUiMode();
+  status.textContent = I18N.t("uiMode.status", {
+    device: I18N.t(`uiMode.device.${device}`),
+    mode: I18N.t(`uiMode.${mode}`),
+  });
+}
+
+function applyUiMode({ persist = true } = {}) {
+  if (!UI_MODE_VALUES.includes(DISPLAY.uiMode)) DISPLAY.uiMode = "auto";
+  const root = document.documentElement;
+  const previousMode = root.dataset.uiMode;
+  const previousDevice = root.dataset.deviceClass;
+  const device = detectTerminalClass();
+  const resolved = resolveUiMode();
+  root.dataset.deviceClass = device;
+  root.dataset.uiPreference = DISPLAY.uiMode;
+  root.dataset.uiMode = resolved;
+  updateUiModeUi();
+  if (persist) persistDisplaySettings();
+  if (previousMode === resolved && previousDevice === device) return;
+  const event =
+    typeof window.CustomEvent === "function"
+      ? new CustomEvent("n02-ui-mode-change", {
+          detail: { preference: DISPLAY.uiMode, mode: resolved, device },
+        })
+      : new Event("n02-ui-mode-change");
+  window.dispatchEvent(event);
+}
+
+function setupUiModeSelect() {
+  if (uiModeSelectReady) return;
+  const select = document.getElementById("ui-mode-select");
+  if (!select) return;
+  uiModeSelectReady = true;
+  select.addEventListener("change", () => {
+    DISPLAY.uiMode = UI_MODE_VALUES.includes(select.value)
+      ? select.value
+      : "auto";
+    applyUiMode();
+  });
+  const refreshAutoMode = () => {
+    if (DISPLAY.uiMode !== "auto" || uiModeResizeRaf) return;
+    uiModeResizeRaf = requestAnimationFrame(() => {
+      uiModeResizeRaf = null;
+      applyUiMode({ persist: false });
+    });
+  };
+  window.addEventListener("resize", refreshAutoMode);
+  if (typeof UI_MODE_COMPACT_MEDIA.addEventListener === "function")
+    UI_MODE_COMPACT_MEDIA.addEventListener("change", refreshAutoMode);
+  else if (typeof UI_MODE_COMPACT_MEDIA.addListener === "function")
+    UI_MODE_COMPACT_MEDIA.addListener(refreshAutoMode);
+  updateUiModeUi();
+}
 
 function resolveDisplayTheme(mode = DISPLAY.theme) {
   if (mode === "dark" || mode === "light") return mode;
@@ -288,11 +385,22 @@ function applyDisplaySettings({ rebuild = true } = {}) {
 
 let fitCurveSettingsDirty = false;
 let fitCurveRebuildButton = null;
+let fitCurveOverlapNote = null;
+let fitCurvePendingHint = null;
+// Also refreshes the two helper texts (coverage note + not-yet-applied hint):
+// app-events.js re-invokes this on every language change, so their copy stays
+// in the current language without a panel rebuild.
 function updateFitCurveRebuildButton() {
   if (!fitCurveRebuildButton) return;
   fitCurveRebuildButton.textContent = I18N.t("disp.rebuildFitCurves");
   fitCurveRebuildButton.dataset.pending = fitCurveSettingsDirty ? "true" : "false";
   fitCurveRebuildButton.classList.toggle("pending", fitCurveSettingsDirty);
+  if (fitCurveOverlapNote)
+    fitCurveOverlapNote.textContent = I18N.t("disp.fitCurveOverlapNote");
+  if (fitCurvePendingHint) {
+    fitCurvePendingHint.textContent = I18N.t("disp.fitCurvePendingHint");
+    fitCurvePendingHint.hidden = !fitCurveSettingsDirty;
+  }
 }
 
 // Build + wire the submenu sliders. Safe to call once after the DOM exists.
@@ -349,6 +457,12 @@ function setupDisplaySettingsPanel() {
     cfg._val = val;
     cfg._name = name;
   });
+  // Scope note: fitting only ever runs on overlap corridors, so the debug
+  // overlay showing zero curves on a no-overlap day is expected behavior,
+  // not a solver failure.
+  fitCurveOverlapNote = document.createElement("p");
+  fitCurveOverlapNote.className = "display-note fit-curve-overlap-note";
+  advanced.appendChild(fitCurveOverlapNote);
   const rebuildWrap = document.createElement("div");
   rebuildWrap.className = "toolbar fit-curve-rebuild-toolbar";
   fitCurveRebuildButton = document.createElement("button");
@@ -360,8 +474,14 @@ function setupDisplaySettingsPanel() {
     updateFitCurveRebuildButton();
     applyDisplaySettings();
   });
-  updateFitCurveRebuildButton();
   rebuildWrap.appendChild(fitCurveRebuildButton);
+  // Fit sliders only mark themselves dirty; nothing changes until the
+  // rebuild button applies them. Say so explicitly while dirty.
+  fitCurvePendingHint = document.createElement("p");
+  fitCurvePendingHint.className = "display-note fit-curve-pending-hint";
+  fitCurvePendingHint.hidden = true;
+  rebuildWrap.appendChild(fitCurvePendingHint);
+  updateFitCurveRebuildButton();
   // The rebuild button applies the fit-curve sliders, all of which live in
   // the 進階 group.
   advanced.appendChild(rebuildWrap);
@@ -415,9 +535,9 @@ function setupDisplaySettingsPanel() {
           ? I18N.getLang()
           : "zh-Hant",
       );
+      applyUiMode();
       applyDisplayTheme();
       applyDisplaySettings();
     });
   }
 }
-

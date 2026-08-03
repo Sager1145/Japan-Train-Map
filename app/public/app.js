@@ -452,9 +452,15 @@ const els = {
 
 document.addEventListener("DOMContentLoaded", async () => {
   installLongTaskObserver();
+  // Resolve the active country FIRST: it decides which server endpoint and
+  // which IndexedDB databases every later step talks to.
+  loadActiveCountry();
+  setupCountrySelect();
   // Seed the display-tuning knobs from localStorage before the first render so
   // the user's saved line widths / sizes / opacities apply on load.
   loadDisplaySettings();
+  applyUiMode({ persist: false });
+  setupUiModeSelect();
   await applyDisplayTheme({ updateMap: false, persist: false });
   setupThemeSelect();
   const followSystemTheme = () => {
@@ -501,7 +507,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initMap(mapAssetsReady);
   applyMapOpacity();
   bindEvents();
-  fitJapanMainIslands();
+  fitActiveCountryOverview();
   renderAll();
 
   // The train load no longer waits for the 12 MB rail-sections parse or the
@@ -519,68 +525,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // train deliberately instead of the progressive loader selecting one.
     selectFirstTrain: false,
   };
-  if (!HAS_BACKEND) {
-    // Static deploy: the user's own IndexedDB store wins; with no user data,
-    // ONE RANDOM sample day is shown (ephemeral — sample has no memory). The
-    // full sample loads only via the explicit 資料 card button. Parts are
-    // fetched, seeded and DRAWN one train at a time, so the phone never
-    // parses one big store JSON and never runs the route solver on boot.
-    try {
-      await bootStaticData(bootLoadOptions);
-    } catch (err) {
-      // The saved user store exists but failed to load (e.g. a stop the
-      // validator rejects). Do NOT continue with autosave armed: a later
-      // edit's per-day diff would delete every day missing from the partial
-      // load. Enter read-only recovery with the raw JSON pinned for rescue.
-      console.error("Static boot failed; entering read-only recovery mode.", err);
-      let rawText = null;
-      try {
-        const userData = await readUserStoreAll();
-        if (userData && userData.store)
-          rawText = JSON.stringify(userData.store, null, 2);
-      } catch (_) {
-        /* rescue text is best-effort */
-      }
-      enterStoreRecoveryMode({ message: (err && err.message) || "", rawText });
-      renderAll({ updateJsonTextarea: false });
-      updateDataSourceUi();
-    }
-  } else {
-    // Node deployment: the live server store is the source of truth; if
-    // nothing has been saved yet, fall back to the built-in defaults (and do
-    // not persist them until edited).
-    let savedStore = await loadTrainStoreFromServer();
-    if (!savedStore?.recovery) {
-      savedStore = await recoverPendingServerStoreSaves(savedStore);
-    }
-    if (savedStore && savedStore.recovery) {
-      // A saved store EXISTS but cannot be loaded. Show the defaults
-      // read-only: recovery mode keeps autosave off so the recoverable file
-      // is never overwritten by a casual edit.
-      await replaceTrainStoreFromStoreProgressive(
-        savedStore.pendingStore || getDefaultTrainStore(),
-        savedStore.pendingStore
-          ? I18N.t("src.pendingRecovery")
-          : I18N.t("src.builtinDefault"),
-        bootLoadOptions,
-      );
-      enterStoreRecoveryMode(savedStore);
-    } else {
-      await replaceTrainStoreFromStoreProgressive(
-        savedStore || getDefaultTrainStore(),
-        savedStore ? I18N.t("src.serverStore") : I18N.t("src.builtinDefault"),
-        bootLoadOptions,
-      );
-      if (!savedStore) {
-        setStatus(
-          els.importStatus,
-          I18N.t("status.noSavedStore"),
-          "warn",
-        );
-      }
-    }
-    updateDataSourceUi();
-  }
+  await loadActiveCountryStore(bootLoadOptions);
 
   // Warm the solver stack in the background — rail-sections, the persisted
   // route-geometry cache and the lightweight spatial index — so the first
@@ -611,6 +556,74 @@ document.addEventListener("DOMContentLoaded", async () => {
   // route shows up automatically.
   subscribeToStoreEvents();
 });
+
+// Load the ACTIVE country's saved store and put it on screen. Runs once at
+// boot and again on every country switch (each country has fully separate
+// storage — see loadActiveCountry / countryDbName / TRAIN_STORE_API).
+async function loadActiveCountryStore(bootLoadOptions) {
+  if (!HAS_BACKEND) {
+    // Static deploy: the user's own IndexedDB store wins; with no user data,
+    // ONE RANDOM sample day is shown (ephemeral — sample has no memory). The
+    // full sample loads only via the explicit 資料 card button. Parts are
+    // fetched, seeded and DRAWN one train at a time, so the phone never
+    // parses one big store JSON and never runs the route solver on boot.
+    try {
+      await bootStaticData(bootLoadOptions);
+    } catch (err) {
+      // The saved user store exists but failed to load (e.g. a stop the
+      // validator rejects). Do NOT continue with autosave armed: a later
+      // edit's per-day diff would delete every day missing from the partial
+      // load. Enter read-only recovery with the raw JSON pinned for rescue.
+      console.error("Static boot failed; entering read-only recovery mode.", err);
+      let rawText = null;
+      try {
+        const userData = await readUserStoreAll();
+        if (userData && userData.store)
+          rawText = JSON.stringify(userData.store, null, 2);
+      } catch (_) {
+        /* rescue text is best-effort */
+      }
+      enterStoreRecoveryMode({ message: (err && err.message) || "", rawText });
+      renderAll({ updateJsonTextarea: false });
+      updateDataSourceUi();
+    }
+  } else {
+    // Node deployment: the live server store is the source of truth; if
+    // nothing has been saved yet, fall back to the built-in defaults (Japan)
+    // or an empty store (other countries) and do not persist until edited.
+    let savedStore = await loadTrainStoreFromServer();
+    if (!savedStore?.recovery) {
+      savedStore = await recoverPendingServerStoreSaves(savedStore);
+    }
+    if (savedStore && savedStore.recovery) {
+      // A saved store EXISTS but cannot be loaded. Show the fallback
+      // read-only: recovery mode keeps autosave off so the recoverable file
+      // is never overwritten by a casual edit.
+      await replaceTrainStoreFromStoreProgressive(
+        savedStore.pendingStore || countryFallbackStore(),
+        savedStore.pendingStore
+          ? I18N.t("src.pendingRecovery")
+          : countryFallbackLabel(),
+        bootLoadOptions,
+      );
+      enterStoreRecoveryMode(savedStore);
+    } else {
+      await replaceTrainStoreFromStoreProgressive(
+        savedStore || countryFallbackStore(),
+        savedStore ? I18N.t("src.serverStore") : countryFallbackLabel(),
+        bootLoadOptions,
+      );
+      if (!savedStore && activeCountry === "jp") {
+        setStatus(
+          els.importStatus,
+          I18N.t("status.noSavedStore"),
+          "warn",
+        );
+      }
+    }
+    updateDataSourceUi();
+  }
+}
 
 // =========================================================================
 //  §10.  Live refresh via Server-Sent Events + background route-graph prebuild
@@ -659,6 +672,8 @@ function subscribeToStoreEvents() {
     }
     // Ignore the echo of our own write.
     if (detail.origin && detail.origin === CLIENT_ID) return;
+    // Each country has its own store; ignore changes to one we're not showing.
+    if (detail.store && detail.store !== TRAIN_STORE_API) return;
     handleExternalStoreChange(detail);
   });
 
@@ -684,7 +699,7 @@ async function handleExternalStoreChange(detail) {
       lastKnownServerStoreExists = false;
       exitStoreRecoveryMode();
       await replaceTrainStoreFromStoreProgressive(
-        getDefaultTrainStore(),
+        countryFallbackStore(),
         I18N.t("src.serverCleared"),
         { persistEachStep: false, finalPersist: false },
       );

@@ -24,10 +24,9 @@
  *     fonts and zoom behavior match light mode exactly. If the online tile
  *     source is unavailable, the rail renders over a theme-matched plain
  *     background.
- *   - NETWORK: the full MLIT N02 national network from railprint's rail
- *     package (./rail/jp-2025.json — 594 lines in official color, 9,442
- *     segments, 10,034 stations). Drawn exactly like railprint's "unridden"
- *     field: each line in its official color at 0.48 opacity, thin, with
+ *   - NETWORK: the active country's compact-v1 rail package (Japan or Taiwan).
+ *     Drawn exactly like railprint's "unridden" field: each line in its
+ *     official color at 0.48 opacity, thin, with
  *     zoom-tiered reveal (rank -> minzoom) — and station dots in neutral
  *     grey revealed by average inter-station spacing.
  *   - TRAINS ("ridden"): full-color thick lines (the glow underlay was
@@ -117,7 +116,7 @@
   } = global.RailMapGeometry;
 
   // ───────────────────────────── rail package loader ─────────────────────────────
-  // Loads the jp-2025 rail package in its compact-v1 format (stations and
+  // Loads the active country's rail package in compact-v1 format (stations and
   // segments nested per line, derivable fields omitted — see
   // scripts/railpkg.py for the format spec) and builds the two GeoJSON
   // collections + the geo index the hover popup needs (buildSegmentCollection /
@@ -125,9 +124,17 @@
   //   station row: [stationGroupId, name, lon, lat, (nameRoma, romaSourceCode)]
   //   segment row: [km, sharedFirstPoint, coordinates, (arcDirection)]
   //   segment i joins station i to station (i+1) % n (loop lines close the ring)
-  async function loadNetwork() {
+  async function loadNetwork(packageUrl) {
     try {
-      const res = await fetch("./rail/jp-2025.json");
+      const url =
+        packageUrl ||
+        (typeof global.activeRailPackageUrl === "function"
+          ? global.activeRailPackageUrl()
+          : "./rail/jp-2025.json");
+      // Rail packages are replaced in place. Revalidate the URL so a newly
+      // rebuilt official package cannot be shadowed by the 24-hour static
+      // JSON browser cache.
+      const res = await fetch(url, { cache: "no-cache" });
       if (!res.ok) return null;
       return global.RailNetwork.buildNetworkFromCompactPackage(await res.json());
     } catch (e) {
@@ -145,6 +152,9 @@
     _map: null,
     _network: null,
     _networkPromise: null, // dedups concurrent ensureNetwork() lazy loads
+    _networkGeneration: 0, // invalidates a load started for the prior country
+    _networkVisibleWanted: false,
+    _networkStationsVisibleWanted: false,
     _handlers: {},
     _records: [],
     _expandRecords: [],
@@ -620,6 +630,13 @@
         this._refreshFitCurveDiagnostics();
       }
     },
+    // Deferred (worker) fit results attach to the same gi objects this
+    // instance already holds, so hover needs nothing — only the debug
+    // overlay and its published diagnostics report must refresh.
+    notifyFitCurvesUpdated() {
+      this._pushFitCurves();
+      if (this._fitCurvesVisible) this._refreshFitCurveDiagnostics();
+    },
     setHoverRegionsVisible(v) {
       this._hoverRegionsVisible = Boolean(v);
       const vis = this._hoverRegionsVisible ? "visible" : "none";
@@ -653,12 +670,20 @@
       }
     },
     setNetworkVisible(v) {
-      this._setVisibility(SEGMENTS_LAYER, v ? "visible" : "none");
+      this._networkVisibleWanted = Boolean(v);
+      this._setVisibility(
+        SEGMENTS_LAYER,
+        this._networkVisibleWanted ? "visible" : "none",
+      );
     },
     setNetworkStationsVisible(v) {
-      this._setVisibility(STATIONS_LAYER, v ? "visible" : "none");
+      this._networkStationsVisibleWanted = Boolean(v);
+      this._setVisibility(
+        STATIONS_LAYER,
+        this._networkStationsVisibleWanted ? "visible" : "none",
+      );
     },
-    // Lazily fetch + build + upload the 9.2 MB national-network package the
+    // Lazily fetch + build + upload the active country's network package the
     // FIRST time it is actually needed (user opts into 全部鐵路線). The map is
     // built with EMPTY_FC network sources at boot (buildBaseStyle degrades that
     // way), so this just setData's the real collections into the two existing,
@@ -667,10 +692,12 @@
       if (this._network) return Promise.resolve(this._network);
       if (this._networkPromise) return this._networkPromise;
       const m = this._map;
-      this._networkPromise = loadNetwork()
+      const generation = this._networkGeneration;
+      const request = loadNetwork()
         .then((network) => {
+          if (generation !== this._networkGeneration) return null;
           if (!network) {
-            this._networkPromise = null; // allow a later retry
+            if (this._networkPromise === request) this._networkPromise = null;
             return null;
           }
           this._network = network;
@@ -681,6 +708,7 @@
             // case we apply once the style finishes ('load'), so the data is
             // never silently dropped.
             const applyNetwork = () => {
+              if (generation !== this._networkGeneration) return false;
               const seg = m.getSource(SEGMENTS_SOURCE);
               const sta = m.getSource(STATIONS_SOURCE);
               if (seg) seg.setData(network.segments);
@@ -693,11 +721,41 @@
           return network;
         })
         .catch((e) => {
-          this._networkPromise = null;
+          if (this._networkPromise === request) this._networkPromise = null;
           console.warn("[railmap] network load failed:", e);
           return null;
         });
-      return this._networkPromise;
+      this._networkPromise = request;
+      return request;
+    },
+    // Drop the previous country's in-memory network and reload only if the
+    // user had already opted into the national-network overlay (or another
+    // feature, such as station hover, had already loaded the network).
+    switchNetworkCountry() {
+      const shouldReload = Boolean(
+        this._networkVisibleWanted ||
+          this._networkStationsVisibleWanted ||
+          this._network ||
+          this._networkPromise,
+      );
+      this._networkGeneration += 1;
+      this._network = null;
+      this._networkPromise = null;
+      this._stationPopupKey = null;
+      if (this._stationPopup) this._stationPopup.remove();
+      const seg = this._src(SEGMENTS_SOURCE);
+      const sta = this._src(STATIONS_SOURCE);
+      if (seg) seg.setData(EMPTY_FC);
+      if (sta) sta.setData(EMPTY_FC);
+      if (!shouldReload) return Promise.resolve(null);
+      return this.ensureNetwork().then((network) => {
+        // Country switching does not recreate the layer control. Re-apply its
+        // current intent after the new sources are populated so a checked
+        // "All Railway Lines" box can never leave an invisible Taiwan layer.
+        this.setNetworkVisible(this._networkVisibleWanted);
+        this.setNetworkStationsVisible(this._networkStationsVisibleWanted);
+        return network;
+      });
     },
     // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {

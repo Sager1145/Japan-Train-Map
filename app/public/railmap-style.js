@@ -99,13 +99,12 @@
   // hovered, every OTHER train's lines and station dots fade to this opacity
   // multiplier. Applied purely via paint expressions (no source updates).
   const HOVER_DIM = 0.15;
-  // Hover hit geometry in SCREEN pixels. Fresh entry stays forgiving at 6px,
-  // but an active hover now releases after roughly 8–9px instead of the old
-  // 16–30px magnetic zone that forced a long mouse excursion to cancel.
-  const HOVER_PICK_PAD_PX = 6;
-  const HOVER_STICKY_PAD_PX = 4;
-  const HOVER_FAN_HOLD_PX = 8;
-  const HOVER_GROUP_SWITCH_PX = 6;
+  // Hover hit geometry in SCREEN pixels. Fresh entry gets a moderate 8px pad;
+  // active hover adds only 5px so it stays stable without becoming magnetic.
+  const HOVER_PICK_PAD_PX = 8;
+  const HOVER_STICKY_PAD_PX = 5;
+  const HOVER_FAN_HOLD_PX = 10;
+  const HOVER_GROUP_SWITCH_PX = 7;
   // SELECTION SPOTLIGHT: while a single train is SELECTED, every other train
   // still drawn (its same-day siblings — other dates are removed upstream)
   // fades to this multiplier, station dots included. Softer than the hover
@@ -596,9 +595,22 @@
         "line-join": "round",
       },
       paint: {
-        "line-color": "#ffffff",
+        // Rejected station joins ride the same debug source as short marker
+        // segments; draw them red and wider so the exact boundary that stayed
+        // discontinuous is visible among the white fitted curves.
+        "line-color": [
+          "case",
+          ["==", ["get", "kind"], "station-join-failure"],
+          "#ff3b30",
+          "#ffffff",
+        ],
         "line-opacity": 1,
-        "line-width": 2.5,
+        "line-width": [
+          "case",
+          ["==", ["get", "kind"], "station-join-failure"],
+          5,
+          2.5,
+        ],
         "line-dasharray": [2.2, 1.8],
       },
     });

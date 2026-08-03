@@ -755,7 +755,25 @@ function buildDeckRouteRecords(items) {
   // shift vector: the perpendicular of the straight line joining the
   // corridor's overall start and end points. Hovering anywhere along the
   // corridor now fans along the same axis.
+  let pendingDeferredFit = null;
   if (groupInfo.size > 0) {
+    // Deferred fitting: with a usable Worker the expensive B-spline solves +
+    // the station-join pass run OFF the main thread (app-fit-worker.js via
+    // scheduleFitCurveWorker). Records render immediately with the static
+    // per-group axis; curves attach to these same gi objects when the worker
+    // replies — hover reads gi.curve per event, so nothing rebuilds except
+    // the fitted-curve debug overlay/diagnostics. Without a Worker (precompute
+    // VM, tests, worker boot failure) everything below runs inline exactly as
+    // before. Known trade-off of the deferred path: a multi-run corridor
+    // whose UNIFIED chain fit fails hard constraints keeps a null curve
+    // (static-axis hover) instead of re-splitting into per-run curves — the
+    // aliases are already collapsed by the time the worker answers. No real
+    // dataset currently hits that branch.
+    const deferFit = fitCurveWorkerUsable();
+    const fitJobs = deferFit ? [] : null;
+    const queueFitJob = (key, line, nearParallel) => {
+      fitJobs.push({ key, line, nearParallel: Boolean(nearParallel) });
+    };
     groupInfo.forEach((gi) => rebuildGroupRepresentativeGeometry(gi));
     const parent = new Map();
     const find = (k) => {
@@ -854,7 +872,10 @@ function buildDeckRouteRecords(items) {
           corridorAliases.set(k, k);
           corridorMasters.add(k);
           g._corridorJoins = [];
-          g.curve = smoothStandaloneCorridorRun(g._line, false);
+          if (deferFit) {
+            g.curve = null;
+            queueFitJob(k, g._line);
+          } else g.curve = smoothStandaloneCorridorRun(g._line, false);
         });
       };
       const lone = c.keys.length === 1 ? groupInfo.get(c.keys[0]) : null;
@@ -883,7 +904,13 @@ function buildDeckRouteRecords(items) {
       // shift direction from this curve's LOCAL perpendicular under the
       // pointer, so the direction turns smoothly as the pointer moves.
       const chain = buildCorridorChain(c, groupInfo, joins);
-      const curve = chain ? smoothCorridorCurve(chain) : null;
+      if (!chain && c.keys.length > 1) {
+        // No continuable chain could be assembled at all — a sync-time fact,
+        // so both fit modes keep independently fitted per-run curves.
+        usePerRunCurves();
+        return;
+      }
+      const curve = !deferFit && chain ? smoothCorridorCurve(chain) : null;
       const canonicalKey = c.keys.slice().sort()[0];
       const master = groupInfo.get(canonicalKey);
       const nearInfos = c.keys
@@ -901,7 +928,7 @@ function buildDeckRouteRecords(items) {
           ),
         };
       }
-      if (!curve && c.keys.length > 1) {
+      if (!deferFit && !curve && c.keys.length > 1) {
         // The unified candidate failed at least one final hard constraint.
         // Preserve independently validated runs instead of publishing a
         // geometrically invalid shared direction field.
@@ -915,6 +942,8 @@ function buildDeckRouteRecords(items) {
         c.keys.forEach((k) => {
           groupInfo.get(k).curve = curve;
         });
+      else if (deferFit && chain)
+        queueFitJob(canonicalKey, chain, nearInfos.length > 0);
       if (c.keys.length < 2) return; // lone run keeps its own chord
       const ends = [];
       c.eps.forEach((e) => {
@@ -999,7 +1028,18 @@ function buildDeckRouteRecords(items) {
     // Membership changes at stations create separate corridor curves. Round
     // their shared endpoints only after aliases collapse, so each physical
     // curve is edited once and both sides receive the exact same tangent.
-    smoothCurveStationJoins(groupInfo);
+    // Deferred mode ships that pass to the worker together with the solve
+    // jobs (runFitCurveJobs replays it on a minimal groupInfo mirror).
+    if (deferFit) {
+      const joinGroups = [];
+      groupInfo.forEach((gi, groupKey) => {
+        joinGroups.push({
+          groupKey,
+          trainIds: Object.keys(gi.mults || {}),
+        });
+      });
+      pendingDeferredFit = { jobs: fitJobs, joinGroups };
+    } else smoothCurveStationJoins(groupInfo);
   }
 
   const bundle = {
@@ -1009,8 +1049,10 @@ function buildDeckRouteRecords(items) {
     spacingDeg,
     hasOverlaps: _deckHasOverlaps,
   };
+  if (pendingDeferredFit) bundle._pendingFit = pendingDeferredFit;
   if (sig) _deckCachePut(_deckRecordsCacheBySig, sig, bundle);
   _lastOverlapSpacingDeg = spacingDeg;
+  if (bundle._pendingFit) scheduleFitCurveWorker(bundle);
   return bundle;
 }
 

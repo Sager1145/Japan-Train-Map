@@ -63,7 +63,7 @@
       properties: {
         idx: i,
         tid: (r.train && r.train.id) || "",
-        pickWidth: Math.max(r.width + 8, 14),
+        pickWidth: Math.max(r.width + 10, 16),
         nopick: r.nopick ? 1 : 0,
       },
     }));
@@ -121,7 +121,7 @@
         properties: {
           idx: i,
           tid,
-          pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 8, 14),
+          pickWidth: r.pickWidth != null ? r.pickWidth : Math.max(r.width + 10, 16),
           nopick: r.nopick ? 1 : 0,
         },
       });
@@ -389,8 +389,33 @@
   function fitCurvesToFC(groupInfo) {
     const features = [];
     const seen = new Set();
+    const seenFailures = new Set();
     if (groupInfo)
       groupInfo.forEach((gi, groupKey) => {
+        // A rejected station join keeps its member curves separate; surface
+        // each rejected boundary as its own (red-styled) segment so the
+        // overlay shows exactly where — and the popup properties say why —
+        // the chain was not continued.
+        const failure = gi && gi.stationJoinFailure;
+        if (failure && !seenFailures.has(failure)) {
+          seenFailures.add(failure);
+          (failure.joins || []).forEach((join) => {
+            features.push({
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: [join.a, join.b] },
+              properties: {
+                kind: "station-join-failure",
+                reason: failure.reason,
+                gapM: join.gapM,
+                turnDeg: join.turnDeg,
+                requestedMinRadiusM: failure.requestedMinRadiusM,
+                achievedMinRadiusM: failure.achievedMinRadiusM,
+                maxDeviationM: failure.maxDeviationM,
+                actualMaxDeviationM: failure.actualMaxDeviationM,
+              },
+            });
+          });
+        }
         const curve = gi && gi.curve;
         if (!curve || seen.has(curve) || !curve.pts || curve.pts.length < 2)
           return;
@@ -420,6 +445,12 @@
             actualMaxDeviationM: Math.round(
               curve.actualMaxDeviationMeters || 0,
             ),
+            stationJoinCount: curve.stationJoinCount || 0,
+            stationJoinRadiusRelaxed: curve.stationJoinRadiusRelaxed === true,
+            acceptedMinRadiusM:
+              curve.acceptedMinRadiusMeters == null
+                ? null
+                : Math.round(curve.acceptedMinRadiusMeters),
             fitType: curve.fitType || "",
           },
         });
@@ -484,9 +515,21 @@
     let maxDeviationRatio = 0;
     let stationContinuousCurves = 0;
     let stationJoinsRounded = 0;
+    let stationJoinRadiusRelaxedCurves = 0;
     const fitTypes = new Set();
     const radiusFlaggedGroups = [];
     const flaggedGroups = [];
+    // Station-join rejections marked by smoothCurveStationJoins: dedupe the
+    // shared failure objects so each rejected component reports once.
+    const stationJoinFailures = [];
+    const seenJoinFailures = new Set();
+    if (groupInfo)
+      groupInfo.forEach((gi) => {
+        const failure = gi && gi.stationJoinFailure;
+        if (!failure || seenJoinFailures.has(failure)) return;
+        seenJoinFailures.add(failure);
+        stationJoinFailures.push(failure);
+      });
     curves.forEach(({ groupKey, curve }) => {
       if (curve.fitType) fitTypes.add(curve.fitType);
       if (curve.stationJoinCount > 0) {
@@ -497,11 +540,18 @@
         curve.requestedMinRadiusMeters > 0 &&
         curve.achievedMinRadiusMeters != null
       ) {
+        // A station-continuous curve accepted under the radius relaxation
+        // carries the floor that was actually enforced; shortfalls measure
+        // against that floor so a deliberate acceptance is not re-flagged.
+        const acceptedMin =
+          curve.acceptedMinRadiusMeters || curve.requestedMinRadiusMeters;
         const ratio =
           curve.achievedMinRadiusMeters / curve.requestedMinRadiusMeters;
         radiusMeasurements += 1;
         minRadiusRatio = Math.min(minRadiusRatio, ratio);
-        if (ratio < 0.999) {
+        if (curve.stationJoinRadiusRelaxed === true)
+          stationJoinRadiusRelaxedCurves += 1;
+        if (curve.achievedMinRadiusMeters < acceptedMin * 0.999) {
           radiusShortfalls += 1;
           radiusFlaggedGroups.push({
             groupKey,
@@ -577,12 +627,25 @@
         flaggedGroups.push({ groupKey, maxStepDeg: +groupMax.toFixed(2) });
     });
 
-    // Inspect all distinct fitted-curve endpoint pairs that geometrically
-    // meet. Their target directions may differ, but the group transition rAF
-    // interpolates them; reporting the worst angle makes boundary testing
-    // explicit and reproducible.
+    // Inspect fitted-curve endpoint pairs that geometrically meet AND share a
+    // train. Without the shared-train requirement the sweep also paired
+    // endpoints of unrelated corridors that merely pass near each other —
+    // boundaries no hover transition can ever cross — and those false pairs
+    // dominated the reported worst angle. Their target directions may still
+    // differ; the group transition rAF interpolates them, and reporting the
+    // worst REAL angle makes boundary testing explicit and reproducible.
+    const trainsByCurve = new Map();
+    if (groupInfo)
+      groupInfo.forEach((gi) => {
+        const curve = gi && gi.curve;
+        if (!curve) return;
+        let set = trainsByCurve.get(curve);
+        if (!set) trainsByCurve.set(curve, (set = new Set()));
+        Object.keys((gi && gi.mults) || {}).forEach((id) => set.add(id));
+      });
     const ends = [];
     curves.forEach(({ groupKey, gi, curve }) => {
+      const trains = trainsByCurve.get(curve) || new Set();
       [0, curve.pts.length - 1].forEach((i) => {
         const p = curve.pts[i];
         const raw = fanPerpAt(curve, { lng: p[0], lat: p[1] }, curve.cum[i]);
@@ -592,6 +655,7 @@
         ends.push({
           groupKey,
           p,
+          trains,
           dir: { x: flip ? -raw.x : raw.x, y: flip ? -raw.y : raw.y },
         });
       });
@@ -603,6 +667,11 @@
     for (let i = 0; i < ends.length; i += 1)
       for (let j = i + 1; j < ends.length; j += 1) {
         if (ends[i].groupKey === ends[j].groupKey) continue;
+        let sharedTrain = false;
+        ends[i].trains.forEach((id) => {
+          if (ends[j].trains.has(id)) sharedTrain = true;
+        });
+        if (!sharedTrain) continue;
         const lat = (ends[i].p[1] + ends[j].p[1]) / 2;
         const cs = Math.cos((lat * Math.PI) / 180) || 1e-6;
         const metres =
@@ -666,6 +735,9 @@
       nearParallelSamples: nearParallelSamples.slice(0, 100),
       stationContinuousCurves,
       stationJoinsRounded,
+      stationJoinRadiusRelaxedCurves,
+      stationJoinFailureCount: stationJoinFailures.length,
+      stationJoinFailures: stationJoinFailures.slice(0, 20),
       boundaries,
       maxBoundaryDeg: +maxBoundaryDeg.toFixed(2),
       rawMaxBoundaryDeg: +rawMaxBoundaryDeg.toFixed(2),

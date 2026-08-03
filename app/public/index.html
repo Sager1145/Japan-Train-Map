@@ -6,18 +6,21 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover"
       name="viewport"
     />
-    <meta content="#ff5522" name="theme-color" />
+    <meta content="#f2f2f7" name="theme-color" />
     <title>N02 Limited Express Train Manager</title>
     <script>
       // Resolve the saved/system theme before CSS loads to prevent a light
       // flash when opening the app in dark mode.
       (() => {
         let mode = "system";
+        let uiPreference = "auto";
         try {
           const saved = JSON.parse(
             localStorage.getItem("n02-train-manager-display-settings-v4") || "{}",
           );
           if (["system", "light", "dark"].includes(saved.theme)) mode = saved.theme;
+          if (["auto", "mobile", "desktop"].includes(saved.uiMode))
+            uiPreference = saved.uiMode;
         } catch (_) {}
         const dark =
           mode === "dark" ||
@@ -25,8 +28,31 @@
         document.documentElement.dataset.theme = dark ? "dark" : "light";
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
         document.querySelector('meta[name="theme-color"]').content = dark
-          ? "#1c1c1e"
-          : "#ff5522";
+          ? "#000000"
+          : "#f2f2f7";
+        const ua = navigator.userAgent || "";
+        const uaDataMobile = Boolean(
+          navigator.userAgentData && navigator.userAgentData.mobile,
+        );
+        const phone =
+          uaDataMobile || /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(ua);
+        const tablet =
+          /iPad|Android(?!.*Mobile)/i.test(ua) ||
+          (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1) ||
+          (navigator.maxTouchPoints > 1 &&
+            matchMedia("(any-pointer: coarse)").matches &&
+            matchMedia("(hover: none)").matches);
+        const deviceClass = phone ? "phone" : tablet ? "tablet" : "computer";
+        const compactViewport = matchMedia("(max-width: 599px)").matches;
+        const resolvedUi =
+          uiPreference === "mobile" ||
+          (uiPreference === "auto" &&
+            (deviceClass !== "computer" || compactViewport))
+            ? "mobile"
+            : "desktop";
+        document.documentElement.dataset.deviceClass = deviceClass;
+        document.documentElement.dataset.uiPreference = uiPreference;
+        document.documentElement.dataset.uiMode = resolvedUi;
         try {
           document.documentElement.dataset.sidebar =
             localStorage.getItem("n02-train-manager-sidebar-visible-v1") === "0"
@@ -38,7 +64,7 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260725-uistyle1" />
+    <link rel="stylesheet" href="styles.css?v=20260802-nav11" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -54,6 +80,17 @@
           <div class="header-row">
             <h1><span class="brand-mark" aria-hidden="true">■</span><span data-i18n="app.title">N02 特急列車管理</span></h1>
             <div class="header-actions">
+              <div class="country-switch">
+                <label for="country-select" data-i18n="country.label">國家</label>
+                <select
+                  id="country-select"
+                  data-i18n-aria-label="country.label"
+                  aria-label="國家"
+                >
+                  <option value="jp" data-i18n="country.jp">日本</option>
+                  <option value="tw" data-i18n="country.tw">台灣</option>
+                </select>
+              </div>
               <div class="lang-switch">
                 <label for="lang-select" data-i18n="lang.label">語言</label>
                 <select id="lang-select" data-i18n-aria-label="lang.label" aria-label="語言">
@@ -81,18 +118,6 @@
             在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。
           </div>
         </header>
-
-        <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
-          <!-- Mobile-only context line in the grab-handle strip: data source
-               (sample vs mine) + current date / selected train. Hidden and
-               out of the grid on desktop. -->
-          <span class="panel-context" id="panel-context" aria-hidden="true"></span>
-          <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
-          <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
-          <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
-          <a href="#data-manager"><span aria-hidden="true">⇄</span><span data-i18n="nav.data">資料</span></a>
-          <a href="#display-settings"><span aria-hidden="true">◐</span><span data-i18n="nav.display">顯示</span></a>
-        </nav>
 
         <!-- ============ Card 1: 列車清單 — search, dates, list, actions ============ -->
         <section class="card" id="train-browser">
@@ -281,6 +306,19 @@
         <!-- ============ Card 4: 顯示調節 ============ -->
         <section class="card" id="display-settings">
           <div class="card-body">
+            <div class="ui-mode-setting">
+              <label for="ui-mode-select" data-i18n="uiMode.label">UI 模式</label>
+              <select
+                id="ui-mode-select"
+                data-i18n-aria-label="uiMode.label"
+                aria-label="UI 模式"
+              >
+                <option value="auto" data-i18n="uiMode.auto">自動偵測</option>
+                <option value="mobile" data-i18n="uiMode.mobile">移動端</option>
+                <option value="desktop" data-i18n="uiMode.desktop">桌面端</option>
+              </select>
+              <p class="display-note" id="ui-mode-status" aria-live="polite"></p>
+            </div>
             <div class="display-settings-body" id="display-settings-body"></div>
             <div class="toolbar">
               <button id="display-settings-reset" data-i18n="disp.reset">重置為預設</button>
@@ -290,8 +328,17 @@
             </p>
           </div>
         </section>
-
       </aside>
+      <!-- The tab bar is a sibling of the scrollable menu, so it stays fixed
+           to the app viewport. Its visibility still follows the menu state. -->
+      <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
+        <span class="panel-context" id="panel-context" aria-hidden="true"></span>
+        <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
+        <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
+        <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
+        <a href="#data-manager"><span aria-hidden="true">⇄</span><span data-i18n="nav.data">資料</span></a>
+        <a href="#display-settings"><span aria-hidden="true">◐</span><span data-i18n="nav.display">顯示</span></a>
+      </nav>
       <button
         class="sidebar-edge-tab"
         id="sidebar-edge-tab"
@@ -315,13 +362,13 @@
      RailMap manager → its interaction methods. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="app-core.js"></script>
-    <script src="i18n-strings.js?v=20260725-uistyle1"></script>
-    <script src="i18n.js?v=20260725-uistyle1"></script>
+    <script src="i18n-strings.js?v=20260802-device6"></script>
+    <script src="i18n.js?v=20260802-device6"></script>
     <script src="rail-network.js"></script>
     <script src="railmap-basemap.js?v=20260720-routecache2"></script>
     <script src="railmap-popup.js?v=20260720-routecache2"></script>
-    <script src="railmap-style.js?v=20260720-routecache2"></script>
-    <script src="railmap-geometry.js?v=20260720-routecache2"></script>
+    <script src="railmap-style.js?v=20260802-hover1"></script>
+    <script src="railmap-geometry.js?v=20260802-hover1"></script>
     <script src="railmap.js?v=20260720-routecache2"></script>
     <script src="railmap-interactions.js?v=20260720-routecache2"></script>
     <!-- The app itself: ordered plain classic scripts sharing one global
@@ -332,7 +379,7 @@
          the stubbed modules inside its Node vm sandbox. -->
     <script src="app-config.js?v=20260720-routecache2"></script>
     <script src="app-modal.js?v=20260720-routecache2"></script>
-    <script src="app-display-settings.js?v=20260720-routecache2"></script>
+    <script src="app-display-settings.js?v=20260802-device6"></script>
     <script src="app-display-features.js?v=20260725-uistyle1"></script>
     <script src="app-route-simplify.js?v=20260720-routecache2"></script>
     <script src="app-dates.js?v=20260720-routecache2"></script>
@@ -341,8 +388,8 @@
     <script src="app-persistence.js?v=20260720-routecache2"></script>
     <script src="app-import.js?v=20260720-routecache2"></script>
     <script src="app-store-ops.js?v=20260720-routecache2"></script>
-    <script src="app-map-init.js?v=20260720-routecache2"></script>
-    <script src="app-events.js?v=20260720-routecache2"></script>
+    <script src="app-map-init.js?v=20260802-layers9"></script>
+    <script src="app-events.js?v=20260802-nav11"></script>
     <script src="app-stats.js?v=20260720-routecache2"></script>
     <script src="app-render.js?v=20260720-routecache2"></script>
     <script src="app-editor.js?v=20260720-routecache2"></script>

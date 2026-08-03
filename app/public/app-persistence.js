@@ -17,6 +17,18 @@ function getDefaultTrainStore() {
   };
 }
 
+// Fallback when the active country has no saved store yet: Japan gets the
+// built-in defaults; other countries start empty (the defaults, like every
+// bundled sample, are a Japan dataset).
+function countryFallbackStore() {
+  return activeCountry === "jp"
+    ? getDefaultTrainStore()
+    : { schema_version: SCHEMA_VERSION, trains: [] };
+}
+function countryFallbackLabel() {
+  return I18N.t(activeCountry === "jp" ? "src.builtinDefault" : "src.emptyStore");
+}
+
 // Persist every change to the server-side store (debounced). This is the
 // single source of truth that replaces the old localStorage backup.
 let serverStoreSaveTimer = null;
@@ -303,6 +315,27 @@ async function flushUserStoreSave() {
   return userStoreSavePromise;
 }
 
+// A country switch swaps every persistence target (server endpoint + the
+// country-scoped IndexedDB databases). Every diff baseline and pending write
+// captured against the OLD country must be dropped, or the first save in the
+// new country diffs against the wrong store (skipped per-day chunks = data
+// loss). Callers flush pending saves BEFORE calling this.
+function resetPersistenceStateForCountrySwitch() {
+  clearTimeout(serverStoreSaveTimer);
+  clearTimeout(storeSaveRetryTimer);
+  storeSaveRetryTimer = null;
+  clearTimeout(pendingServerStoreJournalTimer);
+  pendingServerStoreJournalTimer = null;
+  pendingServerStoreText = null;
+  storeSaveDirty = false;
+  userStoreWrittenChunks = new Map();
+  lastKnownServerStoreText = null;
+  lastKnownServerStoreExists = false;
+  // The remembered local-JSON file handle belongs to the old country's
+  // export; the handle DB is country-scoped, so drop the in-memory copy.
+  localJsonFileHandle = null;
+}
+
 // The read-only export textarea is a display convenience, not part of the
 // edit path. Refreshing it ran a full exportTrainStore() (whole-store
 // JSON.stringify) on EVERY mutation. Debounce it so rapid edits coalesce into
@@ -399,7 +432,7 @@ function openIdb(name, storeNames, fallbackErrorMessage) {
 
 function openPendingServerStoreDb() {
   return openIdb(
-    PENDING_SERVER_STORE_DB_NAME,
+    countryDbName(PENDING_SERVER_STORE_DB_NAME),
     [PENDING_SERVER_STORE_NAME],
     "Could not open the pending server-store database.",
   );
@@ -598,7 +631,7 @@ function supportsFileSystemAccess() {
 
 function openFileHandleDb() {
   return openIdb(
-    FILE_HANDLE_DB_NAME,
+    countryDbName(FILE_HANDLE_DB_NAME),
     [FILE_HANDLE_STORE_NAME],
     "Could not open IndexedDB.",
   );
@@ -639,7 +672,7 @@ async function idbDeleteValue(key) {
 
 function openUserStoreDb() {
   return openIdb(
-    USER_STORE_DB_NAME,
+    countryDbName(USER_STORE_DB_NAME),
     [USER_STORE_DATES_STORE, USER_STORE_META_STORE],
     "Could not open the user store DB.",
   );

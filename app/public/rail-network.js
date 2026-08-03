@@ -17,7 +17,7 @@
     (STATION_DOT_GAP_PX * 40075.017) /
     (256 * Math.cos((35 * Math.PI) / 180));
   const STATION_MINZ_CAP = 14;
-  const ROMA_SOURCE = { 1: "osm", 2: "wikidata" };
+  const ROMA_SOURCE = { 1: "osm", 2: "wikidata", 3: "official" };
 
   function minZoomForRank(rank) {
     return rank == null

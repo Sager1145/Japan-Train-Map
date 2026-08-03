@@ -160,8 +160,9 @@ test("health endpoint preserves the API listing contract", async () => {
         "/api/station-readings",
       ],
       train_store: "/api/train-store",
+      train_stores: ["/api/train-store", "/api/train-store-tw"],
       events: "/api/events",
-      agent_import: "/api/agent/import",
+      agent_import: "/api/agent/import?country=jp|tw",
       live_clients: 0,
     });
   });
@@ -250,6 +251,92 @@ test("train store validates, persists, streams, and deletes canonically", async 
   });
 });
 
+test("per-country train stores are fully separate", async () => {
+  await withServer(async ({ baseUrl, dataDir }) => {
+    const jpStore = {
+      schema_version: "1.3",
+      trains: [{ id: "jp-a", stops: [] }],
+    };
+    const twStore = {
+      schema_version: "1.3",
+      trains: [{ id: "tw-a", stops: [] }, { id: "tw-b", stops: [] }],
+    };
+    const savedJp = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(jpStore),
+    });
+    assert.equal(savedJp.status, 200);
+    const savedTw = await fetch(`${baseUrl}/api/train-store-tw`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(twStore),
+    });
+    assert.equal(savedTw.status, 200);
+    assert.deepEqual(await responseJson(savedTw), { ok: true, trains: 2 });
+
+    // Separate files on disk, separate reads back.
+    assert.equal(
+      await fs.readFile(path.join(dataDir, "train-store.json"), "utf8"),
+      JSON.stringify(jpStore),
+    );
+    assert.equal(
+      await fs.readFile(path.join(dataDir, "train-store-tw.json"), "utf8"),
+      JSON.stringify(twStore),
+    );
+    assert.deepEqual(
+      await responseJson(await fetch(`${baseUrl}/api/train-store`)),
+      jpStore,
+    );
+    assert.deepEqual(
+      await responseJson(await fetch(`${baseUrl}/api/train-store-tw`)),
+      twStore,
+    );
+
+    // Agent import routed by country touches only that country's file.
+    const agentTw = await fetch(
+      `${baseUrl}/api/agent/import?mode=append&country=tw`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ id: "tw-c", stops: [] }]),
+      },
+    );
+    assert.equal(agentTw.status, 200);
+    const agentBody = await responseJson(agentTw);
+    assert.equal(agentBody.country, "tw");
+    assert.deepEqual(agentBody.ids, ["tw-a", "tw-b", "tw-c"]);
+    assert.deepEqual(
+      await responseJson(await fetch(`${baseUrl}/api/train-store`)),
+      jpStore,
+    );
+
+    const badCountry = await fetch(
+      `${baseUrl}/api/agent/import?country=us`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([]),
+      },
+    );
+    assert.equal(badCountry.status, 400);
+
+    // Deleting one store leaves the other intact.
+    const deletedTw = await fetch(`${baseUrl}/api/train-store-tw`, {
+      method: "DELETE",
+    });
+    assert.equal(deletedTw.status, 200);
+    assert.equal(
+      (await fetch(`${baseUrl}/api/train-store-tw`)).status,
+      404,
+    );
+    assert.deepEqual(
+      await responseJson(await fetch(`${baseUrl}/api/train-store`)),
+      jpStore,
+    );
+  });
+});
+
 test("agent append import preserves upsert order and response counts", async () => {
   await withServer(async ({ baseUrl, dataDir }) => {
     const initialStore = {
@@ -279,6 +366,7 @@ test("agent append import preserves upsert order and response counts", async () 
     assert.deepEqual(await responseJson(response), {
       ok: true,
       mode: "append",
+      country: "jp",
       trains_total: 3,
       trains_added: 1,
       trains_replaced: 1,
@@ -595,7 +683,7 @@ test("SSE clients receive hello and store-change events with origin metadata", a
       assert.match(streamText, /event: hello\ndata: {"ok":true}/);
       assert.match(
         streamText,
-        /event: store-changed\ndata: {"type":"store-changed","at":"2026-07-17T12:34:56.000Z","origin":"sse-origin","source":"ui","trains":0}/,
+        /event: store-changed\ndata: {"type":"store-changed","at":"2026-07-17T12:34:56.000Z","origin":"sse-origin","source":"ui","store":"train-store","trains":0}/,
       );
     } finally {
       request.destroy();

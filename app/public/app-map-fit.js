@@ -143,18 +143,23 @@ function toLngLatBounds(latLngBounds) {
   ];
 }
 
-function fitJapanMainIslands() {
+function fitActiveCountryOverview({ animate = false } = {}) {
   if (!map) return;
-  // Instant, sidebar-aware fit through the shared helper (its small-margin +
+  // Sidebar-aware fit through the shared helper (its small-margin +
   // resting-padding approach; no explicit sidebar padding that would overflow
-  // the canvas and log "Map cannot fit within canvas…" at boot).
-  smoothFitBounds(toLngLatBounds(JAPAN_MAIN_ISLANDS_BOUNDS), { duration: 0 });
+  // the canvas and log "Map cannot fit within canvas…" at boot). Frames the
+  // ACTIVE country (Japan main islands / Taiwan main island). Boot and the
+  // dataset buttons snap instantly; a country switch glides (animate).
+  smoothFitBounds(toLngLatBounds(activeCountryOverviewBounds()), {
+    duration: animate ? 1400 : 0,
+  });
 }
 
-// Keep the map over Japan: minZoom frames the whole territory (beside the
-// sidebar) with a small ocean margin; maxBounds stops panning off into empty
-// world. Recomputed on resize because the fit zoom depends on the pixel
-// viewport.
+// Keep the map over the ACTIVE country: minZoom frames the whole territory
+// (beside the sidebar) with a small ocean margin; maxBounds stops panning off
+// into empty world. Recomputed on resize because the fit zoom depends on the
+// pixel viewport, and re-applied on a country switch because the territory
+// changes.
 //
 // maxBounds MUST stay wider/taller than the full-canvas viewport at minZoom.
 // The old envelope (territory ± 50%) happened to equal the viewport width at the
@@ -167,7 +172,8 @@ function applyJapanMapConstraints() {
   const cw = container.clientWidth || 0;
   const ch = container.clientHeight || 0;
   if (!cw || !ch) return; // transient 0-size during layout; a later resize retries
-  const cam = map.cameraForBounds(toLngLatBounds(JAPAN_FULL_TERRITORY_BOUNDS));
+  const territory = activeCountryTerritoryBounds();
+  const cam = map.cameraForBounds(toLngLatBounds(territory));
   if (!cam || !isFinite(cam.zoom)) return;
   // cam.zoom fits the territory in the uncovered viewport; pull back a touch for
   // a small ocean margin (NOT a whole level — that pulled minZoom so far out that
@@ -178,7 +184,7 @@ function applyJapanMapConstraints() {
   // Envelope centred on the territory, sized to the min-zoom viewport × 1.5 (≈50%
   // pan room each way), never smaller than the territory itself. Longitude is
   // linear in web-mercator; latitude uses the scale at the territory's centre.
-  const [sw, ne] = JAPAN_FULL_TERRITORY_BOUNDS; // [lat,lng]
+  const [sw, ne] = territory; // [lat,lng]
   const cLng = (sw[1] + ne[1]) / 2;
   const cLat = (sw[0] + ne[0]) / 2;
   const degPerPxLng = 360 / (512 * Math.pow(2, minZoom));

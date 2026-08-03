@@ -524,9 +524,11 @@ function rebuildGroupRepresentativeGeometry(gi) {
 // --- corridor curve memo ---------------------------------------------------
 // smoothCorridorCurve is a PURE function of (input coordinates, fit-curve
 // settings) but is the single most expensive step of a cold record build
-// (~1.7s across ~330 corridors in 全部: a B-spline solve with curvature
-// regularisation + fallback passes per corridor). Both call sites (the corridor
-// chain, and smoothStandaloneCorridorRun) funnel through it, so memoizing here
+// (the main sample is up to ~960 overlap groups in 全部: a B-spline solve
+// with curvature regularisation + fallback passes per corridor — seconds of
+// solve time cold, which is also why the deferred worker path exists). Both
+// call sites (the corridor chain, and smoothStandaloneCorridorRun) funnel
+// through it, so memoizing here
 // lets any repaint that keeps the route GEOMETRY — style / visibility / ride /
 // date / selection edits, scope switches, returning to 全部 after an edit —
 // reuse the fitted curves instead of re-solving every corridor. Keyed by the
@@ -1620,8 +1622,22 @@ function smoothJoinedStationCurve(source, template, sourceLines) {
 // straightest compatible continuation wins at junctions; then the complete
 // multi-group chain is fitted once, making every former station boundary an
 // interior C2 point instead of two independently pinned endpoints.
+//
+// Returns { roundedJoins, failures }: failures lists every component whose
+// station-continuous candidate was rejected, and each owner group is marked
+// with gi.stationJoinFailure so the debug overlay / diagnostics can show WHERE
+// and WHY the chain stayed separate curves instead of silently no-opping.
+//
+// Visual continuity beats the strict radius at membership boundaries: a chain
+// whose ONLY failed constraint is the geometric minimum radius still hovers
+// far better than two curves meeting at up to ~90°, so such a candidate is
+// accepted down to this fraction of the requested radius (and marked, with
+// the floor actually enforced recorded on the curve, so diagnostics measure
+// it against what was accepted rather than re-flagging the relaxation).
+const STATION_JOIN_RADIUS_RELAX = 0.4;
 function smoothCurveStationJoins(groupInfo) {
-  if (!groupInfo || groupInfo.size < 2) return 0;
+  if (!groupInfo || groupInfo.size < 2)
+    return { roundedJoins: 0, failures: [] };
   const owners = new Map();
   groupInfo.forEach((gi, groupKey) => {
     const curve = gi && gi.curve;
@@ -1739,10 +1755,12 @@ function smoothCurveStationJoins(groupInfo) {
     if (!visited.has(curve) && connections.has(curve)) visited.add(curve);
   });
 
+  const failures = [];
   components.forEach((component) => {
     const source = [];
     let worstOriginalTurn = 0;
     let worstGap = 0;
+    const joinEdges = [];
     component.forEach(({ curve, reverse }, index) => {
       const pts = reverse ? curve.pts.slice().reverse() : curve.pts;
       pts.forEach((p) => {
@@ -1755,6 +1773,12 @@ function smoothCurveStationJoins(groupInfo) {
         if (edge) {
           worstOriginalTurn = Math.max(worstOriginalTurn, edge.meta.turn);
           worstGap = Math.max(worstGap, edge.meta.metres);
+          joinEdges.push({
+            a: edge.meta.a.p,
+            b: edge.meta.b.p,
+            gapM: +edge.meta.metres.toFixed(1),
+            turnDeg: +((edge.meta.turn * 180) / Math.PI).toFixed(2),
+          });
         }
       }
     });
@@ -1763,30 +1787,86 @@ function smoothCurveStationJoins(groupInfo) {
     component.forEach(({ curve }) => {
       (curve._sourceLines || []).forEach((line) => rawSources.push(line));
     });
+    const markFailure = (reason, candidate) => {
+      const failure = {
+        reason,
+        joins: joinEdges,
+        groupKeys: component.flatMap(({ curve }) =>
+          (owners.get(curve) || []).map(({ groupKey }) => groupKey),
+        ),
+        requestedMinRadiusM: candidate
+          ? Math.round(candidate.requestedMinRadiusMeters || 0)
+          : null,
+        achievedMinRadiusM:
+          candidate && candidate.achievedMinRadiusMeters != null
+            ? Math.round(candidate.achievedMinRadiusMeters)
+            : null,
+        maxDeviationM: candidate
+          ? Math.round(candidate.maxDeviationMeters || 0)
+          : null,
+        actualMaxDeviationM:
+          candidate && candidate.actualMaxDeviationMeters != null
+            ? Math.round(candidate.actualMaxDeviationMeters)
+            : null,
+      };
+      component.forEach(({ curve }) => {
+        (owners.get(curve) || []).forEach(({ gi }) => {
+          gi.stationJoinFailure = failure;
+        });
+      });
+      failures.push(failure);
+    };
     const fitted = smoothJoinedStationCurve(
       source,
       component[0].curve,
       rawSources,
     );
-    if (!fitted) return;
+    if (!fitted) {
+      markFailure("solver", null);
+      return;
+    }
     // A folded/looping component can be geometrically unable to satisfy both
     // the requested radius and deviation budget as one station-continuous
     // curve. Keep its already-valid member splines separate instead of
     // replacing them with a tighter or far-away curve; the hover transition
-    // animator still interpolates their endpoint directions.
-    if (
-      (fitted.achievedMinRadiusMeters != null &&
-        fitted.achievedMinRadiusMeters <
-          fitted.requestedMinRadiusMeters * 0.999) ||
-      (fitted.maxDeviationMeters > 0 &&
-        (!fitted._finalDeviationValid ||
-          fitted.actualMaxDeviationMeters > fitted.maxDeviationMeters)) ||
-      !fitted._finalDirectionValid ||
-      (fitted.achievedDirectionRadiusMeters != null &&
+    // animator still interpolates their endpoint directions. The exception is
+    // a candidate whose ONLY shortfall is the geometric minimum radius, down
+    // to STATION_JOIN_RADIUS_RELAX × requested: continuity wins there.
+    const radiusOk = !(
+      fitted.achievedMinRadiusMeters != null &&
+      fitted.achievedMinRadiusMeters < fitted.requestedMinRadiusMeters * 0.999
+    );
+    const deviationOk = !(
+      fitted.maxDeviationMeters > 0 &&
+      (!fitted._finalDeviationValid ||
+        fitted.actualMaxDeviationMeters > fitted.maxDeviationMeters)
+    );
+    const directionOk =
+      Boolean(fitted._finalDirectionValid) &&
+      !(
+        fitted.achievedDirectionRadiusMeters != null &&
         fitted.achievedDirectionRadiusMeters <
-          fitted.requestedMinRadiusMeters * 0.999)
-    )
+          fitted.requestedMinRadiusMeters * 0.999
+      );
+    const radiusRelaxed =
+      !radiusOk &&
+      deviationOk &&
+      directionOk &&
+      fitted.achievedMinRadiusMeters >=
+        fitted.requestedMinRadiusMeters * STATION_JOIN_RADIUS_RELAX;
+    if (!(radiusOk || radiusRelaxed) || !deviationOk || !directionOk) {
+      const reasons = [];
+      if (!radiusOk && !radiusRelaxed) reasons.push("radius");
+      if (!deviationOk) reasons.push("deviation");
+      if (!directionOk) reasons.push("direction");
+      markFailure(reasons.join("+") || "unknown", fitted);
       return;
+    }
+    if (radiusRelaxed) {
+      fitted.stationJoinRadiusRelaxed = true;
+      fitted.acceptedMinRadiusMeters =
+        fitted.requestedMinRadiusMeters * STATION_JOIN_RADIUS_RELAX;
+    }
     fitted.stationJoinCount = component.length - 1;
     fitted.stationJoinOriginalMaxDeg = +(
       (worstOriginalTurn * 180) /
@@ -1801,5 +1881,166 @@ function smoothCurveStationJoins(groupInfo) {
     });
     roundedJoins += component.length - 1;
   });
-  return roundedJoins;
+  return { roundedJoins, failures };
+}
+
+// --- fitted-curve worker offload -------------------------------------------
+// A cold record build spends nearly all of its time in smoothCorridorCurve
+// solves + the station-join refit. With a Worker available those run in
+// app-fit-worker.js (which imports THIS file, so both sides execute the
+// exact same solver); the main thread renders records immediately with the
+// static per-group axes and attaches the fitted curves when the worker
+// replies. Everything here is inert without a Worker (precompute VM, tests):
+// buildDeckRouteRecords then keeps its fully synchronous inline path.
+
+// Runs a deferred job list + the station-join pass and serializes the result
+// as plain data (curves deduped by identity so a station-continuous curve
+// shared by several groups stays ONE object after the postMessage clone).
+function runFitCurveJobs(jobs, joinGroups) {
+  const curveByKey = new Map();
+  (jobs || []).forEach((job) => {
+    const curve = smoothCorridorCurve(job.line);
+    if (curve && job.nearParallel) curve.nearParallel = true;
+    curveByKey.set(job.key, curve);
+  });
+  // Minimal groupInfo mirror: smoothCurveStationJoins only reads gi.curve and
+  // the train-id KEYS of gi.mults, so lane multipliers are irrelevant here.
+  const mirror = new Map();
+  (joinGroups || []).forEach((g) => {
+    const mults = {};
+    (g.trainIds || []).forEach((id) => {
+      mults[id] = 0;
+    });
+    mirror.set(g.groupKey, {
+      curve: curveByKey.get(g.groupKey) || null,
+      mults,
+    });
+  });
+  const { roundedJoins, failures } = smoothCurveStationJoins(mirror);
+  const failureIds = new Map();
+  failures.forEach((failure, index) => failureIds.set(failure, index));
+  const curves = [];
+  const curveIds = new Map();
+  const assignments = [];
+  mirror.forEach((gi, groupKey) => {
+    let curveId = -1;
+    if (gi.curve) {
+      curveId = curveIds.get(gi.curve);
+      if (curveId === undefined) {
+        curveId = curves.length;
+        curveIds.set(gi.curve, curveId);
+        curves.push(gi.curve);
+      }
+    }
+    const failureId = gi.stationJoinFailure
+      ? failureIds.get(gi.stationJoinFailure)
+      : -1;
+    assignments.push({
+      groupKey,
+      curveId,
+      failureId: failureId === undefined ? -1 : failureId,
+    });
+  });
+  return { curves, assignments, failures, roundedJoins };
+}
+
+let _fitWorker = null;
+let _fitWorkerBroken = false;
+let _fitWorkerSeq = 0;
+const _fitWorkerPending = new Map(); // requestId → record bundle
+
+function fitCurveWorkerUsable() {
+  return !_fitWorkerBroken && typeof Worker === "function";
+}
+
+// Attach a (worker or fallback) fit result to its bundle. The gi objects are
+// the same ones RailMap holds, so hover picks the curves up per-event; only
+// the debug overlay + published diagnostics need an explicit refresh, and
+// only when this bundle is still the one on the map — a superseded bundle
+// keeps its curves for the scope cache but repaints nothing.
+function applyFitCurveResults(bundle, result) {
+  if (!bundle || !bundle._pendingFit || !result) return;
+  const curves = result.curves || [];
+  const failures = result.failures || [];
+  (result.assignments || []).forEach(({ groupKey, curveId, failureId }) => {
+    const gi = bundle.groupInfo.get(groupKey);
+    if (!gi) return;
+    gi.curve = curveId >= 0 ? curves[curveId] : null;
+    if (failureId >= 0) gi.stationJoinFailure = failures[failureId];
+  });
+  bundle._pendingFit = null;
+  if (
+    bundle === _lastPushedBuilt &&
+    window.RailMap &&
+    typeof RailMap.notifyFitCurvesUpdated === "function"
+  )
+    RailMap.notifyFitCurvesUpdated();
+}
+
+// Worker breakage (boot failure, 404 on the script, a runtime error) is
+// permanent for the session: solve every unanswered bundle inline once, then
+// let subsequent builds take the synchronous path from the start.
+function _fitWorkerFailed(err) {
+  _fitWorkerBroken = true;
+  const pending = [..._fitWorkerPending.values()];
+  _fitWorkerPending.clear();
+  if (_fitWorker) {
+    try {
+      _fitWorker.terminate();
+    } catch (terminateErr) {
+      /* ignore */
+    }
+    _fitWorker = null;
+  }
+  console.warn("Fit-curve worker unavailable; fitting on the main thread.", err);
+  pending.forEach((bundle) => {
+    const pendingFit = bundle._pendingFit;
+    if (!pendingFit) return;
+    applyFitCurveResults(
+      bundle,
+      runFitCurveJobs(pendingFit.jobs, pendingFit.joinGroups),
+    );
+  });
+}
+
+function scheduleFitCurveWorker(bundle) {
+  const pendingFit = bundle._pendingFit;
+  if (!pendingFit) return;
+  const runInline = () =>
+    applyFitCurveResults(
+      bundle,
+      runFitCurveJobs(pendingFit.jobs, pendingFit.joinGroups),
+    );
+  if (!fitCurveWorkerUsable()) {
+    runInline();
+    return;
+  }
+  if (!_fitWorker) {
+    try {
+      _fitWorker = new Worker("app-fit-worker.js");
+    } catch (err) {
+      _fitWorkerFailed(err);
+      if (bundle._pendingFit) runInline();
+      return;
+    }
+    _fitWorker.onmessage = (event) => {
+      const data = event.data || {};
+      const target = _fitWorkerPending.get(data.requestId);
+      if (!target) return;
+      _fitWorkerPending.delete(data.requestId);
+      applyFitCurveResults(target, data);
+    };
+    _fitWorker.onerror = (err) => _fitWorkerFailed(err);
+  }
+  const requestId = (_fitWorkerSeq += 1);
+  _fitWorkerPending.set(requestId, bundle);
+  // Settings are snapshotted per request: the worker applies them before
+  // solving, so a rebuild with new slider values can never race an older
+  // in-flight request's configuration.
+  _fitWorker.postMessage({
+    requestId,
+    settings: { ...APPLIED_FIT_CURVE_SETTINGS },
+    jobs: pendingFit.jobs,
+    joinGroups: pendingFit.joinGroups,
+  });
 }

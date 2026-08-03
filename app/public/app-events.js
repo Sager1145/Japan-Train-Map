@@ -28,10 +28,15 @@ let sidebarWindowResizeTimer = null;
 let sidebarDragState = null;
 let suppressSidebarClick = false;
 
-// COMPACT tier only (phones in portrait): the bottom three-detent sheet.
-// Medium widths (iPad portrait/splits, landscape phones, 600–1023px) keep
-// the desktop-shaped side drawer — see the matching styles.css tiers.
+// The resolved terminal UI mode owns the interaction axis. Auto mode combines
+// device/input detection with a compact-window fallback; users can explicitly
+// force desktop UI on mobile hardware from Display settings.
 function sidebarUsesVerticalDrag() {
+  const mode =
+    document.documentElement && document.documentElement.dataset
+      ? document.documentElement.dataset.uiMode
+      : "";
+  if (mode === "mobile" || mode === "desktop") return mode === "mobile";
   return window.matchMedia("(max-width: 599px)").matches;
 }
 
@@ -62,15 +67,14 @@ function safeAreaBottomPx() {
   return sidebarSafeAreaBottom;
 }
 
-// One mobile detent in px. peek = the sticky nav row — the de-facto bottom
-// navigation, whose own padding already includes the grab-handle strip —
-// held clear of the home indicator.
+// One mobile detent in px. Peek exposes only the independently fixed bottom
+// navigation while the scrollable sheet parks behind it.
 function sidebarPanelSizePx(state) {
   const full = sidebarFullSize();
   if (state === "full") return full;
   if (state === "half")
     return Math.min(full, Math.round(window.innerHeight * 0.5));
-  const nav = document.querySelector("#sidebar .workspace-nav");
+  const nav = document.querySelector(".workspace-nav");
   const navHeight = nav ? nav.getBoundingClientRect().height : 86;
   return Math.min(full, Math.ceil(navHeight + safeAreaBottomPx()));
 }
@@ -178,13 +182,19 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
     : "collapsed";
   syncSidebarPanelStyle(app);
   const sidebar = document.getElementById("sidebar");
-  if (sidebar) {
+  const workspaceNav = document.querySelector(".workspace-nav");
+  const retractingRegions = [sidebar, workspaceNav].filter(Boolean);
+  if (retractingRegions.length) {
     // pointer-events:none (CSS) only blocks the mouse — a collapsed drawer
-    // must also leave the tab order and the accessibility tree. `inert`
-    // covers both; aria-hidden is kept in sync for engines without inert
-    // support. Rescue focus first so it is never trapped inside an inert
-    // subtree (the edge tab is a SIBLING of #sidebar, so it stays usable).
-    if (!sidebarVisible && sidebar.contains(document.activeElement)) {
+    // and its sibling bottom bar must also leave the tab order and the
+    // accessibility tree. The edge tab remains outside both regions so it
+    // stays available to reopen the menu.
+    if (
+      !sidebarVisible &&
+      retractingRegions.some((region) =>
+        region.contains(document.activeElement),
+      )
+    ) {
       const tab = document.getElementById("sidebar-edge-tab");
       if (tab && typeof tab.focus === "function") tab.focus();
       else if (
@@ -193,9 +203,11 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
       )
         document.activeElement.blur();
     }
-    sidebar.inert = !sidebarVisible;
-    if (sidebarVisible) sidebar.removeAttribute("aria-hidden");
-    else sidebar.setAttribute("aria-hidden", "true");
+    for (const region of retractingRegions) {
+      region.inert = !sidebarVisible;
+      if (sidebarVisible) region.removeAttribute("aria-hidden");
+      else region.setAttribute("aria-hidden", "true");
+    }
   }
   updateSidebarToggleLabel();
   if (persist) {
@@ -457,6 +469,31 @@ function setupSidebarToggle() {
     }, 80);
   });
 
+  // A manual mobile/desktop override changes both geometry and gestures even
+  // when the viewport itself did not resize. Reset any in-flight drag, then
+  // recompute the sheet/drawer footprint before MapLibre refreshes.
+  window.addEventListener("n02-ui-mode-change", () => {
+    if (sidebarDragState) {
+      const drag = sidebarDragState;
+      sidebarDragState = null;
+      if (drag.detachWindowFallback) drag.detachWindowFallback();
+      app.classList.remove("sidebar-dragging");
+    }
+    app.style.removeProperty("--kb-inset");
+    app.style.removeProperty("--sidebar-size");
+    sidebarSafeAreaBottom = null;
+    syncSidebarPanelStyle(app);
+    if (!sidebarUsesVerticalDrag())
+      document
+        .querySelectorAll("details.collapse-desktop-open")
+        .forEach((details) => {
+          details.open = true;
+        });
+    cancelScheduledSidebarMapPadding();
+    applySidebarMapPadding(sidebarCurrentSize(), 0);
+    if (map && typeof map.resize === "function") map.resize();
+  });
+
   // ---- Soft keyboard (mobile) ----
   // Focusing a text field raises the panel to the full detent — the keyboard
   // halves the visible viewport, and peek/half leave no room to edit. The
@@ -546,6 +583,10 @@ function setupWorkspaceTabs() {
     if (!link) return;
     ev.preventDefault();
     setActiveWorkspaceTab((link.getAttribute("href") || "").slice(1));
+    if (!sidebarVisible) {
+      setSidebarVisible(true);
+      return;
+    }
     // A tab TAPPED from the peek detent means "open that workspace" — raise
     // the panel so its content is actually visible. Only here, not in
     // setActiveWorkspaceTab: boot/hashchange restoration must not overwrite
@@ -585,6 +626,7 @@ function bindEvents() {
   if (window.I18N && typeof I18N.onChange === "function") {
     I18N.onChange((lang) => {
       updateThemeSelect();
+      updateUiModeUi();
       updateSidebarToggleLabel();
       DISPLAY_CONTROLS.forEach((cfg) => {
         if (cfg._name) cfg._name.textContent = I18N.t(cfg.labelKey);
@@ -667,7 +709,7 @@ function bindEvents() {
     .getElementById("open-local-json")
     .addEventListener("click", async () => {
       try {
-        fitJapanMainIslands();
+        fitActiveCountryOverview();
         setImportProgress(0, 1, I18N.t("prog.openingLocal"));
         await openLocalJsonFile();
         // Opening a local file replaces the store; persist it to the server now.
@@ -754,7 +796,7 @@ function bindEvents() {
             updateDataSourceUi();
           }
         }
-        fitJapanMainIslands();
+        fitActiveCountryOverview();
         resetImportProgress();
         els.search.value = "";
         const result = await importCanonicalStoreAppendProgressive(
@@ -824,7 +866,7 @@ function bindEvents() {
       if (!(await uiConfirm(I18N.t(confirmKey)))) return;
       btn.disabled = true;
       try {
-        fitJapanMainIslands();
+        fitActiveCountryOverview();
         await load();
       } catch (error) {
         setStatus(els.importStatus, error.message, "err");
@@ -839,7 +881,7 @@ function bindEvents() {
       if (importInProgress) return;
       if (!(await uiConfirm(I18N.t("confirm.restoreMine")))) return;
       try {
-        fitJapanMainIslands();
+        fitActiveCountryOverview();
         await restoreUserStore();
       } catch (error) {
         setStatus(els.importStatus, error.message, "err");

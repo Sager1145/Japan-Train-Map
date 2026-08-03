@@ -252,7 +252,15 @@ async function replaceTrainStoreFromStoreProgressive(
     const importedStore = parseImportedCanonicalStore(store || { trains: [] });
     const total = importedStore.trains.length;
     if (!total) {
-      renderAll();
+      // An empty store is still a REPLACEMENT (e.g. switching to a country
+      // with no saved data yet): clear what is on screen instead of leaving
+      // the previous store's trains visible.
+      resetTrainStoreForProgressiveLoad();
+      finalizeProgressiveLoad([], {
+        finalPersist: options.finalPersist !== false,
+        showAllDates: Boolean(options.showAllDates),
+        selectFirstTrain: false,
+      });
       return { count: 0, ids: [] };
     }
 
@@ -686,6 +694,20 @@ async function bootStaticData(bootLoadOptions) {
     return;
   }
   userStoreAvailable = false;
+  if (activeCountry !== "jp") {
+    // Every bundled sample/default is a Japan dataset; another country with
+    // no saved data starts with an empty, autosaving user store instead.
+    dataSourceMode = "user";
+    sampleModeDate = null;
+    updateDataSourceUi();
+    await replaceTrainStoreFromStoreProgressive(
+      countryFallbackStore(),
+      countryFallbackLabel(),
+      { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
+    );
+    updateDataSourceUi();
+    return;
+  }
   try {
     const manifest = await loadSampleManifest();
     if (manifest) {
@@ -711,6 +733,117 @@ async function bootStaticData(bootLoadOptions) {
   updateDataSourceUi();
 }
 
+// ---------------------------------------------------------------------------
+// Country switching (日本 / 台灣): swaps the ACTIVE store — a separate server
+// endpoint plus separate IndexedDB databases per country — then reloads that
+// country's data and re-renders everything. Nothing about the other country's
+// store is touched.
+// ---------------------------------------------------------------------------
+let countrySwitchInFlight = false;
+
+function updateCountrySelect() {
+  const select = document.getElementById("country-select");
+  if (!select) return;
+  select.value = activeCountry;
+  select.disabled = countrySwitchInFlight;
+}
+
+function setupCountrySelect() {
+  const select = document.getElementById("country-select");
+  if (!select) return;
+  updateCountrySelect();
+  select.addEventListener("change", async () => {
+    try {
+      await switchActiveCountry(select.value);
+    } catch (err) {
+      console.error("Country switch failed.", err);
+      setStatus(
+        els.importStatus,
+        I18N.t("status.countrySwitchFailed", {
+          msg: (err && err.message) || "",
+        }),
+        "err",
+      );
+    } finally {
+      // Reflect the real state — a refused or failed switch snaps back.
+      updateCountrySelect();
+    }
+  });
+}
+
+async function switchActiveCountry(next) {
+  if (!SUPPORTED_COUNTRIES.includes(next) || next === activeCountry) return;
+  // A progressive load owns the store globals; switching mid-flight would
+  // interleave two replacements. The select snaps back via the caller.
+  if (countrySwitchInFlight || importInProgress) return;
+  countrySwitchInFlight = true;
+  updateCountrySelect();
+  try {
+    // Land any pending edits in the OLD country's store before re-pointing
+    // every persistence target at the new one.
+    try {
+      await flushServerStoreSave();
+    } catch (err) {
+      console.warn(
+        "Could not flush pending saves before the country switch.",
+        err,
+      );
+    }
+    activeCountry = next;
+    try {
+      localStorage.setItem(COUNTRY_STORAGE_KEY, next);
+    } catch (_) {
+      /* preference just won't survive a reload */
+    }
+    TRAIN_STORE_API = trainStoreApiForCountry(next);
+    const networkCountryReady =
+      typeof RailMap !== "undefined" &&
+      typeof RailMap.switchNetworkCountry === "function"
+        ? RailMap.switchNetworkCountry()
+        : Promise.resolve(null);
+    resetPersistenceStateForCountrySwitch();
+    exitStoreRecoveryMode();
+    selectedTrainId = null;
+    focusedTrainId = null;
+    dataSourceMode = "user";
+    sampleModeDate = null;
+    sampleEditHintShown = false;
+    userStoreAvailable = false;
+    // Re-frame the map over the new country BEFORE its data streams in.
+    // Release the OLD country's pan/zoom cage first (its maxBounds/minZoom
+    // would block or clamp the flight), glide over, then cage to the new
+    // territory once the movement lands.
+    if (typeof map !== "undefined" && map) {
+      map.setMaxBounds(null);
+      map.setMinZoom(2);
+      fitActiveCountryOverview({ animate: true });
+      map.once("moveend", () => applyJapanMapConstraints());
+    }
+    await Promise.all([
+      loadActiveCountryStore({
+        persistEachStep: false,
+        finalPersist: false,
+        selectFirstTrain: false,
+      }),
+      networkCountryReady,
+    ]);
+    // A failed restore just entered read-only recovery mode with its own
+    // error message — don't paper over it with a success status.
+    if (!storeRecoveryMode) {
+      setStatus(
+        els.importStatus,
+        I18N.t("status.countrySwitched", {
+          name: I18N.t(`country.${activeCountry}`),
+        }),
+        "ok",
+      );
+    }
+  } finally {
+    countrySwitchInFlight = false;
+    updateCountrySelect();
+  }
+}
+
 // Reflect dataSourceMode in the 資料 card: the mode line, and which of the
 // source buttons are visible/enabled. Safe to call before the DOM listeners
 // are bound and on the Node deployment (where the block is hidden entirely).
@@ -719,8 +852,12 @@ function updateDataSourceUi() {
   const sourceBlock = document.getElementById("data-source-block");
   if (!statusEl || !sourceBlock) return;
   if (HAS_BACKEND) {
-    // Node deployment: server autosave, no sample/user-store switching.
+    // Node deployment: server autosave, no sample/user-store switching. The
+    // built-in defaults are a Japan dataset, so "reset to defaults" only
+    // makes sense while Japan is the active country.
     sourceBlock.hidden = true;
+    const resetBtn = document.getElementById("reset-defaults");
+    if (resetBtn) resetBtn.hidden = activeCountry !== "jp";
     return;
   }
   sourceBlock.hidden = false;
@@ -740,12 +877,21 @@ function updateDataSourceUi() {
   );
   const saveMineBtn = document.getElementById("save-as-user-store");
   const restoreBtn = document.getElementById("restore-user-store");
-  if (loadAllBtn) loadAllBtn.disabled = dataSourceMode === "sample-all";
-  if (loadNewYearBtn)
+  // Every bundled sample is a Japan dataset — hide the loaders elsewhere.
+  const jpDatasets = activeCountry === "jp";
+  if (loadAllBtn) {
+    loadAllBtn.hidden = !jpDatasets;
+    loadAllBtn.disabled = dataSourceMode === "sample-all";
+  }
+  if (loadNewYearBtn) {
+    loadNewYearBtn.hidden = !jpDatasets;
     loadNewYearBtn.disabled = dataSourceMode === "sample-new-year-grand-loop";
-  if (loadTokyoLtdExpBtn)
+  }
+  if (loadTokyoLtdExpBtn) {
+    loadTokyoLtdExpBtn.hidden = !jpDatasets;
     loadTokyoLtdExpBtn.disabled =
       dataSourceMode === "sample-tokyo-limited-express-loop";
+  }
   if (saveMineBtn) saveMineBtn.hidden = !isSampleMode();
   if (restoreBtn) {
     restoreBtn.hidden = !isSampleMode();

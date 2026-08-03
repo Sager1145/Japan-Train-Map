@@ -131,6 +131,143 @@
     return out;
   }
 
+  // ─────────── regional detail: full basemap only in Japan + Taiwan ───────────
+  // Outside these simplified Japan / Taiwan outlines the basemap reduces to
+  // physical reference — ocean/coastlines, rivers and country borders; no
+  // roads, urban areas, buildings, or state borders, and no place labels.
+  // OpenMapTiles features carry no country attribute, so the gate is
+  // geometric. Outline edges are tight where a neighbor is close
+  // (Tsushima–Busan gap, Sōya–Sakhalin gap, Nemuro strait, Taiwan strait) and
+  // generous over open ocean. Kinmen / Matsu sit on the Chinese coast and are
+  // excluded — they cannot be kept without also keeping mainland cities.
+  const JP_TW_AREA = {
+    type: "MultiPolygon",
+    coordinates: [
+      [
+        [
+          [122.4, 24.0], // south of Yonaguni
+          [143.5, 26.3], // open Pacific, keeps Ogasawara
+          [147.0, 41.5], // Pacific side of Honshu / Hokkaido
+          [146.0, 43.4], // east of Cape Nosappu, west of Habomai / Shikotan
+          [145.45, 44.35], // Nemuro strait, west of Kunashir
+          [144.2, 45.2], // Sea of Okhotsk
+          [142.3, 45.7], // between Cape Sōya and Sakhalin
+          [140.0, 45.7],
+          [139.2, 43.5], // west of Okushiri
+          [137.0, 42.0], // mid Sea of Japan, east of Primorye
+          [135.0, 39.5],
+          [133.5, 38.0], // east of Ulleungdo / Dokdo, keeps Oki
+          [131.5, 36.5],
+          [129.3, 34.9], // Tsushima–Busan gap
+          [128.9, 34.2],
+          [128.2, 33.2], // west of Gotō, east of Jeju
+          [128.0, 32.0],
+          [127.2, 28.8], // East China Sea, west of Okinawa
+          [125.3, 26.2],
+          [122.4, 24.6], // west of Yonaguni, east of Taiwan
+          [122.4, 24.0],
+        ],
+      ],
+      [
+        [
+          [119.0, 21.8], // southwest of Penghu
+          [122.3, 21.7], // keeps Lanyu, north of Batanes
+          [122.35, 25.45],
+          [121.7, 25.7], // north of Keelung
+          [119.7, 24.9], // Taiwan strait, keeps Penghu, south of Pingtan
+          [119.0, 21.8],
+        ],
+      ],
+    ],
+  };
+
+  // Sea/ocean name labels are removed everywhere, both themes.
+  const DETAIL_LAYERS_DROPPED = [
+    "water_name_point_label",
+    "water_name_line_label",
+  ];
+  // Layers that keep rendering worldwide, above the detail mask.
+  const DETAIL_LAYERS_WORLDWIDE = [
+    "water", // ocean + lakes: coastlines everywhere
+    "waterway", // rivers everywhere
+    "boundary_2", // country borders
+    "boundary_disputed",
+    // Pier polygons draw OVER the water fill, so they cannot go under the
+    // mask; "within" cannot gate polygons, so foreign piers leak (high zoom
+    // only, near-invisible).
+    "road_area_pier",
+  ];
+  const DETAIL_MASK_SOURCE_ID = "jp-tw-detail-mask";
+  const DETAIL_MASK_LAYER_ID = "jp_tw_detail_mask";
+
+  // Line and symbol layers are gated per feature with ["within", …] (the
+  // expression supports points/lines only). Polygon detail — landuse, wood,
+  // parks, buildings, airport areas — cannot be feature-gated, so those fill
+  // layers are moved below an opaque background-colored world mask with
+  // Japan/Taiwan cut out as holes. Water, rivers and borders draw above the
+  // mask; roads stay above water so bridge ordering inside Japan is intact.
+  function applyRegionalDetailPolicy(basemap) {
+    const dropped = new Set(DETAIL_LAYERS_DROPPED);
+    const worldwide = new Set(DETAIL_LAYERS_WORLDWIDE);
+    const head = []; // background + polygon detail, buried by the mask outside
+    const tail = []; // water, rivers, borders + within-gated line/symbol detail
+    basemap.layers.forEach((layer) => {
+      if (dropped.has(layer.id)) return;
+      const isFill = layer.type === "fill" || layer.type === "fill-extrusion";
+      const isBackground = layer.type === "background";
+      let next = layer;
+      if (!worldwide.has(layer.id) && !isFill && !isBackground) {
+        const within = ["within", JP_TW_AREA];
+        next = Object.assign({}, layer, {
+          filter: layer.filter ? ["all", layer.filter, within] : within,
+        });
+      }
+      if (isBackground || (isFill && !worldwide.has(layer.id))) head.push(next);
+      else tail.push(next);
+    });
+    basemap.sources = Object.assign({}, basemap.sources);
+    basemap.sources[DETAIL_MASK_SOURCE_ID] = {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [-180, -85],
+              [180, -85],
+              [180, 85],
+              [-180, 85],
+              [-180, -85],
+            ],
+          ].concat(
+            // Exterior rings of the Japan / Taiwan outlines become holes
+            // (reversed to clockwise winding).
+            JP_TW_AREA.coordinates.map((poly) => poly[0].slice().reverse()),
+          ),
+        },
+      },
+    };
+    basemap.layers = head.concat(
+      [
+        {
+          id: DETAIL_MASK_LAYER_ID,
+          type: "fill",
+          source: DETAIL_MASK_SOURCE_ID,
+          paint: {
+            // The exact positron background literal, so the dark recolor
+            // tables and the runtime theme switch restyle the mask for free.
+            "fill-color": "rgb(242,243,240)",
+            "fill-antialias": false,
+          },
+        },
+      ],
+      tail,
+    );
+    return basemap;
+  }
+
   // ─────────────────── positron → dark recolor (label parity) ───────────────────
   // The dark basemap is the vendored positron style with every color literal
   // remapped to a dark palette anchored on MAP_SURFACE_COLORS.dark.background.
@@ -267,6 +404,7 @@
       if (!res.ok) return null;
       const basemap = normalizeBasemap(await res.json());
       if (basemap) {
+        applyRegionalDetailPolicy(basemap);
         basemap.theme = theme;
         if (theme === "dark") recolorPositronToDark(basemap);
       }

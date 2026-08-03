@@ -54,7 +54,43 @@ function installLongTaskObserver() {
 // The server-side data/train-store.json (served at /api/train-store) is now
 // the single source of truth: the editor auto-saves there and loads from it
 // on every boot, replacing the old browser-localStorage backup.
-const TRAIN_STORE_API = "train-store";
+//
+// Countries keep FULLY SEPARATE stores (separate server file + endpoint,
+// separate IndexedDB databases) and the UI shows one country at a time.
+// TRAIN_STORE_API therefore always names the ACTIVE country's endpoint — the
+// `${API_BASE}/${TRAIN_STORE_API}` fetch templates elsewhere are a deploy
+// contract (rewritten by the static build) and must keep reading this
+// binding. Japan keeps the historical unsuffixed names so existing data
+// stays reachable.
+let TRAIN_STORE_API = "train-store";
+const COUNTRY_STORAGE_KEY = "n02-active-country";
+const SUPPORTED_COUNTRIES = ["jp", "tw"];
+let activeCountry = "jp";
+function trainStoreApiForCountry(country) {
+  return country === "tw" ? "train-store-tw" : "train-store";
+}
+function railPackageUrlForCountry(country) {
+  return country === "tw" ? "./rail/tw-2025.json" : "./rail/jp-2025.json";
+}
+function activeRailPackageUrl() {
+  return railPackageUrlForCountry(activeCountry);
+}
+// Resolve the persisted country BEFORE any store/IndexedDB access (called at
+// the top of boot). Guarded so the precompute sandbox stub is enough.
+function loadActiveCountry() {
+  try {
+    const saved = localStorage.getItem(COUNTRY_STORAGE_KEY);
+    if (SUPPORTED_COUNTRIES.includes(saved)) activeCountry = saved;
+  } catch (_) {
+    /* localStorage unavailable: stay on the default country */
+  }
+  TRAIN_STORE_API = trainStoreApiForCountry(activeCountry);
+}
+// Country-scoped IndexedDB database name (user store, pending-save journal,
+// local-file handles). Japan keeps the historical unsuffixed names.
+function countryDbName(base) {
+  return activeCountry === "tw" ? `${base}-tw` : base;
+}
 // Static (GitHub Pages) deploy: api/sample-data/ holds the published SAMPLE
 // dataset — a manifest (with a per-date index) plus one part file per train.
 // It is read-only demo content: the user's own data never touches it. User
@@ -93,6 +129,26 @@ const JAPAN_FULL_TERRITORY_BOUNDS = [
   [24.0, 122.8],
   [45.75, 146.2],
 ];
+// Taiwan overview (main island) and pan-clamp territory (incl. Penghu).
+const TAIWAN_MAIN_ISLAND_BOUNDS = [
+  [21.85, 119.9],
+  [25.35, 122.05],
+];
+const TAIWAN_FULL_TERRITORY_BOUNDS = [
+  [21.6, 119.2],
+  [25.5, 122.1],
+];
+// The map frames / clamps to the ACTIVE country (see loadActiveCountry).
+function activeCountryOverviewBounds() {
+  return activeCountry === "tw"
+    ? TAIWAN_MAIN_ISLAND_BOUNDS
+    : JAPAN_MAIN_ISLANDS_BOUNDS;
+}
+function activeCountryTerritoryBounds() {
+  return activeCountry === "tw"
+    ? TAIWAN_FULL_TERRITORY_BOUNDS
+    : JAPAN_FULL_TERRITORY_BOUNDS;
+}
 
 // Protocol/schema constants: AppCore (app-core.js, shared with the Node
 // server backstop) is the single source of truth; re-exported here as the

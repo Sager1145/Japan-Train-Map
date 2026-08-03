@@ -27,7 +27,19 @@ function createApp({
   heartbeatMs,
 } = {}) {
   const app = express();
-  const trainStore = createTrainStore(path.join(dataDir, "train-store.json"));
+  // One fully separate store per country. "train-store" (Japan) keeps its
+  // historical file name and endpoint; other countries get a suffixed pair.
+  // The frontend targets one store at a time via its TRAIN_STORE_API binding.
+  const trainStores = {
+    "train-store": createTrainStore(path.join(dataDir, "train-store.json")),
+    "train-store-tw": createTrainStore(
+      path.join(dataDir, "train-store-tw.json"),
+    ),
+  };
+  const AGENT_IMPORT_COUNTRY_STORES = {
+    jp: trainStores["train-store"],
+    tw: trainStores["train-store-tw"],
+  };
   const { serveGzippable } = createFileDelivery({ logger });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
@@ -83,56 +95,80 @@ function createApp({
       name: "n02-train-manager API",
       datasets: Object.keys(DATA_FILES).map((route) => `/api/${route}`),
       train_store: "/api/train-store",
+      train_stores: Object.keys(trainStores).map((name) => `/api/${name}`),
       events: "/api/events",
-      agent_import: "/api/agent/import",
+      agent_import: "/api/agent/import?country=jp|tw",
       live_clients: liveEvents.clientCount,
     });
   });
 
   app.get("/api/events", liveEvents.handleEvents);
 
-  app.get("/api/train-store", async (req, res) => {
-    const stat = await fs.promises.stat(trainStore.filePath).catch(() => null);
-    if (!stat) {
-      return res.status(404).json({ error: "No saved train store yet." });
-    }
+  for (const [storeName, store] of Object.entries(trainStores)) {
+    const fileLabel = path.basename(store.filePath);
 
-    // Deliberately NOT serveGzippable: user data must never be cached (no
-    // ETag, no-store) and never gets a .gz sidecar written next to it.
-    res.type("application/json");
-    res.setHeader("Cache-Control", "no-store");
-    streamFile(res, trainStore.filePath, {
-      logger,
-      logLabel: "Error reading train-store.json:",
-      errorMessage: "Failed to read train store.",
+    app.get(`/api/${storeName}`, async (req, res) => {
+      const stat = await fs.promises.stat(store.filePath).catch(() => null);
+      if (!stat) {
+        return res.status(404).json({ error: "No saved train store yet." });
+      }
+
+      // Deliberately NOT serveGzippable: user data must never be cached (no
+      // ETag, no-store) and never gets a .gz sidecar written next to it.
+      res.type("application/json");
+      res.setHeader("Cache-Control", "no-store");
+      streamFile(res, store.filePath, {
+        logger,
+        logLabel: `Error reading ${fileLabel}:`,
+        errorMessage: "Failed to read train store.",
+      });
     });
-  });
 
-  app.put(
-    "/api/train-store",
-    express.json({ limit: "25mb" }),
-    async (req, res) => {
-      let store;
-      try {
-        store = coerceStore(req.body);
-      } catch (err) {
-        return res.status(400).json({ error: err.message });
-      }
+    app.put(
+      `/api/${storeName}`,
+      express.json({ limit: "25mb" }),
+      async (req, res) => {
+        let incoming;
+        try {
+          incoming = coerceStore(req.body);
+        } catch (err) {
+          return res.status(400).json({ error: err.message });
+        }
 
+        try {
+          await store.write(incoming);
+          liveEvents.broadcastStoreChanged({
+            origin: req.get("X-Client-Id") || null,
+            source: "ui",
+            store: storeName,
+            trains: incoming.trains.length,
+          });
+          res.json({ ok: true, trains: incoming.trains.length });
+        } catch (err) {
+          logger.error(`Error writing ${fileLabel}:`, err);
+          res.status(500).json({ error: "Failed to save train store." });
+        }
+      },
+    );
+
+    app.delete(`/api/${storeName}`, async (req, res) => {
       try {
-        await trainStore.write(store);
-        liveEvents.broadcastStoreChanged({
-          origin: req.get("X-Client-Id") || null,
-          source: "ui",
-          trains: store.trains.length,
-        });
-        res.json({ ok: true, trains: store.trains.length });
+        const { existed } = await store.remove();
+        if (existed) {
+          liveEvents.broadcastStoreChanged({
+            origin: req.get("X-Client-Id") || null,
+            source: "delete",
+            store: storeName,
+            cleared: true,
+          });
+        }
+        res.json(existed ? { ok: true } : { ok: true, alreadyEmpty: true });
       } catch (err) {
-        logger.error("Error writing train-store.json:", err);
-        res.status(500).json({ error: "Failed to save train store." });
+        logger.error(`Error deleting ${fileLabel}:`, err);
+        res.status(500).json({ error: "Failed to clear train store." });
       }
-    },
-  );
+    });
+  }
 
   app.post(
     "/api/agent/import",
@@ -144,6 +180,17 @@ function createApp({
           .status(400)
           .json({ error: "mode must be 'replace' or 'append'." });
       }
+      const country = (req.query.country || "jp").toString().toLowerCase();
+      const agentStore = AGENT_IMPORT_COUNTRY_STORES[country];
+      if (!agentStore) {
+        return res.status(400).json({
+          error: `country must be one of: ${Object.keys(
+            AGENT_IMPORT_COUNTRY_STORES,
+          ).join(", ")}.`,
+        });
+      }
+      const agentStoreName =
+        country === "jp" ? "train-store" : `train-store-${country}`;
 
       let incoming;
       try {
@@ -167,7 +214,7 @@ function createApp({
           // The read-modify-write runs inside the store's write queue, so a
           // concurrent PUT or a second append can never interleave between
           // the read and the write (lost update).
-          finalStore = await trainStore.update((existing) => {
+          finalStore = await agentStore.update((existing) => {
             const base =
               existing && Array.isArray(existing.trains) ? existing.trains : [];
             const byId = new Map(
@@ -186,17 +233,19 @@ function createApp({
             };
           });
         } else {
-          await trainStore.write(finalStore);
+          await agentStore.write(finalStore);
         }
         liveEvents.broadcastStoreChanged({
           origin: req.get("X-Client-Id") || null,
           source: "agent",
           mode,
+          store: agentStoreName,
           trains: finalStore.trains.length,
         });
         res.json({
           ok: true,
           mode,
+          country,
           trains_total: finalStore.trains.length,
           trains_added: added,
           trains_replaced: replaced,
@@ -220,23 +269,6 @@ function createApp({
       }
     },
   );
-
-  app.delete("/api/train-store", async (req, res) => {
-    try {
-      const { existed } = await trainStore.remove();
-      if (existed) {
-        liveEvents.broadcastStoreChanged({
-          origin: req.get("X-Client-Id") || null,
-          source: "delete",
-          cleared: true,
-        });
-      }
-      res.json(existed ? { ok: true } : { ok: true, alreadyEmpty: true });
-    } catch (err) {
-      logger.error("Error deleting train-store.json:", err);
-      res.status(500).json({ error: "Failed to clear train store." });
-    }
-  });
 
   app.get(/.*/, async (req, res, next) => {
     let pathname;

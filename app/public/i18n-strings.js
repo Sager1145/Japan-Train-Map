@@ -52,12 +52,28 @@
     "state.on": { zh: "開", en: "On" },
     "state.off": { zh: "關", en: "Off" },
 
+    // country switch (per-country separate stores)
+    "country.label": { zh: "國家", en: "Country" },
+    "country.jp": { zh: "日本", en: "Japan" },
+    "country.tw": { zh: "台灣", en: "Taiwan" },
+
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
     "theme.label": { zh: "主題", en: "Theme" },
     "theme.system": { zh: "跟隨系統", en: "System" },
     "theme.light": { zh: "亮色", en: "Light" },
     "theme.dark": { zh: "暗色", en: "Dark" },
+    "uiMode.label": { zh: "UI 模式", en: "UI mode" },
+    "uiMode.auto": { zh: "自動偵測", en: "Auto detect" },
+    "uiMode.mobile": { zh: "移動端", en: "Mobile" },
+    "uiMode.desktop": { zh: "桌面端", en: "Desktop" },
+    "uiMode.status": {
+      zh: "偵測：{device} · 目前：{mode}",
+      en: "Detected: {device} · Active: {mode}",
+    },
+    "uiMode.device.phone": { zh: "手機", en: "phone" },
+    "uiMode.device.tablet": { zh: "平板", en: "tablet" },
+    "uiMode.device.computer": { zh: "電腦", en: "computer" },
     "disp.hint": {
       zh: "擬合參數拖動後，須按「重建擬合曲線」才會套用。大細節尺度可把密集拐點拉成直線或平滑弧線；青色為命中框、橙色為暫留範圍、洋紅為區間切換範圍。",
       en: "After changing a fit slider, press Rebuild Fitted Curves to apply it. A large detail scale can turn dense bends into a straight span or smooth arc. Cyan shows the pick box, orange the hold radius, and magenta the interval-switch zone.",
@@ -86,7 +102,15 @@
       en: "Show Full Cross-Day Runs (No Dashes)",
     },
     "disp.fitCurves": { zh: "顯示擬合曲線（除錯）", en: "Show Fitted Curves (Debug)" },
+    "disp.fitCurveOverlapNote": {
+      zh: "擬合曲線僅涵蓋重疊區間（多列車共線的走廊）；未重疊的路線不會產生曲線。",
+      en: "Fitted curves only cover overlapping corridors (track shared by multiple trains); non-overlapping routes produce no curve.",
+    },
     "disp.rebuildFitCurves": { zh: "重建擬合曲線", en: "Rebuild Fitted Curves" },
+    "disp.fitCurvePendingHint": {
+      zh: "參數已修改，尚未生效——點擊「重建擬合曲線」套用。",
+      en: "Settings changed but not applied yet — click “Rebuild Fitted Curves” to apply.",
+    },
     "disp.hoverRegions": { zh: "顯示 Hover 監測範圍（除錯）", en: "Show Hover Regions (Debug)" },
     "disp.nameReadingKana": { zh: "站名假名顯示", en: "Station Kana Readings" },
     "disp.nameReadingRomaji": { zh: "站名羅馬字顯示", en: "Station Romaji Readings" },
@@ -456,9 +480,18 @@
       en: "unsent browser recovery copy",
     },
     "src.localJson": { zh: "本地 JSON：{name}", en: "local JSON: {name}" },
+    "src.emptyStore": { zh: "空白資料", en: "empty store" },
 
     // status messages
     "status.loadFailed": { zh: "資料載入失敗：{msg}", en: "Data load failed: {msg}" },
+    "status.countrySwitched": {
+      zh: "已切換至{name}資料。",
+      en: "Switched to {name} data.",
+    },
+    "status.countrySwitchFailed": {
+      zh: "切換國家失敗：{msg}",
+      en: "Country switch failed: {msg}",
+    },
     "status.noSavedStore": {
       zh: "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。",
       en: "No saved train-store.json yet; loaded built-in defaults. Edits auto-save to the server.",
@@ -480,8 +513,8 @@
       en: "Auto-loaded {label}: {count} train(s).",
     },
     "status.autosaveOk": {
-      zh: "已自動保存到伺服器 train-store.json。",
-      en: "Auto-saved to server train-store.json.",
+      zh: "已自動保存到伺服器。",
+      en: "Auto-saved to the server.",
     },
     "status.importBusy": {
       zh: "資料載入中，請稍候再編輯。",
@@ -700,11 +733,22 @@
     "btn.autoFocus": "自動フォーカス：",
     "state.on": "オン",
     "state.off": "オフ",
+    "country.label": "国",
+    "country.jp": "日本",
+    "country.tw": "台湾",
     "disp.reset": "初期設定に戻す",
     "theme.label": "テーマ",
     "theme.system": "システム",
     "theme.light": "ライト",
     "theme.dark": "ダーク",
+    "uiMode.label": "UI モード",
+    "uiMode.auto": "自動判定",
+    "uiMode.mobile": "モバイル",
+    "uiMode.desktop": "デスクトップ",
+    "uiMode.status": "検出：{device}・現在：{mode}",
+    "uiMode.device.phone": "スマートフォン",
+    "uiMode.device.tablet": "タブレット",
+    "uiMode.device.computer": "コンピュータ",
     "disp.hint": "フィッティング設定はスライダー変更後に「フィッティング曲線を再構築」を押すと適用されます。ディテール尺度を大きくすると密集した折れを直線または滑らかな弧にできます。シアンはヒット領域、オレンジは一時保持範囲、マゼンタは区間切替範囲です。",
     "disp.routeWidthScale": "路線の太さ",
     "disp.riddenOpacity": "乗車区間の透明度",
@@ -725,6 +769,10 @@
     "disp.nameReadingRomaji": "駅名のローマ字を表示",
     "disp.nameReadingZh": "駅名の中国語表記を表示",
     "disp.rebuildFitCurves": "フィッティング曲線を再構築",
+    "disp.fitCurveOverlapNote":
+      "フィッティング曲線は重複区間（複数列車が共有する線路）のみが対象です。重複のない路線には生成されません。",
+    "disp.fitCurvePendingHint":
+      "パラメータは変更されましたが未適用です。「フィッティング曲線を再構築」を押すと反映されます。",
     "disp.hoverRegions": "Hover 監視範囲を表示（デバッグ）",
     "sec.import": "JSON 読み込み／ローカルデータ",
     "ph.importJson": "完全な store、列車配列、または単一の列車オブジェクトを貼り付け",
@@ -925,13 +973,16 @@
     "src.otherUpdate": "別のソースからの更新",
     "src.pendingRecovery": "ブラウザー内の未送信リカバリーコピー",
     "src.localJson": "ローカル JSON：{name}",
+    "src.emptyStore": "空のデータ",
     "status.loadFailed": "データの読み込みに失敗しました：{msg}",
+    "status.countrySwitched": "{name}のデータに切り替えました。",
+    "status.countrySwitchFailed": "国の切り替えに失敗しました：{msg}",
     "status.noSavedStore": "保存済みの train-store.json がないため、内蔵初期データを読み込みました。編集内容はサーバーへ自動保存されます。",
     "status.recoveryEntered": "保存データの読み込みに失敗しました：{msg}。読み取り専用の復旧モードに切り替えました：自動保存は無効化され、元の JSON は「JSON エクスポート」欄にあります。修正して再読み込みするか、「サンプルへリセット／保存データを消去」でやり直してください。",
     "status.recoveryNoSave": "読み取り専用の復旧モード：自動保存は無効です（保存データの読み込みに失敗）。",
     "status.serverClearedFallback": "サーバー上のデータが消去されたため、内蔵初期データに戻しました。",
     "status.autoLoaded": "{label} を自動読み込みしました：{count} 本。",
-    "status.autosaveOk": "サーバーの train-store.json に自動保存しました。",
+    "status.autosaveOk": "サーバーに自動保存しました。",
     "status.autosaveFail": "サーバーへの自動保存に失敗しました：{msg}",
     "err.pendingServerInvalid":
       "ブラウザー内の未送信リカバリーコピーが無効です：{msg}",

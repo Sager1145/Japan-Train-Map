@@ -71,6 +71,10 @@ function renderDateButtons() {
   });
 
   els.dateBar.appendChild(fragment);
+  // Keep the active chip visible after initial load, locale changes, and any
+  // full re-render. The iOS-style date strip is intentionally single-line,
+  // so the selected date may otherwise start outside the horizontal viewport.
+  scrollActiveDateButtonIntoView();
   if (els.mapDateFilter) {
     els.mapDateFilter.checked = mapFollowsSelectedDate;
     // The hard-hide toggle only has an effect while a CONCRETE date is
@@ -317,6 +321,9 @@ function updatePanelContextChip() {
   const chip = document.getElementById("panel-context");
   if (!chip) return;
   const parts = [];
+  // Non-default country first: the list/map show ONLY that country's data.
+  if (typeof activeCountry !== "undefined" && activeCountry !== "jp")
+    parts.push(I18N.t(`country.${activeCountry}`));
   if (
     typeof HAS_BACKEND !== "undefined" &&
     !HAS_BACKEND &&
@@ -390,8 +397,7 @@ function scrollSelectedCardIntoView() {
   }
 }
 
-// Scroll the (horizontally scrolling) date bar so the active date button is
-// visible — used whenever a pick auto-jumps the selected date.
+// Scroll the horizontally scrolling date bar so the active date stays visible.
 function scrollActiveDateButtonIntoView() {
   if (!els.dateBar) return;
   const active = els.dateBar.querySelector(".date-btn.active");
@@ -459,4 +465,3 @@ function removeEmptyDates() {
     removed ? "ok" : "warn",
   );
 }
-
