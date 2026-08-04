@@ -38,6 +38,31 @@ function haversineKm(left, right) {
   return 6371.0088 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+function turnAngleDegrees(previous, corner, following) {
+  const lonScale = Math.cos((corner[1] * Math.PI) / 180);
+  const incoming = [
+    (corner[0] - previous[0]) * lonScale,
+    corner[1] - previous[1],
+  ];
+  const outgoing = [
+    (following[0] - corner[0]) * lonScale,
+    following[1] - corner[1],
+  ];
+  const incomingLength = Math.hypot(...incoming);
+  const outgoingLength = Math.hypot(...outgoing);
+  if (!incomingLength || !outgoingLength) return 0;
+  const cosine = Math.max(
+    -1,
+    Math.min(
+      1,
+      (incoming[0] * outgoing[0] + incoming[1] * outgoing[1]) /
+        incomingLength /
+        outgoingLength,
+    ),
+  );
+  return (Math.acos(cosine) * 180) / Math.PI;
+}
+
 function reconstructedLineSegments(line) {
   let previousLastCoordinate = null;
   return line.segments.map((segment) => {
@@ -87,7 +112,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     },
     {
       format: "compact-v1",
-      version: "2025.4.1",
+      version: "2025.5.0",
       generatedAt: "2026-08-03T04:38:19.000Z",
       crs: "WGS84",
       country: "TW",
@@ -102,8 +127,8 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   assert.equal(officialComparison.scope, "LineID/RAILNAME/MRTCODE/LRTCODE");
   assert.equal(officialComparison.lines, EXPECTED_COUNTS.lines);
   assert.equal(Object.keys(officialComparison.byLine).length, EXPECTED_COUNTS.lines);
-  assert.equal(officialComparison.vertices, 35_466);
-  assert.equal(officialComparison.edgeMidpoints, 34_918);
+  assert.equal(officialComparison.vertices, 18_012);
+  assert.equal(officialComparison.edgeMidpoints, 17_464);
   assert.ok(
     officialComparison.maxDeviationMeters <= officialComparison.toleranceMeters,
   );
@@ -159,6 +184,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
       }
     }
     let previousLastCoordinate = null;
+    const reconstructedSegments = [];
     for (const segment of line.segments) {
       assert.ok(segment[0] > 0);
       assert.ok(segment[0] < 75, `${line.id} has an implausible segment`);
@@ -166,6 +192,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
       const coordinates = segment[1]
         ? [previousLastCoordinate].concat(segment[2])
         : segment[2];
+      reconstructedSegments.push(coordinates);
       assert.ok(coordinates.length >= 3, `${line.id} has a two-point segment`);
       if (previousLastCoordinate && !segment[1]) {
         maxUnsharedJoinKm = Math.max(
@@ -184,11 +211,68 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
       previousLastCoordinate = coordinates.at(-1);
       totalKm += segment[0];
     }
+
+    // A station marker is the exact shared boundary vertex of its incoming
+    // and outgoing line intervals. This also prevents a route from entering
+    // a platform spur and doubling back merely to touch an off-line marker.
+    line.stations.forEach((station, index) => {
+      const point = [station[2], station[3]];
+      const incomingIndex = index - 1;
+      if (incomingIndex >= 0) {
+        assert.deepEqual(
+          reconstructedSegments[incomingIndex].at(-1),
+          point,
+          `${line.id}:${station[1]} misses incoming line`,
+        );
+      } else if (line.isLoop) {
+        assert.deepEqual(
+          reconstructedSegments.at(-1).at(-1),
+          point,
+          `${line.id}:${station[1]} misses loop seam`,
+        );
+      }
+      if (index < reconstructedSegments.length) {
+        assert.deepEqual(
+          reconstructedSegments[index][0],
+          point,
+          `${line.id}:${station[1]} misses outgoing line`,
+        );
+      }
+    });
+
+    // Ordinary Taiwan rail alignments should not contain visible polygonal
+    // elbows after grooming. Forest-rail switchbacks are intentional and are
+    // therefore kept out of this smoothness guard.
+    if (!line.id.startsWith("tw-alsr-")) {
+      for (const coordinates of reconstructedSegments) {
+        for (let index = 1; index < coordinates.length - 1; index += 1) {
+          assert.ok(
+            turnAngleDegrees(
+              coordinates[index - 1],
+              coordinates[index],
+              coordinates[index + 1],
+            ) < 35,
+            `${line.id} retains a jagged interior corner`,
+          );
+        }
+      }
+      for (let index = 1; index < line.stations.length - 1; index += 1) {
+        const point = [line.stations[index][2], line.stations[index][3]];
+        assert.ok(
+          turnAngleDegrees(
+            reconstructedSegments[index - 1].at(-2),
+            point,
+            reconstructedSegments[index][1],
+          ) < 40,
+          `${line.id}:${line.stations[index][1]} bends at the station`,
+        );
+      }
+    }
   }
   assert.equal(stationCount, EXPECTED_COUNTS.stations);
   assert.equal(segmentCount, EXPECTED_COUNTS.segments);
-  assert.equal(Math.round(totalKm * 10) / 10, 1798.5);
-  assert.ok(edgeCount >= 34_000, `only ${edgeCount} geometry edges`);
+  assert.equal(Math.round(totalKm * 10) / 10, 1794.9);
+  assert.ok(edgeCount >= 17_000, `only ${edgeCount} geometry edges`);
   assert.ok(maxEdgeKm < 0.2, `${maxEdgeKm} km output edge`);
   assert.equal(maxUnsharedJoinKm, 0, `${maxUnsharedJoinKm} km station gap`);
   assert.equal(longTwoPointSegments, 0);
@@ -218,17 +302,22 @@ test("Taipei Main Station is grouped across high speed, TRA, and metro", () => {
   const lookups = [
     ["tw-thsr-main", "台北"],
     ["tw-tra-western-north", "臺北"],
+    ["tw-trtc-bl", "台北車站"],
     ["tw-trtc-r", "台北車站"],
     ["tw-tym-a", "台北車站"],
   ];
-  const groupIds = lookups.map(([lineId, stationName]) => {
+  const stationRows = lookups.map(([lineId, stationName]) => {
     const row = lineById(compactPackage, lineId).stations.find(
       (station) => station[1] === stationName,
     );
     assert.ok(row, `${stationName} missing from ${lineId}`);
-    return row[0];
+    return row;
   });
-  assert.equal(new Set(groupIds).size, 1);
+  assert.equal(new Set(stationRows.map((row) => row[0])).size, 1);
+  assert.ok(
+    new Set(stationRows.map((row) => `${row[2]},${row[3]}`)).size > 1,
+    "separate Taipei Main platforms should retain their own on-line points",
+  );
 });
 
 test("Taoyuan Airport MRT sample uses the official TYMC route and stations", () => {

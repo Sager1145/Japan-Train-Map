@@ -17,6 +17,7 @@ Only the Python standard library is required.  See
 from __future__ import annotations
 
 import argparse
+import bisect
 import gzip
 import hashlib
 import heapq
@@ -51,6 +52,39 @@ VIA_SNAP_KM = 0.08
 OFFICIAL_ROMA_SOURCE = 3
 MAX_OUTPUT_EDGE_KM = 0.2
 MAX_OFFICIAL_DEVIATION_METERS = 20.0
+
+# Display grooming.  The routed polyline is topologically right but visually
+# raw: a platform spur can add an in-and-out spike at a stop, interval
+# boundaries sit on snapped graph nodes rather than at the station, the mixed
+# TDX/NLSC vertices leave metre-scale sawteeth, and coarse records meet in
+# hard corners.  The grooming passes cut each interval exactly at the
+# station's on-line projection (which becomes the displayed station point),
+# relax the jitter, and round the corners; the conformance audit still has to
+# prove the groomed result stays on line-scoped official geometry.
+SPIKE_TRIM_MAX_KM = 0.45
+SPIKE_MATCH_KM = 0.004
+STATION_CUT_WINDOW_KM = 0.35
+MIN_CUT_SPACING_KM = 0.004
+SMOOTH_ITERATIONS = 3
+SMOOTH_CAP_METERS = 7.0
+SIMPLIFY_TOLERANCE_METERS = 1.5
+CORNER_MIN_TURN_DEG = 14.0
+# A reversal cusp (Alishan switchback tails) must stay a cusp, so corners
+# sharper than this are left alone.
+CORNER_MAX_TURN_DEG = 150.0
+CORNER_MAX_SAGITTA_METERS = 8.0
+CORNER_ROUNDING_PASSES = 2
+# Same-operator lines that hand a physical corridor over at a shared official
+# station (縱貫線北段→臺中線 at 竹南, 北迴線→臺東線 at 花蓮, every TRA branch
+# at its junction) are routed on separate scoped graphs whose anchors can sit
+# ~100 m apart, leaving a visible hole once every dot is cut onto its own
+# line.  Terminal welding bridges such a terminal to the best-anchored dot of
+# the cluster — but only when the bridge itself stays inside the line's own
+# official-geometry tolerance, which keeps physically separate systems
+# (安坑輕軌 beside 環狀線, 阿里山線 beside 臺鐵) unwelded.
+WELD_MAX_KM = 0.3
+WELD_SAMPLE_KM = 0.01
+WELD_RETRACE_MIN_TURN_DEG = 135.0
 
 Coord = Tuple[float, float]
 ProjectedCoord = Tuple[float, float]
@@ -736,8 +770,11 @@ def subdivide_part(part: Sequence[Coord], max_edge_km: float) -> List[Coord]:
 def densify_official_edge(coords: Sequence[Coord]) -> List[Coord]:
     """Subdivide a published official edge without changing its alignment."""
     output = [coords[0]]
+    # The 1 m headroom keeps every edge under MAX_OUTPUT_EDGE_KM even after
+    # the emitted coordinates are rounded to six decimals (~0.11 m each).
+    target_km = MAX_OUTPUT_EDGE_KM - 0.001
     for left, right in zip(coords, coords[1:]):
-        steps = max(1, math.ceil(haversine(left, right) / MAX_OUTPUT_EDGE_KM))
+        steps = max(1, math.ceil(haversine(left, right) / target_km))
         for step in range(1, steps + 1):
             ratio = step / steps
             output.append(
@@ -756,6 +793,369 @@ def densify_official_edge(coords: Sequence[Coord]) -> List[Coord]:
             ),
         )
     return output
+
+
+def turn_angle_degrees(previous: Coord, corner: Coord, following: Coord) -> float:
+    """Deviation from straight-ahead at ``corner`` (0 = collinear)."""
+    lon_scale = math.cos(math.radians(corner[1]))
+    in_x = (corner[0] - previous[0]) * lon_scale
+    in_y = corner[1] - previous[1]
+    out_x = (following[0] - corner[0]) * lon_scale
+    out_y = following[1] - corner[1]
+    in_len = math.hypot(in_x, in_y)
+    out_len = math.hypot(out_x, out_y)
+    if not in_len or not out_len:
+        return 0.0
+    cosine = max(-1.0, min(1.0, (in_x * out_x + in_y * out_y) / (in_len * out_len)))
+    return math.degrees(math.acos(cosine))
+
+
+def trim_joint_spikes(paths: List[List[Coord]], is_loop: bool) -> float:
+    """Trim in-and-out platform-spur spikes where two intervals meet.
+
+    A station anchored on a stub track makes interval i enter the stub and
+    interval i+1 leave it over the same official edges; the display line
+    should flow through the junction instead.  Genuine switchback tails are
+    held inside intervals by via points, so only true retraces at a joint —
+    the tail of one interval mirrored by the head of the next — are trimmed.
+    """
+    trimmed_total = 0.0
+    pairs = [(index - 1, index) for index in range(1, len(paths))]
+    if is_loop:
+        pairs.append((len(paths) - 1, 0))
+    for left_index, right_index in pairs:
+        left, right = paths[left_index], paths[right_index]
+        trimmed = 0.0
+        while (
+            len(left) > 2
+            and len(right) > 2
+            and haversine(left[-2], right[1]) < SPIKE_MATCH_KM
+        ):
+            step = haversine(left[-1], left[-2])
+            if trimmed + step > SPIKE_TRIM_MAX_KM:
+                break
+            trimmed += step
+            left.pop()
+            right.pop(0)
+            right[0] = left[-1]
+        trimmed_total += trimmed
+    return trimmed_total
+
+
+def polyline_cum_km(coords: Sequence[Coord]) -> List[float]:
+    cumulative = [0.0]
+    for left, right in zip(coords, coords[1:]):
+        cumulative.append(cumulative[-1] + haversine(left, right))
+    return cumulative
+
+
+def point_along(coords: Sequence[Coord], cumulative: Sequence[float], t: float) -> Coord:
+    t = max(0.0, min(cumulative[-1], t))
+    index = min(max(bisect.bisect_right(cumulative, t) - 1, 0), len(coords) - 2)
+    span = cumulative[index + 1] - cumulative[index]
+    ratio = 0.0 if span <= 0.0 else (t - cumulative[index]) / span
+    left, right = coords[index], coords[index + 1]
+    return (
+        left[0] + (right[0] - left[0]) * ratio,
+        left[1] + (right[1] - left[1]) * ratio,
+    )
+
+
+def project_station_onto_polyline(
+    point: Coord,
+    coords: Sequence[Coord],
+    cumulative: Sequence[float],
+    t_low: float,
+    t_high: float,
+) -> Tuple[float, float]:
+    """Nearest on-line position to ``point`` within an arc window.
+
+    Returns ``(t_km, distance_m)``.  The window keeps a spiral or a loop from
+    grabbing a different pass of the same line than the routed anchor.
+    """
+    if t_high <= t_low:
+        anchor = point_along(coords, cumulative, t_low)
+        return t_low, point_segment_distance_meters(point, anchor, anchor)
+    lon_scale = 111320.0 * math.cos(math.radians(point[1]))
+    lat_scale = 110574.0
+    first = max(bisect.bisect_right(cumulative, t_low) - 1, 0)
+    last = min(bisect.bisect_left(cumulative, t_high), len(coords) - 1)
+    best: Optional[Tuple[float, float]] = None
+    for index in range(first, last):
+        span = cumulative[index + 1] - cumulative[index]
+        if span <= 0.0:
+            continue
+        left, right = coords[index], coords[index + 1]
+        left_x = (left[0] - point[0]) * lon_scale
+        left_y = (left[1] - point[1]) * lat_scale
+        right_x = (right[0] - point[0]) * lon_scale
+        right_y = (right[1] - point[1]) * lat_scale
+        delta_x = right_x - left_x
+        delta_y = right_y - left_y
+        squared = delta_x * delta_x + delta_y * delta_y
+        ratio = 0.0
+        if squared:
+            ratio = -(left_x * delta_x + left_y * delta_y) / squared
+        ratio_low = max(0.0, (t_low - cumulative[index]) / span)
+        ratio_high = min(1.0, (t_high - cumulative[index]) / span)
+        ratio = max(ratio_low, min(ratio_high, ratio))
+        distance = math.hypot(left_x + ratio * delta_x, left_y + ratio * delta_y)
+        candidate = (distance, cumulative[index] + ratio * span)
+        if best is None or candidate < best:
+            best = candidate
+    if best is None:
+        anchor = point_along(coords, cumulative, t_low)
+        return t_low, point_segment_distance_meters(point, anchor, anchor)
+    return best[1], best[0]
+
+
+def slice_polyline(
+    coords: Sequence[Coord],
+    cumulative: Sequence[float],
+    t_start: float,
+    t_end: float,
+) -> List[Coord]:
+    """The sub-polyline between two arc positions, cut points included."""
+    start_point = point_along(coords, cumulative, t_start)
+    end_point = point_along(coords, cumulative, t_end)
+    first = bisect.bisect_right(cumulative, t_start + 1e-9)
+    last = bisect.bisect_left(cumulative, t_end - 1e-9) - 1
+    output = [start_point]
+    for index in range(first, last + 1):
+        if haversine(output[-1], coords[index]) * 1000.0 > 0.5:
+            output.append(coords[index])
+    if haversine(output[-1], end_point) * 1000.0 <= 0.5 and len(output) > 1:
+        output.pop()
+    output.append(end_point)
+    return output
+
+
+def relax_polyline(coords: List[Coord], iterations: int, cap_meters: float) -> List[Coord]:
+    """Capped Laplacian smoothing: damps node-snap sawteeth, keeps endpoints.
+
+    Every vertex stays within ``cap_meters`` of its original position so the
+    official-geometry conformance budget cannot be silently spent here.
+    """
+    if len(coords) < 4:
+        return coords
+    anchors = list(coords)
+    current = coords
+    for _ in range(iterations):
+        smoothed = [current[0]]
+        for index in range(1, len(current) - 1):
+            lon = (
+                0.25 * current[index - 1][0]
+                + 0.5 * current[index][0]
+                + 0.25 * current[index + 1][0]
+            )
+            lat = (
+                0.25 * current[index - 1][1]
+                + 0.5 * current[index][1]
+                + 0.25 * current[index + 1][1]
+            )
+            anchor = anchors[index]
+            offset = haversine(anchor, (lon, lat)) * 1000.0
+            if offset > cap_meters:
+                scale = cap_meters / offset
+                lon = anchor[0] + (lon - anchor[0]) * scale
+                lat = anchor[1] + (lat - anchor[1]) * scale
+            smoothed.append((lon, lat))
+        smoothed.append(current[-1])
+        current = smoothed
+    return current
+
+
+def simplify_polyline(coords: List[Coord], tolerance_meters: float) -> List[Coord]:
+    """Douglas-Peucker with a metre tolerance; endpoints always survive."""
+    if len(coords) <= 2:
+        return coords
+    keep = [False] * len(coords)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(coords) - 1)]
+    while stack:
+        start, end = stack.pop()
+        if end - start < 2:
+            continue
+        worst_index = -1
+        worst_distance = -1.0
+        for index in range(start + 1, end):
+            distance = point_segment_distance_meters(
+                coords[index], coords[start], coords[end]
+            )
+            if distance > worst_distance:
+                worst_distance = distance
+                worst_index = index
+        if worst_distance > tolerance_meters:
+            keep[worst_index] = True
+            stack.append((start, worst_index))
+            stack.append((worst_index, end))
+    return [coord for coord, kept in zip(coords, keep) if kept]
+
+
+def round_polyline_corners(coords: List[Coord], passes: int) -> List[Coord]:
+    """Replace hard corners with short quadratic-Bezier arcs.
+
+    The two cut points lie on the original edges and the apex sagitta is
+    capped, so the deviation added on top of the routed polyline is bounded
+    by ``CORNER_MAX_SAGITTA_METERS``.  Reversal cusps stay untouched.
+    """
+    for _ in range(passes):
+        if len(coords) < 3:
+            return coords
+        output = [coords[0]]
+        for index in range(1, len(coords) - 1):
+            previous = output[-1]
+            corner = coords[index]
+            following = coords[index + 1]
+            leg_in = haversine(previous, corner) * 1000.0
+            leg_out = haversine(corner, following) * 1000.0
+            if leg_in + leg_out < 12.0:
+                output.append(corner)
+                continue
+            turn = turn_angle_degrees(previous, corner, following)
+            if not CORNER_MIN_TURN_DEG <= turn <= CORNER_MAX_TURN_DEG:
+                output.append(corner)
+                continue
+            sine_half = max(math.sin(math.radians(turn) / 2.0), 0.06)
+            cut = min(
+                leg_in * 0.42,
+                leg_out * 0.42,
+                2.0 * CORNER_MAX_SAGITTA_METERS / sine_half,
+            )
+            if cut < 3.0:
+                output.append(corner)
+                continue
+            ratio_in = cut / leg_in
+            ratio_out = cut / leg_out
+            entry = (
+                corner[0] + (previous[0] - corner[0]) * ratio_in,
+                corner[1] + (previous[1] - corner[1]) * ratio_in,
+            )
+            exit_ = (
+                corner[0] + (following[0] - corner[0]) * ratio_out,
+                corner[1] + (following[1] - corner[1]) * ratio_out,
+            )
+            apex = (
+                0.25 * entry[0] + 0.5 * corner[0] + 0.25 * exit_[0],
+                0.25 * entry[1] + 0.5 * corner[1] + 0.25 * exit_[1],
+            )
+            output.extend((entry, apex, exit_))
+        output.append(coords[-1])
+        coords = output
+    return coords
+
+
+def groom_line(
+    spec: LineSpec,
+    stations: Sequence[Station],
+    routes: Sequence[RouteResult],
+) -> Tuple[List[List[Coord]], List[Coord], Dict[str, float]]:
+    """Groom routed intervals for display.
+
+    Returns per-interval coordinates, per-station display points, and stats.
+    Every displayed station point is the station's projection onto its own
+    line (rounded exactly like the geometry, so the dot is byte-identical to
+    the interval boundary vertex), and intervals are re-cut at those points.
+    """
+    paths = [list(route.coords) for route in routes]
+    spike_km = trim_joint_spikes(paths, spec.is_loop)
+    full: List[Coord] = []
+    joint_vertices: List[int] = [0]
+    for path in paths:
+        full.extend(path if not full else path[1:])
+        joint_vertices.append(len(full) - 1)
+    cumulative = polyline_cum_km(full)
+    total = cumulative[-1]
+    station_count = len(stations)
+    anchor_ts = [cumulative[joint_vertices[index]] for index in range(station_count)]
+
+    if spec.is_loop:
+        # Rotate the ring so it starts at station 0's on-line projection;
+        # the seam then carries the displayed point exactly.
+        point = (stations[0].lon, stations[0].lat)
+        head = project_station_onto_polyline(
+            point, full, cumulative, 0.0, min(STATION_CUT_WINDOW_KM, anchor_ts[1] / 2.0)
+        )
+        tail = project_station_onto_polyline(
+            point,
+            full,
+            cumulative,
+            max(total - STATION_CUT_WINDOW_KM, (anchor_ts[-1] + total) / 2.0),
+            total,
+        )
+        seam_t = head[0] if head[1] <= tail[1] else tail[0]
+        if seam_t >= total:
+            seam_t = 0.0
+        seam_point = point_along(full, cumulative, seam_t)
+        core = full[:-1]
+        edge = min(
+            max(bisect.bisect_right(cumulative, seam_t) - 1, 0), len(core) - 1
+        )
+        rotated = [seam_point]
+        for coord in core[edge + 1 :] + core[: edge + 1]:
+            if haversine(rotated[-1], coord) * 1000.0 > 0.5:
+                rotated.append(coord)
+        if haversine(rotated[-1], seam_point) * 1000.0 <= 0.5:
+            rotated.pop()
+        rotated.append(seam_point)
+        full = rotated
+        cumulative = polyline_cum_km(full)
+        total = cumulative[-1]
+        anchor_ts = [(t - seam_t) % total if index else 0.0 for index, t in enumerate(anchor_ts)]
+
+    cuts: List[float] = []
+    snap_max_m = 0.0
+    for index, station in enumerate(stations):
+        if index == 0 or (not spec.is_loop and index == station_count - 1):
+            # Terminals keep the full routed extent and take the line's end
+            # vertex as their point: it already lies on the line, and lines
+            # that hand over to another line at the same station (花蓮,
+            # 臺東) stay visually continuous instead of leaving a gap
+            # between two perpendicular-foot trims.
+            cuts.append(0.0 if index == 0 else total)
+            continue
+        point = (station.lon, station.lat)
+        low = (anchor_ts[index - 1] + anchor_ts[index]) / 2.0
+        high = (
+            total
+            if index == station_count - 1
+            else (anchor_ts[index] + anchor_ts[index + 1]) / 2.0
+        )
+        low = max(low, anchor_ts[index] - STATION_CUT_WINDOW_KM)
+        high = min(high, anchor_ts[index] + STATION_CUT_WINDOW_KM)
+        cut_t, _distance = project_station_onto_polyline(
+            point, full, cumulative, low, high
+        )
+        cuts.append(cut_t)
+    for index in range(1, station_count):
+        cuts[index] = max(cuts[index], cuts[index - 1] + MIN_CUT_SPACING_KM)
+    if spec.is_loop:
+        cuts.append(total)
+    else:
+        cuts[-1] = total
+    if any(right <= left for left, right in zip(cuts, cuts[1:])):
+        raise RuntimeError(f"{spec.line_id}: station cuts are out of order")
+
+    station_points: List[Coord] = []
+    for index in range(station_count):
+        lon, lat = point_along(full, cumulative, cuts[index])
+        display = (round(lon, 6), round(lat, 6))
+        station_points.append(display)
+        snap_max_m = max(
+            snap_max_m,
+            haversine((stations[index].lon, stations[index].lat), display) * 1000.0,
+        )
+
+    segments: List[List[Coord]] = []
+    for index in range(len(cuts) - 1):
+        coords = slice_polyline(full, cumulative, cuts[index], cuts[index + 1])
+        coords[0] = station_points[index]
+        coords[-1] = station_points[(index + 1) % station_count]
+        coords = relax_polyline(coords, SMOOTH_ITERATIONS, SMOOTH_CAP_METERS)
+        coords = simplify_polyline(coords, SIMPLIFY_TOLERANCE_METERS)
+        coords = round_polyline_corners(coords, CORNER_ROUNDING_PASSES)
+        segments.append(coords)
+    return segments, station_points, {"spike_km": spike_km, "snap_max_m": snap_max_m}
 
 
 class UnionFind:
@@ -875,7 +1275,7 @@ def route_with_vias(
 
 def route_line(
     spec: LineSpec, stations: Sequence[Station], graph: RailGraph
-) -> Tuple[List[List[object]], Dict[str, float]]:
+) -> Tuple[List[List[object]], Dict[str, float], List[Coord]]:
     candidates = []
     for station in stations:
         rows = station_candidates(graph, station)
@@ -986,10 +1386,6 @@ def route_line(
             selected_end = selected_start
         routes = list(reversed(reversed_routes))
 
-    output: List[List[object]] = []
-    previous_last: Optional[Coord] = None
-    total_km = 0.0
-    max_edge = 0.0
     max_offset = 0.0
     max_detour = 0.0
     for index, route in enumerate(routes):
@@ -1016,30 +1412,257 @@ def route_line(
                 f"{stations[index].name} -> {stations[next_index].name} "
                 f"({route.km:.2f} km vs {straight:.2f} km straight)"
             )
+        max_offset = max(max_offset, start_offset, end_offset)
+        max_detour = max(max_detour, route.km / max(straight, 0.001))
+
+    groomed_segments, station_points, groom_stats = groom_line(spec, stations, routes)
+    return groomed_segments, {
+        "max_station_offset_km": max_offset,
+        "max_detour_ratio": max_detour,
+        "spike_km": groom_stats["spike_km"],
+        "snap_max_m": groom_stats["snap_max_m"],
+    }, station_points
+
+
+def emit_compact_segments(
+    groomed_segments: Sequence[Sequence[Coord]],
+) -> Tuple[List[List[object]], float, float]:
+    """Densify, round, and share-join groomed intervals into compact rows."""
+    output: List[List[object]] = []
+    previous_last: Optional[Coord] = None
+    total_km = 0.0
+    max_edge = 0.0
+    for coords in groomed_segments:
         # Some official tunnel/viaduct records expose only their engineered
         # end points.  Subdivision keeps that exact published alignment while
         # ensuring compact-v1 never represents a long interval as two points.
-        coords = densify_official_edge(route.coords)
+        coords = densify_official_edge(coords)
+        edge_lengths = [haversine(a, b) for a, b in zip(coords, coords[1:])]
+        km = sum(edge_lengths)
         shared = int(previous_last is not None and coords[0] == previous_last)
         payload = coords[1:] if shared else coords
         output.append(
             [
-                round(route.km, 3),
+                round(km, 3),
                 shared,
                 [[round(lon, 6), round(lat, 6)] for lon, lat in payload],
             ]
         )
         previous_last = coords[-1]
-        total_km += route.km
-        max_edge = max(max_edge, route.max_edge_km)
-        max_offset = max(max_offset, start_offset, end_offset)
-        max_detour = max(max_detour, route.km / max(straight, 0.001))
-    return output, {
-        "km": total_km,
-        "max_edge_km": max_edge,
-        "max_station_offset_km": max_offset,
-        "max_detour_ratio": max_detour,
-    }
+        total_km += km
+        max_edge = max(max_edge, max(edge_lengths, default=0.0))
+    return output, total_km, max_edge
+
+
+def bridge_samples_conform(
+    coords: Sequence[Coord], index: "OfficialGeometryIndex"
+) -> bool:
+    """Whether a short display bridge remains on scoped official geometry."""
+    for left, right in zip(coords, coords[1:]):
+        gap = haversine(left, right)
+        steps = max(1, math.ceil(gap / WELD_SAMPLE_KM))
+        for step in range(1, steps + 1):
+            ratio = step / steps
+            point = (
+                left[0] + (right[0] - left[0]) * ratio,
+                left[1] + (right[1] - left[1]) * ratio,
+            )
+            if index.distance_meters(point) > MAX_OFFICIAL_DEVIATION_METERS:
+                return False
+    return True
+
+
+def validated_bridge(
+    end_point: Coord,
+    target_point: Coord,
+    index: "OfficialGeometryIndex",
+    graph: RailGraph,
+) -> Optional[List[Coord]]:
+    """A weld bridge from a terminal to the weld point, or None.
+
+    Prefers the straight connector; when the station throat curves too much
+    for it, falls back to routing along the line's own official graph.  Every
+    bridge sample must stay inside the official-deviation tolerance, which is
+    what keeps physically separate systems apart.
+    """
+
+    if bridge_samples_conform([end_point, target_point], index):
+        return [target_point]
+    end_distance, end_node = nearest_graph_node(graph, end_point)
+    target_distance, target_node = nearest_graph_node(graph, target_point)
+    if max(end_distance, target_distance) > WELD_MAX_KM:
+        return None
+    if end_node == target_node:
+        path: List[Coord] = []
+    else:
+        leg = find_route(graph, [(end_node, 0.0)], [(target_node, 0.0)])
+        if leg is None or leg.km > 2.0 * WELD_MAX_KM:
+            return None
+        path = list(leg.coords)
+    coords = path + [target_point]
+    if not bridge_samples_conform([end_point] + coords, index):
+        return None
+    return coords
+
+
+def trim_weld_retrace(
+    coords: List[Coord],
+    at_start: bool,
+    index: "OfficialGeometryIndex",
+) -> List[Coord]:
+    """Remove a tiny station-throat reversal introduced by a terminal weld.
+
+    The chosen common station point can already lie past the source line's
+    snapped terminal vertex.  Keeping both makes the display travel a few
+    metres into a platform throat and immediately double back.  Drop only
+    such high-angle leading vertices, and only when the replacement chord is
+    itself proven to follow this line's scoped official geometry.  Real
+    Alishan switchbacks are much farther from a welded terminal and survive.
+    """
+    forward = list(coords if at_start else reversed(coords))
+    while len(forward) >= 3:
+        first_leg_km = haversine(forward[0], forward[1])
+        turn = turn_angle_degrees(forward[0], forward[1], forward[2])
+        if (
+            first_leg_km > WELD_MAX_KM
+            or turn < WELD_RETRACE_MIN_TURN_DEG
+            or not bridge_samples_conform([forward[0], forward[2]], index)
+        ):
+            break
+        forward.pop(1)
+    return forward if at_start else list(reversed(forward))
+
+
+def weld_terminals(
+    staged: Sequence[Dict[str, object]],
+    official_indexes: Dict[Tuple[Tuple[str, str], ...], "OfficialGeometryIndex"],
+    graphs: Dict[Tuple[Tuple[str, str], ...], RailGraph],
+) -> int:
+    """Weld same-operator terminals that share an official station.
+
+    ``staged`` rows carry ``spec``/``stations``/``segments``/``points``.  For
+    every (operator, station uid) cluster the best-anchored dot — an interior
+    through-line dot when one exists, otherwise the terminal dot nearest the
+    official station coordinate — becomes the weld point, and every other
+    terminal is bridged to it.  A bridge is applied only when every sampled
+    bridge point stays within the official-deviation tolerance of that line's
+    scoped geometry, so lines on physically separate tracks stay apart.
+    """
+
+    def is_terminal(row: Dict[str, object], station_index: int) -> bool:
+        if row["spec"].is_loop:
+            return False
+        return station_index in (0, len(row["stations"]) - 1)
+
+    clusters: Dict[Tuple[str, str], List[Tuple[int, int]]] = {}
+    for staged_index, row in enumerate(staged):
+        for station_index, station in enumerate(row["stations"]):
+            clusters.setdefault((row["spec"].operator, station.uid), []).append(
+                (staged_index, station_index)
+            )
+    welded = 0
+    for (_operator, _uid), members in sorted(clusters.items()):
+        if len(members) < 2:
+            continue
+        terminals = [m for m in members if is_terminal(staged[m[0]], m[1])]
+        if not terminals:
+            continue
+        interiors = [m for m in members if not is_terminal(staged[m[0]], m[1])]
+
+        def member_point(member: Tuple[int, int]) -> Coord:
+            return staged[member[0]]["points"][member[1]]
+
+        def official_offset(member: Tuple[int, int]) -> float:
+            station = staged[member[0]]["stations"][member[1]]
+            return haversine((station.lon, station.lat), member_point(member))
+
+        def terminal_end(member: Tuple[int, int]) -> Coord:
+            segments: List[List[Coord]] = staged[member[0]]["segments"]
+            if member[1] == 0:
+                return segments[0][0]
+            return segments[-1][-1]
+
+        def bridge_for(member: Tuple[int, int], target_point: Coord):
+            """→ None (unreachable), or the validated bridge coordinates."""
+            end_point = terminal_end(member)
+            gap = haversine(end_point, target_point)
+            if gap > WELD_MAX_KM:
+                return None
+            if gap * 1000.0 <= 0.5:
+                return []
+            spec = staged[member[0]]["spec"]
+            return validated_bridge(
+                end_point,
+                target_point,
+                official_indexes[spec.shape_refs],
+                graphs[spec.shape_refs],
+            )
+
+        # Pick the weld point others can actually reach on their own scoped
+        # geometry: an interior through-line dot when one works (the corridor
+        # owner), otherwise the candidate validating the most bridges.  The
+        # 阿里山 cluster needs this — the main line's dot sits on
+        # detail-geometry the branches do not scope, so the branch dot wins.
+        candidates = sorted(interiors, key=lambda m: (official_offset(m), m)) + sorted(
+            terminals, key=lambda m: (official_offset(m), m)
+        )
+        best: Optional[Tuple[int, Tuple[int, int], Dict[Tuple[int, int], List[Coord]]]] = None
+        for candidate in candidates:
+            candidate_point = member_point(candidate)
+            bridges: Dict[Tuple[int, int], List[Coord]] = {}
+            for member in terminals:
+                if member == candidate:
+                    continue
+                bridge = bridge_for(member, candidate_point)
+                if bridge is not None:
+                    bridges[member] = bridge
+            score = len(bridges)
+            if best is None or score > best[0]:
+                best = (score, candidate, bridges)
+            if score == len(terminals) - (1 if candidate in terminals else 0):
+                break
+        if best is None or not best[2]:
+            continue
+        _score, target, bridges = best
+        target_point = member_point(target)
+        for member, bridge in bridges.items():
+            row = staged[member[0]]
+            segments = row["segments"]
+            at_start = member[1] == 0
+            terminal_segment = segments[0] if at_start else segments[-1]
+            end_point = terminal_segment[0] if at_start else terminal_segment[-1]
+            if not bridge:
+                # Effectively coincident: unify the coordinate exactly.
+                if at_start:
+                    terminal_segment[0] = target_point
+                else:
+                    terminal_segment[-1] = target_point
+            else:
+                cleaned = [
+                    coord
+                    for previous, coord in zip([end_point] + bridge, bridge)
+                    if haversine(previous, coord) * 1000.0 > 0.5
+                    or coord == target_point
+                ]
+                if at_start:
+                    terminal_segment[:0] = list(reversed(cleaned))
+                    terminal_segment[:] = trim_weld_retrace(
+                        terminal_segment,
+                        True,
+                        official_indexes[row["spec"].shape_refs],
+                    )
+                    segments[0] = round_polyline_corners(terminal_segment, 1)
+                else:
+                    terminal_segment.extend(cleaned)
+                    terminal_segment[:] = trim_weld_retrace(
+                        terminal_segment,
+                        False,
+                        official_indexes[row["spec"].shape_refs],
+                    )
+                    segments[-1] = round_polyline_corners(terminal_segment, 1)
+            row["points"][member[1]] = target_point
+            welded += 1
+    return welded
 
 
 def reconstruct_segment(row: Sequence[object], previous_last: Optional[Coord]) -> List[Coord]:
@@ -1460,7 +2083,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "#0B4DA2",
             3,
             refs("TRA", line_sequences[("TRA", "PX")]),
-            (("NLSC_TRA", "pingxi"), ("TRA", "PX")),
+            # 平溪線 trains reach 三貂嶺 over the 宜蘭線 corridor; scoping the
+            # yilan geometry in lets the branch anchor at the shared station
+            # and weld onto the through line instead of hovering at the
+            # junction 170 m away.
+            (
+                ("NLSC_TRA", "pingxi"),
+                ("NLSC_TRA", "yilan"),
+                ("TRA", "PX"),
+                ("TRA", "EL"),
+            ),
             max_detour_ratio=8.0,
         ),
         LineSpec(
@@ -2002,12 +2634,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     official_parts_cache: Dict[
         Tuple[Tuple[str, str], ...], List[List[Coord]]
     ] = {}
-    lines = []
-    line_reports = {}
-    conformance_vertices = 0
-    conformance_edges = 0
-    conformance_maximum = 0.0
-    conformance_by_line: Dict[str, Dict[str, object]] = {}
+    staged: List[Dict[str, object]] = []
     for spec in specs:
         if spec.shape_refs not in graph_cache:
             parts = []
@@ -2038,7 +2665,38 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             official_parts_cache[spec.shape_refs] = parts
         graph = graph_cache[spec.shape_refs]
         stations = resolved_stations[spec.line_id]
-        segments, report = route_line(spec, stations, graph)
+        groomed_segments, report, station_points = route_line(spec, stations, graph)
+        staged.append(
+            {
+                "spec": spec,
+                "stations": stations,
+                "segments": groomed_segments,
+                "points": station_points,
+                "report": report,
+            }
+        )
+
+    official_indexes = {
+        shape_refs: OfficialGeometryIndex(parts)
+        for shape_refs, parts in official_parts_cache.items()
+    }
+    welded_terminals = weld_terminals(staged, official_indexes, graph_cache)
+    print(f"terminal welds applied: {welded_terminals}")
+
+    lines = []
+    line_reports = {}
+    conformance_vertices = 0
+    conformance_edges = 0
+    conformance_maximum = 0.0
+    conformance_by_line: Dict[str, Dict[str, object]] = {}
+    for staged_row in staged:
+        spec = staged_row["spec"]
+        stations = staged_row["stations"]
+        station_points = staged_row["points"]
+        report = staged_row["report"]
+        segments, report["km"], report["max_edge_km"] = emit_compact_segments(
+            staged_row["segments"]
+        )
         conformance = audit_line_against_official(
             spec.line_id,
             segments,
@@ -2056,12 +2714,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "maxDeviationMeters": round(conformance["max_deviation_m"], 3),
         }
         station_rows = []
-        for station in stations:
+        for station, display_point in zip(stations, station_points):
+            # The displayed coordinate is the station's projection onto its
+            # own line, so the dot always sits exactly on the drawn geometry.
+            # Lines that share a station name but not a platform each keep
+            # their own on-line point; the shared group id still ties them
+            # together for grouping and popups.
             row: List[object] = [
                 group_ids[station.uid],
                 station.name,
-                station.lon,
-                station.lat,
+                display_point[0],
+                display_point[1],
             ]
             if station.name_en:
                 row.extend((station.name_en, OFFICIAL_ROMA_SOURCE))
@@ -2087,6 +2750,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"km={report['km']:8.1f} max_edge={report['max_edge_km']:.3f} "
             f"offset={report['max_station_offset_km']:.3f} "
             f"detour={report['max_detour_ratio']:.2f}x "
+            f"spike={report['spike_km'] * 1000:5.0f}m "
+            f"snap={report['snap_max_m']:5.0f}m "
             f"official_delta={conformance['max_deviation_m']:.2f}m"
         )
 
@@ -2111,7 +2776,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     package: Dict[str, object] = {
         "format": "compact-v1",
-        "version": "2025.4.1",
+        "version": "2025.5.0",
         "generatedAt": utc_timestamp(update_times),
         "crs": "WGS84",
         "country": "TW",
