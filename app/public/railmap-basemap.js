@@ -34,8 +34,22 @@
   };
   const BASEMAP_LOAD_CACHE = new Map();
   const MAP_SURFACE_COLORS = {
-    light: { background: "rgb(242,243,240)", fade: "#FFFFFF", casing: "#1A1A1A" },
-    dark: { background: "rgb(12,12,12)", fade: "#0C0C0C", casing: "#F5EEE9" },
+    // stationDot/stationRing recolor the rn-stations-dot circles per theme
+    // (dark values track the CSS dark tokens --rail-dim / --white).
+    light: {
+      background: "rgb(242,243,240)",
+      fade: "#FFFFFF",
+      casing: "#1A1A1A",
+      stationDot: "#D7DEDA",
+      stationRing: "#FFFFFF",
+    },
+    dark: {
+      background: "rgb(12,12,12)",
+      fade: "#0C0C0C",
+      casing: "#F5EEE9",
+      stationDot: "#48484A",
+      stationRing: "#2C2C2E",
+    },
   };
   const LAYER_OPACITY_PROPS = {
     background: ["background-opacity"],

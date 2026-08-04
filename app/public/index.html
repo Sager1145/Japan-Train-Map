@@ -64,7 +64,7 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260802-nav11" />
+    <link rel="stylesheet" href="styles.css?v=20260804-mobile1" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -135,6 +135,13 @@
                 <span data-i18n="chk.mapDateFilter">地圖僅顯示當前日期</span></label
               >
             </div>
+            <div
+              class="status"
+              id="date-status"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            ></div>
             <h3 class="subhead" data-i18n="grp.trainResults">當日列車</h3>
             <div class="train-list-title" id="train-list-title"></div>
             <div class="train-list" id="train-list"></div>
@@ -180,7 +187,7 @@
               <button id="move-up" data-i18n="btn.moveUp">上移</button>
               <button id="move-down" data-i18n="btn.moveDown">下移</button>
             </div>
-            <div class="status" id="field-status"></div>
+            <div class="status" id="field-status" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="divider"></div>
             <h3 class="subhead" data-i18n="sec.stops">停靠站與通過站</h3>
             <div class="table-scroll" role="region" tabindex="0" data-i18n-aria-label="table.stopsLabel" aria-label="停靠站表格">
@@ -212,7 +219,7 @@
             <div class="stats-daily" id="stats-daily"></div>
             <div class="stats-headline" id="stats-headline"></div>
             <div class="stats-rows" id="stats-rows"></div>
-            <p class="hint" data-i18n="stats.hint">
+            <p class="hint" data-country="jp" data-i18n="stats.hint">
               依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。
             </p>
           </div>
@@ -282,7 +289,7 @@
               </div>
               <div class="progress-text" id="import-progress-text"></div>
             </div>
-            <div class="status" id="import-status"></div>
+            <div class="status" id="import-status" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="divider"></div>
             <h3 class="subhead" data-i18n="sec.export">JSON 匯出</h3>
             <details class="collapse-desktop-open" id="export-json-details">
@@ -298,7 +305,7 @@
               <button id="download-json" data-i18n="btn.downloadJson">下載 JSON</button>
               <button id="download-html" data-i18n="btn.downloadHtml">下載目前 HTML</button>
             </div>
-            <div class="status" id="json-status"></div>
+            <div class="status" id="json-status" role="status" aria-live="polite" aria-atomic="true"></div>
             <details class="danger-zone">
               <summary class="subhead danger-head" data-i18n="grp.danger">危險區域</summary>
               <p class="hint" data-i18n="hint.danger">這些操作會影響全部資料，無法復原，請小心使用。</p>
@@ -340,7 +347,6 @@
       <!-- The tab bar is a sibling of the scrollable menu, so it stays fixed
            to the app viewport. Its visibility still follows the menu state. -->
       <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
-        <span class="panel-context" id="panel-context" aria-hidden="true"></span>
         <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
         <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
         <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
@@ -370,7 +376,7 @@
      RailMap manager → its interaction methods. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="app-core.js"></script>
-    <script src="i18n-strings.js?v=20260802-device6"></script>
+    <script src="i18n-strings.js?v=20260804-mobile1"></script>
     <script src="i18n.js?v=20260802-device6"></script>
     <script src="rail-network.js"></script>
     <script src="railmap-basemap.js?v=20260720-routecache2"></script>
@@ -386,20 +392,20 @@
          (scripts/precompute-train-parts.mjs) replays this exact list minus
          the stubbed modules inside its Node vm sandbox. -->
     <script src="app-config.js?v=20260720-routecache2"></script>
-    <script src="app-modal.js?v=20260720-routecache2"></script>
+    <script src="app-modal.js?v=20260804-mobile1"></script>
     <script src="app-display-settings.js?v=20260802-device6"></script>
     <script src="app-display-features.js?v=20260725-uistyle1"></script>
     <script src="app-route-simplify.js?v=20260720-routecache2"></script>
     <script src="app-dates.js?v=20260720-routecache2"></script>
-    <script src="app.js?v=20260720-routecache2"></script>
+    <script src="app.js?v=20260804-mobile1"></script>
     <script src="app-stations.js?v=20260720-routecache2"></script>
     <script src="app-persistence.js?v=20260720-routecache2"></script>
     <script src="app-import.js?v=20260720-routecache2"></script>
     <script src="app-store-ops.js?v=20260720-routecache2"></script>
     <script src="app-map-init.js?v=20260802-layers9"></script>
-    <script src="app-events.js?v=20260802-nav11"></script>
+    <script src="app-events.js?v=20260804-mobile1"></script>
     <script src="app-stats.js?v=20260720-routecache2"></script>
-    <script src="app-render.js?v=20260720-routecache2"></script>
+    <script src="app-render.js?v=20260804-mobile1"></script>
     <script src="app-editor.js?v=20260720-routecache2"></script>
     <script src="app-route-render.js?v=20260720-routecache2"></script>
     <script src="app-overlap-lanes.js?v=20260720-routecache2"></script>
@@ -410,6 +416,6 @@
     <script src="app-style.js?v=20260720-routecache2"></script>
     <script src="app-map-fit.js?v=20260720-routecache2"></script>
     <script src="app-validation.js?v=20260720-routecache2"></script>
-    <script src="app-ui-utils.js?v=20260725-uistyle1"></script>
+    <script src="app-ui-utils.js?v=20260804-mobile1"></script>
   </body>
 </html>

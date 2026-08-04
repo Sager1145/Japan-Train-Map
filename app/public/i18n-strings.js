@@ -21,6 +21,9 @@
 
     // header
     "app.title": { zh: "N02 特急列車管理", en: "N02 Limited Express Manager" },
+    // ".tw" suffixed keys are country variants: applyStatic resolves them
+    // automatically while Taiwan is the active dataset (see i18n.js).
+    "app.title.tw": { zh: "TDX 台灣列車管理", en: "TDX Taiwan Train Manager" },
     "app.hint": {
       zh: "在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。",
       en: "View journeys on the map, edit trains and stops, and manage JSON data.",
@@ -35,6 +38,8 @@
     "nav.about": { zh: "說明", en: "About" },
     "menu.hide": { zh: "隱藏選單", en: "Hide menu" },
     "menu.show": { zh: "顯示選單", en: "Show menu" },
+    "menu.expand": { zh: "展開選單", en: "Expand menu" },
+    "menu.minimize": { zh: "縮小選單", en: "Minimize menu" },
 
     // search & actions
     "sec.search": { zh: "搜尋與操作", en: "Search & Actions" },
@@ -196,6 +201,10 @@
       zh: "確定清除此瀏覽器保存的資料？此操作無法復原。",
       en: "Clear the data saved in this browser? This cannot be undone.",
     },
+    "confirm.resetDefaults": {
+      zh: "重置為內建示例資料？目前的全部列車與未保存更改都會被取代，且無法復原。",
+      en: "Reset to the embedded sample? All current trains and unsaved changes will be replaced and cannot be recovered.",
+    },
     "confirm.importInSample": {
       zh: "目前顯示的是示例資料。按「確定」：清除示例、只匯入你的 JSON，並保存為我的資料；按「取消」：把 JSON 暫時疊加到示例上（不保存）。",
       en: "Sample data is currently shown. OK: clear the sample, import only your JSON and save it as my data. Cancel: overlay the JSON on the sample temporarily (not saved).",
@@ -295,6 +304,10 @@
     "stats.actualTitle": { zh: "實際乘坐量", en: "Actual Rides" },
     "stats.byLine": { zh: "分線明細", en: "By line" },
     "stats.byCount": { zh: "依次數", en: "By ride count" },
+    // Collapsible-summary variants carrying the row count — the punctuation
+    // (fullwidth vs ASCII parens) belongs to the locale, not the caller.
+    "stats.byLineCount": { zh: "分線明細（{count}）", en: "By line ({count})" },
+    "stats.byCountCount": { zh: "依次數（{count}）", en: "By ride count ({count})" },
     "stats.topSegmentsTitle": { zh: "最常乘坐區間", en: "Most-Ridden Sections" },
     "stats.topSegmentsHint": {
       zh: "以相鄰車站之間的區間計算，來回視為同一區間；次數為搭乘過的班次數。",
@@ -325,6 +338,7 @@
     "field.number": { zh: "車次", en: "Train No." },
     "field.trainType": { zh: "車輛類型", en: "Train Type" },
     "ph.trainType": { zh: "特急／普通／新幹線", en: "Ltd. Exp. / Local / Shinkansen" },
+    "ph.trainType.tw": { zh: "自強／區間／高鐵", en: "Tze-Chiang / Local / HSR" },
     "field.company": { zh: "車輛公司", en: "Company" },
     "ph.company": {
       zh: "JR西日本；直通用／分隔多家公司",
@@ -444,6 +458,19 @@
     "info.packageBody": {
       zh: "使用 railprint 的 jp-2025 日本鐵路資料包。",
       en: "Uses railprint's jp-2025 Japan rail package.",
+    },
+    "info.packageBody.tw": {
+      zh: "使用 railprint 的 tw-2025 台灣鐵路資料包。",
+      en: "Uses railprint's tw-2025 Taiwan rail package.",
+    },
+    "info.twRailTitle": { zh: "台灣鐵路網", en: "Taiwan railway network" },
+    "info.twRailBody": {
+      zh: "交通部「TDX 運輸資料流通服務平臺」鐵道資料經加工製作。",
+      en: "Derived from railway data on the MOTC TDX transport data platform.",
+    },
+    "info.twLicense": {
+      zh: "政府資料開放授權條款",
+      en: "Open Government Data License",
     },
 
     // map corner control
@@ -711,6 +738,8 @@
     "popup.operator": { zh: "營運公司", en: "Operator" },
     "popup.computed": { zh: "自動推定", en: "Computed" },
     "popup.routeSource": { zh: "路線來源", en: "Route source" },
+    "popup.stationGroup": { zh: "站點群組", en: "Station group" },
+    "popup.sourceStationOverlay": { zh: "站點圖層", en: "station overlay" },
     "popup.yes": { zh: "是", en: "Yes" },
     "popup.no": { zh: "否", en: "No" },
     "popup.noPale": { zh: "否（淡色顯示）", en: "No / pale" },
@@ -721,6 +750,8 @@
   const JA_STRINGS = {
     "lang.label": "言語",
     "app.title": "N02 特急列車管理",
+    "app.title.tw": "TDX 台湾列車管理",
+    "ph.trainType.tw": "自強／區間／高鐵",
     "app.hint": "地図上で行程を確認し、列車・停車駅・JSON データを管理します。",
     "nav.label": "ワークスペースナビゲーション",
     "nav.trains": "列車",
@@ -730,6 +761,8 @@
     "nav.about": "情報",
     "menu.hide": "メニューを隠す",
     "menu.show": "メニューを表示",
+    "menu.expand": "メニューを展開",
+    "menu.minimize": "メニューを縮小",
     "sec.search": "検索と操作",
     "ph.search": "列車番号・列車名・駅名・ID で検索",
     "btn.addTrain": "列車を追加",
@@ -817,6 +850,8 @@
       "注意：保存済みのデータがあります。現在の内容を保存すると上書きされ、元に戻せません。続行しますか？",
     "confirm.clearStorage":
       "このブラウザに保存されたデータを消去しますか？この操作は元に戻せません。",
+    "confirm.resetDefaults":
+      "内蔵サンプルデータに戻しますか？現在の全列車と未保存の変更は置き換えられ、元に戻せません。",
     "confirm.importInSample":
       "現在サンプルデータを表示中です。「OK」：サンプルを消去し、読み込んだ JSON のみを自分のデータとして保存します。「キャンセル」：JSON をサンプルに一時的に重ねます（保存されません）。",
     "status.sampleSingleLoaded":
@@ -860,6 +895,8 @@
     "stats.actualTitle": "実乗車量",
     "stats.byLine": "路線別",
     "stats.byCount": "回数順",
+    "stats.byLineCount": "路線別（{count}）",
+    "stats.byCountCount": "回数順（{count}）",
     "stats.topSegmentsTitle": "最も乗車した区間",
     "stats.topSegmentsHint":
       "隣接する駅と駅の間の区間で集計します。往復は同じ区間として扱い、回数は乗車した列車の本数です。",
@@ -955,6 +992,10 @@
     "info.namesBody": "OpenStreetMap contributors、ODbL ライセンス。",
     "info.packageTitle": "鉄道データパッケージ",
     "info.packageBody": "railprint の日本鉄道データパッケージ jp-2025 を使用しています。",
+    "info.packageBody.tw": "railprint の台湾鉄道データパッケージ tw-2025 を使用しています。",
+    "info.twRailTitle": "台湾の鉄道網",
+    "info.twRailBody": "交通部「TDX 運輸データ流通サービスプラットフォーム」の鉄道データを加工して作成しています。",
+    "info.twLicense": "政府データオープンライセンス",
     "map.layers": "地図レイヤー",
     "map.basemap": "背景地図",
     "map.positron": "OpenFreeMap（オンライン）",
@@ -1076,6 +1117,8 @@
     "popup.operator": "事業者",
     "popup.computed": "自動推定",
     "popup.routeSource": "経路ソース",
+    "popup.stationGroup": "駅グループ",
+    "popup.sourceStationOverlay": "駅レイヤー",
     "popup.yes": "はい",
     "popup.no": "いいえ",
     "popup.noPale": "いいえ（淡色表示）",

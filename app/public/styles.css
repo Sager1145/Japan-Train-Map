@@ -7,8 +7,11 @@
 :root {
   /* 戸山香澄 support color: #ff5522, with accessible UI companion tones. */
   --rail-lit: #ff5522;        /* exact support color: marks, progress, highlights */
-  --rail-text: #a6310b;       /* dark companion: text and white-on-color controls */
-  --rail-text-hover: #842103; /* deeper interactive state */
+  /* Aliased to the iOS tint pair so railprint-era components (.card-tab,
+     .subhead) and iOS-layer controls share ONE accent in light mode (the
+     dark values were already identical). */
+  --rail-text: var(--ios-tint);       /* text and solid-control accent */
+  --rail-text-hover: var(--ios-tint-hover); /* deeper interactive state */
   --rail-dim: #e4d7d2;       /* warm neutral hairlines and borders */
   --rail-bg: #fff1ec;        /* soft support-color surface */
   --ink: #241b18;
@@ -43,6 +46,10 @@
   --ios-green: #248a3d;
   --ios-orange: #c65d00;
   --ios-red: #d70015;
+  --ios-danger-soft: #fbe9e7;
+  --ios-positive-soft: #e6f4e8;
+  --ios-warning-soft: #fff1d6;
+  --ios-nav-reserve: 86px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -70,20 +77,18 @@
      the focus outline; anything heavier is a legend pictogram, not chrome. */
   --hairline: 1px solid var(--rail-dim);
 
-  /* Elevation scale: sm (resting cards) < md (floating map chrome) < lg
-     (popups, tooltips, panels) < xl (modal). Dark values below. */
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-xl: none;
   /* Accent halo for selected / pending states (follows theme accent). */
   --ring-accent: 0 0 0 2px var(--ios-focus);
-  /* Modal scrim behind .rp-modal. */
-  --overlay-bg: #2c2c2e;
+  /* Modal scrim behind .rp-modal — translucent so context stays visible. */
+  --overlay-bg: rgba(28, 28, 30, 0.48);
+  /* Ink on accent-filled controls (solid primary/danger buttons, active pills);
+     dark theme flips it to near-black for contrast on the pastel accents. */
+  --on-accent: #ffffff;
 
   /* Type scale. Glyph-art sizes (7-9px ■/▾ marks, the 20px ⓘ) stay literal. */
   --font-xs: 10px;
   --font-sm: 11px;
+  --font-caption: 12px;
   --font-md: 13px;
   --font-base: 14px;
   --font-lg: 15px;
@@ -106,13 +111,12 @@
   --muted: var(--ink-muted);
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
-  --shadow: var(--shadow-sm);
 }
 
 html[data-theme="dark"] {
   --rail-lit: #ff7448;
-  --rail-text: #ff9a78;
-  --rail-text-hover: #ffb096;
+  --rail-text: var(--ios-tint);
+  --rail-text-hover: var(--ios-tint-hover);
   /* macOS dark system-gray surfaces. Accent colour is reserved for selected
      and highlighted UI; it must not tint menus, cards or their borders. */
   --rail-dim: #48484a;
@@ -135,12 +139,8 @@ html[data-theme="dark"] {
   --muted: var(--ink-muted);
   --accent: var(--rail-lit);
   --accent-2: var(--rail-text);
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-xl: none;
-  --overlay-bg: #000000;
-  --shadow: var(--shadow-sm);
+  --overlay-bg: rgba(0, 0, 0, 0.62);
+  --on-accent: #1c1c1e;
 
   --ios-tint: #ff9a78;
   --ios-tint-hover: #ffb096;
@@ -164,6 +164,9 @@ html[data-theme="dark"] {
   --ios-green: #30d158;
   --ios-orange: #ff9f0a;
   --ios-red: #ff453a;
+  --ios-danger-soft: #3a2321;
+  --ios-positive-soft: #203627;
+  --ios-warning-soft: #3a3020;
   --ios-focus-ring: 0 0 0 3px var(--ios-focus);
 }
 
@@ -218,14 +221,8 @@ body {
   height: 100%;
   overflow: hidden;
   color: var(--ink);
-  font-family:
-    "Noto Sans JP",
-    "Hiragino Sans",
-    "Hiragino Kaku Gothic ProN",
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  /* The app font stack lives in the iOS presentation layer's html,body rule
+     (system-first, with JP fallbacks) — the only font-family for body text. */
   font-size: var(--font-base);
   letter-spacing: 0;
   background: var(--bg);
@@ -236,7 +233,10 @@ body {
 #app {
   --sidebar-open-size: 480px;
   --sidebar-size: var(--sidebar-open-size);
-  position: relative;
+  /* A fixed application root is immune to browsers trying to scroll a
+     restored #workspace fragment when its card becomes visible again. */
+  position: fixed;
+  inset: 0;
   display: block;
   width: 100vw;
   /* 100dvh (dynamic viewport height) tracks iOS Safari's collapsing toolbar so
@@ -293,7 +293,9 @@ html[data-sidebar="collapsed"] #app {
   position: absolute;
   top: 50%;
   left: var(--sidebar-size);
-  z-index: 80;
+  /* Above the fixed workspace-nav (z-index 90): in the peek detent the
+     grab handle overlaps the nav's vertical range and must stay tappable. */
+  z-index: 95;
   display: grid;
   place-items: center;
   width: 24px;
@@ -449,6 +451,11 @@ header {
   align-items: center;
   gap: 6px;
   flex: none;
+  /* Never spill past the panel edge: cap the row and wrap the third
+     switcher instead of clipping it (國家+語言+主題 don't fit at 400px). */
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 h1 {
@@ -520,7 +527,6 @@ h1 {
   margin: 0 -2px 4px;
   padding: 10px 2px 8px;
   background: var(--bg);
-  background: var(--bg);
   backdrop-filter: none;
 }
 
@@ -563,13 +569,6 @@ h1 {
   color: var(--white);
 }
 
-/* Mobile-only context line (data source + current date/train) rendered in
-   the panel's grab-handle strip — hidden on desktop where the header and
-   list title already carry this. */
-.panel-context {
-  display: none;
-}
-
 /* Collapsible secondary sections (raw JSON areas, advanced display knobs).
    bindEvents opens details.collapse-desktop-open on wide screens. */
 summary.subhead-toggle {
@@ -600,7 +599,7 @@ summary.subhead-toggle:hover {
   background: var(--white);
   border: var(--hairline);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 /* Workspace tabs already name these panels in the persistent nav, so plain
@@ -709,11 +708,12 @@ summary.subhead-toggle:hover {
   flex-wrap: wrap;
 }
 
-/* display:flex above would otherwise override the [hidden] UA style — the
-   per-country data-source toolbars rely on the attribute to swap layouts. */
-.toolbar[hidden],
-.row[hidden] {
-  display: none;
+/* Author display values (flex/grid/inline-flex on button, .toolbar, …) would
+   otherwise override the UA's [hidden] rule, so hidden-ness must win globally:
+   every hidden-attribute consumer (per-country toolbars, progress wrap,
+   restore/save buttons) relies on this instead of per-selector patches. */
+[hidden] {
+  display: none !important;
 }
 
 .form-grid {
@@ -1080,9 +1080,6 @@ button:disabled {
   display: grid;
   gap: 4px;
 }
-.progress-wrap[hidden] {
-  display: none;
-}
 .progress-track {
   height: 8px;
   border-radius: var(--radius-pill);
@@ -1183,7 +1180,8 @@ button:disabled {
   width: 0%;
   border-radius: var(--radius-pill);
   background: var(--rail-lit);
-  transition: width 0.4s ease;
+  /* Same speed as .progress-fill — the two bars are siblings visually. */
+  transition: width 0.15s ease;
 }
 /* Per-line breakdown indented under the 新幹線 coverage row. */
 .stat-subrows {
@@ -1467,7 +1465,7 @@ tr.branch-junction td {
   min-width: 220px;
   padding: 8px 12px;
   border-radius: var(--radius-button);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
   font: inherit;
   background: var(--white);
   color: var(--ink);
@@ -1560,31 +1558,15 @@ tr.branch-junction td {
     order: -1;
     top: 0;
     margin: 0 -14px 4px;
-    /* The 26px top strip hosts the grab handle (z-index 80, riding over this
-       row) — folding it into the nav's own padding keeps the panel's top
-       edge opaque, so content can never scroll into view above the nav. */
+    /* The 26px top strip hosts the grab handle (z-index 95, riding over this
+       row and the fixed nav) — folding it into the nav's own padding keeps the
+       panel's top edge opaque, so content can never scroll above the nav. */
     padding: 36px 14px 8px;
     background: var(--bg);
   }
 
   #sidebar .workspace-nav a {
     min-height: 44px;
-  }
-
-  /* Context line in the grab-handle strip, left of the centered handle.
-     Absolutely positioned so the nav's 5-column grid never sees it. */
-  #sidebar .workspace-nav .panel-context {
-    display: block;
-    position: absolute;
-    top: 9px;
-    left: 14px;
-    max-width: calc(50% - 46px);
-    overflow: hidden;
-    color: var(--ink-muted);
-    font-size: var(--font-xs);
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    pointer-events: none;
   }
 
   /* The app header (title, language/theme) moves to the panel footer on
@@ -1686,16 +1668,18 @@ tr.branch-junction td {
     display: none;
   }
 
+  /* Values match the medium-tier copy of this card re-flow (600-1023px)
+     so a stop row looks identical across the two touch tiers. */
   .table-scroll tbody tr {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
-    gap: 6px 10px;
+    gap: 6px 8px;
     align-items: end;
-    margin: 0 0 8px;
-    padding: 10px 12px;
-    background: var(--white);
-    border: var(--hairline);
-    border-radius: var(--radius-button);
+    margin: 0 0 6px;
+    padding: 10px;
+    background: var(--ios-secondary-background);
+    border: 1px solid var(--ios-separator);
+    border-radius: 12px;
   }
 
   .table-scroll tbody td {
@@ -1707,9 +1691,9 @@ tr.branch-junction td {
   .table-scroll tbody td[data-label]::before {
     content: attr(data-label);
     display: block;
-    margin-bottom: 2px;
-    color: var(--ink-muted);
-    font-size: var(--font-xs);
+    margin-bottom: 3px;
+    color: var(--ios-label-secondary);
+    font-size: var(--font-sm);
   }
 
   /* Cell placement — source order: seq, station, arrive, depart, type, ride,
@@ -1760,19 +1744,6 @@ tr.branch-junction td {
   .table-scroll tbody tr.branch-header td {
     background: none;
     padding: 0;
-  }
-
-  /* The stops action bar stays reachable while a long stop list scrolls:
-     stuck to the visible bottom of the panel (offset by the panel's
-     off-screen remainder and, when open, the soft keyboard). */
-  #train-editor .card-body > .toolbar:last-child {
-    position: sticky;
-    bottom: calc(var(--panel-clip, 0px) + var(--kb-inset, 0px));
-    z-index: 6;
-    margin-bottom: 0;
-    padding: 8px 0;
-    background: var(--white);
-    border-top: var(--hairline);
   }
 }
 
@@ -1970,7 +1941,7 @@ tr.branch-junction td {
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--radius-button);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
   /* Fade with the map's hover/selection spotlight instead of snapping. */
   transition: opacity 0.4s ease;
   /* Long names (kana / romaji readings) wrap onto extra lines instead of
@@ -1986,7 +1957,7 @@ tr.branch-junction td {
    stand out from ordinary hover labels. */
 .station-label--endpoint {
   border: 2px solid var(--rail-text);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
   z-index: 650;
 }
 .station-label-badge {
@@ -2053,7 +2024,7 @@ tr.branch-junction td {
   border: var(--hairline);
   border-radius: 50%;
   background: var(--white);
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
   color: var(--rail-text);
   cursor: pointer;
   font-family: Georgia, "Times New Roman", serif;
@@ -2087,7 +2058,7 @@ tr.branch-junction td {
   border: var(--hairline);
   border-radius: var(--radius-card);
   background: var(--white);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
   color: var(--ink);
   scrollbar-gutter: stable;
 }
@@ -2270,7 +2241,7 @@ tr.branch-junction td {
   background: var(--white);
   border: var(--hairline);
   border-radius: var(--radius-button);
-  box-shadow: var(--shadow-md);
+  box-shadow: none;
   padding: 0;
   font-size: var(--font-md);
   max-width: 220px;
@@ -2527,12 +2498,19 @@ tr.branch-junction td {
   color: var(--ink);
   border: var(--hairline);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-xl);
+  box-shadow: none;
   transform: translateY(8px) scale(0.98);
   transition: transform 0.15s ease;
 }
 .rp-modal-overlay.is-open .rp-modal {
   transform: none;
+}
+.rp-modal-title {
+  margin: 0 0 8px;
+  font-size: var(--font-xl);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
 }
 .rp-modal-message {
   margin: 0 0 16px;
@@ -2682,7 +2660,7 @@ tr.branch-junction td {
   padding: 6px 10px;
   border: var(--hairline);
   border-radius: var(--radius-button);
-  box-shadow: var(--shadow-lg);
+  box-shadow: none;
   /* Long train / endpoint names wrap within a sane card width instead of
      one endless line running off the viewport. */
   white-space: normal;
@@ -2696,7 +2674,9 @@ tr.branch-junction td {
    and popup arrows legible on the dark page and official Dark basemap. */
 html[data-theme="dark"] .maplibregl-ctrl-group {
   background: var(--white);
-  box-shadow: 0 0 0 1px var(--rail-dim), var(--shadow-md);
+  /* Plain 1px ring: appending a `none` token to a shadow list invalidates
+     the whole declaration, which silently dropped this ring before. */
+  box-shadow: 0 0 0 1px var(--rail-dim);
 }
 html[data-theme="dark"] .maplibregl-ctrl-group button + button {
   border-top-color: var(--rail-dim);
@@ -2806,7 +2786,7 @@ label {
   border-radius: var(--radius-pill);
   background-color: var(--ios-fill-tertiary);
   color: var(--ios-label);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 500;
 }
 
@@ -2985,7 +2965,7 @@ label {
 summary.subhead-toggle,
 .map-layers-subhead {
   color: var(--ios-label-secondary);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -3023,7 +3003,7 @@ summary.subhead-toggle:hover {
 
 label {
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 500;
 }
 
@@ -3037,9 +3017,9 @@ textarea {
   color: var(--ios-label);
   caret-color: var(--ios-tint);
   transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 input:hover,
@@ -3086,9 +3066,9 @@ button {
   font-weight: 600;
   transition:
     transform 0.12s ease,
-    background-color 0.18s ease,
-    color 0.18s ease,
-    opacity 0.18s ease;
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 
 button:hover {
@@ -3112,12 +3092,7 @@ button.primary:hover,
 .rp-modal-btn--primary:hover {
   border-color: transparent;
   background: var(--ios-tint-hover);
-  color: var(--ios-system-background);
-}
-
-html[data-theme="dark"] button.primary,
-html[data-theme="dark"] .rp-modal-btn--primary {
-  color: #1c1c1e;
+  color: var(--on-accent);
 }
 
 button.danger {
@@ -3129,7 +3104,7 @@ button.danger {
 button.danger:hover {
   border-color: transparent;
   background: var(--ios-red);
-  color: var(--ios-red);
+  color: var(--on-accent);
 }
 
 button:disabled {
@@ -3188,7 +3163,7 @@ input[type="checkbox"]:checked::after {
 }
 
 html[data-theme="dark"] input[type="checkbox"]:checked::after {
-  border-color: #1c1c1e;
+  border-color: var(--on-accent);
 }
 
 .display-toggle {
@@ -3225,6 +3200,7 @@ html[data-theme="dark"] input[type="checkbox"]:checked::after {
   height: 24px;
   border: 0;
   border-radius: 50%;
+  /* iOS switch convention: the knob stays white in both themes. */
   background: #ffffff;
   box-shadow: none;
   opacity: 1;
@@ -3233,7 +3209,9 @@ html[data-theme="dark"] input[type="checkbox"]:checked::after {
 }
 
 .display-toggle input[type="checkbox"]:checked {
-  background: var(--ios-green);
+  /* App accent, not iOS switch green — every other control (sliders, active
+     pills, primary buttons) speaks the tint family; the switch follows. */
+  background: var(--ios-tint);
 }
 
 .display-toggle input[type="checkbox"]:checked::after {
@@ -3290,11 +3268,7 @@ html[data-theme="dark"] input[type="checkbox"]:checked::after {
 .date-btn.active {
   border-color: transparent;
   background: var(--ios-tint);
-  color: var(--ios-system-background);
-}
-
-html[data-theme="dark"] .date-btn.active {
-  color: #1c1c1e;
+  color: var(--on-accent);
 }
 
 .inline-check {
@@ -3311,7 +3285,7 @@ html[data-theme="dark"] .date-btn.active {
   min-height: 64px;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ios-fill-tertiary);
   color: var(--ios-label);
 }
@@ -3375,7 +3349,7 @@ html[data-theme="dark"] .date-btn.active {
 
 .stats-daily-hero {
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ios-tint-soft);
 }
 
@@ -3387,7 +3361,7 @@ html[data-theme="dark"] .date-btn.active {
 
 .danger-zone {
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ios-danger-soft);
 }
 
@@ -3397,7 +3371,7 @@ html[data-theme="dark"] .date-btn.active {
 
 .table-scroll {
   border-color: var(--ios-separator);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ios-secondary-grouped-background);
 }
 
@@ -3484,7 +3458,7 @@ tr.branch-junction td {
 }
 
 .map-layers-control {
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   box-shadow: none;
 }
 
@@ -3492,7 +3466,7 @@ tr.branch-junction td {
   min-height: 40px;
   padding: 8px 12px;
   color: var(--ios-tint);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 600;
 }
 
@@ -3576,7 +3550,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
 .station-label,
 .maplibregl-popup-content,
 .map-line-tip {
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   box-shadow: none;
 }
 
@@ -3645,7 +3619,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
 .rp-modal-btn--danger {
   border-color: transparent;
   background: var(--ios-red);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .sidebar-edge-tab {
@@ -3668,11 +3642,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
    the viewport at every detent without changing the DOM or event contract. */
 @media (max-width: 599px) {
   #sidebar {
-    padding: 42px 14px
-      calc(
-        var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
-          var(--panel-clip, 0px)
-      );
+    /* padding comes from the later compact block (38px 12px …). */
     border: 1px solid var(--ios-separator);
     border-bottom: 0;
     border-radius: 24px 24px 0 0;
@@ -3700,9 +3670,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
   #sidebar .workspace-nav a {
     flex-direction: column;
     gap: 2px;
-    min-height: 52px;
     padding: 3px 2px;
-    border-radius: 12px;
     line-height: 1.05;
   }
 
@@ -3710,10 +3678,6 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
     flex-basis: 21px;
     width: 21px;
     height: 21px;
-  }
-
-  #sidebar .workspace-nav .panel-context {
-    display: none;
   }
 
   /* At the compact detent, reduce the sheet to the persistent tab bar. The
@@ -3764,10 +3728,6 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
     min-height: 36px;
   }
 
-  .toolbar > button {
-    flex: 1 1 132px;
-  }
-
   .sidebar-edge-tab {
     bottom: max(calc(var(--sidebar-size) - 31px), 0px);
     width: 54px;
@@ -3795,13 +3755,10 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
     background: var(--ios-label-tertiary);
   }
 
-  /* The old sticky rule used the clipped part of the transformed sheet as a
-     CSS bottom inset, which pulled the stop toolbar over Train Data at half. */
+  /* Static (not sticky): a sticky bar in the transformed sheet pulled the
+     stop toolbar over Train Data at the half detent. */
   #train-editor .card-body > .toolbar:last-child {
-    position: static;
     margin-top: var(--space-2);
-    padding: 0;
-    border-top: 0;
     background: var(--ios-secondary-grouped-background);
   }
 
@@ -3824,7 +3781,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
 
   .table-scroll tbody tr {
     border-color: var(--ios-separator);
-    border-radius: 14px;
+    border-radius: var(--radius-card);
     background: var(--ios-fill-tertiary);
   }
 
@@ -3853,6 +3810,15 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
   #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
     min-height: var(--ios-touch-height);
   }
+
+  /* Map popover rows and modal action buttons are touch targets too — the
+     sidebar-scoped rule above used to leave them at desktop heights on
+     tablets (the phone tier has its own fuller treatment further down). */
+  .map-layers-control label,
+  .map-layers-control select,
+  .rp-modal-btn {
+    min-height: var(--ios-touch-height);
+  }
 }
 
 /* ==========================================================================
@@ -3864,19 +3830,6 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
    vibrancy. The same five-item bottom bar and menu grammar apply at every
    viewport width.
    ========================================================================== */
-
-:root {
-  --ios-danger-soft: #fbe9e7;
-  --ios-positive-soft: #e6f4e8;
-  --ios-warning-soft: #fff1d6;
-  --ios-nav-reserve: 86px;
-}
-
-html[data-theme="dark"] {
-  --ios-danger-soft: #3a2321;
-  --ios-positive-soft: #203627;
-  --ios-warning-soft: #3a3020;
-}
 
 /* Material effects are intentionally disabled everywhere, including map
    chrome created after boot. Border and tone changes carry the hierarchy. */
@@ -3938,7 +3891,7 @@ h1 {
   border: 1px solid var(--ios-separator);
   background-color: var(--ios-material-strong);
   color: var(--ios-label);
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 #lang-select {
@@ -4011,7 +3964,7 @@ h1 {
 #sidebar > details.card {
   margin-top: var(--space-2);
   border: 1px solid var(--ios-separator);
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   background: var(--ios-secondary-grouped-background);
   box-shadow: none;
 }
@@ -4025,7 +3978,7 @@ h1 {
 summary.subhead-toggle,
 .map-layers-subhead {
   color: var(--ios-label-secondary);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 600;
   line-height: 1.3;
 }
@@ -4036,7 +3989,7 @@ summary.subhead-toggle,
 
 label {
   color: var(--ios-label-secondary);
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 input,
@@ -4054,7 +4007,7 @@ select,
 textarea,
 .rp-modal-input {
   border: 1px solid var(--ios-separator);
-  border-radius: 10px;
+  border-radius: var(--radius-button);
   background: var(--ios-secondary-background);
   color: var(--ios-label);
 }
@@ -4078,7 +4031,7 @@ button,
 .rp-modal-choice {
   padding: 6px 12px;
   border: 1px solid var(--ios-separator);
-  border-radius: 10px;
+  border-radius: var(--radius-button);
   background: var(--ios-fill-secondary);
   color: var(--ios-label);
 }
@@ -4095,13 +4048,7 @@ button.primary,
 .rp-modal-btn--primary {
   border-color: var(--ios-tint);
   background: var(--ios-tint);
-  color: #ffffff;
-}
-
-html[data-theme="dark"] button.primary,
-html[data-theme="dark"] .rp-modal-btn--primary,
-html[data-theme="dark"] .date-btn.active {
-  color: #1c1c1e;
+  color: var(--on-accent);
 }
 
 button.danger {
@@ -4113,7 +4060,7 @@ button.danger {
 button.danger:hover {
   border-color: var(--ios-red);
   background: var(--ios-red);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 button:disabled,
@@ -4171,7 +4118,7 @@ input[type="checkbox"]:checked::after {
 .date-btn.active {
   border-color: var(--ios-tint);
   background: var(--ios-tint);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .train-item,
@@ -4258,7 +4205,7 @@ th {
 .map-layers-control,
 .map-info-panel,
 .rp-modal {
-  border-radius: 14px;
+  border-radius: var(--radius-card);
 }
 
 .map-layers-summary {
@@ -4324,7 +4271,7 @@ th {
 }
 
 .maplibregl-ctrl-group {
-  border-radius: 10px;
+  border-radius: var(--radius-button);
 }
 
 .maplibregl-ctrl-group button {
@@ -4365,7 +4312,7 @@ th {
 .rp-modal-btn--danger {
   border-color: var(--ios-red);
   background: var(--ios-red);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .sidebar-edge-tab,
@@ -4428,7 +4375,7 @@ th {
     display: block;
     margin-bottom: 3px;
     color: var(--ios-label-secondary);
-    font-size: 11px;
+    font-size: var(--font-sm);
   }
 
   .table-scroll tbody tr > td:nth-child(1) {
@@ -4503,7 +4450,7 @@ th {
 
   #sidebar .workspace-nav a {
     min-height: 50px;
-    border-radius: 10px;
+    border-radius: var(--radius-button);
     font-size: 10px;
   }
 
@@ -4616,8 +4563,7 @@ html[data-ui-mode="mobile"] #sidebar {
   max-height: var(--sidebar-open-size);
   padding: 38px 12px
     calc(
-      var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
-        var(--panel-clip, 0px)
+      var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom)
     );
   border: 1px solid var(--ios-separator);
   border-bottom: 0;
@@ -4627,6 +4573,19 @@ html[data-ui-mode="mobile"] #sidebar {
     calc(var(--sidebar-open-size) - var(--sidebar-size))
   );
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Reserve scroll room for the off-screen part of a half/peek sheet without
+   putting that reserve in padding. Padding enlarged the sheet's border box
+   beyond --panel-full, which hid the grabber under the fixed tab bar and made
+   drag calculations report a panel taller than the viewport. */
+html[data-ui-mode="mobile"] #sidebar::after {
+  content: "";
+  order: 100;
+  flex: 0 0 max(0px, var(--panel-clip, 0px));
+  width: 1px;
+  height: max(0px, var(--panel-clip, 0px));
+  pointer-events: none;
 }
 
 html[data-ui-mode="mobile"] #sidebar > * {
@@ -4683,13 +4642,9 @@ html[data-ui-mode="mobile"] .workspace-nav a {
   gap: 2px;
   min-height: 50px;
   padding: 3px 2px;
-  border-radius: 10px;
+  border-radius: var(--radius-button);
   font-size: 10px;
   line-height: 1.05;
-}
-
-html[data-ui-mode="mobile"] .workspace-nav .panel-context {
-  display: none;
 }
 
 html[data-ui-mode="mobile"] #sidebar > header {
@@ -4777,6 +4732,7 @@ html[data-ui-mode="desktop"] {
   --ios-nav-reserve: 70px;
   --font-xs: 9px;
   --font-sm: 10px;
+  --font-caption: 11px;
   --font-md: 12px;
   --font-base: 13px;
   --font-lg: 14px;
@@ -4877,7 +4833,7 @@ html[data-ui-mode="desktop"] .card-body {
 html[data-ui-mode="desktop"] .train-item {
   min-height: 48px;
   padding: 6px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-button);
 }
 
 html[data-ui-mode="desktop"] .workspace-nav {
@@ -4921,10 +4877,6 @@ html[data-ui-mode="desktop"] .workspace-nav a > span:first-child {
   flex-basis: 18px;
   width: 18px;
   height: 18px;
-}
-
-html[data-ui-mode="desktop"] .workspace-nav .panel-context {
-  display: none;
 }
 
 html[data-ui-mode="desktop"] .sidebar-edge-tab,
@@ -4981,7 +4933,7 @@ html[data-ui-mode="desktop"] .map-layers-control:not([open]) .map-layers-summary
 html[data-ui-mode="desktop"] .map-layers-control select,
 html[data-ui-mode="desktop"] .map-layers-control label {
   min-height: var(--ios-control-height);
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 html[data-ui-mode="desktop"] .map-info-summary,
@@ -4995,16 +4947,13 @@ html[data-ui-mode="desktop"] .toolbar > button {
 }
 
 html[data-ui-mode="desktop"] #train-editor .card-body > .toolbar:last-child {
-  position: static;
   margin-top: var(--space-2);
-  padding: 0;
-  border-top: 0;
   background: var(--ios-secondary-grouped-background);
 }
 
 html[data-ui-mode="desktop"] .ui-mode-setting {
   padding: 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-button);
 }
 
 html[data-ui-mode="desktop"] .ui-mode-setting select {
@@ -5056,7 +5005,7 @@ html[data-ui-mode="desktop"] .ui-mode-setting select {
   border-bottom: 1.5px solid currentColor;
   color: var(--ios-label-secondary);
   transform: rotate(45deg);
-  transition: transform 0.18s ease;
+  transition: transform 0.15s ease;
 }
 
 .map-layers-control[open] .map-layers-summary::after {
@@ -5095,7 +5044,7 @@ html[data-ui-mode="desktop"] .ui-mode-setting select {
 .map-layers-control .map-basemap-field > span {
   overflow: hidden;
   color: var(--ios-label-secondary);
-  font-size: 12px;
+  font-size: var(--font-caption);
   font-weight: 500;
   text-overflow: ellipsis;
 }
@@ -5203,13 +5152,13 @@ html[data-ui-mode="desktop"]
   .map-layers-summary {
   min-height: var(--ios-control-height);
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 html[data-ui-mode="desktop"] .map-layers-body {
   width: 260px;
   padding: 5px;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
 }
 
 html[data-ui-mode="desktop"]
@@ -5218,7 +5167,7 @@ html[data-ui-mode="desktop"]
   > label:not(.map-basemap-field) {
   min-height: 34px;
   padding-block: 3px;
-  font-size: 12px;
+  font-size: var(--font-caption);
 }
 
 html[data-ui-mode="desktop"] .map-layers-control .map-basemap-field {

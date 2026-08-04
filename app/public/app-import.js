@@ -825,6 +825,12 @@ async function switchActiveCountry(next) {
     // re-pointing activeCountry (the storage key is country-scoped).
     persistUiDateState();
     activeCountry = next;
+    // Re-resolve country-variant UI strings (app.title.tw, ph.trainType.tw …)
+    // everywhere the switch leaves stale Japanese-dataset copy.
+    if (window.I18N && typeof I18N.setCountry === "function") {
+      I18N.setCountry(next);
+      I18N.applyStatic(document);
+    }
     try {
       localStorage.setItem(COUNTRY_STORAGE_KEY, next);
     } catch (_) {
@@ -908,6 +914,10 @@ async function switchActiveCountry(next) {
 // source buttons are visible/enabled. Safe to call before the DOM listeners
 // are bound and on the Node deployment (where the block is hidden entirely).
 function updateDataSourceUi() {
+  // Country-tagged elements (attribution articles, the N02 stats hint, the
+  // kana toggle …) follow the active dataset on BOTH deployments.
+  if (typeof applyCountryVisibility === "function")
+    applyCountryVisibility(document);
   const statusEl = document.getElementById("data-source-status");
   const sourceBlock = document.getElementById("data-source-block");
   if (!statusEl || !sourceBlock) return;
@@ -957,8 +967,4 @@ function updateDataSourceUi() {
     restoreBtn.hidden = !isSampleMode();
     restoreBtn.disabled = !userStoreAvailable;
   }
-  // The panel context line carries the sample-data badge — a source switch
-  // (保存為我的資料 / loading a sample) must refresh it even when no list
-  // re-render happens, or it keeps claiming the WRONG source.
-  if (typeof updatePanelContextChip === "function") updatePanelContextChip();
 }

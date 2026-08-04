@@ -421,6 +421,7 @@ function isSampleMode() {
 const els = {
   list: document.getElementById("train-list"),
   dateBar: document.getElementById("date-bar"),
+  dateStatus: document.getElementById("date-status"),
   listTitle: document.getElementById("train-list-title"),
   importTarget: document.getElementById("import-target"),
   mapDateFilter: document.getElementById("map-date-filter"),

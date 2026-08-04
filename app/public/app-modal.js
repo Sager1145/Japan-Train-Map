@@ -24,6 +24,7 @@
   const doc = () => global.document;
   // Serializes dialogs: each waits for the previous to close.
   let tail = Promise.resolve();
+  let dialogSequence = 0;
 
   // Translated label with a hard-coded fallback (I18N may not have the key on
   // an old cached bundle, and the sandboxed precompute replay has no I18N).
@@ -60,26 +61,59 @@
           dialog.setAttribute("aria-modal", "true");
           overlay.appendChild(dialog);
 
+          // The overlay is a sibling of #app. Make the application tree
+          // genuinely unavailable while aria-modal is active, then restore
+          // its exact prior state when the dialog closes.
+          const background = d.getElementById("app");
+          const backgroundWasInert = background ? Boolean(background.inert) : false;
+          const backgroundHadAriaHidden = background
+            ? background.hasAttribute("aria-hidden")
+            : false;
+          const backgroundAriaHidden = background
+            ? background.getAttribute("aria-hidden")
+            : null;
+          if (background) {
+            background.inert = true;
+            background.setAttribute("aria-hidden", "true");
+          }
+
           let settled = false;
+          let cleaned = false;
+          let settledValue;
+          const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
+            if (overlay.parentNode) overlay.remove();
+            if (background) {
+              background.inert = backgroundWasInert;
+              if (backgroundHadAriaHidden)
+                background.setAttribute("aria-hidden", backgroundAriaHidden);
+              else background.removeAttribute("aria-hidden");
+            }
+            if (
+              previouslyFocused &&
+              previouslyFocused.focus &&
+              previouslyFocused.isConnected !== false
+            ) {
+              try {
+                previouslyFocused.focus();
+              } catch (_) {
+                /* element gone */
+              }
+            }
+            // Resolve only after teardown so a queued dialog cannot overlap
+            // this one's inert/focus state during the closing transition.
+            resolve(settledValue);
+          };
           const finish = (value) => {
             if (settled) return;
             settled = true;
+            settledValue = value;
             d.removeEventListener("keydown", onKey, true);
             overlay.classList.remove("is-open");
-            const cleanup = () => {
-              if (overlay.parentNode) overlay.remove();
-              if (previouslyFocused && previouslyFocused.focus) {
-                try {
-                  previouslyFocused.focus();
-                } catch (_) {
-                  /* element gone */
-                }
-              }
-            };
             // Remove after the fade-out; also guard with a fallback timer.
             overlay.addEventListener("transitionend", cleanup, { once: true });
             global.setTimeout(cleanup, 220);
-            resolve(value);
           };
 
           const onKey = (e) => {
@@ -127,6 +161,29 @@
 
           render(dialog, finish);
 
+          const heading = dialog.querySelector(".rp-modal-title");
+          const message = dialog.querySelector(".rp-modal-message");
+          const labelEl =
+            heading && heading.textContent
+              ? heading
+              : message && message.textContent
+                ? message
+                : null;
+          if (labelEl) {
+            labelEl.id = `rp-modal-label-${++dialogSequence}`;
+            dialog.setAttribute("aria-labelledby", labelEl.id);
+            const input = dialog.querySelector(".rp-modal-input");
+            // The input is described by the message body when there is one.
+            if (input && message && message.textContent) {
+              if (!message.id) message.id = `rp-modal-message-${dialogSequence}`;
+              input.setAttribute("aria-labelledby", message.id);
+            } else if (input) {
+              input.setAttribute("aria-labelledby", labelEl.id);
+            }
+          } else {
+            dialog.setAttribute("aria-label", label("modal.dialog", "Dialog"));
+          }
+
           d.body.appendChild(overlay);
           // Force a reflow so the .is-open transition actually plays.
           void overlay.offsetWidth;
@@ -167,11 +224,26 @@
     return p;
   }
 
+  // Optional opts.title heading shared by confirm/prompt/choose.
+  function titleNode(title) {
+    if (title == null || title === "") return null;
+    const h = doc().createElement("h2");
+    h.className = "rp-modal-title";
+    h.textContent = String(title);
+    return h;
+  }
+
+  function appendHeader(dialog, message, opts) {
+    const heading = titleNode(opts && opts.title);
+    if (heading) dialog.appendChild(heading);
+    dialog.appendChild(messageNode(message));
+  }
+
   function uiConfirm(message, opts = {}) {
     const render = (dialog, finish) => {
       const acceptValue = () => true;
       const { actions, ok } = actionsRow(finish, opts, acceptValue);
-      dialog.appendChild(messageNode(message));
+      appendHeader(dialog, message, opts);
       dialog.appendChild(actions);
       render.getAcceptValue = () => true;
       render.initialFocus = () => ok.focus();
@@ -190,7 +262,7 @@
       if (opts.placeholder) input.placeholder = opts.placeholder;
       const acceptValue = () => input.value;
       const { actions } = actionsRow(finish, opts, acceptValue);
-      dialog.appendChild(messageNode(message));
+      appendHeader(dialog, message, opts);
       dialog.appendChild(input);
       dialog.appendChild(actions);
       render.getAcceptValue = () => input.value;
@@ -206,7 +278,7 @@
   function uiChoose(message, items, opts = {}) {
     const render = (dialog, finish) => {
       const d = doc();
-      dialog.appendChild(messageNode(message));
+      appendHeader(dialog, message, opts);
       const list = d.createElement("div");
       list.className = "rp-modal-choices";
       (items || []).forEach((item, index) => {

@@ -76,6 +76,43 @@ test("every language-change listener runs without undefined identifiers", () => 
   for (const listener of i18nListeners) listener("en");
 });
 
+test("date actions report in the visible train workspace", async () => {
+  const { context } = loadAppFamily();
+  const run = (code) => vm.runInContext(code, context);
+
+  run('uiPrompt = async () => "not-a-date";');
+  await run("addManualDate()");
+  assert.equal(run("els.dateStatus.textContent"), "status.invalidDate");
+  assert.equal(
+    run("els.importStatus.textContent"),
+    "",
+    "date feedback must not leak into the hidden Data workspace",
+  );
+
+  run("manualDates = ['2026-08-04']; renderAll = () => {};");
+  run("removeEmptyDates()");
+  assert.equal(run("els.dateStatus.textContent"), "status.emptyDatesRemoved");
+  assert.equal(run("els.importStatus.textContent"), "");
+});
+
+test("mobile peek reserves navigation plus an exposed handle", () => {
+  const { context } = loadAppFamily();
+  context.__mobileNav = {
+    getBoundingClientRect: () => ({ height: 98 }),
+  };
+  const size = vm.runInContext(
+    `(() => {
+      window.innerHeight = 800;
+      const querySelector = document.querySelector.bind(document);
+      document.querySelector = (selector) =>
+        selector === ".workspace-nav" ? __mobileNav : querySelector(selector);
+      return sidebarPanelSizePx("peek");
+    })()`,
+    context,
+  );
+  assert.equal(size, 130);
+});
+
 test("recovery mode blocks autosave and pins the raw JSON for rescue", () => {
   const { context } = loadAppFamily();
   const run = (code) => vm.runInContext(code, context);

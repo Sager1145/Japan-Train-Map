@@ -92,6 +92,23 @@ function loadActiveCountry() {
     /* localStorage unavailable: stay on the default country */
   }
   TRAIN_STORE_API = trainStoreApiForCountry(activeCountry);
+  if (window.I18N && typeof I18N.setCountry === "function") {
+    I18N.setCountry(activeCountry);
+    // i18n's own DOMContentLoaded pass has already run by now (its listener
+    // registers first), so a non-default country must re-resolve the
+    // country-variant strings (app.title.tw, ph.trainType.tw …).
+    if (activeCountry !== "jp" && typeof I18N.applyStatic === "function")
+      I18N.applyStatic(document);
+  }
+}
+// Elements tagged data-country="jp"/"tw" (attribution articles, the N02 stats
+// hint, the kana toggle …) only apply to one dataset; hide the rest. Runs at
+// boot and again on every country switch (updateDataSourceUi).
+function applyCountryVisibility(root) {
+  const scope = root || document;
+  scope.querySelectorAll("[data-country]").forEach((el) => {
+    el.hidden = el.getAttribute("data-country") !== activeCountry;
+  });
 }
 // Country-scoped IndexedDB database name (user store, pending-save journal,
 // local-file handles). Japan keeps the historical unsuffixed names.

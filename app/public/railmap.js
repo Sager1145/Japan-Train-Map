@@ -834,6 +834,24 @@
       }
       if (m.getLayer(TRAIN_SEL_CASING_LAYER))
         m.setPaintProperty(TRAIN_SEL_CASING_LAYER, "line-color", colors.casing);
+      if (m.getLayer(STATIONS_LAYER)) {
+        m.setPaintProperty(
+          STATIONS_LAYER,
+          "circle-color-transition",
+          transition,
+        );
+        m.setPaintProperty(STATIONS_LAYER, "circle-color", colors.stationDot);
+        m.setPaintProperty(
+          STATIONS_LAYER,
+          "circle-stroke-color-transition",
+          transition,
+        );
+        m.setPaintProperty(
+          STATIONS_LAYER,
+          "circle-stroke-color",
+          colors.stationRing,
+        );
+      }
     },
     _applyEffectiveFade(duration) {
       const m = this._map;

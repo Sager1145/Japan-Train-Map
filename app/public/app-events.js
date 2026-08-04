@@ -17,7 +17,12 @@
 // =========================================================================
 const SIDEBAR_VISIBILITY_KEY = "n02-train-manager-sidebar-visible-v1";
 const SIDEBAR_PANEL_STATE_KEY = "n02-train-manager-panel-state-v1";
-// Mobile bottom-panel detents, in cycling order (tap on the handle).
+// A collapsed mobile sheet still needs a visible/tappable grabber above the
+// independently fixed bottom navigation. The navigation rect already includes
+// its safe-area inset, so do not add that inset a second time here.
+const SIDEBAR_HANDLE_ZONE_PX = 32;
+// Mobile bottom-panel detents. The handle expands half→full, minimizes
+// full→peek, and can hide peek entirely so the map is keyboard-accessible.
 const SIDEBAR_PANEL_STATES = ["peek", "half", "full"];
 let sidebarVisible = true;
 let sidebarPanelState = "half";
@@ -52,21 +57,6 @@ function sidebarFullSize() {
     : 480;
 }
 
-// env(safe-area-inset-bottom) is not readable from JS; measure it once via a
-// probe element. Reset on resize — rotation changes the inset.
-let sidebarSafeAreaBottom = null;
-function safeAreaBottomPx() {
-  if (sidebarSafeAreaBottom !== null) return sidebarSafeAreaBottom;
-  if (!document.body || typeof document.createElement !== "function") return 0;
-  const probe = document.createElement("div");
-  probe.style.cssText =
-    "position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;";
-  document.body.appendChild(probe);
-  sidebarSafeAreaBottom = probe.getBoundingClientRect().height;
-  probe.remove();
-  return sidebarSafeAreaBottom;
-}
-
 // One mobile detent in px. Peek exposes only the independently fixed bottom
 // navigation while the scrollable sheet parks behind it.
 function sidebarPanelSizePx(state) {
@@ -75,8 +65,8 @@ function sidebarPanelSizePx(state) {
   if (state === "half")
     return Math.min(full, Math.round(window.innerHeight * 0.5));
   const nav = document.querySelector(".workspace-nav");
-  const navHeight = nav ? nav.getBoundingClientRect().height : 86;
-  return Math.min(full, Math.ceil(navHeight + safeAreaBottomPx()));
+  const navHeight = nav ? nav.getBoundingClientRect().height : 64;
+  return Math.min(full, Math.ceil(navHeight + SIDEBAR_HANDLE_ZONE_PX));
 }
 
 // The footprint the map camera should currently compensate for.
@@ -166,7 +156,12 @@ function cancelScheduledSidebarMapPadding() {
 function updateSidebarToggleLabel() {
   const tab = document.getElementById("sidebar-edge-tab");
   if (!tab) return;
-  const label = I18N.t(sidebarVisible ? "menu.hide" : "menu.show");
+  let labelKey = sidebarVisible ? "menu.hide" : "menu.show";
+  if (sidebarVisible && sidebarUsesVerticalDrag()) {
+    if (sidebarPanelState === "half") labelKey = "menu.expand";
+    else if (sidebarPanelState === "full") labelKey = "menu.minimize";
+  }
+  const label = I18N.t(labelKey);
   tab.setAttribute("aria-expanded", sidebarVisible ? "true" : "false");
   tab.setAttribute("aria-label", label);
   tab.title = label;
@@ -238,6 +233,7 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
 function setSidebarPanelState(state, { persist = true, animate = true } = {}) {
   if (!SIDEBAR_PANEL_STATES.includes(state)) state = "half";
   sidebarPanelState = state;
+  updateSidebarToggleLabel();
   if (persist) {
     try {
       localStorage.setItem(SIDEBAR_PANEL_STATE_KEY, state);
@@ -290,8 +286,11 @@ function setupSidebarToggle() {
       return;
     }
     if (sidebarUsesVerticalDrag()) {
-      // Tap cycles the detents; from hidden it restores the last one.
+      // Tap advances the useful mobile states. At peek, the navigation itself
+      // raises a chosen workspace; the grabber hides the remaining chrome so
+      // touch and keyboard users both have a route to a true full-screen map.
       if (!sidebarVisible) setSidebarVisible(true);
+      else if (sidebarPanelState === "peek") setSidebarVisible(false);
       else
         setSidebarPanelState(
           SIDEBAR_PANEL_STATES[
@@ -447,9 +446,7 @@ function setupSidebarToggle() {
     clearTimeout(sidebarWindowResizeTimer);
     sidebarWindowResizeTimer = setTimeout(() => {
       sidebarWindowResizeTimer = null;
-      // Rotation / breakpoint crossings change the safe-area inset and every
-      // detent's px value — refresh both before the padding is re-applied.
-      sidebarSafeAreaBottom = null;
+      // Rotation / breakpoint crossings change every detent's px value.
       syncSidebarPanelStyle(app);
       // Crossing INTO the desktop layout re-opens the mobile-collapsed
       // sections (raw JSON areas, advanced display knobs) so the flat
@@ -481,7 +478,6 @@ function setupSidebarToggle() {
     }
     app.style.removeProperty("--kb-inset");
     app.style.removeProperty("--sidebar-size");
-    sidebarSafeAreaBottom = null;
     syncSidebarPanelStyle(app);
     if (!sidebarUsesVerticalDrag())
       document
@@ -542,6 +538,20 @@ const WORKSPACE_TABS = [
   "display-settings",
 ];
 
+// A restored #workspace hash can make browsers scroll the otherwise locked
+// body to that card after first paint. The fixed-height app then starts above
+// the viewport, and hiding the sheet exposes its off-screen contents. Reset
+// both possible scrolling roots now and once more on the next frame.
+function resetWorkspaceDocumentScroll() {
+  const reset = () => {
+    if (document.documentElement && document.documentElement.scrollTo)
+      document.documentElement.scrollTo(0, 0);
+    if (document.body && document.body.scrollTo) document.body.scrollTo(0, 0);
+  };
+  reset();
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(reset);
+}
+
 function setActiveWorkspaceTab(tabId, { updateHash = true } = {}) {
   if (!WORKSPACE_TABS.includes(tabId)) tabId = WORKSPACE_TABS[0];
   document
@@ -563,6 +573,7 @@ function setActiveWorkspaceTab(tabId, { updateHash = true } = {}) {
     history.replaceState(null, "", "#" + tabId);
   const sidebar = document.getElementById("sidebar");
   if (sidebar) sidebar.scrollTop = 0;
+  resetWorkspaceDocumentScroll();
   // Compute the mileage stats lazily, the first time (and only when) the 統計
   // tab is actually opened — scheduleMileageStats() otherwise skips while the
   // panel is hidden, so the 12 MB rail-sections parse it needs never lands on
@@ -598,9 +609,12 @@ function setupWorkspaceTabs() {
     )
       setSidebarPanelState("half");
   });
-  window.addEventListener("hashchange", () =>
-    setActiveWorkspaceTab(location.hash.slice(1), { updateHash: false }),
-  );
+  window.addEventListener("hashchange", () => {
+    setActiveWorkspaceTab(location.hash.slice(1), { updateHash: false });
+    resetWorkspaceDocumentScroll();
+  });
+  window.addEventListener("load", resetWorkspaceDocumentScroll);
+  window.addEventListener("pageshow", resetWorkspaceDocumentScroll);
   setActiveWorkspaceTab(location.hash.slice(1) || WORKSPACE_TABS[0], {
     updateHash: false,
   });
@@ -914,8 +928,10 @@ function bindEvents() {
   // The static deploy's sample workflow replaces the tiny built-in seed store;
   // hide the button there instead of offering two different "samples".
   if (!HAS_BACKEND) resetDefaultsBtn.hidden = true;
-  resetDefaultsBtn.addEventListener("click", () => {
+  resetDefaultsBtn.addEventListener("click", async () => {
     if (importBusy()) return;
+    if (!(await uiConfirm(I18N.t("confirm.resetDefaults"), { danger: true })))
+      return;
     // Explicit reset: the user is deliberately abandoning whatever failed to
     // load, so read-only recovery (if active) ends and the reset persists.
     exitStoreRecoveryMode();

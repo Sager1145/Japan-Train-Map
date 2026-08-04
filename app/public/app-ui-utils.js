@@ -71,7 +71,7 @@ function buildStopPopup(stopFeature, train) {
     [stationCodeFieldLabel(p.n02_station_code), p.n02_station_code || "-"],
     [
       stationCodeSystem(p.n02_station_code) === "TDX"
-        ? "Station group"
+        ? I18N.t("popup.stationGroup")
         : "N02_005g",
       p.n02_group_code || p.official_station_group_id || "-",
     ],
@@ -81,7 +81,10 @@ function buildStopPopup(stopFeature, train) {
       I18N.t("popup.computed"),
       p.pass_through_computed ? I18N.t("popup.yes") : I18N.t("popup.no"),
     ],
-    [I18N.t("popup.routeSource"), p.source || "station overlay"],
+    [
+      I18N.t("popup.routeSource"),
+      p.source || I18N.t("popup.sourceStationOverlay"),
+    ],
   ]);
 }
 
@@ -136,8 +139,13 @@ function stationNameCellHtml(name, code) {
 // =========================================================================
 
 function setStatus(el, message, type) {
+  if (!el) return;
   el.textContent = message;
   el.className = `status ${type || ""}`;
+  // Routine progress/success messages should not interrupt input, while an
+  // error needs to be announced immediately even when the status line is just
+  // outside the visible part of a mobile sheet.
+  el.setAttribute("aria-live", type === "err" ? "assertive" : "polite");
 }
 
 // jsonspec §5.1 colour shape (#RRGGBB), shared by the editor's fallback below

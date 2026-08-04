@@ -105,7 +105,9 @@ const DISPLAY_TOGGLES = [
   // diagnosis tools — they live in the 進階 group.
   { key: "showFitCurves", labelKey: "disp.fitCurves", rebuild: false, advanced: true },
   { key: "showHoverRegions", labelKey: "disp.hoverRegions", rebuild: false, advanced: true },
-  { key: "nameReadingKana", labelKey: "disp.nameReadingKana", rebuild: false, refreshNames: true },
+  // Kana readings only exist for Japanese stations — the row hides in Taiwan
+  // mode via the shared [data-country] visibility pass.
+  { key: "nameReadingKana", labelKey: "disp.nameReadingKana", rebuild: false, refreshNames: true, country: "jp" },
   { key: "nameReadingRomaji", labelKey: "disp.nameReadingRomaji", rebuild: false, refreshNames: true },
   { key: "nameReadingZh", labelKey: "disp.nameReadingZh", rebuild: false, refreshNames: true },
 ];
@@ -268,9 +270,11 @@ function setupThemeSelect() {
 function setDocumentTheme(resolved) {
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
+  // Keep in sync with the index.html boot script, which writes the same
+  // values before this module loads (light --ios-grouped, dark black).
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   if (themeMeta)
-    themeMeta.content = resolved === "dark" ? "#1c1c1e" : "#ff5522";
+    themeMeta.content = resolved === "dark" ? "#000000" : "#f2f2f7";
 }
 
 function transitionDocumentTheme(resolved, animate) {
@@ -302,12 +306,14 @@ async function applyDisplayTheme({ updateMap = true, persist = true } = {}) {
   if (persist) persistDisplaySettings();
   const canUpdateMap =
     updateMap &&
-    changed &&
     map &&
     window.RailMap &&
     typeof RailMap.setBasemapTheme === "function";
   transitionDocumentTheme(resolved, animate);
   if (canUpdateMap) {
+    // Always converge instead of gating on `changed`: our bookkeeping can
+    // desync from the map's actually-installed theme (e.g. a system flip
+    // racing boot), and RailMap dedupes a no-op switch cheaply.
     await RailMap.setBasemapTheme(resolved, { animate });
   }
 }
@@ -488,6 +494,7 @@ function setupDisplaySettingsPanel() {
   DISPLAY_TOGGLES.forEach((cfg) => {
     const wrap = document.createElement("label");
     wrap.className = "inline-check display-toggle";
+    if (cfg.country) wrap.dataset.country = cfg.country;
     const input = document.createElement("input");
     input.type = "checkbox";
     input.checked = Boolean(DISPLAY[cfg.key]);

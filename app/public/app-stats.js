@@ -484,7 +484,7 @@ function topRiddenSegments(entries) {
   for (const en of entries) {
     for (const sg of en.segments || []) {
       const pair = [sg.from, sg.to];
-      const key = pair.slice().sort().join(" ");
+      const key = pair.slice().sort().join("\u0000");
       const cur = acc.get(key);
       if (cur) {
         cur.count += 1;
@@ -1004,7 +1004,7 @@ function categoryLineBreakdownHtml(s, categoryMask, listAll) {
       })
       .join("") +
     `</div>`;
-  return `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byLine"))}（${rows.length}）</summary>${body}</details>`;
+  return `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byLineCount", { count: rows.length }))}</summary>${body}</details>`;
 }
 
 function renderMileageStatsDom(view) {
@@ -1128,7 +1128,7 @@ function topSegmentsHtml(top) {
       .join("");
     const more =
       rows.length > 1
-        ? `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byCount"))}（${rows.length}）</summary><div class="stat-subrows">${rest}</div></details>`
+        ? `<details class="stat-lines"><summary class="stat-lines-summary">${escapeHtml(I18N.t("stats.byCountCount", { count: rows.length }))}</summary><div class="stat-subrows">${rest}</div></details>`
         : "";
     return `
       <div class="stat-row">

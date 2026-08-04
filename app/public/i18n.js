@@ -312,25 +312,41 @@
   const trainName = placeName; // same dictionary covers service names
 
   // ---- static DOM application --------------------------------------------
+  // Country-variant lookup: while Taiwan is active, "app.title" resolves to
+  // "app.title.tw" when that key exists, so one data-i18n attribute serves
+  // both datasets (title, placeholders, attribution copy …). The app pushes
+  // the country in via I18N.setCountry (i18n.js loads before app-config.js).
+  let uiCountry = "jp";
+  function setCountry(country) {
+    uiCountry = country === "tw" ? "tw" : "jp";
+  }
+  function countryVariantKey(key) {
+    if (uiCountry === "jp") return key;
+    const variant = key + "." + uiCountry;
+    return STRINGS[variant] ? variant : key;
+  }
+  function tc(key, params) {
+    return t(countryVariantKey(key), params);
+  }
   function applyStatic(root) {
     const scope = root || document;
     scope.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = t(el.getAttribute("data-i18n"));
+      el.textContent = tc(el.getAttribute("data-i18n"));
     });
     scope.querySelectorAll("[data-i18n-html]").forEach((el) => {
-      el.innerHTML = t(el.getAttribute("data-i18n-html"));
+      el.innerHTML = tc(el.getAttribute("data-i18n-html"));
     });
     scope.querySelectorAll("[data-i18n-ph]").forEach((el) => {
-      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-ph")));
+      el.setAttribute("placeholder", tc(el.getAttribute("data-i18n-ph")));
     });
     scope.querySelectorAll("[data-i18n-title]").forEach((el) => {
-      el.setAttribute("title", t(el.getAttribute("data-i18n-title")));
+      el.setAttribute("title", tc(el.getAttribute("data-i18n-title")));
     });
     scope.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
-      el.setAttribute("aria-label", t(el.getAttribute("data-i18n-aria-label")));
+      el.setAttribute("aria-label", tc(el.getAttribute("data-i18n-aria-label")));
     });
     document.documentElement.lang = currentLang;
-    document.title = t("app.title");
+    document.title = tc("app.title");
   }
 
   // ---- change listeners / language switch --------------------------------
@@ -407,6 +423,8 @@
     setStationReadings: setStationReadings,
     setLang: setLang,
     getLang: () => currentLang,
+    setCountry: setCountry,
+    tc: tc,
     onChange: onChange,
     applyStatic: applyStatic,
   };

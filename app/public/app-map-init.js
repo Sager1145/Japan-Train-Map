@@ -250,12 +250,18 @@ function buildMapInfoControl() {
 
   const summary = document.createElement("summary");
   summary.className = "map-info-summary";
-  summary.setAttribute("data-i18n-aria-label", "info.button");
+  // Same disclosure semantics as .map-layers-summary — the two corner
+  // popovers must read identically to assistive tech.
+  summary.setAttribute("role", "button");
+  summary.setAttribute("aria-haspopup", "true");
   summary.setAttribute("aria-expanded", "false");
+  summary.setAttribute("aria-controls", "map-info-panel");
+  summary.setAttribute("data-i18n-aria-label", "info.button");
   summary.innerHTML = '<span aria-hidden="true">i</span>';
 
   const panel = document.createElement("div");
   panel.className = "map-info-panel";
+  panel.id = "map-info-panel";
   panel.innerHTML = `
     <header class="map-info-header">
       <h2 data-i18n="info.title">圖例與資料來源</h2>
@@ -289,17 +295,22 @@ function buildMapInfoControl() {
     <section class="map-info-section" aria-labelledby="map-info-sources-heading">
       <h3 id="map-info-sources-heading" data-i18n="info.sourcesHeading">資料與授權</h3>
       <div class="map-info-sources">
-        <article class="map-info-source">
+        <article class="map-info-source" data-country="jp">
           <strong data-i18n="info.n02Title">日本鐵路網</strong>
           <p data-i18n="info.n02Body">國土交通省「國土數值情報（鐵道資料 N02）」經加工製作。</p>
           <div class="map-info-links"><a href="https://nlftp.mlit.go.jp/ksj/" target="_blank" rel="noopener noreferrer">MLIT N02</a><a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></div>
+        </article>
+        <article class="map-info-source" data-country="tw">
+          <strong data-i18n="info.twRailTitle">台灣鐵路網</strong>
+          <p data-i18n="info.twRailBody">交通部「TDX 運輸資料流通服務平臺」鐵道資料經加工製作。</p>
+          <div class="map-info-links"><a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener noreferrer">TDX</a><a href="https://data.gov.tw/license" target="_blank" rel="noopener noreferrer" data-i18n="info.twLicense">政府資料開放授權條款</a></div>
         </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
           <p data-i18n="info.basemapBody">亮色使用 OpenFreeMap Positron，暗色使用官方 Dark 樣式。</p>
           <div class="map-info-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a><a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a></div>
         </article>
-        <article class="map-info-source">
+        <article class="map-info-source" data-country="jp">
           <strong data-i18n="info.namesTitle">站名羅馬字</strong>
           <p data-i18n="info.namesBody">OpenStreetMap contributors，依 ODbL 授權。</p>
         </article>
@@ -315,6 +326,10 @@ function buildMapInfoControl() {
   control.append(summary, panel);
   map.getContainer().appendChild(control);
   I18N.applyStatic(control);
+  // Attribution articles are per-country ([data-country]); hide the ones that
+  // don't apply to the active dataset (MLIT N02 for Japan, TDX for Taiwan).
+  if (typeof applyCountryVisibility === "function")
+    applyCountryVisibility(control);
 
   control.addEventListener("toggle", () => {
     summary.setAttribute("aria-expanded", control.open ? "true" : "false");

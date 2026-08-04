@@ -318,9 +318,10 @@
       filter: [">=", ["zoom"], ["get", "minz"]],
       layout: { visibility: "none" },
       paint: {
-        "circle-color": tokens.railDim,
+        // Theme-dependent: _applyThemePaint rewrites both colors on switch.
+        "circle-color": MAP_SURFACE_COLORS.light.stationDot,
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.4, 12, 3],
-        "circle-stroke-color": tokens.white,
+        "circle-stroke-color": MAP_SURFACE_COLORS.light.stationRing,
         "circle-stroke-width": 1,
       },
     });
