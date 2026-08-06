@@ -176,6 +176,7 @@
     _engagedTids: [], // trains whose true-track lines are currently hidden
     _expandFilterTids: [], // trains the expand layers currently show
     _expandT: 0,
+    _expandOpacity: 0,
     _expandAnimId: null,
     _groupTransition: null,
     _groupTransitionRaf: null,
@@ -253,6 +254,7 @@
         [TRAIN_ROUTES_LAYER, ["line-opacity"]],
         [TRAIN_XDAY_LAYER, ["line-opacity"]],
         [TRAIN_XDAY_STOP_LAYER, ["icon-opacity"]],
+        [TRAIN_HOVER_LAYER, ["line-opacity"]],
         [TRAIN_SEL_CASING_LAYER, ["line-opacity"]],
         [TRAIN_SEL_LAYER, ["line-opacity"]],
         [TRAIN_EXPAND_LAYER, ["line-opacity"]],
@@ -1459,23 +1461,36 @@
     _applyHoverFilter() {
       const m = this._map;
       if (!m) return;
+      this._applyHoverDim();
+      this._applyHoverLayerFilters();
+    },
+    // Hover emphasis is a separate, wider line layer.  A tid filter that
+    // changes directly from A to B cannot animate, so keep every tid whose
+    // focus weight is still non-zero (plus its next target) in the layer and
+    // let _applyDimPaint crossfade their line-opacity values.  The same union
+    // drives the expanded-fan hover layer.
+    _applyHoverLayerFilters() {
+      const m = this._map;
+      if (!m) return;
+      const focusTids = this._opacityWeightIds(
+        this._dimFocusWeights,
+        this._dimFocusWeightTargets,
+      );
       if (m.getLayer(TRAIN_HOVER_LAYER))
         m.setFilter(TRAIN_HOVER_LAYER, [
           "all",
-          ["==", ["get", "tid"], this._hoverTrainId || NO_TRAIN],
+          this._expandSelector(focusTids),
           this._notExpanded(),
           // Same reason as the SEL layers: hovering must not un-dash the
           // cross-day half by drawing it solid on top.
           ["!", this._xDaySelector()],
         ]);
-      // The expanded fan mirrors the hover: the hovered train's LANE widens.
       if (m.getLayer(TRAIN_EXPAND_HOVER_LAYER))
         m.setFilter(TRAIN_EXPAND_HOVER_LAYER, [
           "all",
           this._expandSelector(this._expandFilterTids),
-          ["==", ["get", "tid"], this._hoverTrainId || NO_TRAIN],
+          this._expandSelector(focusTids),
         ]);
-      this._applyHoverDim();
     },
 
     // ── hover spotlight: dim every train that is NOT being hovered ──
@@ -1502,9 +1517,77 @@
     //   sel   -> non-selected features lerp own -> flat SELECT_DIM
     //   hover -> non-hovered features multiply toward HOVER_DIM;
     //            hovered features lerp their sel-dim away (spotlight wins)
-    // Role-set changes (hover moving between trains, switching days) apply
-    // at the current strength; engage/disengage is what animates.
+    // Hover role changes get a second pair of animated weight maps: one for
+    // the spotlight set (a whole expanded group can stay bright) and one for
+    // the single widened focus line.  This makes A -> B a true crossfade even
+    // while the global hover strength is already settled at 1.
     _dimSpeedMs: { hover: 250, sel: 350, date: 400 },
+    _syncOpacityWeights(weightsKey, targetsKey, desiredIds, alreadyActive) {
+      const desired = new Set((desiredIds || []).filter(Boolean));
+      let weights = this[weightsKey];
+      if (!(weights instanceof Map)) weights = new Map();
+      const targets = new Map();
+      if (!desired.size) {
+        // The global hover strength already supplies the leave fade.  Holding
+        // the last membership weights until that reaches zero avoids dipping
+        // the formerly hovered line through the dim state on its way out.
+        weights.forEach((weight, id) => targets.set(id, weight));
+      } else {
+        weights.forEach((_weight, id) => targets.set(id, desired.has(id) ? 1 : 0));
+        desired.forEach((id) => {
+          if (!weights.has(id)) weights.set(id, alreadyActive ? 0 : 1);
+          targets.set(id, 1);
+        });
+      }
+      this[weightsKey] = weights;
+      this[targetsKey] = targets;
+    },
+    _opacityWeightIds(weights, targets) {
+      const ids = new Set();
+      if (weights instanceof Map)
+        weights.forEach((weight, id) => {
+          if (weight > 0) ids.add(id);
+        });
+      if (targets instanceof Map)
+        targets.forEach((target, id) => {
+          if (target > 0) ids.add(id);
+        });
+      return [...ids];
+    },
+    _opacityWeightExpr(weights) {
+      if (!(weights instanceof Map)) return 0;
+      const entries = [...weights].filter(([, weight]) => weight > 0);
+      if (!entries.length) return 0;
+      const expr = ["match", ["get", "tid"]];
+      entries.forEach(([id, weight]) => expr.push(id, weight));
+      expr.push(0);
+      return expr;
+    },
+    _advanceOpacityWeights(weightsKey, targetsKey, dt, duration) {
+      const weights = this[weightsKey];
+      const targets = this[targetsKey];
+      if (!(weights instanceof Map) || !(targets instanceof Map))
+        return { moving: false, filtersDirty: false };
+      let moving = false;
+      let filtersDirty = false;
+      targets.forEach((target, id) => {
+        const cur = weights.get(id) || 0;
+        const rate = dt / duration;
+        const next =
+          cur < target
+            ? Math.min(target, cur + rate)
+            : Math.max(target, cur - rate);
+        if (next === 0 && target === 0) {
+          weights.delete(id);
+          targets.delete(id);
+          filtersDirty = true;
+          return;
+        }
+        weights.set(id, next);
+        if (next !== target) moving = true;
+      });
+      return { moving, filtersDirty };
+    },
     _updateDimTargets() {
       if (!this._dimVals) {
         this._dimVals = { hover: 0, sel: 0, date: 0 };
@@ -1513,7 +1596,20 @@
       // Latch the last-known active sets so a fade-OUT still knows which
       // features were dimmed while the strength ramps back to 0.
       const hoverTids = this._activeHoverTids();
-      if (hoverTids && hoverTids.length) this._dimHoverTids = hoverTids.slice();
+      const hoverAlreadyActive =
+        this._dimVals.hover > 0 || this._dimTargets.hover > 0;
+      this._syncOpacityWeights(
+        "_dimHoverWeights",
+        "_dimHoverWeightTargets",
+        hoverTids,
+        hoverAlreadyActive,
+      );
+      this._syncOpacityWeights(
+        "_dimFocusWeights",
+        "_dimFocusWeightTargets",
+        this._hoverTrainId ? [this._hoverTrainId] : null,
+        hoverAlreadyActive,
+      );
       if (this._selectedTrainId) this._dimSelId = this._selectedTrainId;
       if (this._activeDate) this._dimDate = this._activeDate;
       this._dimTargets = {
@@ -1521,8 +1617,9 @@
         sel: this._selectedTrainId ? 1 : 0,
         date: this._activeDate ? 1 : 0,
       };
-      // Role changes at steady strength (e.g. sweeping the pointer between
-      // trains) must re-apply immediately even when nothing is ramping.
+      // Commit the exact current state before the next animation frame.  On a
+      // role change this is still the OLD visual state (old weight 1, new
+      // weight 0), so no frame can flash the new route fully opaque.
       this._applyDimPaint();
       this._ensureDimAnim();
     },
@@ -1533,6 +1630,7 @@
         const dt = Math.min(50, now - (this._dimLast || now));
         this._dimLast = now;
         let moving = false;
+        let hoverFiltersDirty = false;
         ["hover", "sel", "date"].forEach((k) => {
           const target = this._dimTargets[k];
           const cur = this._dimVals[k];
@@ -1545,6 +1643,19 @@
           this._dimVals[k] = next;
           if (next !== target) moving = true;
         });
+        [
+          ["_dimHoverWeights", "_dimHoverWeightTargets"],
+          ["_dimFocusWeights", "_dimFocusWeightTargets"],
+        ].forEach(([weightsKey, targetsKey]) => {
+          const result = this._advanceOpacityWeights(
+            weightsKey,
+            targetsKey,
+            dt,
+            this._dimSpeedMs.hover,
+          );
+          if (result.moving) moving = true;
+          if (result.filtersDirty) hoverFiltersDirty = true;
+        });
         // Rebuilding the data-driven opacity expressions forces MapLibre to
         // re-evaluate paint for EVERY feature on up to nine layers — doing
         // that at 60–120 Hz for a 250–400 ms fade is the single biggest
@@ -1553,9 +1664,17 @@
         // always applies so end states are exact.
         if (!moving || now - (this._dimPaintAt || 0) >= 30)
           this._applyDimPaint();
+        if (hoverFiltersDirty) this._applyHoverLayerFilters();
         if (moving) {
           this._dimRaf = requestAnimationFrame(step);
         } else {
+          if (this._dimTargets.hover === 0 && this._dimVals.hover === 0) {
+            this._dimHoverWeights = new Map();
+            this._dimHoverWeightTargets = new Map();
+            this._dimFocusWeights = new Map();
+            this._dimFocusWeightTargets = new Map();
+            this._applyHoverLayerFilters();
+          }
           this._dimLast = null;
         }
       };
@@ -1577,6 +1696,10 @@
         s >= 1 ? num : s <= 0 ? expr : ["+", ["*", expr, 1 - s], num * s];
       const lerpExpr = (a, b, s) =>
         s >= 1 ? b : s <= 0 ? a : ["+", ["*", a, 1 - s], ["*", b, s]];
+      const mixByWeight = (a, b, weight) =>
+        typeof weight === "number"
+          ? lerpExpr(a, b, weight)
+          : ["+", ["*", a, ["-", 1, weight]], ["*", b, weight]];
       const dateDim = this._dateDim ?? 0.18;
       // In scope = the feature's train RUNS on the selected day. `dspan` lists
       // every date the train touches, so an overnight train stays undimmed on
@@ -1603,22 +1726,21 @@
               lerpNum(own, SELECT_DIM, sSel),
             ]
           : own;
-      const hoverActive = sHover > 0 && (this._dimHoverTids || []).length > 0;
-      const inHover = hoverActive
-        ? ["in", ["get", "tid"], ["literal", this._dimHoverTids]]
-        : null;
+      const hoverWeight = this._opacityWeightExpr(this._dimHoverWeights);
+      const focusWeight = this._opacityWeightExpr(this._dimFocusWeights);
+      const hoverActive = sHover > 0 && hoverWeight !== 0;
       const hoverMul = 1 - (1 - HOVER_DIM) * sHover;
       const chain = (own) => {
         const base = selWrap(dateWrap(own));
         if (!hoverActive) return base;
         // Hovered features climb OUT of the selection dim toward their
-        // date-scoped alpha; everyone else multiplies toward HOVER_DIM.
-        return [
-          "case",
-          inHover,
-          lerpExpr(base, dateWrap(own), sHover),
+        // date-scoped alpha; everyone else multiplies toward HOVER_DIM.  A
+        // fractional weight crossfades old/new hover membership.
+        return mixByWeight(
           ["*", base, hoverMul],
-        ];
+          lerpExpr(base, dateWrap(own), sHover),
+          hoverWeight,
+        );
       };
       const set = (id, prop, value) => {
         if (m.getLayer(id)) m.setPaintProperty(id, prop, value);
@@ -1626,10 +1748,19 @@
       const baseOpacity = chain(["get", "alpha"]);
       // SEL layers only ever contain the selected train (always "active"):
       // only the hover spotlight can dim them.
-      const selLayerVal = hoverActive ? ["case", inHover, 1, hoverMul] : 1;
+      const selLayerVal = hoverActive
+        ? mixByWeight(hoverMul, 1, hoverWeight)
+        : 1;
+      const focusLayerVal =
+        sHover > 0 && focusWeight !== 0
+          ? typeof focusWeight === "number"
+            ? sHover * focusWeight
+            : ["*", sHover, focusWeight]
+          : 0;
       set(TRAIN_ROUTES_LAYER, "line-opacity", baseOpacity);
       set(TRAIN_XDAY_LAYER, "line-opacity", baseOpacity);
       set(TRAIN_XDAY_STOP_LAYER, "icon-opacity", baseOpacity);
+      set(TRAIN_HOVER_LAYER, "line-opacity", focusLayerVal);
       set(
         TRAIN_SEL_CASING_LAYER,
         "line-opacity",
@@ -1644,6 +1775,13 @@
         set(id, "circle-opacity", selLayerVal);
         set(id, "circle-stroke-opacity", selLayerVal);
       });
+      set(
+        TRAIN_EXPAND_HOVER_LAYER,
+        "line-opacity",
+        typeof focusLayerVal === "number"
+          ? (this._expandOpacity || 0) * focusLayerVal
+          : ["*", this._expandOpacity || 0, focusLayerVal],
+      );
     },
     // Single entry point every dim-state change funnels through.
     _applyHoverDim() {
@@ -1843,9 +1981,16 @@
     _setExpandOpacity(v) {
       const m = this._map;
       if (!m) return;
-      [TRAIN_EXPAND_LAYER, TRAIN_EXPAND_HOVER_LAYER].forEach((id) => {
-        if (m.getLayer(id)) m.setPaintProperty(id, "line-opacity", v);
-      });
+      this._expandOpacity = Math.max(0, Math.min(1, Number(v) || 0));
+      if (m.getLayer(TRAIN_EXPAND_LAYER))
+        m.setPaintProperty(
+          TRAIN_EXPAND_LAYER,
+          "line-opacity",
+          this._expandOpacity,
+        );
+      // The widened lane has its own hover A -> B crossfade expression; only
+      // its fan visibility multiplier changes here.
+      this._applyDimPaint();
     },
     // Animate ONLY the lane-offset factor (the slide); opacity stays put.
     _animateExpand(target, done) {

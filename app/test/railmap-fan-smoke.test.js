@@ -78,6 +78,8 @@ function makeMap(win) {
   const style = win.RailMapStyle;
   const layerIds = new Set([
     style.TRAIN_ROUTES_LAYER,
+    style.TRAIN_XDAY_LAYER,
+    style.TRAIN_XDAY_STOP_LAYER,
     style.TRAIN_PICK_LAYER,
     style.TRAIN_PICK_FAN_LAYER,
     style.TRAIN_EXPAND_LAYER,
@@ -104,17 +106,22 @@ function makeMap(win) {
     return sources.get(id);
   };
   const filters = {};
+  const paints = {};
   const canvas = { style: {}, addEventListener() {} };
   return {
     counts,
     lastData,
     filters,
+    paints,
     getSource: (id) => srcFor(id),
     getLayer: (id) => (layerIds.has(id) ? { id } : undefined),
     setFilter(id, f) {
       filters[id] = f;
     },
-    setPaintProperty() {},
+    setPaintProperty(id, prop, value) {
+      if (!paints[id]) paints[id] = {};
+      paints[id][prop] = value;
+    },
     setLayoutProperty() {},
     getPaintProperty: () => 0,
     getZoom: () => 8,
@@ -128,6 +135,40 @@ function makeMap(win) {
     getContainer: () => ({ dataset: {}, appendChild() {} }),
     triggerRepaint() {},
   };
+}
+
+function evalPaint(expr, properties) {
+  if (!Array.isArray(expr)) return expr;
+  const op = expr[0];
+  if (op === "get") return properties[expr[1]];
+  if (op === "literal") return expr[1];
+  if (op === "match") {
+    const input = evalPaint(expr[1], properties);
+    for (let i = 2; i < expr.length - 1; i += 2) {
+      if (input === expr[i]) return evalPaint(expr[i + 1], properties);
+    }
+    return evalPaint(expr.at(-1), properties);
+  }
+  if (op === "+")
+    return expr.slice(1).reduce((sum, part) => sum + evalPaint(part, properties), 0);
+  if (op === "*")
+    return expr.slice(1).reduce((product, part) => product * evalPaint(part, properties), 1);
+  if (op === "-") {
+    if (expr.length === 2) return -evalPaint(expr[1], properties);
+    return evalPaint(expr[1], properties) - evalPaint(expr[2], properties);
+  }
+  throw new Error(`Unsupported paint expression in test: ${JSON.stringify(expr)}`);
+}
+
+function paintOpacity(map, layer, tid, prop = "line-opacity") {
+  return evalPaint(map.paints[layer][prop], { tid, alpha: 1 });
+}
+
+function assertNear(actual, expected, message) {
+  assert.ok(
+    Math.abs(actual - expected) < 1e-9,
+    `${message}: expected ${expected}, got ${actual}`,
+  );
 }
 
 function fixtureData() {
@@ -267,6 +308,177 @@ test("updateLaneSpacing skips the static pick source entirely", () => {
     staticBefore,
     "zoom-driven lane spacing must not re-upload the static pick source",
   );
+});
+
+test("hovering directly from route A to B crossfades every opacity layer", () => {
+  const win = loadScripts(makeWindow());
+  const style = win.RailMapStyle;
+  const RailMap = win.RailMap;
+  const map = makeMap(win);
+  RailMap.attach(map, null, {}, [], [], "light", {});
+
+  RailMap._hoverTrainId = "A";
+  RailMap._applyHoverFilter();
+  flushFrames(win, 30);
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"),
+    1,
+    "route A is bright after hover settles",
+  );
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B"),
+    style.HOVER_DIM,
+    "route B is dim before the switch",
+  );
+
+  RailMap._hoverTrainId = "B";
+  RailMap._applyHoverFilter();
+
+  // The first committed state remains visually identical to the prior frame;
+  // both tids are retained in the focus filter while their weights cross.
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"),
+    1,
+    "route A does not snap dim on the switch frame",
+  );
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B"),
+    style.HOVER_DIM,
+    "route B does not snap bright on the switch frame",
+  );
+  const switchingFilter = JSON.stringify(map.filters[style.TRAIN_HOVER_LAYER]);
+  assert.ok(switchingFilter.includes("A") && switchingFilter.includes("B"));
+
+  flushFrames(win, 8);
+  const aMid = paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A");
+  const bMid = paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B");
+  assert.ok(aMid > style.HOVER_DIM && aMid < 1, "route A fades down");
+  assert.ok(bMid > style.HOVER_DIM && bMid < 1, "route B fades up");
+
+  // Route, cross-day, icon, circle fill and circle stroke all share the exact
+  // same animated expression, so no marker or dashed continuation can snap.
+  const baseExpr = JSON.stringify(
+    map.paints[style.TRAIN_ROUTES_LAYER]["line-opacity"],
+  );
+  [
+    [style.TRAIN_XDAY_LAYER, "line-opacity"],
+    [style.TRAIN_XDAY_STOP_LAYER, "icon-opacity"],
+    [style.TRAIN_PASS_LAYER, "circle-opacity"],
+    [style.TRAIN_PASS_LAYER, "circle-stroke-opacity"],
+    [style.TRAIN_STOPS_LAYER, "circle-opacity"],
+    [style.TRAIN_STOPS_LAYER, "circle-stroke-opacity"],
+  ].forEach(([layer, prop]) => {
+    assert.strictEqual(JSON.stringify(map.paints[layer][prop]), baseExpr);
+  });
+  const focusAMid = paintOpacity(map, style.TRAIN_HOVER_LAYER, "A");
+  const focusBMid = paintOpacity(map, style.TRAIN_HOVER_LAYER, "B");
+  assert.ok(focusAMid > 0 && focusAMid < 1, "old wide focus fades out");
+  assert.ok(focusBMid > 0 && focusBMid < 1, "new wide focus fades in");
+  const selectedExpr = JSON.stringify(
+    map.paints[style.TRAIN_SEL_LAYER]["line-opacity"],
+  );
+  [
+    [style.TRAIN_SEL_PASS_LAYER, "circle-opacity"],
+    [style.TRAIN_SEL_PASS_LAYER, "circle-stroke-opacity"],
+    [style.TRAIN_SEL_STOPS_LAYER, "circle-opacity"],
+    [style.TRAIN_SEL_STOPS_LAYER, "circle-stroke-opacity"],
+  ].forEach(([layer, prop]) => {
+    assert.strictEqual(JSON.stringify(map.paints[layer][prop]), selectedExpr);
+  });
+  assertNear(
+    paintOpacity(map, style.TRAIN_SEL_CASING_LAYER, "A"),
+    paintOpacity(map, style.TRAIN_SEL_LAYER, "A") * 0.9,
+    "selected casing follows the same crossfade",
+  );
+
+  flushFrames(win, 24);
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"),
+    style.HOVER_DIM,
+    "route A finishes dimmed",
+  );
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B"),
+    1,
+    "route B finishes bright",
+  );
+  const settledFilter = JSON.stringify(map.filters[style.TRAIN_HOVER_LAYER]);
+  assert.ok(!settledFilter.includes("A") && settledFilter.includes("B"));
+
+  RailMap._hoverTrainId = null;
+  RailMap._applyHoverFilter();
+  flushFrames(win, 8);
+  const aLeaveMid = paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A");
+  const focusBLeaveMid = paintOpacity(map, style.TRAIN_HOVER_LAYER, "B");
+  assert.ok(aLeaveMid > style.HOVER_DIM && aLeaveMid < 1, "other routes fade back in");
+  assert.ok(
+    focusBLeaveMid > 0 && focusBLeaveMid < 1,
+    "wide focus fades out on mouseleave",
+  );
+  flushFrames(win, 24);
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"),
+    1,
+    "route A returns to normal after mouseleave",
+  );
+  assertNear(
+    paintOpacity(map, style.TRAIN_HOVER_LAYER, "B"),
+    0,
+    "wide focus is gone after mouseleave",
+  );
+  assert.ok(!JSON.stringify(map.filters[style.TRAIN_HOVER_LAYER]).includes("B"));
+});
+
+test("switching lanes in an expanded fan crossfades only the wide focus", () => {
+  const win = loadScripts(makeWindow());
+  const style = win.RailMapStyle;
+  const RailMap = win.RailMap;
+  const map = makeMap(win);
+  RailMap.attach(map, null, {}, [], [], "light", {});
+  const { records, expandRecords, groupInfo } = fixtureData();
+  RailMap.setData(records, expandRecords, groupInfo, 0.001);
+
+  RailMap._hoverTrainId = "A";
+  RailMap._applyHoverFilter();
+  flushFrames(win, 30);
+  RailMap._setExpandedGroup("G1");
+  flushFrames(win, 35);
+
+  // Both members of the open overlap group stay in the bright spotlight.
+  assertNear(paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"), 1, "fan A bright");
+  assertNear(paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B"), 1, "fan B bright");
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "C"),
+    style.HOVER_DIM,
+    "non-member C dim",
+  );
+
+  RailMap._hoverTrainId = "B";
+  RailMap._applyHoverFilter();
+  flushFrames(win, 8);
+
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "A"),
+    1,
+    "fan member A remains bright",
+  );
+  assertNear(
+    paintOpacity(map, style.TRAIN_ROUTES_LAYER, "B"),
+    1,
+    "fan member B remains bright",
+  );
+  const expandedAMid = paintOpacity(
+    map,
+    style.TRAIN_EXPAND_HOVER_LAYER,
+    "A",
+  );
+  const expandedBMid = paintOpacity(
+    map,
+    style.TRAIN_EXPAND_HOVER_LAYER,
+    "B",
+  );
+  assert.ok(expandedAMid > 0 && expandedAMid < 1, "old fan lane focus fades out");
+  assert.ok(expandedBMid > 0 && expandedBMid < 1, "new fan lane focus fades in");
 });
 
 test("routeExpandFC reuses its feature template across animation frames", () => {

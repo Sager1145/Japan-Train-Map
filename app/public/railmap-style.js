@@ -421,7 +421,11 @@
         "line-width": ["get", "pickWidth"],
       },
     });
-    // Whole hovered route lights up (full opacity, a touch wider).
+    // Whole hovered route lights up (full opacity, a touch wider).  The
+    // opacity starts at zero because RailMap's rAF dim engine owns both the
+    // hover enter/leave fade and the A -> B crossfade when the pointer moves
+    // directly between routes.  Keeping the old/new tids in this layer while
+    // their paint weights cross prevents a filter swap from snapping.
     layers.push({
       id: TRAIN_HOVER_LAYER,
       type: "line",
@@ -430,7 +434,7 @@
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": ["get", "color"],
-        "line-opacity": 1,
+        "line-opacity": 0,
         "line-width": zoomScaledWidth([
           "+",
           ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
