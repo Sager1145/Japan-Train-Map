@@ -23,9 +23,12 @@ function resetTrainStoreForProgressiveLoad() {
   // about to be replaced).
   cachedRouteItems = null;
   cachedRouteSignature = "";
-  // The whole store is being replaced: drop every scope's cached build.
+  // The whole store is being replaced: drop every scope's cached build, but
+  // keep the object-free overlap map — reloading the SAME data (a country
+  // switched away from and back, a re-imported store) then reuses its corridor
+  // graph instead of re-deriving it from every segment again.
   if (typeof invalidateDeckRouteCaches === "function")
-    invalidateDeckRouteCaches();
+    invalidateDeckRouteCaches({ keepOverlapMap: true });
   renderAll();
 }
 
@@ -830,6 +833,15 @@ async function switchActiveCountry(next) {
     if (window.I18N && typeof I18N.setCountry === "function") {
       I18N.setCountry(next);
       I18N.applyStatic(document);
+      // Drop the old country's name table immediately. The replacement loads
+      // below in parallel with the new store/network; this closes the brief
+      // window where a Taiwan hover could still resolve against Japan byName.
+      if (typeof I18N.setStationReadings === "function")
+        I18N.setStationReadings({
+          country: next.toUpperCase(),
+          byCode: {},
+          byName: {},
+        });
     }
     try {
       localStorage.setItem(COUNTRY_STORAGE_KEY, next);
@@ -840,7 +852,7 @@ async function switchActiveCountry(next) {
     const networkCountryReady =
       typeof RailMap !== "undefined" &&
       typeof RailMap.switchNetworkCountry === "function"
-        ? RailMap.switchNetworkCountry()
+        ? RailMap.switchNetworkCountry(next)
         : Promise.resolve(null);
     resetPersistenceStateForCountrySwitch();
     exitStoreRecoveryMode();
@@ -892,6 +904,11 @@ async function switchActiveCountry(next) {
         selectFirstTrain: false,
       }),
       networkCountryReady,
+      loadActiveCountryStationReadings(),
+      // The solver/statistics datasets are per-country too: swap them in the
+      // same step as the store, so no render can see the new country's trains
+      // against the old country's station index.
+      reloadSolverDatasetsForCountrySwitch(),
     ]);
     // A failed restore just entered read-only recovery mode with its own
     // error message — don't paper over it with a success status.

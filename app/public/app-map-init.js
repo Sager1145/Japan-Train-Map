@@ -302,8 +302,8 @@ function buildMapInfoControl() {
         </article>
         <article class="map-info-source" data-country="tw">
           <strong data-i18n="info.twRailTitle">台灣鐵路網</strong>
-          <p data-i18n="info.twRailBody">交通部「TDX 運輸資料流通服務平臺」鐵道資料經加工製作。</p>
-          <div class="map-info-links"><a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener noreferrer">TDX</a><a href="https://data.gov.tw/license" target="_blank" rel="noopener noreferrer" data-i18n="info.twLicense">政府資料開放授權條款</a></div>
+          <p data-i18n="info.twRailBody">結合交通部「TDX 運輸資料流通服務平臺」、內政部國土測繪中心、農業部阿里山林業鐵路及文化資產管理處與臺北市政府捷運工程局的官方資料經加工製作。</p>
+          <div class="map-info-links"><a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener noreferrer">TDX</a><a href="https://data.gov.tw/dataset/73220" target="_blank" rel="noopener noreferrer" data-i18n="info.twNlsc">國土測繪中心</a><a href="https://afrch.forest.gov.tw/" target="_blank" rel="noopener noreferrer" data-i18n="info.twAfr">阿里山林鐵</a><a href="https://data.taipei/dataset/detail?id=afccd2ac-75b1-4362-9099-45983e332776" target="_blank" rel="noopener noreferrer" data-i18n="info.twTaipei">臺北捷運 GIS</a><a href="https://data.gov.tw/license" target="_blank" rel="noopener noreferrer" data-i18n="info.twLicense">政府資料開放授權條款</a></div>
         </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
@@ -369,6 +369,9 @@ async function initMap(mapAssetsReady) {
     basemap,
     network,
     theme,
+    // Credits the rail source for the country the map boots into; a later
+    // switch re-credits it in place (RailMap.switchNetworkCountry).
+    country: activeCountry,
     fadeOpacity: 1 - Math.max(0, Math.min(1, Number(DISPLAY.mapOpacity))),
     // Pass-through dot LOD: the numerous white dots only draw from this zoom
     // (layer minzoom — no marker rebuild when the view crosses it).

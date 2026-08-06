@@ -54,6 +54,7 @@
   } = global.RailMapBasemap;
   const {
     buildBaseStyle,
+    railAttributionForCountry,
     stopMarkerZoomGate,
     zoomScaledWidth,
     RIDDEN_WIDTH_SCALE,
@@ -731,7 +732,10 @@
     // Drop the previous country's in-memory network and reload only if the
     // user had already opted into the national-network overlay (or another
     // feature, such as station hover, had already loaded the network).
-    switchNetworkCountry() {
+    // `country` re-credits the segment source: the style is built once at boot
+    // with the country that was active then, and switching swaps the geometry
+    // underneath it, so the licence declaration has to move with the data.
+    switchNetworkCountry(country) {
       const shouldReload = Boolean(
         this._networkVisibleWanted ||
           this._networkStationsVisibleWanted ||
@@ -745,7 +749,10 @@
       if (this._stationPopup) this._stationPopup.remove();
       const seg = this._src(SEGMENTS_SOURCE);
       const sta = this._src(STATIONS_SOURCE);
-      if (seg) seg.setData(EMPTY_FC);
+      if (seg) {
+        seg.setData(EMPTY_FC);
+        if (country) seg.attribution = railAttributionForCountry(country);
+      }
       if (sta) sta.setData(EMPTY_FC);
       if (!shouldReload) return Promise.resolve(null);
       return this.ensureNetwork().then((network) => {

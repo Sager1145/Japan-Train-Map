@@ -51,10 +51,16 @@ function appendTrainToLayers(train) {
   // styling.
   cachedRouteItems = null;
   cachedRouteSignature = "";
-  // Train DATA changed: every scope's cached items/records are stale, not
-  // just the current signature's.
+  // Train DATA changed: every scope's cached items/records holds objects from
+  // the store being replaced, so all of them are stale — not just the current
+  // signature's. The overlap map survives: it is keyed by a signature that
+  // already encodes the exact train set, so the entry for a DIFFERENT set is
+  // not stale, only irrelevant. This runs once per appended train, so clearing
+  // it here is what used to hold the cache to a single live entry and made
+  // every return to a previously-drawn store re-derive its whole corridor
+  // graph from scratch.
   if (typeof invalidateDeckRouteCaches === "function")
-    invalidateDeckRouteCaches();
+    invalidateDeckRouteCaches({ keepOverlapMap: true });
   // A progressive import renders ITSELF: it streams the train list, and closes
   // with one authoritative renderAll() (finalizeProgressiveLoad for the two
   // "replace" paths, runProgressiveAppend's finalRender for append mode). The

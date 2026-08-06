@@ -9,15 +9,16 @@
 // language is remembered in localStorage.
 //
 //   I18N.t(key, params)   -> translated UI string ("{x}" placeholders filled)
-//   I18N.placeName(jp)    -> locale-aware Japanese name / reading / romanization
+//   I18N.placeName(name)  -> country-aware station name / reading
 //   I18N.trainName(jp)    -> same dictionary, for limited-express service names
 //   I18N.setLang(lang)    -> switch language, persist, re-apply, notify
 //   I18N.onChange(fn)     -> register a callback fired after each switch
 //   I18N.applyStatic(root)-> translate [data-i18n*] attributes under root
 //
-// Japanese station / line names are PROPER NOUNS and are never rewritten in the
-// data; placeName() only appends a romanized English gloss in English mode so
-// both scripts are visible at once.
+// Source station / line names are proper nouns and are never rewritten in the
+// train data. Japan keeps its source name and optional reading subline; Taiwan
+// replaces the displayed station name from its separate official four-language
+// table while retaining the official Traditional name in the source store.
 // ---------------------------------------------------------------------------
 (function () {
   "use strict";
@@ -66,6 +67,15 @@
     "東": "东", "捨": "舍", "棄": "弃", "蓋": "盖", "疊": "叠",
     "營": "营", "偵": "侦", "機": "机", "電": "电", "腦": "脑",
     "灣": "湾",
+    // Taiwanese authority names in the data-source panel (交通部運輸資料流通
+    // 服務平臺, 國土測繪中心, 農業部…林業鐵路及文化資產管理處, 臺北市…).
+    // 臺 is the Traditional form Taiwan's own agencies use; Simplified writes
+    // it 台 (臺北→台北, 平臺→平台), and station names are unaffected — they
+    // carry their own zh_Hans from the readings table, not this converter.
+    "務": "务", "業": "业", "產": "产", "結": "结", "繪": "绘",
+    "農": "农", "臺": "台",
+    // Taiwan's coverage categories (輕軌 …).
+    "輕": "轻", "軌": "轨",
   };
 
   const HANS_PHRASE_MAP = {
@@ -220,6 +230,7 @@
   // id-keyed table (code first, then a normalized-name fallback), and only
   // falls back to the service dictionaries for non-station labels.
   let STATION_READINGS = { byCode: {}, byName: {} };
+  let STATION_READINGS_COUNTRY = "JP";
   // One station-name key rule for the whole system, owned by AppCore (the
   // station-resolution index and the build scripts use the same function).
   // app-core.js loads before this file — same load-order contract as
@@ -236,6 +247,8 @@
       for (const key of Object.keys(source))
         byName[normReadingKey(key)] = source[key];
       STATION_READINGS = { byCode: data.byCode || {}, byName };
+      STATION_READINGS_COUNTRY =
+        String(data.country || "JP").toUpperCase() === "TW" ? "TW" : "JP";
     }
   }
   function stationReading(code, jp) {
@@ -248,6 +261,22 @@
       if (e) return e;
     }
     return null;
+  }
+  // Taiwan's table contains localized NAMES, not Japanese pronunciation
+  // annotations. Use the exact official StationUID/network alias first, then a
+  // safe unambiguous byName fallback. Missing official English/Japanese values
+  // deliberately fall back to the official Traditional Chinese station name;
+  // the table itself keeps those translations as empty strings.
+  function stationName(name, code) {
+    if (!name) return name || "";
+    if (STATION_READINGS_COUNTRY !== "TW") return name;
+    const row = stationReading(code, name);
+    if (!row) return name;
+    if (currentLang === "zh-Hans") return row.zh_Hans || row.zh_Hant || name;
+    if (currentLang === "zh-Hant") return row.zh_Hant || name;
+    if (currentLang === "ja") return row.ja || row.zh_Hant || name;
+    if (currentLang === "en") return row.en || row.zh_Hant || name;
+    return name;
   }
   // Explicit reading toggles from the 顯示 panel ({kana, romaji, zh} booleans);
   // null = no explicit choice yet, follow the locale defaults.
@@ -273,6 +302,9 @@
   // reading type on the same line.
   function nameReadingsTyped(jp, code) {
     if (!jp) return [];
+    // Taiwan localizes the base station name itself into the active one of the
+    // four UI languages. It has no Japanese-style reading subline.
+    if (STATION_READINGS_COUNTRY === "TW") return [];
     const prefs = activeReadingPrefs();
     const r = stationReading(code, jp);
     const parts = [];
@@ -301,6 +333,7 @@
   }
   function placeName(jp, code) {
     if (!jp) return jp || "";
+    if (STATION_READINGS_COUNTRY === "TW") return stationName(jp, code);
     const readings = nameReadings(jp, code);
     if (!readings) return jp;
     // Half-width brackets in the Latin-script locales, full-width in Chinese
@@ -419,6 +452,7 @@
     nameReadings: nameReadings,
     nameReadingsList: nameReadingsList,
     nameReadingsTyped: nameReadingsTyped,
+    stationName: stationName,
     setNameReadings: setNameReadings,
     setStationReadings: setStationReadings,
     setLang: setLang,

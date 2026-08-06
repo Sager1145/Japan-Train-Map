@@ -151,6 +151,7 @@ export function makeSandbox({
     I18N: {
       t: (key) => String(key),
       placeName: (name) => String(name || ""),
+      stationName: (name) => String(name || ""),
       trainName: (name) => String(name || ""),
       setStationReadings() {},
       setLang() {},

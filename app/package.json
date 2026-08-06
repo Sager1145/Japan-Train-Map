@@ -10,7 +10,7 @@
     "test": "node --test",
     "lint": "node scripts/check-source.mjs && node scripts/check-undefined-globals.mjs",
     "precompute": "node scripts/precompute-train-parts.mjs",
-    "precompute:tw": "PRECOMPUTE_STORE=data/train-store-tw.json PRECOMPUTE_OUT_DIR=data/sample-data-tw node scripts/precompute-train-parts.mjs",
+    "precompute:tw": "PRECOMPUTE_COUNTRY=tw PRECOMPUTE_STORE=data/train-store-tw.json PRECOMPUTE_OUT_DIR=data/sample-data-tw node scripts/precompute-train-parts.mjs",
     "generate:new-year-grand-loop": "node scripts/generate-new-year-grand-loop.mjs",
     "precompute:new-year-grand-loop": "npm run generate:new-year-grand-loop && PRECOMPUTE_STORE=data/special-samples/new-year-grand-loop.json PRECOMPUTE_OUT_DIR=data/new-year-grand-loop-data node scripts/precompute-train-parts.mjs",
     "generate:tokyo-limited-express-loop": "node scripts/generate-tokyo-limited-express-loop.mjs",

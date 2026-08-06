@@ -135,19 +135,13 @@ async function loadAppData() {
   // (response.text(), no JSON.parse) so its ~1.1 s parse never blocks boot or
   // first paint. ensureRailSectionsLoaded() parses it in yielding chunks after
   // the map is on screen, right before the first solve.
-  railSectionsTextReady = fetchText("rail-sections");
+  railSectionsTextReady = fetchText(railSectionsApiForCountry(activeCountry));
 
-  // Station readings (kana + romaji) keyed by N02 station code. Small file; we
-  // kick it off in parallel and inject it into the i18n layer once loaded so
-  // placeName() can annotate 東京（とうきょう）/ Tōkyō by station id. Non-fatal:
-  // on failure the service-name dictionaries still cover any inline fallback.
-  const stationReadingsReady = fetchJson("station-readings").catch((err) => {
-    console.warn(
-      "station-readings load failed; station kana/romaji unavailable.",
-      err,
-    );
-    return null;
-  });
+  // Country-specific station names/readings. Japan uses N02 code-keyed kana /
+  // romaji / Chinese readings; Taiwan uses official TDX/PTX four-language
+  // station names. Keeping the tables separate prevents same-named Taiwanese
+  // stations (板橋, 松山, 岡山, …) from falling through to Japanese readings.
+  const stationReadingsReady = loadActiveCountryStationReadings();
 
   // `stations` (3.3 MB / 456 KB gz) feeds the marker/station-resolution paths
   // used by the very first render, so it blocks first paint — but its native
@@ -155,7 +149,7 @@ async function loadAppData() {
   // blocking parse left in the render path. DOWNLOAD it as text in parallel with
   // the small datasets, then parse it in yielding chunks (same path as
   // rail-sections) so it interleaves with paint/input instead of freezing.
-  const stationsTextReady = fetchText("stations");
+  const stationsTextReady = fetchText(stationsApiForCountry(activeCountry));
   [defaultTrainStore, matchedRoutesGeoJson, matchedStopsGeoJson] =
     await Promise.all([
       fetchJson("default-trains"),
@@ -172,9 +166,7 @@ async function loadAppData() {
   // byte-for-byte identical to the old synchronous passes.
   await buildStationIndexesSliced(stationsGeoJson);
 
-  const stationReadings = await stationReadingsReady;
-  if (stationReadings && window.I18N && I18N.setStationReadings)
-    I18N.setStationReadings(stationReadings);
+  await stationReadingsReady;
 
   // Surface a rail-sections DOWNLOAD failure instead of leaving an unhandled
   // rejection; ensureRailSectionsLoaded() re-fetches on demand before the first
@@ -185,6 +177,79 @@ async function loadAppData() {
       err,
     ),
   );
+}
+
+// Country switch: EVERY solver/statistics artifact resident in memory belongs
+// to the country that was active when it was built — the two parsed datasets,
+// the route graphs derived from them, the spatial indexes, the statistics edge
+// index, and the station index that resolves a stop to a feature. Drop them
+// all and load the new country's pair. Keeping any one of them would let a
+// Taiwanese stop resolve, or route, against Japanese track: the countries
+// share station names (松山, 板橋, 岡山 …), so the failure would not look like
+// an error, it would look like a route.
+async function reloadSolverDatasetsForCountrySwitch() {
+  railSectionsGeoJson = null;
+  railSectionsReady = null;
+  railSectionsTextReady = null;
+  runtimeRouteGraph = null;
+  railSectionSpatialIndex = null;
+  regionalGraphCache.clear();
+  regionalGraphNodeCount = 0;
+  _statsEdgeIndex = null;
+  _statsIndexBuild = null;
+
+  // Same split boot uses: rail-sections only DOWNLOADS here (the solver parses
+  // it in yielding chunks on first need), while stations are parsed right away
+  // because the first render after the switch already resolves stops through
+  // the station index.
+  const sectionsText = fetchText(railSectionsApiForCountry(activeCountry));
+  railSectionsTextReady = sectionsText;
+  sectionsText.catch((err) =>
+    console.error(
+      "rail-sections download failed after the country switch; will retry before the first solve.",
+      err,
+    ),
+  );
+  stationsGeoJson = await parseFeatureCollectionChunked(
+    await fetchText(stationsApiForCountry(activeCountry)),
+  );
+  await buildStationIndexesSliced(stationsGeoJson);
+}
+
+let stationReadingsLoadGeneration = 0;
+async function loadActiveCountryStationReadings() {
+  const country = activeCountry;
+  const generation = ++stationReadingsLoadGeneration;
+  try {
+    const data = await fetchJson(stationReadingsApiForCountry(country));
+    if (
+      generation === stationReadingsLoadGeneration &&
+      country === activeCountry &&
+      window.I18N &&
+      I18N.setStationReadings
+    ) {
+      I18N.setStationReadings(data);
+    }
+    return data;
+  } catch (err) {
+    console.warn(
+      `${country} station-name table failed to load; localized station names unavailable.`,
+      err,
+    );
+    if (
+      generation === stationReadingsLoadGeneration &&
+      country === activeCountry &&
+      window.I18N &&
+      I18N.setStationReadings
+    ) {
+      I18N.setStationReadings({
+        country: country.toUpperCase(),
+        byCode: {},
+        byName: {},
+      });
+    }
+    return null;
+  }
 }
 
 // Guarantee the rail-sections dataset is present before any route solve. Awaits
@@ -213,12 +278,13 @@ async function ensureRailSectionsLoaded() {
   if (!railSectionsReady) {
     railSectionsReady = (async () => {
       // Reuse the in-flight/finished boot download; re-fetch once on failure.
+      const api = railSectionsApiForCountry(activeCountry);
       let text;
       try {
         text = await (railSectionsTextReady ||
-          (railSectionsTextReady = fetchText("rail-sections")));
+          (railSectionsTextReady = fetchText(api)));
       } catch (err) {
-        railSectionsTextReady = fetchText("rail-sections");
+        railSectionsTextReady = fetchText(api);
         text = await railSectionsTextReady;
       }
       const data = await parseFeatureCollectionChunked(text);

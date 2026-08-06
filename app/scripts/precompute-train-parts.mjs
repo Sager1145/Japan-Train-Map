@@ -51,6 +51,16 @@ const STORE_PATH = process.env.PRECOMPUTE_STORE
 const OUT_DIR = process.env.PRECOMPUTE_OUT_DIR
   ? path.resolve(process.cwd(), process.env.PRECOMPUTE_OUT_DIR)
   : path.join(DATA_DIR, "sample-data");
+// Which country's store is being precomputed. The solver datasets are
+// per-country and MUST match the store: feeding Taiwanese stops to the
+// Japanese network is precisely the cross-country solve the app refuses to do
+// at runtime, and offline it would silently bake wrong-country geometry into
+// the published parts. Japan stays the default so every existing invocation
+// is unchanged.
+const COUNTRY = process.env.PRECOMPUTE_COUNTRY === "tw" ? "tw" : "jp";
+const RAIL_SECTIONS_FILE =
+  COUNTRY === "tw" ? "rail-sections-tw.json" : "rail-sections.json";
+const STATIONS_FILE = COUNTRY === "tw" ? "stations-tw.json" : "stations.json";
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
@@ -60,6 +70,10 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 // ---------------------------------------------------------------------------
 const DRIVER_SOURCE = `
 (async () => {
+  // The sandbox has no localStorage, so the app family booted on its default
+  // country. Point it at the store being solved before anything reads it —
+  // the statistics classifier and the solver gate both dispatch on it.
+  activeCountry = __host.country;
   railSectionsGeoJson = __host.railSections;
   stationsGeoJson = __host.stations;
   matchedRoutesGeoJson = { type: "FeatureCollection", features: [] };
@@ -200,6 +214,18 @@ function finalizeManifestFromParts() {
   );
 }
 
+// Move a fully written staging directory onto the published path. Two renames
+// rather than one: the previous set stays complete and readable right up to
+// the swap, and the only moment the published path does not exist is the gap
+// between two renames instead of the length of a whole solve.
+function publishStagedOutput(stagingDir) {
+  const previousDir = `${OUT_DIR}.previous`;
+  fs.rmSync(previousDir, { recursive: true, force: true });
+  if (fs.existsSync(OUT_DIR)) fs.renameSync(OUT_DIR, previousDir);
+  fs.renameSync(stagingDir, OUT_DIR);
+  fs.rmSync(previousDir, { recursive: true, force: true });
+}
+
 async function main() {
   // Finalize-only mode: build the manifest from parts emitted by sliced runs.
   if (process.env.PRECOMPUTE_FINALIZE) {
@@ -209,8 +235,9 @@ async function main() {
 
   const started = performance.now();
   console.log("Loading datasets...");
-  const railSections = readJson(path.join(DATA_DIR, "rail-sections.json"));
-  const stations = readJson(path.join(DATA_DIR, "stations.json"));
+  console.log(`Country: ${COUNTRY} (${RAIL_SECTIONS_FILE}, ${STATIONS_FILE}).`);
+  const railSections = readJson(path.join(DATA_DIR, RAIL_SECTIONS_FILE));
+  const stations = readJson(path.join(DATA_DIR, STATIONS_FILE));
   const matchedStops = readJson(path.join(DATA_DIR, "matched-stops.json"));
   // Curated per-train geometry — the offline fallback for trains the solver
   // cannot route (see the unsolvable branch in the driver).
@@ -254,9 +281,19 @@ async function main() {
   );
   evaluateAppScripts(context, appScripts);
 
-  // Fresh output dir (slice mode appends into the existing one instead).
-  if (!rangeEnv) fs.rmSync(OUT_DIR, { recursive: true, force: true });
-  fs.mkdirSync(OUT_DIR, { recursive: true });
+  // Publishing is a SWAP, not an in-place rewrite. Emptying the live
+  // directory and then writing parts one at a time leaves it observably
+  // half-published for the minutes a full solve takes — a fresh rail package
+  // beside stale routes, or a sample directory holding a single part — and a
+  // mid-run failure left it that way for good. Solve into a sibling staging
+  // directory and move it into place only once the complete set (parts,
+  // manifest, full store) is on disk. Slice mode is deliberately incremental
+  // ACROSS processes, so it keeps appending into the live directory and
+  // publishes when PRECOMPUTE_FINALIZE writes the manifest.
+  const stagingDir = `${OUT_DIR}.staging`;
+  const writeDir = rangeEnv ? OUT_DIR : stagingDir;
+  if (!rangeEnv) fs.rmSync(stagingDir, { recursive: true, force: true });
+  fs.mkdirSync(writeDir, { recursive: true });
 
   const partNames = [];
   // date string ("" for undated trains) -> part names for that day, in store order.
@@ -266,6 +303,7 @@ async function main() {
   let noRouteCount = 0;
 
   context.__host = {
+    country: COUNTRY,
     railSections,
     stations,
     matchedStops,
@@ -281,7 +319,7 @@ async function main() {
       else if (route.unsolvable) unsolvableCount += 1;
       else solvedCount += 1;
       fs.writeFileSync(
-        path.join(OUT_DIR, `${name}.json`),
+        path.join(writeDir, `${name}.json`),
         JSON.stringify({ format: 1, train: raw, route }),
       );
       console.log(
@@ -319,30 +357,37 @@ async function main() {
       ),
     };
     fs.writeFileSync(
-      path.join(OUT_DIR, "manifest.json"),
+      path.join(writeDir, "manifest.json"),
       JSON.stringify(manifest, null, 2),
     );
     // Alongside the per-train chunks, keep ONE combined file with the whole
     // sample store (no geometry — same shape a user would import/export), so
     // the complete sample also exists as a single big JSON.
-    fs.writeFileSync(path.join(OUT_DIR, "sample-full.json"), trainStoreText);
+    fs.writeFileSync(path.join(writeDir, "sample-full.json"), trainStoreText);
   }
 
   const bytes = partNames.reduce(
-    (sum, name) => sum + fs.statSync(path.join(OUT_DIR, `${name}.json`)).size,
+    (sum, name) => sum + fs.statSync(path.join(writeDir, `${name}.json`)).size,
     0,
   );
+  // Guard BEFORE publishing, not after: an empty solve must leave the
+  // currently published sample untouched rather than replace it and then
+  // report the failure.
+  if (solvedCount === 0) {
+    throw new Error("No train solved — refusing to publish empty parts.");
+  }
+  if (!rangeEnv) publishStagedOutput(stagingDir);
   console.log(
     `\nDone in ${Math.round((performance.now() - started) / 1000)} s: ${summary.total} trains ` +
       `(${solvedCount} solved, ${unsolvableCount} unsolvable, ${noRouteCount} without route sections), ` +
       `${(bytes / 1024 / 1024).toFixed(1)} MB of parts in ${path.relative(process.cwd(), OUT_DIR)}.`,
   );
-  if (solvedCount === 0) {
-    throw new Error("No train solved — refusing to publish empty parts.");
-  }
 }
 
 main().catch((err) => {
   console.error("\nprecompute-train-parts FAILED:", err);
+  // The published sample is intact (nothing is swapped in until the whole set
+  // is written), so only the half-solved staging directory needs clearing.
+  fs.rmSync(`${OUT_DIR}.staging`, { recursive: true, force: true });
   process.exit(1);
 });

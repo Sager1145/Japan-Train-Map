@@ -111,6 +111,34 @@ function buildTrainRouteSolveContext(train) {
   return { routeSections, templateKey, allowedCodes, cacheKey };
 }
 
+// Both route keys enumerate EVERY route section, so they grow with the train:
+// a 195-stop round-island itinerary produces ~35 KB of each. The two feature
+// properties carrying them — route_id and route_template_key — are only ever
+// used as identities (compared for equality, never read into), so stamping
+// the full keys onto every one of a train's features multiplied 35 KB by the
+// feature count and made a single precomputed part 6.8 MB. Stamp this 53-bit
+// digest instead: identical equality semantics, constant size, and purely
+// deterministic, so the browser and the offline exporter still agree on a
+// part written by the other. Stamp AND compare must both go through it —
+// see getMatchedRouteFeatures.
+function routeKeyDigest(key) {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  const text = String(key || "");
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 =
+    Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
+    Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 =
+    Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
+    Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 // Shared setup for both the render lookup and the streaming route solver:
 // resolve the deterministic solve context, then short-circuit on a cache hit or
 // a known-unsolvable (negative-cached) train. Returns { done:true, result } when
@@ -267,8 +295,8 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
       properties: {
         ...(feature.properties || {}),
         train_id: "__template__",
-        route_id: `${cacheKey}-primary`,
-        route_template_key: templateKey,
+        route_id: `solved-${routeKeyDigest(cacheKey)}-primary`,
+        route_template_key: routeKeyDigest(templateKey),
       },
     })),
   );

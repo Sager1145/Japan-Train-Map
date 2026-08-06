@@ -128,10 +128,12 @@ function popupHtml(title, rows) {
 // Station name cell: base name, then each enabled reading (kana / romaji /
 // Chinese) on its own line underneath — never bracket-appended.
 function stationNameCellHtml(name, code) {
+  const displayName =
+    typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
   const readings = I18N.nameReadingsList(name, code)
     .map((r) => `<span class="popup-reading">${escapeHtml(r)}</span>`)
     .join("");
-  return { html: `${escapeHtml(name)}${readings}` };
+  return { html: `${escapeHtml(displayName)}${readings}` };
 }
 
 // =========================================================================

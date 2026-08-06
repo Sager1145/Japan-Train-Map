@@ -87,6 +87,22 @@ function buildDeckOverlapMap(items) {
     const cellM = Math.max(20, OVERLAP_NEAR_PARALLEL_METERS);
     const gridX = (lng) => lng * 80000;
     const gridY = (lat) => lat * 110540;
+    // Numeric bucket keys, for the same reason refreshRouteVertexSnap uses
+    // them: every segment probes a neighbourhood of cells, and on a
+    // full-country store the discarded "gx,gy" strings dominated this scan.
+    // The span is far wider than any real cell index at cellM >= 20 m.
+    const BUCKET_SPAN = 1 << 22;
+    const BUCKET_HALF = BUCKET_SPAN >> 1;
+    const bucketKey = (gx, gy) => gx * BUCKET_SPAN + (gy + BUCKET_HALF);
+    // Do the two segments share a train? (A route must never overlap itself.)
+    // Walks the smaller set instead of spreading one into a throwaway array
+    // per candidate pair.
+    const setsIntersect = (a, b) => {
+      const small = a.size <= b.size ? a : b;
+      const large = small === a ? b : a;
+      for (const id of small) if (large.has(id)) return true;
+      return false;
+    };
     const buckets = new Map();
     const pairs = [];
     const descriptors = [...segmentGeometry.values()];
@@ -114,7 +130,7 @@ function buildDeckOverlapMap(items) {
       const checked = new Set();
       for (let gx = qx0; gx <= qx1; gx += 1)
         for (let gy = qy0; gy <= qy1; gy += 1) {
-          const list = buckets.get(gx + "," + gy);
+          const list = buckets.get(bucketKey(gx, gy));
           if (!list) continue;
           list.forEach((other) => {
             if (checked.has(other.key)) return;
@@ -123,7 +139,7 @@ function buildDeckOverlapMap(items) {
             const bIds = seg.get(other.key);
             // A route must never overlap itself at a loop, siding, or tight
             // station throat.
-            if ([...aIds].some((id) => bIds.has(id))) return;
+            if (setsIntersect(aIds, bIds)) return;
             const separation = nearParallelSegmentSeparation(
               d.a,
               d.b,
@@ -141,7 +157,7 @@ function buildDeckOverlapMap(items) {
       const iy1 = Math.floor(d.maxY / cellM);
       for (let gx = ix0; gx <= ix1; gx += 1)
         for (let gy = iy0; gy <= iy1; gy += 1) {
-          const key = gx + "," + gy;
+          const key = bucketKey(gx, gy);
           let list = buckets.get(key);
           if (!list) buckets.set(key, (list = []));
           list.push(d);
@@ -1251,8 +1267,15 @@ function handleDeckMarkerClick(info) {
 // keys as STRINGS (Array.sort), while edgeKey5 orders numerically — the
 // overlap caches keyed on this exact format must not change. It still sits on
 // the shared 5-decimal grid because coordKey quantizes via AppCore.quant5.
+// Built once per drawn segment (~350k times on a full-Japan store), so it
+// compares the two node keys directly instead of allocating a two-element
+// array and running Array.sort on it. Array.sort's default comparator orders
+// by the elements' string values, which for two strings is exactly `<=` —
+// the emitted bytes are unchanged.
 function routeCoordinateSegmentKey(a, b) {
-  return [coordKey(a), coordKey(b)].sort().join("|");
+  const ka = coordKey(a);
+  const kb = coordKey(b);
+  return ka <= kb ? ka + "|" + kb : kb + "|" + ka;
 }
 
 function getComputedPassThroughFeatures(train) {

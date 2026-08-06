@@ -97,9 +97,12 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   if (!feature) return null;
   const name = feature.properties.name || stopName(stop);
   if (!name) return null;
+  const code = stationCode(feature);
+  const displayName =
+    typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
   // Enabled readings (kana / romaji / Chinese) stack one per line UNDER the
   // name — never appended in brackets.
-  const readings = I18N.nameReadingsList(name, stationCode(feature));
+  const readings = I18N.nameReadingsList(name, code);
   const latlng = toLatLng(feature);
   const time = kind === "origin" ? stop.departure : stop.arrival;
   const timeTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
@@ -119,7 +122,7 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
     .join("");
   const plain =
     (badgeText ? badgeText + " " : "") +
-    name +
+    displayName +
     (time ? ` ${timeTag} ${time}` : "");
   // Estimated rendered width (px): the widest of the name/time line and the
   // reading lines, plus horizontal padding (+ badge chip). Text wider than the
@@ -134,7 +137,7 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   return {
     latlng,
     tid: train.id,
-    html: `${badgeHtml}${escapeHtml(name)}${timeHtml}${readingsHtml}`,
+    html: `${badgeHtml}${escapeHtml(displayName)}${timeHtml}${readingsHtml}`,
     key: `${latlng[0].toFixed(5)},${latlng[1].toFixed(5)}|${kind}`,
     dayEndpoint: !!opts.dayEndpoint,
     width: Math.min(340, fullWidth),
@@ -416,8 +419,10 @@ function deckGetTooltip(info) {
     const readingsHtml = I18N.nameReadingsList(name, code)
       .map((r) => `<span class="rp-popup-roma">${escapeHtml(r)}</span>`)
       .join("");
+    const displayName =
+      typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
     return {
-      html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(name)}</span>${readingsHtml}</div>${timeHtml}</div>`,
+      html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(displayName)}</span>${readingsHtml}</div>${timeHtml}</div>`,
       style: DECK_TIP_RAILPRINT,
     };
   }
@@ -490,4 +495,3 @@ function hexToRgb(hex) {
     ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
     : [217, 54, 79];
 }
-

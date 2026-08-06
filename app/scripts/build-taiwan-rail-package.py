@@ -31,11 +31,44 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = APP_DIR / "public" / "rail" / "tw-2025.json"
+# The app's route solver, station index, and mileage statistics read ONE
+# schema for every country.  Japan supplies it through the historical N02_*
+# property names; every other country supplies the same facts under the
+# neutral aliases the frontend already accepts.  Taiwan's pair of datasets is
+# generated here (see build_app_datasets) rather than derived from the
+# published package, because only this build still holds the per-line official
+# TDX StationUID — the package keeps just the shared station GROUP id.
+DEFAULT_DATASETS_DIR = APP_DIR / "data"
+DATASET_SECTIONS_NAME = "rail-sections-tw.json"
+DATASET_STATIONS_NAME = "stations-tw.json"
+# Classification of every Taiwan operating system in that shared code space
+# (Japan's N02_002 institution type / N02_001 railway class):
+#   institution  1 = high-speed rail, 2 = state-owned incumbent conventional
+#                railway, 3 = publicly operated
+#   railway class 11/12 = 普通鐵道, 21 = 軌道 (the class light rail runs under),
+#                31 = 特殊鐵道 (the Alishan forest railway — a 762 mm heritage
+#                mountain line, not a metro, and the code that keeps it out of
+#                the 捷運 statistics bucket without needing an operator list)
+# A system missing here fails the build rather than emitting a blank code, so
+# a newly added operator cannot silently land in the wrong statistics bucket.
+TW_SYSTEM_CLASSES: Dict[str, Tuple[str, str]] = {
+    "THSR": ("1", "12"),
+    "TRA": ("2", "11"),
+    "TRTC": ("3", "12"),
+    "NTMC": ("3", "12"),
+    "TYMC": ("3", "12"),
+    "TMRT": ("3", "12"),
+    "KRTC": ("3", "12"),
+    "NTDLRT": ("3", "21"),
+    "NTALRT": ("3", "21"),
+    "KLRT": ("3", "21"),
+    "AFR": ("3", "31"),
+}
 EARTH_RADIUS_KM = 6371.0088
 SNAP_METERS = 14.0
 MAX_STATION_OFFSET_KM = 2.0
@@ -63,6 +96,9 @@ MAX_OFFICIAL_DEVIATION_METERS = 20.0
 # prove the groomed result stays on line-scoped official geometry.
 SPIKE_TRIM_MAX_KM = 0.45
 SPIKE_MATCH_KM = 0.004
+# Interior out-and-back artefacts are tens of metres deep; genuine zigzag
+# tails (第一/第二分道, the 阿里山 station reversal) are 200 m or more.
+STUB_TRIM_MAX_KM = 0.1
 STATION_CUT_WINDOW_KM = 0.35
 MIN_CUT_SPACING_KM = 0.004
 SMOOTH_ITERATIONS = 3
@@ -74,6 +110,26 @@ CORNER_MIN_TURN_DEG = 14.0
 CORNER_MAX_TURN_DEG = 150.0
 CORNER_MAX_SAGITTA_METERS = 8.0
 CORNER_ROUNDING_PASSES = 2
+# Floor on how tight a drawn corner may be, measured over an arc-length window
+# (see windowed_corner_radius_meters).  round_polyline_corners fillets BETWEEN
+# two neighbouring vertices, so it declines exactly where the mixed TDX/NLSC
+# digitising puts vertices a few metres apart: its `cut` collapses under the
+# 3 m minimum and the corner keeps whatever angle the source left.  On the
+# forest lines that left the line swinging harder over 20 m than the real
+# 762 mm alignment can — its documented minimum is 40 m, so those are
+# digitising artefacts, not track.  Below about z13 a corner that tight is far
+# narrower than one pixel, and a sub-pixel curve does not read as a curve; it
+# reads as a barb.  Ordinary lines sit far above the floor and this pass never
+# touches them (平溪線 moves 0.00 m).
+MIN_CORNER_RADIUS_METERS = 40.0
+# Every vertex stays within this of where the rest of the grooming left it, so
+# the pass can only spend a small bounded slice of the 20 m conformance budget
+# (the audit re-measures against official geometry regardless).  Enough to
+# clear the artefacts without flattening the real spiral: 阿里山線 loses 27 m
+# of its 71 km, and pushing the cap higher starts pinching neighbouring
+# curves rather than opening more corners.
+MIN_RADIUS_MAX_SHIFT_METERS = 3.0
+MIN_RADIUS_PASSES = 16
 # Same-operator lines that hand a physical corridor over at a shared official
 # station (縱貫線北段→臺中線 at 竹南, 北迴線→臺東線 at 花蓮, every TRA branch
 # at its junction) are routed on separate scoped graphs whose anchors can sit
@@ -119,6 +175,34 @@ class LineSpec:
     # shortest path would cut (Dushan spiral, the Alishan zigzags); every via
     # must lie on the line's scoped official geometry.
     via_points: Optional[Dict[int, Tuple[Coord, ...]]] = None
+
+
+class TrackedLineSequences(Dict[Tuple[str, str], Tuple[str, ...]]):
+    """Official ``StationOfLine`` orders, recording which ones a spec consumed.
+
+    The display lines are enumerated by hand — name, English name, operator,
+    and colour are editorial choices no official field supplies, and several
+    specs are sub-ranges of one official LineID (縱貫線 WL becomes north /
+    臺中線 / south).  A "built 38 lines" audit cannot protect that list: when
+    an operator publishes a NEW LineID, the hand-written specs still build
+    exactly 38 lines and the new one is silently absent.
+
+    Every spec takes its station order from this mapping, so recording each
+    read yields the exact set of official lines the package consumed, which
+    ``main`` then compares against everything the sources publish.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.consumed: Set[Tuple[str, str]] = set()
+
+    def __getitem__(self, key: Tuple[str, str]) -> Tuple[str, ...]:
+        value = super().__getitem__(key)
+        self.consumed.add(key)
+        return value
+
+    def unconsumed(self) -> List[Tuple[str, str]]:
+        return sorted(set(self) - self.consumed)
 
 
 @dataclass(frozen=True)
@@ -842,6 +926,39 @@ def trim_joint_spikes(paths: List[List[Coord]], is_loop: bool) -> float:
     return trimmed_total
 
 
+def trim_interior_stubs(coords: List[Coord], max_stub_km: float) -> List[Coord]:
+    """Drop short out-and-back excursions inside an interval.
+
+    Where two spiral passes cross in plan view the node snap can create a
+    false junction, and a via leg then darts out and doubles back over the
+    same nodes.  Such artefacts are coordinate-exact palindromes around a
+    tip and only tens of metres deep; genuine switchback tails run hundreds
+    of metres and survive the depth cap.
+    """
+    index = 1
+    while index < len(coords) - 1:
+        if coords[index - 1] != coords[index + 1]:
+            index += 1
+            continue
+        depth = 1
+        while (
+            index - depth - 1 >= 0
+            and index + depth + 1 < len(coords)
+            and coords[index - depth - 1] == coords[index + depth + 1]
+        ):
+            depth += 1
+        stub_km = sum(
+            haversine(coords[k], coords[k + 1])
+            for k in range(index - depth, index)
+        )
+        if stub_km <= max_stub_km:
+            del coords[index - depth + 1 : index + depth + 1]
+            index = max(1, index - depth)
+        else:
+            index += 1
+    return coords
+
+
 def polyline_cum_km(coords: Sequence[Coord]) -> List[float]:
     cumulative = [0.0]
     for left, right in zip(coords, coords[1:]):
@@ -992,12 +1109,16 @@ def simplify_polyline(coords: List[Coord], tolerance_meters: float) -> List[Coor
     return [coord for coord, kept in zip(coords, keep) if kept]
 
 
-def round_polyline_corners(coords: List[Coord], passes: int) -> List[Coord]:
+def round_polyline_corners(
+    coords: List[Coord],
+    passes: int,
+    max_sagitta_meters: float = CORNER_MAX_SAGITTA_METERS,
+) -> List[Coord]:
     """Replace hard corners with short quadratic-Bezier arcs.
 
     The two cut points lie on the original edges and the apex sagitta is
     capped, so the deviation added on top of the routed polyline is bounded
-    by ``CORNER_MAX_SAGITTA_METERS``.  Reversal cusps stay untouched.
+    by ``max_sagitta_meters``.  Reversal cusps stay untouched.
     """
     for _ in range(passes):
         if len(coords) < 3:
@@ -1020,7 +1141,7 @@ def round_polyline_corners(coords: List[Coord], passes: int) -> List[Coord]:
             cut = min(
                 leg_in * 0.42,
                 leg_out * 0.42,
-                2.0 * CORNER_MAX_SAGITTA_METERS / sine_half,
+                2.0 * max_sagitta_meters / sine_half,
             )
             if cut < 3.0:
                 output.append(corner)
@@ -1043,6 +1164,111 @@ def round_polyline_corners(coords: List[Coord], passes: int) -> List[Coord]:
         output.append(coords[-1])
         coords = output
     return coords
+
+
+def corner_radius_meters(before: Coord, corner: Coord, after: Coord) -> float:
+    """Radius of the circle through three points, in metres; ``inf`` if collinear."""
+    a = haversine(before, corner) * 1000.0
+    b = haversine(corner, after) * 1000.0
+    c = haversine(before, after) * 1000.0
+    if a <= 0.0 or b <= 0.0 or c <= 0.0:
+        return float("inf")
+    # Heron's area, guarded against the degenerate collinear case where
+    # floating point can push the term slightly negative.
+    s = (a + b + c) / 2.0
+    term = s * (s - a) * (s - b) * (s - c)
+    if term <= 0.0:
+        return float("inf")
+    return (a * b * c) / (4.0 * math.sqrt(term))
+
+
+def windowed_corner_radius_meters(
+    coords: Sequence[Coord], index: int, window_meters: float
+) -> float:
+    """How tight the line is at ``index``, measured over an arc-length window.
+
+    Taken through the vertices roughly ``window_meters`` of travel either side
+    rather than the immediate neighbours.  Over immediate neighbours the
+    circumradius mostly measures VERTEX SPACING, not sharpness: where the
+    official shapes put vertices 4 m apart, an invisible 6 degree bend already
+    scores under 40 m and a genuinely smooth curve would be "too tight"
+    everywhere.  Across a window it measures what the eye reads — how far the
+    line swings over a stretch it can actually see.
+    """
+    total = 0.0
+    low = index
+    while low > 0 and total < window_meters:
+        total += haversine(coords[low - 1], coords[low]) * 1000.0
+        low -= 1
+    total = 0.0
+    high = index
+    last = len(coords) - 1
+    while high < last and total < window_meters:
+        total += haversine(coords[high], coords[high + 1]) * 1000.0
+        high += 1
+    if low == index or high == index:
+        return float("inf")  # too close to an end to judge
+    return corner_radius_meters(coords[low], coords[index], coords[high])
+
+
+def enforce_min_corner_radius(
+    coords: List[Coord],
+    min_radius_meters: float = MIN_CORNER_RADIUS_METERS,
+    max_shift_meters: float = MIN_RADIUS_MAX_SHIFT_METERS,
+    passes: int = MIN_RADIUS_PASSES,
+) -> List[Coord]:
+    """Open corners tighter than ``min_radius_meters``.
+
+    round_polyline_corners fillets between two neighbouring vertices, so it
+    gives up wherever those sit a few metres apart — which is exactly where
+    the mixed TDX/NLSC digitising leaves its sharpest corners.  This pass
+    works on the corner ITSELF: where the circle through a vertex and its two
+    neighbours is tighter than the floor, the vertex is relaxed toward the
+    chord until the circle opens up.
+
+    Deliberate reversal cusps (the 阿里山 zigzag tails) turn far harder than
+    CORNER_MAX_TURN_DEG and are left exactly as they are, and every vertex is
+    anchored within ``max_shift_meters`` of where it arrived, so this can only
+    spend a small bounded slice of the official-geometry budget.
+    """
+    if len(coords) < 3 or min_radius_meters <= 0.0:
+        return coords
+    anchors = list(coords)
+    current = list(coords)
+    window = min_radius_meters / 2.0
+    for _ in range(passes):
+        moved = False
+        output = [current[0]]
+        for index in range(1, len(current) - 1):
+            before = output[-1]
+            corner = current[index]
+            after = current[index + 1]
+            if turn_angle_degrees(before, corner, after) > CORNER_MAX_TURN_DEG:
+                output.append(corner)  # reversal cusp: not a corner to round
+                continue
+            if (
+                windowed_corner_radius_meters(current, index, window)
+                >= min_radius_meters
+            ):
+                output.append(corner)
+                continue
+            # Relax toward the chord midpoint; repeated passes converge on a
+            # corner the floor accepts without ever overshooting past it.
+            lon = 0.5 * corner[0] + 0.25 * (before[0] + after[0])
+            lat = 0.5 * corner[1] + 0.25 * (before[1] + after[1])
+            anchor = anchors[index]
+            offset = haversine(anchor, (lon, lat)) * 1000.0
+            if offset > max_shift_meters:
+                scale = max_shift_meters / offset
+                lon = anchor[0] + (lon - anchor[0]) * scale
+                lat = anchor[1] + (lat - anchor[1]) * scale
+            output.append((lon, lat))
+            moved = True
+        output.append(current[-1])
+        current = output
+        if not moved:
+            break
+    return current
 
 
 def groom_line(
@@ -1146,14 +1372,27 @@ def groom_line(
             haversine((stations[index].lon, stations[index].lat), display) * 1000.0,
         )
 
+    # The forest railway threads 40 m-radius spiral loops and zigzag tails;
+    # the standard relaxation measurably shortened them (阿里山線 dropped
+    # ~2 km against the official mileage table), so AFR lines groom with a
+    # lighter hand.
+    forest = spec.line_id.startswith("tw-alsr-")
+    smooth_cap = 3.0 if forest else SMOOTH_CAP_METERS
+    simplify_tolerance = 0.8 if forest else SIMPLIFY_TOLERANCE_METERS
+    corner_sagitta = 4.0 if forest else CORNER_MAX_SAGITTA_METERS
+
     segments: List[List[Coord]] = []
     for index in range(len(cuts) - 1):
         coords = slice_polyline(full, cumulative, cuts[index], cuts[index + 1])
         coords[0] = station_points[index]
         coords[-1] = station_points[(index + 1) % station_count]
-        coords = relax_polyline(coords, SMOOTH_ITERATIONS, SMOOTH_CAP_METERS)
-        coords = simplify_polyline(coords, SIMPLIFY_TOLERANCE_METERS)
-        coords = round_polyline_corners(coords, CORNER_ROUNDING_PASSES)
+        coords = trim_interior_stubs(coords, STUB_TRIM_MAX_KM)
+        coords = relax_polyline(coords, SMOOTH_ITERATIONS, smooth_cap)
+        coords = simplify_polyline(coords, simplify_tolerance)
+        coords = round_polyline_corners(coords, CORNER_ROUNDING_PASSES, corner_sagitta)
+        # Last, so the floor applies to whatever the fillet pass left behind —
+        # including the short-legged corners it declines to touch.
+        coords = enforce_min_corner_radius(coords)
         segments.append(coords)
     return segments, station_points, {"spike_km": spike_km, "snap_max_m": snap_max_m}
 
@@ -1771,6 +2010,113 @@ def write_package(path: Path, package: Dict[str, object]) -> None:
     os.replace(gzip_temporary, gzip_path)
 
 
+def write_geojson(path: Path, collection: Dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(
+        collection, ensure_ascii=False, separators=(",", ":")
+    ).encode()
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(encoded)
+    os.replace(temporary, path)
+
+
+def spec_primary_system(spec: LineSpec) -> str:
+    """The official operating system a display line belongs to.
+
+    Almost every line draws its stations from one system.  The exception is a
+    junction terminus served by another operator — the Alishan main line
+    starts at TRA 嘉義 — so the line is classified by the system that owns
+    most of its stations, not by requiring a single one.  Ties break by name
+    to keep the build deterministic.
+    """
+    counts: Dict[str, int] = {}
+    for system, _ in spec.station_refs:
+        counts[system] = counts.get(system, 0) + 1
+    return sorted(counts, key=lambda system: (-counts[system], system))[0]
+
+
+def build_app_datasets(
+    staged: Sequence[Dict[str, object]],
+    group_ids: Dict[str, str],
+) -> Tuple[Dict[str, object], Dict[str, object]]:
+    """Emit the app's rail-section and station datasets for Taiwan.
+
+    Same schema as Japan's N02-derived pair, written under the neutral
+    property names (the frontend reads ``line_name`` / ``operator`` /
+    ``institution_type_code`` / ``railway_class_code`` for sections and
+    ``station_name`` / ``n02_station_code`` / ``n02_group_code`` /
+    ``display_point`` for stations, with the N02_* keys as the Japan-side
+    alias).  ``n02_station_code`` carries the official TDX StationUID, which
+    is exactly what a Taiwanese train's stops record.
+
+    Coordinates come from the SAME densify-and-round pass that produces the
+    compact package, and every station anchors on its own on-line point — the
+    coordinate the grooming already made the shared boundary of the two
+    adjacent intervals.  A station is therefore a graph node of the routing
+    graph rather than something the solver has to snap towards, and the route
+    it solves lies on the geometry the map draws.
+    """
+    section_features: List[Dict[str, object]] = []
+    station_features: List[Dict[str, object]] = []
+    for staged_row in staged:
+        spec = staged_row["spec"]
+        system = spec_primary_system(spec)
+        if system not in TW_SYSTEM_CLASSES:
+            raise RuntimeError(
+                f"{spec.line_id}: no institution/railway class for system {system} "
+                "— add it to TW_SYSTEM_CLASSES."
+            )
+        institution, railway_class = TW_SYSTEM_CLASSES[system]
+        shared = {
+            "railway_class_code": railway_class,
+            "institution_type_code": institution,
+            "line_name": spec.name,
+            "operator": spec.operator,
+        }
+        intervals = [
+            [
+                [round(lon, 6), round(lat, 6)]
+                for lon, lat in densify_official_edge(coords)
+            ]
+            for coords in staged_row["segments"]
+        ]
+        for coords in intervals:
+            section_features.append(
+                {
+                    "type": "Feature",
+                    "properties": dict(shared),
+                    "geometry": {"type": "LineString", "coordinates": coords},
+                }
+            )
+        stations = staged_row["stations"]
+        for index, station in enumerate(stations):
+            # Anchor on the routed geometry itself, so the station's marker
+            # coordinate and the graph node are byte-identical. A non-loop
+            # line's final station has no outgoing interval and anchors on the
+            # tail of its incoming one instead.
+            if index < len(intervals):
+                anchor = intervals[index][:2]
+            else:
+                anchor = intervals[index - 1][-2:][::-1]
+            station_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        **shared,
+                        "station_name": station.name,
+                        "n02_station_code": station.uid,
+                        "n02_group_code": group_ids[station.uid],
+                        "display_point": anchor[0],
+                    },
+                    "geometry": {"type": "LineString", "coordinates": anchor},
+                }
+            )
+    return (
+        {"type": "FeatureCollection", "features": section_features},
+        {"type": "FeatureCollection", "features": station_features},
+    )
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1822,6 +2168,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="current NLSC railway-station SHP or ZIP",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--datasets-dir",
+        type=Path,
+        default=DEFAULT_DATASETS_DIR,
+        help=(
+            "directory for the app's Taiwan solver datasets "
+            f"({DATASET_SECTIONS_NAME} / {DATASET_STATIONS_NAME})"
+        ),
+    )
     args = parser.parse_args(argv)
 
     systems = sorted({key.split(":", 1)[0] for key in SOURCE_CANDIDATES})
@@ -1844,7 +2199,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 )
 
     station_maps: Dict[str, Dict[str, Station]] = {}
-    line_sequences: Dict[Tuple[str, str], Tuple[str, ...]] = {}
+    line_sequences = TrackedLineSequences()
     shape_parts: Dict[Tuple[str, str], List[List[Coord]]] = {}
     shape_part_penalties: Dict[Tuple[str, str], List[float]] = {}
     for system in systems:
@@ -2346,17 +2701,52 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # 獨立山→梨園寮 4.00 km, 屏遮那→二萬平 6.98 km (two switchback tails),
     # 二萬平→阿里山 4.44 km (station-throat reversal tail).
     alishan_main_vias: Dict[int, Tuple[Coord, ...]] = {
-        # 樟腦寮→獨立山: the Dulishan spiral's three loops.
+        # The Dulishan spiral (two clockwise loops, then a figure-eight exit
+        # over the top — 環繞獨立山三圈).  A handful of loose vias let each
+        # shortest-path leg run backwards around a loop or cut across on a
+        # coarse MOA chord, which measured 樟腦寮→獨立山 at 3.27 km against
+        # the official 4.10 km.  These vias are sampled every ~300 m along
+        # the chained NLSC 1150409 centreline (its parts join end-to-end
+        # exactly), so every leg can only advance forward around the spiral;
+        # the sampled span matches the official interval within ~0.1 km.
+        # Within each sampling window the point farthest from every other
+        # spiral pass is chosen, so a via can never snap onto the loop
+        # stacked above or below it where the passes almost touch.
+        # 樟腦寮→獨立山:
         5: (
-            (120.602321, 23.530515),
-            (120.60924, 23.534054),
-            (120.610938, 23.537219),
-            (120.60973, 23.537383),
-            (120.608077, 23.535966),
-            (120.605552, 23.539132),
+            (120.603758, 23.534827),
+            (120.607512, 23.537436),
+            (120.610504, 23.538589),
+            (120.610434, 23.536003),
+            (120.610092, 23.534809),
+            (120.60637, 23.533993),
+            (120.605791, 23.535329),
+            (120.60567, 23.536819),
+            (120.609688, 23.537581),
+            (120.609406, 23.536581),
+            (120.606912, 23.53475),
+            (120.605565, 23.538108),
+            (120.605494, 23.538888),
         ),
-        # 獨立山→梨園寮: the spiral's exit loop over itself.
-        6: ((120.603786, 23.535006),),
+        # 獨立山→梨園寮: the figure-eight exit over the summit, sampled every
+        # ~150 m — the plan-view self-crossing needs tight bracketing so no
+        # leg can hop passes at the crossing.  The east leg beyond the
+        # spiral to 梨園寮 is loop-free and needs no vias.
+        6: (
+            (120.60708, 23.536506),
+            (120.607674, 23.535479),
+            (120.60804, 23.535927),
+            (120.608286, 23.536705),
+            (120.606689, 23.538454),
+            (120.606715, 23.538716),
+            (120.606736, 23.540965),
+            (120.606956, 23.542098),
+            (120.607256, 23.542297),
+            (120.608259, 23.54379),
+            (120.60848, 23.544437),
+            (120.609578, 23.545971),
+            (120.609655, 23.546233),
+        ),
         # 屏遮那→二萬平: both zigzag reversal tails.
         13: (
             (120.795836, 23.521625),
@@ -2416,6 +2806,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ),
     )
     specs = specs + afr_specs
+
+    # Completeness gate for the hand-written spec list (see
+    # TrackedLineSequences).  Every passenger LineID the official sources
+    # publish must end up in some display line; a newly published one fails
+    # the build here instead of quietly never being drawn.  Alishan is absent
+    # from this check by construction: it has no TDX/PTX StationOfLine record
+    # and is built from the MOA/NLSC SHPs plus the official station sequence.
+    unconsumed = line_sequences.unconsumed()
+    if unconsumed:
+        raise RuntimeError(
+            "official LineIDs are published but reach no display line: "
+            + ", ".join(f"{system}:{line_id}" for system, line_id in unconsumed)
+            + " — add a LineSpec, or extend an existing spec's station range, "
+            "for each one."
+        )
 
     detail_features = load_shape_features(args.alishan_detail)
     current_rail_features = load_shape_features(args.alishan_rail)
@@ -2612,6 +3017,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # feature closes NLSC's small mountain-top topology gap.
     shape_parts[("AFR", "ZHUSHAN")] = detail_zhushan + current_alishan
     shape_parts[("AFR", "NLSC")] = current_alishan
+    # The NLSC 1150409 layer is the as-built current alignment (full Dulishan
+    # spiral loops, the 2024 tunnel-42 rebuild); the 11001 MOA detail file
+    # carries design-stage records with coarse chords that let a shortest
+    # path cut spiral loops (樟腦寮→獨立山 measured 3.27 km against the
+    # official 4.10 km).  Penalising the MOA parts makes them gap-bridges
+    # only — the same pattern as NLSC-vs-TDX on TRA lines.
+    shape_part_penalties[("AFR", "MAIN")] = [2.5] * len(detail_main) + [1.0] * len(
+        current_alishan
+    )
+    shape_part_penalties[("AFR", "ZHUSHAN")] = [2.5] * len(detail_zhushan) + [
+        1.0
+    ] * len(current_alishan)
 
     all_stations = []
     resolved_stations: Dict[str, List[Station]] = {}
@@ -2776,7 +3193,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     package: Dict[str, object] = {
         "format": "compact-v1",
-        "version": "2025.5.0",
+        "version": "2025.5.2",
         "generatedAt": utc_timestamp(update_times),
         "crs": "WGS84",
         "country": "TW",
@@ -2807,11 +3224,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         },
     }
     audit = audit_package(package)
+    # The other half of the completeness gate above: that one fails when an
+    # official line reaches no spec, this one when the spec list itself is
+    # edited into building a different number of display lines.
     if audit["lines"] != 38:
         raise RuntimeError(f"expected 38 lines, built {audit['lines']}")
     write_package(args.output, package)
     print(f"wrote {args.output}")
     print("audit " + json.dumps(audit, ensure_ascii=False, sort_keys=True))
+
+    # The same official pass also emits the app's solver datasets, so the
+    # routing graph, the station index, and the drawn map can never be built
+    # from different vintages of the official data.
+    sections_geojson, stations_geojson = build_app_datasets(staged, group_ids)
+    sections_path = args.datasets_dir / DATASET_SECTIONS_NAME
+    stations_path = args.datasets_dir / DATASET_STATIONS_NAME
+    write_geojson(sections_path, sections_geojson)
+    write_geojson(stations_path, stations_geojson)
+    print(
+        f"wrote {sections_path} "
+        f"({len(sections_geojson['features'])} sections) and {stations_path} "
+        f"({len(stations_geojson['features'])} stations)"
+    )
     return 0
 
 

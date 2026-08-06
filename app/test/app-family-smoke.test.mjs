@@ -55,9 +55,21 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     })()`,
     context,
   );
-  assert.equal(result.trains.length, 1);
+  assert.equal(result.trains.length, 2);
   assert.equal(result.trains[0].stops.length, 13);
   assert.equal(result.trains[0].route_sections.length, 12);
+  // The round-island tourist express: a Taipei→Taipei loop over eight TRA
+  // display lines, every physical station enumerated per jsonspec §14.
+  const roundIsland = result.trains[1];
+  assert.equal(roundIsland.id, "20260813_01_star_of_taiwan_round_island_loop");
+  assert.equal(roundIsland.stops.length, 195);
+  assert.equal(roundIsland.route_sections.length, 194);
+  assert.equal(roundIsland.stops[0].n02_station_code, "TRA-1000");
+  assert.equal(roundIsland.stops.at(-1).n02_station_code, "TRA-1000");
+  assert.equal(
+    roundIsland.stops.filter((stop) => stop.stop_type !== "pass_through").length,
+    24,
+  );
 });
 
 test("every language-change listener runs without undefined identifiers", () => {
@@ -475,14 +487,14 @@ test("route cache keys include the solver version", () => {
     }).cacheKey`,
     context,
   );
-  assert.match(key, /^solver:14\|/);
+  assert.match(key, /^solver:15\|/);
 });
 
 test("precomputed sample geometry replaces stale warmed geometry", () => {
   const { context } = loadAppFamily();
   const result = vm.runInContext(
     `(() => {
-      const key = "solver:14|hiroden-test";
+      const key = "solver:15|hiroden-test";
       runtimeRouteCache.set(key, [{ geometry: { coordinates: [[0, 0], [9, 9]] } }]);
       runtimeRouteNegativeCache.add(key);
       seedRouteCacheFromPart({ route: {

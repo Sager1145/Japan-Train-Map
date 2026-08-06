@@ -154,10 +154,15 @@ test("health endpoint preserves the API listing contract", async () => {
       datasets: [
         "/api/rail-sections",
         "/api/stations",
+        // Taiwan's solver/statistics pair — same schema as the Japanese pair,
+        // served separately and never loaded together.
+        "/api/rail-sections-tw",
+        "/api/stations-tw",
         "/api/default-trains",
         "/api/matched-routes",
         "/api/matched-stops",
         "/api/station-readings",
+        "/api/station-readings-tw",
       ],
       train_store: "/api/train-store",
       train_stores: ["/api/train-store", "/api/train-store-tw"],

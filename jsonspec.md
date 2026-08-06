@@ -41,7 +41,7 @@
 
 **第二部分 · 数据源（日本 N02 / 台湾 TDX/PTX / OSM）规范**
 
-2. 数据源说明（含 2.7 台湾官方 TDX/PTX）　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 站名对照表 `station-readings.json`**：汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
+2. 数据源说明（含 2.7 台湾官方 TDX/PTX）　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 分国站名对照表**：日本 `station-readings.json` 与台湾 `station-readings-tw.json`）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
 
 ---
 
@@ -424,7 +424,7 @@ id ASC             # 最终 tiebreaker
 >
 > **`line_names` / `operator_names` 与第 5 节偏好的区别**：这里是该区间的**硬约束**（寻路时只走匹配的线/公司，配合在站内换乘连接边）；`route_policy.preferred_*` 是全列车范围的软偏好。仅在 `line_names` / `operator_names` 非空时才会写入导出 JSON。
 
-> **canonical 形态省略可推导的 `from` / `to` 名**：日本站名可由 `N02_005c` 经站名对照表（见数据源部分 13.4）还原时，导出可只写端点代码。台湾 TDX 代码尚未进入该对照表，因此台湾 route section 必须同时保留 `from` / `to` 名与 TDX `StationUID`。任何端点无码或名字与代码权威站名不一致时，也必须保留站名。
+> **canonical 形态省略可推导的 `from` / `to` 名**：日本站名可由 `N02_005c` 经日本站名对照表还原；台湾站名可由 TDX/PTX `StationUID` 经台湾站名对照表还原（均见数据源部分 13.4）。可还原时导出可只写端点代码；任何端点无码或名字与代码权威站名不一致时，仍必须保留站名。
 
 ### 6.1b 支线车号 `number` / `name`（可选）
 
@@ -2192,7 +2192,9 @@ computed pass-through geometry
 
 这些属于构建结果或运行时状态，不属于手写列车 JSON。
 
-### 13.4 站名对照表 `station-readings.json`（汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）
+### 13.4 分国站名对照表
+
+#### 13.4-JP 日本 `station-readings.json`（汉字 / 假名 / 片假名 / 罗马字 / 简繁中文）
 
 N02 数据只提供汉字站名（`N02_005`），**不含任何假名、罗马字或中文译名**（见第 4 / 10 节）。因此站名的全部表记既不写进列车 JSON，也不硬编码在前端字典里，而是集中放在一张**按站 ID 索引的对照表** `app/data/station-readings.json`，通过 `GET /api/station-readings` 提供。**本表是站名的唯一权威来源**：一条记录同时给出汉字原名、平假名、片假名、罗马字、繁体中文、简体中文六种表记。
 
@@ -2297,6 +2299,48 @@ route_sections 只保留 from/to 码：其 from/to 站名与 stops 重复、可�
   りんくうタウン=臨空城 / 临空城、ハウステンボス=豪斯登堡、トマム=苫鵡 / 苫鹉、
   越前たけふ=越前武生、ひばりヶ丘=雲雀丘 / 云雀丘；ノ→之、ツ / ヶ 脱落）。
 本表为构建产物，可整表重建；应随在用车站集变化保持同步。
+```
+
+#### 13.4-TW 台湾 `station-readings-tw.json`（繁中 / 简中 / 日文 / 英文）
+
+台湾使用独立对照表 `app/data/station-readings-tw.json`，通过
+`GET /api/station-readings-tw` 提供，不得与日本站名按名称混查。每条记录固定为：
+
+```json
+{
+  "name": "台北車站",
+  "zh_Hant": "台北車站",
+  "zh_Hans": "台北车站",
+  "ja": "台北駅",
+  "en": "Taipei Main Station"
+}
+```
+
+| 字段 / 索引 | 规则 |
+| --- | --- |
+| `byCode[StationUID]` | 保留官方 TDX/PTX 快照发布的全部 `StationUID`；不得由站名臆造代码 |
+| `byCode["<line.id>:<station-group-id>"]` | 地图线路站点的精确别名；用于 compact rail package 中没有直接携带 `StationUID` 的 marker |
+| `byName` | 仅保留四语值完全相同的无歧义站名；同名但官方译名不同（例如台北 / 台中的「市政府」）时不建立兜底，必须用精确代码 |
+| `name` / `zh_Hant` | 官方 `StationName.Zh_tw`；仅存在于 NLSC/AFR 图层的站点采用该官方图层写入 rail package 的繁中名 |
+| `en` | 官方 `StationName.En`；没有官方值时必须为空字符串 |
+| `ja` | 官方 `StationName.Ja`；没有官方值时必须为空字符串 |
+| `zh_Hans` | 优先采用官方简体字段；没有时将官方繁体站名直接转换为简体字 |
+
+当前官方快照共 532 个 `StationUID`；地图的 38 条显示线路共有 585 个线路站点别名，
+全部均有精确记录。另有 23 个 NLSC/AFR 显示站只有官方繁中名，因此其 `en` / `ja`
+为空。当前 TDX/PTX 快照没有发布任何简体站名字段，故全部简体值按上述回退规则生成。
+
+前端在台湾模式下直接把 base station name 切换为当前界面的四语之一，不显示日本式的
+假名 / 罗马字副行。如果所选日文或英文为空，为避免地图 marker 变成空白，显示层回退到
+官方繁中名；对照表中的缺失翻译仍保持空字符串。四语值与日本读音同样不写入
+`train-store.json`，stop 只保存官方繁中 `name` 与兼容键 `n02_station_code`
+（其值为台湾 `StationUID`）。
+
+生成命令（官方快照目录由 `download-taiwan-rail-official.py` 产生）：
+
+```sh
+python3 scripts/build-taiwan-station-readings.py \
+  --source-dir /private/tmp/tw-rail-official
 ```
 
 ---

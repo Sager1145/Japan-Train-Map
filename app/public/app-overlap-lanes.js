@@ -45,8 +45,16 @@ function _deckCachePut(cache, key, value) {
     cache.delete(cache.keys().next().value);
 }
 
-function invalidateDeckRouteCaches() {
-  _overlapCacheBySig.clear();
+// `keepOverlapMap` is for a whole-store REPLACEMENT (progressive load, country
+// switch). Every other cache here holds live train / feature OBJECTS, which the
+// reload rebuilds, so a signature hit would hand the map stale ones — they must
+// go. The overlap map is the exception: it is pure strings (segment key → set
+// of train IDs → lane slot), so an identical signature describes an identical
+// corridor graph no matter which objects carry it. Keeping it is what turns
+// flipping back to a country whose data has not changed into a lookup instead
+// of a multi-second corridor rebuild — the most expensive half of the switch.
+function invalidateDeckRouteCaches({ keepOverlapMap = false } = {}) {
+  if (!keepOverlapMap) _overlapCacheBySig.clear();
   _deckRecordsCacheBySig.clear();
   _routeItemsCacheBySig.clear();
   _lastPushedBuilt = null;
@@ -95,6 +103,14 @@ function getDeckOverlapMapCached(items) {
   if (!overlap) {
     overlap = buildDeckOverlapMap(items);
     _deckCachePut(_overlapCacheBySig, sig, overlap);
+  } else {
+    // A cache hit skips buildDeckOverlapMap, and with it the snap refresh it
+    // opens with — but the record builder downstream still stamps segment keys
+    // through getRouteLinePairs, which needs a snap consistent with the keys in
+    // this cached map. The signature guard inside makes the matching case a
+    // near-free string compare; it only does real work if the geometry set
+    // genuinely differs (a store the overlap cache survived a reload for).
+    ensureRouteVertexSnap(items, OVERLAP_SNAP_METERS);
   }
   return overlap;
 }
@@ -1341,16 +1357,35 @@ function smoothStandaloneCorridorRun(line, isClosed) {
   return isClosed ? null : smoothCorridorCurve(line);
 }
 
-// Shape guard over the shared RailMapGeometry.curvePointAt sampler: station-
-// join probing may see a curve mid-rebuild, so verify the pts/cum pair and
-// return null instead of sampling garbage. The delegation is runtime-only —
-// the railmap family publishes RailMapGeometry long before any fitted curve
-// exists to probe.
+// Station-join probing may see a curve mid-rebuild, so verify the pts/cum pair
+// and return null instead of sampling garbage.
+//
+// The sampler is the same binary search as RailMapGeometry.curvePointAt and is
+// kept inline for the same reason pointOnSource above is: this file has to run
+// with NO window and no railmap family — inside the fit-curve worker
+// (app-fit-worker.js) and the standalone test VM. It used to delegate through
+// `window.RailMapGeometry`, which threw "window is not defined" the moment a
+// real batch reached the station-join pass. That killed the worker on every
+// full-country load, and the permanent fallback dropped the whole B-spline
+// solve back onto the main thread — several seconds of frozen UI per repaint.
 function fittedCurvePointAt(curve, metres) {
   const pts = curve && curve.pts;
   const cum = curve && curve.cum;
   if (!pts || pts.length < 2 || !cum || cum.length !== pts.length) return null;
-  return window.RailMapGeometry.curvePointAt(curve, metres);
+  const target = Math.max(0, Math.min(curve.totalMeters, metres));
+  let lo = 0;
+  let hi = cum.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] <= target) lo = mid;
+    else hi = mid;
+  }
+  const span = cum[lo + 1] - cum[lo] || 1;
+  const t = (target - cum[lo]) / span;
+  return [
+    pts[lo][0] + (pts[lo + 1][0] - pts[lo][0]) * t,
+    pts[lo][1] + (pts[lo + 1][1] - pts[lo][1]) * t,
+  ];
 }
 
 // Recalculate the arc-length and tangent fields after a station fillet has
@@ -1947,6 +1982,14 @@ function runFitCurveJobs(jobs, joinGroups) {
 let _fitWorker = null;
 let _fitWorkerBroken = false;
 let _fitWorkerSeq = 0;
+// A worker that dies while the page is still pulling ~20 scripts and several
+// MB of data has usually just lost a cold-cache race, not proved that Workers
+// are unavailable. Give it this many fresh starts before concluding the
+// environment cannot run it: writing the whole session off after ONE hiccup
+// moved every later B-spline solve onto the main thread, which is precisely
+// the multi-second freeze the deferred path exists to prevent.
+const FIT_WORKER_MAX_RESTARTS = 2;
+let _fitWorkerRestarts = 0;
 const _fitWorkerPending = new Map(); // requestId → record bundle
 
 function fitCurveWorkerUsable() {
@@ -1977,11 +2020,18 @@ function applyFitCurveResults(bundle, result) {
     RailMap.notifyFitCurvesUpdated();
 }
 
-// Worker breakage (boot failure, 404 on the script, a runtime error) is
-// permanent for the session: solve every unanswered bundle inline once, then
-// let subsequent builds take the synchronous path from the start.
+// Worker breakage (boot failure, 404 on the script, a runtime error): drop the
+// dead worker, then RE-SEND every unanswered bundle to a fresh one. Solving
+// them on the main thread instead is a multi-second freeze on a full-country
+// store — the exact cost the deferred path exists to avoid — so it is the last
+// resort, taken only once the restart budget is spent. The dominant failure in
+// practice is the worker losing a cold-cache race for its importScripts while
+// the page is still pulling a few hundred train parts, and a re-send costs
+// nothing next to fitting the batch here.
 function _fitWorkerFailed(err) {
-  _fitWorkerBroken = true;
+  _fitWorkerRestarts += 1;
+  const retrying = _fitWorkerRestarts <= FIT_WORKER_MAX_RESTARTS;
+  _fitWorkerBroken = !retrying;
   const pending = [..._fitWorkerPending.values()];
   _fitWorkerPending.clear();
   if (_fitWorker) {
@@ -1992,14 +2042,18 @@ function _fitWorkerFailed(err) {
     }
     _fitWorker = null;
   }
-  console.warn("Fit-curve worker unavailable; fitting on the main thread.", err);
+  console.warn(
+    retrying
+      ? "Fit-curve worker died; restarting it and re-sending the pending fits."
+      : "Fit-curve worker unavailable; fitting on the main thread.",
+    err,
+  );
   pending.forEach((bundle) => {
-    const pendingFit = bundle._pendingFit;
-    if (!pendingFit) return;
-    applyFitCurveResults(
-      bundle,
-      runFitCurveJobs(pendingFit.jobs, pendingFit.joinGroups),
-    );
+    if (!bundle._pendingFit) return;
+    // scheduleFitCurveWorker boots the replacement worker on the first call
+    // and falls back to the inline solve by itself once _fitWorkerBroken is
+    // set, so both outcomes are handled in one place.
+    scheduleFitCurveWorker(bundle);
   });
 }
 
@@ -2028,6 +2082,12 @@ function scheduleFitCurveWorker(bundle) {
       const target = _fitWorkerPending.get(data.requestId);
       if (!target) return;
       _fitWorkerPending.delete(data.requestId);
+      // A worker that answers has proved the environment can run it, so the
+      // restart budget refills. The failures this guards against cluster
+      // during the initial load storm; without the reset, three unlucky boots
+      // spread over a long session would strand every later fit on the main
+      // thread even though the worker works fine.
+      _fitWorkerRestarts = 0;
       applyFitCurveResults(target, data);
     };
     _fitWorker.onerror = (err) => _fitWorkerFailed(err);

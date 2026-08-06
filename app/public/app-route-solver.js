@@ -493,7 +493,7 @@ function solveRouteSectionOnN02Graph(
         graph,
         best.pathKeys,
       ),
-      route_template_key: getTrainRouteTemplateKey(train),
+      route_template_key: routeKeyDigest(getTrainRouteTemplateKey(train)),
       path_coordinate_count: coordinates.length,
       raw_path_coordinate_count: rawCoordinates.length,
       snap_distance_m: {
@@ -1345,9 +1345,12 @@ function normalizeGraphCoord(coord) {
   ];
 }
 
+// Hot enough (two calls per drawn route segment — ~700k per full-Japan
+// repaint) that the intermediate array normalizeGraphCoord returns is worth
+// skipping. Same quant5 rule, same bytes.
 function coordKey(coord) {
-  const [lon, lat] = normalizeGraphCoord(coord);
-  return `${lon},${lat}`;
+  const quant5 = window.AppCore.quant5;
+  return quant5(Number(coord[0])) + "," + quant5(Number(coord[1]));
 }
 
 function graphGridKey(coord, cellSize) {

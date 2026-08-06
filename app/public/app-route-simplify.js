@@ -280,10 +280,37 @@ function refreshRouteVertexSnap(items, tolMeters) {
   }
   const mLat = 110540; // metres per degree latitude (mean)
   const gridLon = 80000; // stable Japan-wide grid; distance check stays exact
-  const cells = new Map(); // "gx,gy" -> array of representative [lon,lat]
+  const cells = new Map(); // cellKey(gx,gy) -> array of representative [lon,lat]
   const mLonAt = (lat) => Math.cos((lat * Math.PI) / 180) * 111320;
   const tol2 = tol * tol; // squared-metre compare, avoiding Math.hypot's sqrt
+  // NUMERIC cell keys. Each vertex probes 15 neighbouring cells, so the old
+  // `gx + "," + gy` keys built ~2.7M throwaway strings per pass over a
+  // full-Japan store — the single most expensive thing this function did.
+  // Packing both axes into one integer is exact (and therefore
+  // collision-free) as long as each axis stays inside GY_SPAN and the product
+  // stays inside Number.MAX_SAFE_INTEGER; a pathologically fine tolerance
+  // falls back to the string key rather than silently aliasing two cells.
+  const GY_SPAN = 1 << 26;
+  const GY_HALF = GY_SPAN >> 1;
+  const maxGx = Math.ceil((180 * gridLon) / tol) + 4;
+  const maxGy = Math.ceil((90 * mLat) / tol) + 4;
+  const cellKey =
+    maxGx < GY_HALF &&
+    maxGy < GY_HALF &&
+    maxGx * GY_SPAN + GY_SPAN < Number.MAX_SAFE_INTEGER
+      ? (gx, gy) => gx * GY_SPAN + (gy + GY_HALF)
+      : (gx, gy) => gx + "," + gy;
+  // Every vertex is canonicalised twice — once here, once when
+  // getRouteLinePairs stamps its segment keys — and coordinate arrays are
+  // shared by the deduped route templates, so memoizing per coordinate object
+  // turns the whole second pass (and every repeat lookup within this one)
+  // into a WeakMap hit. canon() is pure for a given cell set: a repeat call
+  // always found the representative the first call registered, so the memo
+  // returns exactly what the scan would have.
+  const memo = new WeakMap();
   const canon = (c) => {
+    const seen = memo.get(c);
+    if (seen !== undefined) return seen;
     // Never multiply absolute longitude by a latitude-dependent scale here:
     // doing so moves the grid itself as latitude changes and can put two
     // sub-metre neighbours several cells apart.
@@ -297,21 +324,25 @@ function refreshRouteVertexSnap(items, tolMeters) {
     const mx = mLonAt(c[1]);
     for (let dx = -2; dx <= 2; dx += 1)
       for (let dy = -1; dy <= 1; dy += 1) {
-        const arr = cells.get(gx + dx + "," + (gy + dy));
+        const arr = cells.get(cellKey(gx + dx, gy + dy));
         if (arr)
           for (let k = 0; k < arr.length; k += 1) {
             const ex = (c[0] - arr[k][0]) * mx;
             const ey = (c[1] - arr[k][1]) * mLat;
-            if (ex * ex + ey * ey <= tol2) return arr[k];
+            if (ex * ex + ey * ey <= tol2) {
+              memo.set(c, arr[k]);
+              return arr[k];
+            }
           }
       }
-    const key = gx + "," + gy;
+    const key = cellKey(gx, gy);
     let arr = cells.get(key);
     if (!arr) {
       arr = [];
       cells.set(key, arr);
     }
     arr.push(c);
+    memo.set(c, c);
     return c;
   };
   // Register a representative for every vertex, in a stable order, so the whole

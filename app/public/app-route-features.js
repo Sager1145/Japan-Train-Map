@@ -111,10 +111,15 @@ function getMatchedRouteFeatures(train) {
   if (!candidates.length) {
     const templateKey = getTrainRouteTemplateKey(train);
     if (templateKey) {
+      // Features store the DIGEST of this key, never the key itself
+      // (routeKeyDigest); compare like with like.
+      const templateDigest = routeKeyDigest(templateKey);
       candidates = matchedRoutesGeoJson.features
         .filter((feature) => {
           const p = feature.properties || {};
-          return p.route_template_key === templateKey && p.is_primary !== false;
+          return (
+            p.route_template_key === templateDigest && p.is_primary !== false
+          );
         })
         .sort(
           (a, b) =>

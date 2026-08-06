@@ -7,12 +7,19 @@
 
 // Whole-file datasets: route name -> file name under app/data.
 const DATA_FILES = {
+  // Route-solver / statistics geometry, one pair per country and never mixed
+  // (see railSectionsApiForCountry). Both pairs carry the SAME schema — Japan
+  // through the historical N02_* property names, Taiwan through the neutral
+  // aliases the frontend reads for either.
   "rail-sections": "rail-sections.json",
   stations: "stations.json",
+  "rail-sections-tw": "rail-sections-tw.json",
+  "stations-tw": "stations-tw.json",
   "default-trains": "default-trains.json",
   "matched-routes": "matched-routes.json",
   "matched-stops": "matched-stops.json",
   "station-readings": "station-readings.json",
+  "station-readings-tw": "station-readings-tw.json",
 };
 
 // Precomputed part datasets: manifest.json + part-NNN.json chunks in

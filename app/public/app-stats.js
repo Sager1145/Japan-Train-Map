@@ -29,14 +29,38 @@ const STAT_MASK_JR = 4;
 const STAT_MASK_METRO = 8;
 const STAT_MASK_PRIV = 16;
 const STAT_MASK_TRAM = 32;
-const STAT_CATEGORIES = [
-  { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
-  { mask: STAT_MASK_CONV, i18n: "stat.conv" },
-  { mask: STAT_MASK_JR, i18n: "stat.jr" },
-  { mask: STAT_MASK_METRO, i18n: "stat.metro" },
-  { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
-  { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
-];
+// The mask bits are shared by every country — a bit means the same KIND of
+// track everywhere (high speed, incumbent conventional, metro, light rail,
+// other) so all the accumulation code below stays country-generic. What
+// differs per country is which buckets exist and what they are CALLED: Japan
+// has a JR union that Taiwan has no analogue for, and the labels resolve
+// through I18N's country variants (stat.conv -> stat.conv.tw = 臺鐵, and so
+// on), so switching country re-labels the same machinery.
+const STAT_CATEGORIES_BY_COUNTRY = {
+  jp: [
+    { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+    { mask: STAT_MASK_CONV, i18n: "stat.conv" },
+    { mask: STAT_MASK_JR, i18n: "stat.jr" },
+    { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+    { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+    { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+  ],
+  tw: [
+    { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+    { mask: STAT_MASK_CONV, i18n: "stat.conv" },
+    { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+    { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+    { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+  ],
+};
+// Read as a getter everywhere: the active country can change without a
+// reload, and a snapshot taken at script-evaluation time would keep the old
+// country's rows forever.
+function activeStatCategories() {
+  return (
+    STAT_CATEGORIES_BY_COUNTRY[activeCountry] || STAT_CATEGORIES_BY_COUNTRY.jp
+  );
+}
 // 地下鐵 operators (N02_004 names): the two metro companies + every municipal
 // subway operator in Japan.
 const METRO_OPERATOR_NAMES = new Set([
@@ -80,10 +104,49 @@ function exclusiveTrackBucket(mask) {
   return STAT_MASK_CONV; // JR 在來線 (and any unclassified conventional track)
 }
 
-function classifyN02SectionMask(props) {
-  const code = String(props.N02_002 || "");
-  const cls = String(props.N02_001 || "");
-  const op = props.N02_004 || "";
+// Section attributes under the schema every country's dataset answers: Japan
+// writes the historical N02_* property names, the others the neutral aliases.
+// One reader for both, so nothing below has to know which country it is on.
+function sectionRailwayClassCode(props) {
+  return String(props.N02_001 || props.railway_class_code || "");
+}
+function sectionInstitutionTypeCode(props) {
+  return String(props.N02_002 || props.institution_type_code || "");
+}
+function sectionLineNameOf(props) {
+  return props.N02_003 || props.line_name || "";
+}
+function sectionOperatorOf(props) {
+  return props.N02_004 || props.operator || "";
+}
+
+// Which buckets a section belongs to, for the ACTIVE country. The mask bits
+// are shared; how a country's own official codes map onto them is not.
+function classifySectionMask(props) {
+  return activeCountry === "tw"
+    ? classifyTwSectionMask(props)
+    : classifyJpSectionMask(props);
+}
+
+// Taiwan, over the same code space the package build assigns
+// (TW_SYSTEM_CLASSES): institution 1 = 高鐵, 2 = 臺鐵, 3 = publicly operated,
+// with the railway class separating 捷運 (普通鐵道) from 輕軌 (軌道) and the
+// 阿里山林業鐵路 (特殊鐵道). Unlike Japan's overlapping masks these buckets are
+// exclusive — there is no JR-style union spanning two of them to record.
+function classifyTwSectionMask(props) {
+  const code = sectionInstitutionTypeCode(props);
+  const cls = sectionRailwayClassCode(props);
+  if (code === "1") return STAT_MASK_HSR;
+  if (cls === "21") return STAT_MASK_TRAM;
+  if (cls === "31") return STAT_MASK_PRIV;
+  if (code === "3") return STAT_MASK_METRO;
+  return STAT_MASK_CONV;
+}
+
+function classifyJpSectionMask(props) {
+  const code = sectionInstitutionTypeCode(props);
+  const cls = sectionRailwayClassCode(props);
+  const op = sectionOperatorOf(props);
   let mask = 0;
   if (code === "1") mask |= STAT_MASK_HSR;
   else mask |= STAT_MASK_CONV;
@@ -98,7 +161,7 @@ function classifyN02SectionMask(props) {
   const isTram =
     TRAM_RAILWAY_CLASSES.has(cls) &&
     !isMetro &&
-    !TRAM_CLASS_HEAVY_RAIL_LINES.has(`${op}|${props.N02_003 || ""}`);
+    !TRAM_CLASS_HEAVY_RAIL_LINES.has(`${op}|${sectionLineNameOf(props)}`);
   if (isTram) mask |= STAT_MASK_TRAM;
   if ((code === "4" || code === "5") && !isMetro && !isTram)
     mask |= STAT_MASK_PRIV;
@@ -199,7 +262,7 @@ function traceStatsCorridorEdges(adj, kmArr, fromKey, toKey) {
 // Zero km accumulator keyed by category mask, for per-line-per-category sums.
 function statsZeroCatKm() {
   const o = {};
-  for (const c of STAT_CATEGORIES) o[c.mask] = 0;
+  for (const c of activeStatCategories()) o[c.mask] = 0;
   return o;
 }
 
@@ -355,8 +418,19 @@ function collectTrainStatsEntry(train, idx) {
 }
 
 // ── Service-type rows (新幹線 / 有料特急 / 其他列車): cumulative km+time+count ──
+// The three buckets are the same everywhere — high speed, the reserved-seat
+// premium tier, everything else — but the service names that identify them are
+// a country's own vocabulary, so the matching is per country.
 function serviceGroupOfTrain(train) {
   const t = String((train && train.train_type) || "");
+  if (activeCountry === "tw") {
+    // 高鐵 is Taiwan's high-speed service; 對號列車 (自強 — including 太魯閣 and
+    // 普悠瑪 — and 莒光) is the reserved-seat tier 有料特急 corresponds to.
+    if (/高鐵|高铁/.test(t)) return "hsr";
+    if (/自強|自强|太魯閣|太鲁阁|普悠瑪|普悠玛|莒光|對號|对号/.test(t))
+      return "ltd";
+    return "other";
+  }
   if (t.includes("新幹線")) return "hsr";
   if (t.includes("特急")) return "ltd";
   return "other";
@@ -391,7 +465,7 @@ function aggregateMileageStats(idx, entries) {
   }
   let riddenAll = 0;
   let unmatchedKm = 0;
-  const riddenByMask = new Map(STAT_CATEGORIES.map((c) => [c.mask, 0]));
+  const riddenByMask = new Map(activeStatCategories().map((c) => [c.mask, 0]));
   // Deduped ridden km per line, split by category (drives the per-line
   // breakdown under each coverage row). Same ridden edge Set as the category sums.
   const lineRidByCat = new Map();
@@ -399,14 +473,14 @@ function aggregateMileageStats(idx, entries) {
     riddenAll += idx.km[e];
     const km = idx.km[e];
     const m = idx.mask[e];
-    for (const c of STAT_CATEGORIES)
+    for (const c of activeStatCategories())
       if (m & c.mask) riddenByMask.set(c.mask, riddenByMask.get(c.mask) + km);
     const ln = idx.lineArr && idx.lineArr[e];
     if (ln) {
       const lm = idx.lineMaskArr ? idx.lineMaskArr[e] : m;
       let o = lineRidByCat.get(ln);
       if (!o) lineRidByCat.set(ln, (o = statsZeroCatKm()));
-      for (const c of STAT_CATEGORIES) if (lm & c.mask) o[c.mask] += km;
+      for (const c of activeStatCategories()) if (lm & c.mask) o[c.mask] += km;
     }
   }
   // Connector spans: counted nationally, attributed to their reconnect
@@ -417,7 +491,7 @@ function aggregateMileageStats(idx, entries) {
       unmatchedKm += span.km;
       continue;
     }
-    for (const c of STAT_CATEGORIES)
+    for (const c of activeStatCategories())
       if (span.mask & c.mask)
         riddenByMask.set(c.mask, riddenByMask.get(c.mask) + span.km);
   }
@@ -507,7 +581,7 @@ function topRiddenSegments(entries) {
       }
     }
   }
-  const byMask = new Map(STAT_CATEGORIES.map((c) => [c.mask, []]));
+  const byMask = new Map(activeStatCategories().map((c) => [c.mask, []]));
   const all = [];
   for (const row of acc.values()) {
     all.push(row);
@@ -655,16 +729,21 @@ function anyRiddenCategoryHidden() {
   );
 }
 
-// Category of ONE station, classified from its own N02 line attributes
-// (stations.json carries N02_001/N02_002/N02_004). Used to hide a hidden
+// Category of ONE station, classified from the line attributes its own
+// station feature carries (both countries' station datasets repeat the line's
+// institution/class/operator on every station). Used to hide a hidden
 // category's STATION DOTS along with its lines.
 function markerCategoryForStation(stationFeature) {
   const p = stationFeature && stationFeature.properties;
-  if (!p || (!p.N02_002 && !p.N02_001)) return null;
-  const mask = classifyN02SectionMask(p);
+  if (!p) return null;
+  if (!sectionInstitutionTypeCode(p) && !sectionRailwayClassCode(p)) return null;
+  const mask = classifySectionMask(p);
   if (mask & STAT_MASK_HSR) return "hsr";
   if (mask & STAT_MASK_METRO) return "metro";
   if (mask & STAT_MASK_JR) return "jr";
+  // Taiwan records no JR-style union, so its incumbent conventional railway
+  // (臺鐵) fills the slot the filter calls "jr" — the national-railway toggle.
+  if (mask & STAT_MASK_CONV && activeCountry === "tw") return "jr";
   return "priv";
 }
 
@@ -755,9 +834,9 @@ async function buildStatsEdgeIndexSliced() {
     const coords = f.geometry && f.geometry.coordinates;
     if (!Array.isArray(coords)) continue;
     const props = f.properties || {};
-    const mask = classifyN02SectionMask(props);
-    const lineName = String(props.N02_003 || "");
-    const operatorName = String(props.N02_004 || "");
+    const mask = classifySectionMask(props);
+    const lineName = sectionLineNameOf(props);
+    const operatorName = sectionOperatorOf(props);
     const fullReclass = HSR_RECLASSIFY_FULL_LINES.get(lineName) || null;
     const isOuLine = lineName === HSR_RECLASSIFY_OU_LINE;
     for (let i = 1; i < coords.length; i += 1) {
@@ -828,7 +907,7 @@ async function buildStatsEdgeIndexSliced() {
     // corridors stay filed under 在來線 (the pre-fix behavior).
     console.warn("mini-Shinkansen corridor reclassification skipped:", err);
   }
-  const totals = { all: 0, byMask: new Map(STAT_CATEGORIES.map((c) => [c.mask, 0])) };
+  const totals = { all: 0, byMask: new Map(activeStatCategories().map((c) => [c.mask, 0])) };
   // line name -> per-category total km, so a line's breakdown row reflects ONLY
   // the track it has in that category (a through-running line's private km and
   // JR km stay apart, and the sub-rows reconcile with the category header).
@@ -843,14 +922,14 @@ async function buildStatsEdgeIndexSliced() {
     totals.all += kmArr[i];
     const km = kmArr[i];
     const m = maskArr[i];
-    for (const c of STAT_CATEGORIES)
+    for (const c of activeStatCategories())
       if (m & c.mask) totals.byMask.set(c.mask, totals.byMask.get(c.mask) + km);
     const ln = lineArr[i];
     if (ln) {
       const lm = lineMaskArr[i];
       let o = lineTotByCat.get(ln);
       if (!o) lineTotByCat.set(ln, (o = statsZeroCatKm()));
-      for (const c of STAT_CATEGORIES) if (lm & c.mask) o[c.mask] += km;
+      for (const c of activeStatCategories()) if (lm & c.mask) o[c.mask] += km;
       const op = lineOpArr[i];
       if (op) {
         let byOp = lineOpKm.get(ln);
@@ -1061,7 +1140,7 @@ function renderMileageStatsDom(view) {
   //    breakdown (依線路 button) so a near-100% figure is auditable line by
   //    line; 新幹線 and 地下鐵 list all member lines including unridden ones.
   rows.innerHTML =
-    STAT_CATEGORIES.map((c) => {
+    activeStatCategories().map((c) => {
       const tot = s.totals.byMask.get(c.mask) || 0;
       const rid = s.riddenByMask.get(c.mask) || 0;
       const pct = tot > 0 ? (100 * rid) / tot : 0;
@@ -1073,7 +1152,7 @@ function renderMileageStatsDom(view) {
       return `
       <div class="stat-row">
         <div class="stat-row-head">
-          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
+          <span class="stat-label">${escapeHtml(I18N.tc(c.i18n))}</span>
           <span class="stat-val"><span class="stat-pct">${formatStatPct(pct)}%</span><span class="stat-km">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
         </div>
         <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
@@ -1133,7 +1212,7 @@ function topSegmentsHtml(top) {
     return `
       <div class="stat-row">
         <div class="stat-row-head">
-          <span class="stat-label">${escapeHtml(I18N.t(c.i18n))}</span>
+          <span class="stat-label">${escapeHtml(I18N.tc(c.i18n))}</span>
           <span class="stat-val"><span class="stat-km">${escapeHtml(sectionLabel(best))} · ${escapeHtml(I18N.t("stat.rides", { n: best.count }))}</span></span>
         </div>
         ${more}
@@ -1153,7 +1232,7 @@ function serviceRowsHtml(services) {
   const row = (labelKey, g) => `
       <div class="stat-row">
         <div class="stat-row-head">
-          <span class="stat-label">${escapeHtml(I18N.t(labelKey))}</span>
+          <span class="stat-label">${escapeHtml(I18N.tc(labelKey))}</span>
           <span class="stat-val"><span class="stat-km">${formatStatKm(g.km)} km · ${escapeHtml(formatStatDuration(g.minutes))} · ${escapeHtml(I18N.t("stat.trains", { n: g.count }))}</span></span>
         </div>
       </div>`;

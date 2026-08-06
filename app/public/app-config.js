@@ -79,6 +79,23 @@ function trainStoreApiForCountry(country) {
 function railPackageUrlForCountry(country) {
   return country === "tw" ? "./rail/tw-2025.json" : "./rail/jp-2025.json";
 }
+function stationReadingsApiForCountry(country) {
+  return country === "tw" ? "station-readings-tw" : "station-readings";
+}
+// Solver + statistics geometry, one FULLY SEPARATE pair per country. The two
+// pairs answer the same schema (line_name / operator / institution_type_code /
+// railway_class_code on sections; station_name / n02_station_code /
+// n02_group_code / display_point on stations — Japan writes the N02_* spelling
+// of it), so every consumer stays country-generic and only the choice of file
+// differs. They are never loaded together: same-named stations exist in both
+// countries (松山, 板橋, 岡山 …), so a mixed graph could route a Taiwanese
+// train onto Japanese track.
+function railSectionsApiForCountry(country) {
+  return country === "tw" ? "rail-sections-tw" : "rail-sections";
+}
+function stationsApiForCountry(country) {
+  return country === "tw" ? "stations-tw" : "stations";
+}
 function activeRailPackageUrl() {
   return railPackageUrlForCountry(activeCountry);
 }
@@ -115,15 +132,16 @@ function applyCountryVisibility(root) {
 function countryDbName(base) {
   return activeCountry === "tw" ? `${base}-tw` : base;
 }
-// The in-browser route solver (and the mileage statistics built on the same
-// graph) run on the N02 rail-sections + stations datasets, which cover JAPAN
-// only. Other countries ship their route geometry precomputed (matched-routes
-// / stored user routes); a cache miss there must NOT fall through to solving
-// foreign stops against the Japanese network — same-named stations exist in
-// both countries (松山, 板橋, …) and a "successful" solve would draw lines in
-// the wrong country.
+// Does the ACTIVE country ship a solver dataset pair? Both supported
+// countries now do (railSectionsApiForCountry), so the in-browser solver and
+// the mileage statistics built on the same graph run for either — each on its
+// own country's files, never on a mixture. A country added without datasets
+// must return false here: its cache misses then stay misses instead of
+// solving foreign stops against another country's network, where a same-named
+// station (松山, 板橋, 岡山 …) would let a "successful" solve draw the train
+// in the wrong country.
 function activeCountryHasRouteSolver() {
-  return activeCountry === "jp";
+  return SUPPORTED_COUNTRIES.includes(activeCountry);
 }
 // Static (GitHub Pages) deploy: api/sample-data/ holds the published SAMPLE
 // dataset — a manifest (with a per-date index) plus one part file per train.
@@ -158,7 +176,10 @@ const ROUTE_CACHE_STORE_NAME = "routes";
 // Bump whenever route-solver semantics change. The value is part of every
 // route cache key, so geometry produced by an older solver can never shadow a
 // corrected precomputed sample route after a deployment.
-const ROUTE_SOLVER_CACHE_VERSION = "14";
+// 15: route_id / route_template_key now carry a digest of their key instead
+// of the key itself, so entries persisted by 14 would compare unequal against
+// a freshly built template key and silently miss the matched-routes fallback.
+const ROUTE_SOLVER_CACHE_VERSION = "15";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],

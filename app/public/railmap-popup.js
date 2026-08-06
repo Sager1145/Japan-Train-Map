@@ -111,7 +111,11 @@
     for (const m of members) add(m.lineId);
     if (rows.length === 0 && lineIdFallback) add(lineIdFallback);
     rows.sort((a, b) => a.label.localeCompare(b.label));
-    const name = st ? st.name : stationId;
+    const rawName = st ? st.name : stationId;
+    const name =
+      global.I18N && typeof global.I18N.stationName === "function"
+        ? global.I18N.stationName(rawName, st ? st.stationId : stationId)
+        : rawName;
     return {
       name,
       nameRoma: st && st.nameRoma ? st.nameRoma : "",
@@ -121,7 +125,7 @@
       // railmap behavior (single nameRoma subline).
       readings:
         global.I18N && typeof global.I18N.nameReadingsList === "function"
-          ? global.I18N.nameReadingsList(name, st ? st.stationId : stationId)
+          ? global.I18N.nameReadingsList(rawName, st ? st.stationId : stationId)
           : null,
       lines: rows,
     };

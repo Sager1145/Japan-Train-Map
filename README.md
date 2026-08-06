@@ -73,6 +73,7 @@ Japan Train Map/
         ├── rail-sections.json    # N02 rail section geometry / N02 铁路区间几何
         ├── stations.json         # N02 stations / N02 车站
         ├── station-readings.json # station names: kanji/kana/katakana/romaji/zh, keyed by N02 code / 站名对照（汉字·假名·片假名·罗马字·简繁中文，按 N02 站码索引）
+        ├── station-readings-tw.json # Taiwan official station names: zh-Hant/zh-Hans/ja/en, keyed by StationUID and map alias / 台湾官方四语站名，按 StationUID 与地图别名索引
         ├── default-trains.json   # built-in sample trains / 内置示例列车
         ├── matched-routes.json   # matched routes / 匹配后的路线
         ├── matched-stops.json    # matched stops / 匹配后的停靠站
@@ -102,6 +103,7 @@ Once the server is running it exposes the following endpoints. / 服务器启动
 | `GET` | `/api/rail-sections` | N02 rail section geometry | N02 铁路区间几何数据 |
 | `GET` | `/api/stations` | N02 station data | N02 车站数据 |
 | `GET` | `/api/station-readings` | Station names (kanji/kana/katakana/romaji/zh-Hant/zh-Hans) keyed by N02 station code (see `jsonspec.md` §13.4) | 站名对照（汉字·假名·片假名·罗马字·繁简中文），按 N02 站码索引（见 `jsonspec.md` §13.4） |
+| `GET` | `/api/station-readings-tw` | Taiwan official station names (zh-Hant/zh-Hans/ja/en), keyed by TDX/PTX `StationUID` and map alias | 台湾官方四语站名（繁中/简中/日文/英文），按 TDX/PTX `StationUID` 与地图别名索引 |
 | `GET` | `/api/default-trains` | Built-in sample trains | 内置示例列车 |
 | `GET` | `/api/matched-routes` | Matched routes | 匹配后的路线 |
 | `GET` | `/api/matched-stops` | Matched stops | 匹配后的停靠站 |

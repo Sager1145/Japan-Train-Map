@@ -30,9 +30,24 @@
   const stroke = { ridden: 4, unridden: 2 };
   const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
 
-  const RAIL_ATTRIBUTION =
-    "出典「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成 (CC BY 4.0)";
-  const ROMAJI_ATTRIBUTION = "Romanizations © OpenStreetMap contributors, ODbL";
+  // The network under the map is a per-COUNTRY package (jp-2025 / tw-2025), so
+  // the credit carried on its source is per-country too — crediting N02 for
+  // Taiwanese geometry would be a false licence declaration. Japan's station
+  // romanizations come from OSM and are credited with the network; Taiwan's
+  // names ship inside the official TDX record, so no OSM credit applies there.
+  // Keep each string in sync with the package's own .sources.md.
+  const RAIL_ATTRIBUTIONS = {
+    jp:
+      "出典「国土数値情報（鉄道データ N02）」（国土交通省）を加工して作成 (CC BY 4.0)" +
+      "｜Romanizations © OpenStreetMap contributors, ODbL",
+    tw:
+      "資料來源：交通部運輸資料流通服務（TDX/PTX）、內政部國土測繪中心、" +
+      "農業部阿里山林業鐵路及文化資產管理處、臺北市政府捷運工程局，經加工製作" +
+      "（政府資料開放授權條款第1版）",
+  };
+  function railAttributionForCountry(country) {
+    return RAIL_ATTRIBUTIONS[country] || RAIL_ATTRIBUTIONS.jp;
+  }
 
   // ───────────────────── ridden/unridden paint constants (style.ts) ──────────────────────
   const UNRIDDEN_OPACITY = 0.48;
@@ -225,7 +240,22 @@
     sources[SEGMENTS_SOURCE] = {
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
-      attribution: RAIL_ATTRIBUTION + "｜" + ROMAJI_ATTRIBUTION,
+      attribution: railAttributionForCountry(opts.country),
+      // Generalize the network per zoom. MapLibre's default (0.375) works out
+      // to ~0.02 px of Douglas-Peucker at any zoom — effectively none — so
+      // mountain alignments drew every vertex of curves whose real radius is
+      // 3-12 m (阿里山線, 祝山線, 神木線 …). Below ~z13 those curves are far
+      // narrower than one pixel, and a sub-pixel curve does not read as a
+      // curve: it reads as a barb. tolerance is expressed against a 4096-unit
+      // tile drawn 512 px wide, so 4 ≈ half a pixel at EVERY zoom — detail
+      // finer than the screen can show is dropped, and high zoom, where the
+      // curve is worth pixels, still gets the full geometry. 2 ≈ a quarter of
+      // a CSS pixel — half a device pixel even at DPR 2, so nothing a screen
+      // could resolve is lost, while the 3-12 m radius curve noise that caused
+      // the barbs (an order of magnitude below one pixel down there) goes. A
+      // real feature stays: the 97 m 之字形 reversals above 屏遮那 are about a
+      // pixel wide at z10.5 and still draw as switchbacks.
+      tolerance: 2,
     };
     sources[STATIONS_SOURCE] = {
       type: "geojson",
@@ -680,6 +710,7 @@
 
   global.RailMapStyle = {
     buildBaseStyle,
+    railAttributionForCountry,
     stopMarkerZoomGate,
     zoomScaledWidth,
     RIDDEN_WIDTH_SCALE,
