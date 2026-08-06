@@ -104,6 +104,20 @@ function exclusiveTrackBucket(mask) {
   return STAT_MASK_CONV; // JR 在來線 (and any unclassified conventional track)
 }
 
+// Collapse a section mask to the ONE 已乘路線 checkbox it belongs to — the
+// single rule behind both the ridden-line classifier (riddenFeatureCategory)
+// and the station-dot classifier (markerCategoryForStation), so hiding a
+// category always hides its lines and its dots together. Taiwan records no
+// JR-style union, so its incumbent conventional railway (臺鐵, CONV-only
+// masks) fills the slot the filter calls "jr" — the national-railway toggle.
+function filterCategoryForMask(mask) {
+  if (mask & STAT_MASK_HSR) return "hsr";
+  if (mask & STAT_MASK_METRO) return "metro";
+  if (mask & STAT_MASK_JR) return "jr";
+  if (mask & STAT_MASK_CONV && activeCountry === "tw") return "jr";
+  return "priv";
+}
+
 // Section attributes under the schema every country's dataset answers: Japan
 // writes the historical N02_* property names, the others the neutral aliases.
 // One reader for both, so nothing below has to know which country it is on.
@@ -688,12 +702,7 @@ function riddenFeatureCategory(feature) {
     for (let i = 1; i < cs.length; i += 1) {
       const e = idx.map.get(statsEdgeKey(cs[i - 1], cs[i]));
       if (e === undefined) continue;
-      const m = idx.mask[e];
-      const k = idx.km[e];
-      if (m & STAT_MASK_HSR) km.hsr += k;
-      else if (m & STAT_MASK_METRO) km.metro += k;
-      else if (m & STAT_MASK_JR) km.jr += k;
-      else km.priv += k;
+      km[filterCategoryForMask(idx.mask[e])] += idx.km[e];
     }
   }
   let best = null;
@@ -737,14 +746,7 @@ function markerCategoryForStation(stationFeature) {
   const p = stationFeature && stationFeature.properties;
   if (!p) return null;
   if (!sectionInstitutionTypeCode(p) && !sectionRailwayClassCode(p)) return null;
-  const mask = classifySectionMask(p);
-  if (mask & STAT_MASK_HSR) return "hsr";
-  if (mask & STAT_MASK_METRO) return "metro";
-  if (mask & STAT_MASK_JR) return "jr";
-  // Taiwan records no JR-style union, so its incumbent conventional railway
-  // (臺鐵) fills the slot the filter calls "jr" — the national-railway toggle.
-  if (mask & STAT_MASK_CONV && activeCountry === "tw") return "jr";
-  return "priv";
+  return filterCategoryForMask(classifySectionMask(p));
 }
 
 // Short distances keep one decimal: a 2-digit figure rounded to a whole km

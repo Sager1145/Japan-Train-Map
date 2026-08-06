@@ -1034,8 +1034,10 @@ function getRailContentHash() {
   const stationFeats = (stationsGeoJson && stationsGeoJson.features) || [];
   mix(stationFeats.length);
   for (let i = 0; i < stationFeats.length; i += 1) {
-    const props = stationFeats[i].properties || {};
-    const code = String(props.N02_005c || "");
+    // Dual-schema station code (Japan N02_005c, Taiwan n02_station_code) —
+    // reading only the Japan spelling hashed every TW station as "", so a
+    // TW station-code-only fix would never rotate the cache namespace.
+    const code = String(stationCode(stationFeats[i]) || "");
     for (let j = 0; j < code.length; j += 1) mix(code.charCodeAt(j));
     const coord = getFeatureDisplayCoordinate(stationFeats[i]);
     if (Array.isArray(coord)) {

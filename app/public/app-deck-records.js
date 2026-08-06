@@ -1306,11 +1306,13 @@ function getComputedPassThroughFeatures(train) {
           name: stationName(station),
           n02_station_code: stationCode(station),
           n02_group_code: stationGroupCode(station),
-          // station's own N02 line attributes — the ridden-category marker
-          // filter classifies computed pass-throughs from these
-          N02_001: station.properties?.N02_001 || "",
-          N02_002: station.properties?.N02_002 || "",
-          N02_004: station.properties?.N02_004 || "",
+          // station's own line attributes, read through the dual-schema
+          // accessors (Japan writes N02_*, Taiwan the neutral aliases) — the
+          // ridden-category marker filter classifies computed pass-throughs
+          // from these
+          N02_001: sectionRailwayClassCode(station.properties || {}),
+          N02_002: sectionInstitutionTypeCode(station.properties || {}),
+          N02_004: sectionOperatorOf(station.properties || {}),
           stop_type: "pass_through",
           pass_through_computed: true,
           train_id: train.id,

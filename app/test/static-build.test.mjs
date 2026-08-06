@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,24 +9,18 @@ import {
   buildStaticSite,
 } from "../scripts/build-static-site.mjs";
 
+const require = createRequire(import.meta.url);
+const { PART_DATASETS } = require("../server/datasets.js");
+
 async function createFixture({ includeTrainStore = true } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-build-"));
   const appDir = path.join(root, "app");
   const publicDir = path.join(appDir, "public");
   const dataDir = path.join(appDir, "data");
   const partsDir = path.join(dataDir, "sample-data");
-  const twPartsDir = path.join(dataDir, "sample-data-tw");
-  const newYearPartsDir = path.join(dataDir, "new-year-grand-loop-data");
-  const tokyoLoopPartsDir = path.join(
-    dataDir,
-    "tokyo-limited-express-loop-data",
-  );
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
-  await fs.mkdir(twPartsDir, { recursive: true });
-  await fs.mkdir(newYearPartsDir, { recursive: true });
-  await fs.mkdir(tokyoLoopPartsDir, { recursive: true });
 
   await fs.writeFile(
     path.join(publicDir, "app.js"),
@@ -79,35 +74,24 @@ async function createFixture({ includeTrainStore = true } = {}) {
     path.join(partsDir, "part-000.json"),
     JSON.stringify({ format: 1, train: {}, route: null }),
   );
-  await fs.writeFile(
-    path.join(twPartsDir, "manifest.json"),
-    JSON.stringify({
-      format: 1,
-      total: 1,
-      parts: ["part-000"],
-      dates: { "2026-08-02": ["part-000"] },
-    }),
-  );
-  await fs.writeFile(
-    path.join(twPartsDir, "part-000.json"),
-    JSON.stringify({ format: 1, train: { id: "tw-sample" }, route: null }),
-  );
-  await fs.writeFile(
-    path.join(newYearPartsDir, "manifest.json"),
-    JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
-  );
-  await fs.writeFile(
-    path.join(newYearPartsDir, "part-000.json"),
-    JSON.stringify({ format: 1, train: { id: "new-year" }, route: null }),
-  );
-  await fs.writeFile(
-    path.join(tokyoLoopPartsDir, "manifest.json"),
-    JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
-  );
-  await fs.writeFile(
-    path.join(tokyoLoopPartsDir, "part-000.json"),
-    JSON.stringify({ format: 1, train: { id: "tokyo-loop" }, route: null }),
-  );
+  // Every other part dataset (Taiwan sample + special loops) needs only a
+  // minimal manifest + part pair. Iterate the server's own PART_DATASETS
+  // list so a dataset added there is exercised here automatically — only
+  // sample-data keeps the hand-built fixture above for its negative-space
+  // checks (.gz sidecar, stray copy).
+  for (const { dir } of PART_DATASETS) {
+    if (dir === "sample-data") continue;
+    const partDir = path.join(dataDir, dir);
+    await fs.mkdir(partDir, { recursive: true });
+    await fs.writeFile(
+      path.join(partDir, "manifest.json"),
+      JSON.stringify({ format: 1, total: 1, parts: ["part-000"] }),
+    );
+    await fs.writeFile(
+      path.join(partDir, "part-000.json"),
+      JSON.stringify({ format: 1, train: { id: dir }, route: null }),
+    );
+  }
 
   return { root, appDir, outputDir };
 }
@@ -160,28 +144,14 @@ test("static build preserves the Pages file and rewrite contract", async () => {
       fs.access(path.join(fixture.outputDir, "api", "train-store.json")),
       { code: "ENOENT" },
     );
-    await fs.access(
-      path.join(fixture.outputDir, "api", "sample-data", "manifest.json"),
-    );
-    await fs.access(
-      path.join(fixture.outputDir, "api", "sample-data", "part-000.json"),
-    );
-    await fs.access(
-      path.join(
-        fixture.outputDir,
-        "api",
-        "new-year-grand-loop-data",
-        "manifest.json",
-      ),
-    );
-    await fs.access(
-      path.join(
-        fixture.outputDir,
-        "api",
-        "tokyo-limited-express-loop-data",
-        "manifest.json",
-      ),
-    );
+    for (const { dir } of PART_DATASETS) {
+      await fs.access(
+        path.join(fixture.outputDir, "api", dir, "manifest.json"),
+      );
+      await fs.access(
+        path.join(fixture.outputDir, "api", dir, "part-000.json"),
+      );
+    }
     await assert.rejects(
       fs.access(
         path.join(fixture.outputDir, "api", "sample-data", "part-000.json.gz"),

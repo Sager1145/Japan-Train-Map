@@ -8,6 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createApp, DATA_FILES } = require("../server/create-app");
+const { PART_DATASETS } = require("../server/datasets");
 const { createTrainStore } = require("../server/train-store");
 
 const FIXED_NOW = new Date("2026-07-17T12:34:56.000Z");
@@ -16,13 +17,7 @@ async function createFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-server-"));
   const dataDir = path.join(root, "data");
   const publicDir = path.join(root, "public");
-  await fs.mkdir(path.join(dataDir, "sample-data"), { recursive: true });
-  await fs.mkdir(path.join(dataDir, "new-year-grand-loop-data"), {
-    recursive: true,
-  });
-  await fs.mkdir(path.join(dataDir, "tokyo-limited-express-loop-data"), {
-    recursive: true,
-  });
+  await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(publicDir, { recursive: true });
 
   for (const file of Object.values(DATA_FILES)) {
@@ -31,26 +26,16 @@ async function createFixture() {
       JSON.stringify({ file, values: [1, 2, 3] }),
     );
   }
-  await fs.writeFile(
-    path.join(dataDir, "sample-data", "part-000.json"),
-    JSON.stringify({ format: 1, train: { id: "sample" }, route: null }),
-  );
-  await fs.writeFile(
-    path.join(dataDir, "new-year-grand-loop-data", "part-000.json"),
-    JSON.stringify({
-      format: 1,
-      train: { id: "new-year-grand-loop" },
-      route: null,
-    }),
-  );
-  await fs.writeFile(
-    path.join(dataDir, "tokyo-limited-express-loop-data", "part-000.json"),
-    JSON.stringify({
-      format: 1,
-      train: { id: "tokyo-limited-express-loop" },
-      route: null,
-    }),
-  );
+  // One dir + part per PART_DATASETS entry, straight from the server's own
+  // list — a dataset added there is automatically covered here (the old
+  // hand-written list had already gone stale: it missed sample-data-tw).
+  for (const { dir } of PART_DATASETS) {
+    await fs.mkdir(path.join(dataDir, dir), { recursive: true });
+    await fs.writeFile(
+      path.join(dataDir, dir, "part-000.json"),
+      JSON.stringify({ format: 1, train: { id: dir }, route: null }),
+    );
+  }
   await fs.writeFile(
     path.join(publicDir, "index.html"),
     "<!doctype html><title>Fixture</title>",
@@ -588,39 +573,23 @@ test("a dead local process cannot strand the cross-process lock", async () => {
 
 test("sample data and static assets preserve validation and delivery headers", async () => {
   await withServer(async ({ baseUrl }) => {
-    const invalid = await rawRequest(baseUrl, "/api/sample-data/%2e%2e");
-    assert.equal(invalid.status, 400);
-    assert.deepEqual(JSON.parse(invalid.body), {
-      error: "Invalid sample data name.",
-    });
+    // Every part dataset (incl. sample-data-tw) gets the same contract:
+    // traversal-safe name validation with its own pinned error string, and
+    // no-cache part delivery.
+    for (const { dir, invalidNameError } of PART_DATASETS) {
+      const invalid = await rawRequest(baseUrl, `/api/${dir}/%2e%2e`);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(JSON.parse(invalid.body), { error: invalidNameError });
 
-    const part = await fetch(`${baseUrl}/api/sample-data/part-000.json`);
-    assert.equal(part.status, 200);
-    assert.equal(part.headers.get("cache-control"), "no-cache");
-    assert.deepEqual(await responseJson(part), {
-      format: 1,
-      train: { id: "sample" },
-      route: null,
-    });
-
-    const grandLoopPart = await fetch(
-      `${baseUrl}/api/new-year-grand-loop-data/part-000.json`,
-    );
-    assert.equal(grandLoopPart.status, 200);
-    assert.equal(grandLoopPart.headers.get("cache-control"), "no-cache");
-    assert.equal(
-      (await responseJson(grandLoopPart)).train.id,
-      "new-year-grand-loop",
-    );
-    const tokyoLoopPart = await fetch(
-      `${baseUrl}/api/tokyo-limited-express-loop-data/part-000.json`,
-    );
-    assert.equal(tokyoLoopPart.status, 200);
-    assert.equal(tokyoLoopPart.headers.get("cache-control"), "no-cache");
-    assert.equal(
-      (await responseJson(tokyoLoopPart)).train.id,
-      "tokyo-limited-express-loop",
-    );
+      const part = await fetch(`${baseUrl}/api/${dir}/part-000.json`);
+      assert.equal(part.status, 200);
+      assert.equal(part.headers.get("cache-control"), "no-cache");
+      assert.deepEqual(await responseJson(part), {
+        format: 1,
+        train: { id: dir },
+        route: null,
+      });
+    }
 
     const staticJson = await fetch(`${baseUrl}/asset.json`, {
       headers: { "Accept-Encoding": "gzip" },
