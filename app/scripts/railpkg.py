@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Codec for the rail package (public/rail/jp-2025.json), "compact-v1" format.
+"""Codec for the rail packages (public/rail/jp-2025.json, tw-2025.json),
+"compact-v1" format.
 
 The on-disk format is compact-v1: stations and segments are nested inside
 their line, and everything derivable is omitted. Compared to the legacy flat
@@ -23,24 +24,32 @@ On-disk shapes:
 
   station row: [stationGroupId, name, lon, lat, (nameRoma, romaSourceCode)]
   segment row: [km, shared, coordinates, (arcDirection)]
-  romaSource:  1 = "osm", 2 = "wikidata"
+  romaSource:  1 = "osm", 2 = "wikidata", 3 = "official" (TDX StationName.En)
+
+Any other top-level package key (e.g. tw-2025's `geometrySource` provenance
+block) passes through compress/expand untouched.
 
 `load()` returns the EXPANDED legacy structure so existing tooling keeps
-working; `save()` always writes compact-v1 (minified) plus a .gz sidecar.
-Round-tripping expand(compress(pkg)) == pkg is guaranteed and asserted by
-scripts/convert-rail-package.py before it overwrites anything.
+working; `save()` always writes compact-v1 (minified) plus a reproducible
+(mtime=0) .gz sidecar. Round-tripping expand(compress(pkg)) == pkg is
+guaranteed and asserted by scripts/convert-rail-package.py before it
+overwrites anything.
 """
 
 import gzip
 import json
 import os
-import shutil
 from collections import defaultdict
 
 FORMAT = "compact-v1"
-_RS_ENC = {"osm": 1, "wikidata": 2}
+# Single owner of the romaSource code space — build-taiwan-rail-package.py
+# stamps its official TDX romanizations with ROMA_SOURCES["official"].
+ROMA_SOURCES = {"osm": 1, "wikidata": 2, "official": 3}
+_RS_ENC = ROMA_SOURCES
 _RS_DEC = {v: k for k, v in _RS_ENC.items()}
-_META_KEYS = ("version", "generatedAt", "crs", "country")
+# Structural keys owned by the codec; everything else is package metadata
+# that passes through both directions unchanged.
+_STRUCTURAL_KEYS = ("format", "lines", "segments", "stations")
 
 
 def compress(pkg):
@@ -53,9 +62,9 @@ def compress(pkg):
         sts_by[s["lineId"]].append(s)
 
     out = {"format": FORMAT}
-    for k in _META_KEYS:
-        if k in pkg:
-            out[k] = pkg[k]
+    for k, v in pkg.items():
+        if k not in _STRUCTURAL_KEYS:
+            out[k] = v
     out["lines"] = []
     for l in pkg["lines"]:
         cl = {
@@ -180,9 +189,27 @@ def expand(compact):
             line["nameRoma"] = cl["nameRoma"]
         lines.append(line)
 
-    pkg = {k: compact[k] for k in _META_KEYS if k in compact}
+    pkg = {k: v for k, v in compact.items() if k not in _STRUCTURAL_KEYS}
     pkg.update(lines=lines, segments=segments, stations=stations)
     return pkg
+
+
+def line_segments(cl):
+    """Decode one compact line's segment rows -> per-segment coordinate lists.
+
+    Re-applies the shared-first-coordinate join and deep-copies every row, so
+    callers may mutate (reverse, slice, weld) the result without corrupting
+    the package dict they decoded it from.
+    """
+    out = []
+    prev_last = None
+    for row in cl["segments"]:
+        coords = [prev_last, *row[2]] if row[1] else [list(c) for c in row[2]]
+        if len(coords) < 2:
+            raise RuntimeError("%s: invalid compact segment" % cl.get("id"))
+        out.append([list(c) for c in coords])
+        prev_last = coords[-1]
+    return out
 
 
 def load(path):
@@ -192,12 +219,34 @@ def load(path):
     return expand(data) if data.get("format") == FORMAT else data
 
 
+def json_bytes(value):
+    """Minified UTF-8 JSON — the byte format every shipped dataset uses."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
+
+
+def write_json(path, value):
+    """Atomically write `value` as minified JSON."""
+    path = os.fspath(path)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(json_bytes(value))
+    os.replace(tmp, path)
+
+
+def write_json_and_gzip(path, value):
+    """write_json plus a byte-reproducible .gz sidecar (mtime=0, no name)."""
+    write_json(path, value)
+    path = os.fspath(path)
+    with open(path + ".gz", "wb") as raw:
+        with gzip.GzipFile(
+            filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0
+        ) as stream:
+            stream.write(json_bytes(value))
+
+
 def save(path, pkg):
     """Write `pkg` (expanded legacy dict) as compact-v1 + refresh .gz sidecar."""
     compact = pkg if pkg.get("format") == FORMAT else compress(pkg)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(compact, f, ensure_ascii=False, separators=(",", ":"))
-    os.replace(tmp, path)
-    with open(path, "rb") as src, gzip.open(path + ".gz", "wb", compresslevel=9) as dst:
-        shutil.copyfileobj(src, dst)
+    write_json_and_gzip(path, compact)

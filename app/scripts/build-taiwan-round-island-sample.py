@@ -11,17 +11,20 @@ slices that line's official geometry between the two physical stations.
 
 from __future__ import annotations
 
-import gzip
 import json
-from pathlib import Path
-from typing import Dict, List, Sequence
+from typing import Dict
 
-
-APP_DIR = Path(__file__).resolve().parent.parent
-PACKAGE_PATH = APP_DIR / "public" / "rail" / "tw-2025.json"
-STORE_PATH = APP_DIR / "data" / "train-store-tw.json"
-ROUTES_PATH = APP_DIR / "data" / "matched-routes.json"
-STOPS_PATH = APP_DIR / "data" / "matched-stops.json"
+from tw_sample_lib import (
+    LICENSE,
+    ROUTES_PATH,
+    STOPS_PATH,
+    STORE_PATH,
+    line_context,
+    load_official_package,
+    official_path,
+    replace_train_features,
+    write_json_and_gzip,
+)
 
 TRAIN_ID = "20260813_01_star_of_taiwan_round_island_loop"
 OPERATOR = "國營臺灣鐵路股份有限公司"
@@ -42,93 +45,16 @@ LINE_IDS = {
 }
 
 
-def json_payload(value: object) -> bytes:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
-
-
-def write_json(path: Path, value: object) -> None:
-    path.write_bytes(json_payload(value))
-
-
-def write_json_and_gzip(path: Path, value: object) -> None:
-    payload = json_payload(value)
-    path.write_bytes(payload)
-    with Path(str(path) + ".gz").open("wb") as raw:
-        with gzip.GzipFile(
-            filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0
-        ) as stream:
-            stream.write(payload)
-
-
-def reconstruct_line_segments(line: Dict[str, object]) -> List[List[List[float]]]:
-    output = []
-    previous_last = None
-    for row in line["segments"]:
-        coords = [previous_last, *row[2]] if row[1] else [list(c) for c in row[2]]
-        if len(coords) < 2:
-            raise RuntimeError(f"{line['id']}: invalid compact segment")
-        output.append([list(c) for c in coords])
-        previous_last = coords[-1]
-    return output
-
-
-def join_without_duplicate(
-    output: List[List[float]], values: Sequence[Sequence[float]]
-) -> None:
-    rows = [list(coord) for coord in values]
-    if output and rows and output[-1] == rows[0]:
-        rows = rows[1:]
-    output.extend(rows)
-
-
-def official_path(
-    station_index: Dict[str, int],
-    segments: Sequence[Sequence[Sequence[float]]],
-    start: str,
-    end: str,
-) -> List[List[float]]:
-    start_index = station_index[start]
-    end_index = station_index[end]
-    output: List[List[float]] = []
-    if start_index < end_index:
-        for index in range(start_index, end_index):
-            join_without_duplicate(output, segments[index])
-    else:
-        for index in range(start_index - 1, end_index - 1, -1):
-            join_without_duplicate(output, list(reversed(segments[index])))
-    if len(output) < 2:
-        raise RuntimeError(f"empty official path: {start} -> {end}")
-    return output
-
-
-def replace_train_features(
-    collection: Dict[str, object], replacements: Sequence[Dict[str, object]]
-) -> None:
-    retained = [
-        feature
-        for feature in collection["features"]
-        if feature.get("properties", {}).get("train_id") != TRAIN_ID
-    ]
-    collection["features"] = [*retained, *replacements]
-
-
 def main() -> int:
-    package = json.loads(PACKAGE_PATH.read_text(encoding="utf-8"))
+    package = load_official_package()
     source = package.get("geometrySource", {})
-    if source.get("officialOnly") != 1 or source.get("osmSources") != 0:
-        raise RuntimeError("Taiwan package is not official-only")
     lines_by_id = {row["id"]: row for row in package["lines"]}
-    line_context: Dict[str, Dict[str, object]] = {}
+    contexts: Dict[str, Dict[str, object]] = {}
     for line_name, line_id in LINE_IDS.items():
         line = lines_by_id.get(line_id)
         if line is None:
             raise RuntimeError(f"official line missing: {line_id}")
-        line_context[line_name] = {
-            "line": line,
-            "station_by_name": {row[1]: row for row in line["stations"]},
-            "station_index": {row[1]: i for i, row in enumerate(line["stations"])},
-            "segments": reconstruct_line_segments(line),
-        }
+        contexts[line_name] = line_context(line)
 
     store = json.loads(STORE_PATH.read_text(encoding="utf-8"))
     train = next((row for row in store["trains"] if row["id"] == TRAIN_ID), None)
@@ -139,7 +65,7 @@ def main() -> int:
     route_features = []
     for segment_index, section in enumerate(train["route_sections"]):
         line_name = section["line_names"][0]
-        context = line_context[line_name]
+        context = contexts[line_name]
         for name in (section["from"], section["to"]):
             if name not in context["station_by_name"]:
                 raise RuntimeError(f"{line_name}: official station missing: {name}")
@@ -162,7 +88,7 @@ def main() -> int:
                     "geometry_role": "single_primary_segment",
                     "source": SOURCE,
                     "attribution": ATTRIBUTION,
-                    "license": "政府資料開放授權條款第1版",
+                    "license": LICENSE,
                     "official_package_version": package["version"],
                     "official_shape_sha256": official_hash,
                     "official_line_id": LINE_IDS[line_name],
@@ -200,7 +126,7 @@ def main() -> int:
         # dots coincide anyway.
         section = train["route_sections"][min(stop_index, len(train["route_sections"]) - 1)]
         line_name = section["line_names"][0]
-        row = line_context[line_name]["station_by_name"][stop["name"]]
+        row = contexts[line_name]["station_by_name"][stop["name"]]
         stop_features.append(
             {
                 "type": "Feature",
@@ -215,7 +141,7 @@ def main() -> int:
                     "operator": OPERATOR,
                     "source": "交通部運輸資料流通服務（TDX/PTX）TRA Station",
                     "attribution": ATTRIBUTION,
-                    "license": "政府資料開放授權條款第1版",
+                    "license": LICENSE,
                 },
                 "geometry": {"type": "Point", "coordinates": [row[2], row[3]]},
             }
@@ -223,8 +149,8 @@ def main() -> int:
 
     routes = json.loads(ROUTES_PATH.read_text(encoding="utf-8"))
     stops = json.loads(STOPS_PATH.read_text(encoding="utf-8"))
-    replace_train_features(routes, route_features)
-    replace_train_features(stops, stop_features)
+    replace_train_features(routes, TRAIN_ID, route_features)
+    replace_train_features(stops, TRAIN_ID, stop_features)
 
     write_json_and_gzip(ROUTES_PATH, routes)
     write_json_and_gzip(STOPS_PATH, stops)

@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
+import railpkg
+
 
 APP_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = APP_DIR / "public" / "rail" / "tw-2025.json"
@@ -82,7 +84,9 @@ MAX_CANDIDATES = 64
 OFFSET_WEIGHT = 3.0
 # A routed via point must sit on the official graph within this distance.
 VIA_SNAP_KM = 0.08
-OFFICIAL_ROMA_SOURCE = 3
+# The romaSource code space is owned by railpkg (the compact-v1 codec);
+# taking the code from there keeps railpkg.load able to read this package.
+OFFICIAL_ROMA_SOURCE = railpkg.ROMA_SOURCES["official"]
 MAX_OUTPUT_EDGE_KM = 0.2
 MAX_OFFICIAL_DEVIATION_METERS = 20.0
 
