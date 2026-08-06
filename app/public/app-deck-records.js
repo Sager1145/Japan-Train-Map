@@ -1225,8 +1225,8 @@ function buildDeckMarkerRecords(orderedTrains) {
           ...rec,
           radius: centerRadius,
           lineWidth: 0,
-          fillColor: [26, 26, 26],
-          lineColor: [26, 26, 26],
+          fillColor: RP_INK_RGB,
+          lineColor: RP_INK_RGB,
           role: "stop-center",
           // Preserve the center/outer ratio when selected focus enlarges both.
           focusScale: (centerRadius / rec.radius) * 0.5,

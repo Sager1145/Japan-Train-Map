@@ -127,9 +127,12 @@ function pushNameReadingPrefs() {
 // language (the pre-toggle behavior). Called at boot and on language switch.
 function syncNameReadingDefaultsToLang(lang) {
   if (!DISPLAY.nameReadingsCustomized) {
-    DISPLAY.nameReadingKana = lang === "zh-Hant" || lang === "zh-Hans";
-    DISPLAY.nameReadingRomaji = lang === "en";
-    DISPLAY.nameReadingZh = false;
+    // The language→default-readings rule lives in i18n.js so the pre-boot
+    // fallback (activeReadingPrefs) and this seed can never drift.
+    const defaults = I18N.localeDefaultReadingPrefs(lang);
+    DISPLAY.nameReadingKana = defaults.kana;
+    DISPLAY.nameReadingRomaji = defaults.romaji;
+    DISPLAY.nameReadingZh = defaults.zh;
     DISPLAY_TOGGLES.forEach((cfg) => {
       if (cfg.refreshNames && cfg._input)
         cfg._input.checked = Boolean(DISPLAY[cfg.key]);

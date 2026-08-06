@@ -125,15 +125,25 @@ function popupHtml(title, rows) {
     .join("")}</div>`;
 }
 
-// Station name cell: base name, then each enabled reading (kana / romaji /
-// Chinese) on its own line underneath — never bracket-appended.
-function stationNameCellHtml(name, code) {
+// Localized station name plus its enabled readings (kana / romaji /
+// Chinese), the readings stacked one span per line UNDER the name — never
+// bracket-appended. The ONE spelling of that display rule; every surface
+// (popup cell, endpoint labels, deck stop tooltip) wraps these pieces in its
+// own markup and per-surface reading class.
+function stationNameReadings(name, code, readingClass) {
   const displayName =
     typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
-  const readings = I18N.nameReadingsList(name, code)
-    .map((r) => `<span class="popup-reading">${escapeHtml(r)}</span>`)
+  const readings = I18N.nameReadingsList(name, code);
+  const readingsHtml = readings
+    .map((r) => `<span class="${readingClass}">${escapeHtml(r)}</span>`)
     .join("");
-  return { html: `${escapeHtml(displayName)}${readings}` };
+  return { displayName, readings, readingsHtml };
+}
+
+// Station name cell for popup grids.
+function stationNameCellHtml(name, code) {
+  const parts = stationNameReadings(name, code, "popup-reading");
+  return { html: `${escapeHtml(parts.displayName)}${parts.readingsHtml}` };
 }
 
 // =========================================================================

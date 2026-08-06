@@ -4,12 +4,23 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
+// Exact copy of the production haversine (app-route-solver.js /
+// app-fit-worker.js), so the curves solved under test are numerically the
+// same as the worker's — the harness used to substitute an equirectangular
+// approximation here, which quietly broke the "mirrors the worker" claim.
 function distanceMeters(a, b) {
-  const lat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
-  return Math.hypot(
-    (b[0] - a[0]) * 111320 * Math.cos(lat),
-    (b[1] - a[1]) * 110540,
-  );
+  const lon1 = Number(a[0]);
+  const lat1 = Number(a[1]);
+  const lon2 = Number(b[0]);
+  const lat2 = Number(b[1]);
+  const radius = 6371000;
+  const p1 = (lat1 * Math.PI) / 180;
+  const p2 = (lat2 * Math.PI) / 180;
+  const dp = ((lat2 - lat1) * Math.PI) / 180;
+  const dl = ((lon2 - lon1) * Math.PI) / 180;
+  const x =
+    Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * radius * Math.asin(Math.sqrt(x));
 }
 
 function loadHooks(settings = {}) {

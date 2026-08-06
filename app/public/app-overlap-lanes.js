@@ -1388,9 +1388,8 @@ function fittedCurvePointAt(curve, metres) {
   ];
 }
 
-// Recalculate the arc-length and tangent fields after a station fillet has
-// replaced one end of a fitted curve.  The endpoint tangent is overwritten by
-// smoothCurveStationJoins with the exact shared Bezier derivative afterwards.
+// Recalculate the arc-length and tangent fields after the station-join pass
+// (smoothCurveStationJoins) has replaced one end of a fitted curve.
 function refreshFittedCurveGeometry(curve) {
   const pts = curve.pts;
   const cum = [0];
@@ -1526,15 +1525,13 @@ function rebuildLimitedDirectionField(curve) {
 
 // Different overlap memberships often end at the same station as separate
 // fitted curves.  Even though each curve is C2 internally, pinning both ends
-// to that station leaves a hard change of tangent between them.  Pair the
-// straightest compatible ends at every station and replace several kilometres
-// on both sides with ONE cubic Bezier fillet.  The Bezier is split between the
-// two curves at its closest point to the station, so the direction is exactly
-// continuous while the fitted path may cut gently inside the source corner.
-// The member curves are already densely sampled, radius-limited splines.  A
-// physical Gaussian pass over their concatenated points is enough to remove
-// only the new station seams, and is much cheaper than running the complete
-// source-fitting solver again over a corridor hundreds of kilometres long.
+// to that station leaves a hard change of tangent between them.  The join
+// pass pairs the straightest compatible ends at every station and smooths
+// each welded chain as a whole: the member curves are already densely
+// sampled, radius-limited splines, so a positional low-pass over their
+// concatenated points removes only the new station seams — much cheaper than
+// running the complete source-fitting solver again over a corridor hundreds
+// of kilometres long.
 function smoothJoinedStationCurve(source, template, sourceLines) {
   if (!source || source.length < 4) return null;
   const lat0 = source.reduce((sum, p) => sum + p[1], 0) / source.length;

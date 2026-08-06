@@ -511,6 +511,8 @@
         ctx.closePath();
       };
       diamond(half);
+      // tokens.ink / tokens.white from railmap-style.js — mirrored literals
+      // (the tokens object is not exported); keep the three in sync.
       ctx.fillStyle = "rgb(26,26,26)";
       ctx.fill();
       ctx.lineJoin = "miter";

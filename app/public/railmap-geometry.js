@@ -294,8 +294,10 @@
   }
 
   // Arc-length point sampling on a fitted curve ({pts, cum, totalMeters}).
-  // Exported: the app family's station-join probing delegates here, so this
-  // binary-search sampler stays the single implementation.
+  // The app family no longer delegates here (its fittedCurvePointAt copy in
+  // app-overlap-lanes.js is deliberate — delegating through window.RailMap*
+  // crashed the fit worker, 08-05); this survives as fanPerpAt's hot-reload
+  // fallback and an export for standalone embedders.
   function curvePointAt(curve, metres) {
     const pts = curve.pts;
     const cum = curve.cum;

@@ -287,13 +287,21 @@
         ? { kana: !!prefs.kana, romaji: !!prefs.romaji, zh: !!prefs.zh }
         : null;
   }
-  function activeReadingPrefs() {
-    if (nameReadingPrefs) return nameReadingPrefs;
+  // Until the user customizes the reading toggles, they follow the UI
+  // language. The ONE spelling of that default — app-display-settings.js
+  // seeds its toggle state from here (syncNameReadingDefaultsToLang), and
+  // activeReadingPrefs falls back to it for the pre-boot window and any
+  // standalone railmap embedding.
+  function localeDefaultReadingPrefs(lang) {
     return {
-      kana: currentLang === "zh-Hant" || currentLang === "zh-Hans",
-      romaji: currentLang === "en",
+      kana: lang === "zh-Hant" || lang === "zh-Hans",
+      romaji: lang === "en",
       zh: false,
     };
+  }
+  function activeReadingPrefs() {
+    if (nameReadingPrefs) return nameReadingPrefs;
+    return localeDefaultReadingPrefs(currentLang);
   }
   // The enabled readings for a name, typed: [{type: "kana"|"romaji"|"zh",
   // text}] in that fixed order, minus any reading that equals the base name.
@@ -453,6 +461,7 @@
     nameReadingsList: nameReadingsList,
     nameReadingsTyped: nameReadingsTyped,
     stationName: stationName,
+    localeDefaultReadingPrefs: localeDefaultReadingPrefs,
     setNameReadings: setNameReadings,
     setStationReadings: setStationReadings,
     setLang: setLang,

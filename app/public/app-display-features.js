@@ -98,11 +98,11 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   const name = feature.properties.name || stopName(stop);
   if (!name) return null;
   const code = stationCode(feature);
-  const displayName =
-    typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
-  // Enabled readings (kana / romaji / Chinese) stack one per line UNDER the
-  // name — never appended in brackets.
-  const readings = I18N.nameReadingsList(name, code);
+  const {
+    displayName,
+    readings,
+    readingsHtml,
+  } = stationNameReadings(name, code, "station-label-reading");
   const latlng = toLatLng(feature);
   const time = kind === "origin" ? stop.departure : stop.arrival;
   const timeTag = I18N.t(kind === "origin" ? "tag.dep" : "tag.arr");
@@ -115,11 +115,6 @@ function buildEndpointLabelSpec(train, kind, opts = {}) {
   const timeHtml = time
     ? ` <span class="station-label-time">${escapeHtml(timeTag)} ${escapeHtml(time)}</span>`
     : "";
-  const readingsHtml = readings
-    .map(
-      (r) => `<span class="station-label-reading">${escapeHtml(r)}</span>`,
-    )
-    .join("");
   const plain =
     (badgeText ? badgeText + " " : "") +
     displayName +
@@ -416,11 +411,11 @@ function deckGetTooltip(info) {
     );
     const code = pr.n02_station_code || pr.N02_005c || null;
     // Readings stack under the name (same layout as the C5 station popup).
-    const readingsHtml = I18N.nameReadingsList(name, code)
-      .map((r) => `<span class="rp-popup-roma">${escapeHtml(r)}</span>`)
-      .join("");
-    const displayName =
-      typeof I18N.stationName === "function" ? I18N.stationName(name, code) : name;
+    const { displayName, readingsHtml } = stationNameReadings(
+      name,
+      code,
+      "rp-popup-roma",
+    );
     return {
       html: `<div class="rp-popup"><div class="rp-popup-head"><span class="rp-popup-ja">${escapeHtml(displayName)}</span>${readingsHtml}</div>${timeHtml}</div>`,
       style: DECK_TIP_RAILPRINT,
@@ -491,7 +486,8 @@ function deckGetTooltip(info) {
 
 function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
-  return m
-    ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)]
-    : [217, 54, 79];
+  if (m) return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+  // Present-but-malformed colour: fall back to the shared default instead of
+  // a hidden hardcoded copy of its RGB.
+  return hexToRgb(DEFAULT_TRAIN_COLOR);
 }

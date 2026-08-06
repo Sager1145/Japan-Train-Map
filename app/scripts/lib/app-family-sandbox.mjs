@@ -153,6 +153,7 @@ export function makeSandbox({
       placeName: (name) => String(name || ""),
       stationName: (name) => String(name || ""),
       trainName: (name) => String(name || ""),
+      localeDefaultReadingPrefs: () => ({ kana: false, romaji: false, zh: false }),
       setStationReadings() {},
       setLang() {},
       applyStatic() {},
