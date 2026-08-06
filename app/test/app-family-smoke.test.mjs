@@ -55,12 +55,39 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     })()`,
     context,
   );
-  assert.equal(result.trains.length, 2);
-  assert.equal(result.trains[0].stops.length, 13);
-  assert.equal(result.trains[0].route_sections.length, 12);
+  assert.equal(result.trains.length, 6);
+  const airportMrt = result.trains.find(
+    (train) => train.id === "20260802_01_taoyuan_airport_mrt_express_t2_taipei",
+  );
+  assert.equal(airportMrt.stops.length, 13);
+  assert.equal(airportMrt.route_sections.length, 12);
+  const thsr165 = result.trains.find(
+    (train) => train.id === "20260805_01_thsr_165_taipei_taichung",
+  );
+  assert.equal(thsr165.stops[0].departure, "21:31");
+  assert.deepEqual(
+    Array.from(
+      thsr165.stops
+        .filter((stop) => stop.stop_type === "pass_through")
+        .map((stop) => stop.n02_station_code),
+    ),
+    ["THSR-1020", "THSR-1030", "THSR-1035"],
+  );
+  const tra137 = result.trains.find(
+    (train) =>
+      train.id === "20260806_01_tra_tze_chiang_3000_137_taichung_changhua",
+  );
+  assert.equal(tra137.stops[0].departure, "14:10");
+  assert.equal(tra137.stops.at(-1).arrival, "14:23");
+  assert.equal(
+    tra137.stops.filter((stop) => stop.stop_type === "pass_through").length,
+    5,
+  );
   // The round-island tourist express: a Taipei→Taipei loop over eight TRA
   // display lines, every physical station enumerated per jsonspec §14.
-  const roundIsland = result.trains[1];
+  const roundIsland = result.trains.find(
+    (train) => train.id === "20260813_01_star_of_taiwan_round_island_loop",
+  );
   assert.equal(roundIsland.id, "20260813_01_star_of_taiwan_round_island_loop");
   assert.equal(roundIsland.stops.length, 195);
   assert.equal(roundIsland.route_sections.length, 194);

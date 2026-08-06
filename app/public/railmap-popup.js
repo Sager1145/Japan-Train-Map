@@ -49,6 +49,24 @@
     阪神電気鉄道: "阪神",
     名古屋鉄道: "名鉄",
     西日本鉄道: "西鉄",
+    國營臺灣鐵路股份有限公司: "台鐵",
+    台灣高速鐵路股份有限公司: "台灣高鐵",
+    臺北大眾捷運股份有限公司: "台北捷運",
+    新北大眾捷運股份有限公司: "新北捷運",
+    桃園大眾捷運股份有限公司: "桃園捷運",
+    臺中捷運股份有限公司: "台中捷運",
+    高雄捷運股份有限公司: "高雄捷運",
+    阿里山林業鐵路及文化資產管理處: "阿里山林鐵",
+  };
+  const OPERATOR_LOGOS = {
+    國營臺灣鐵路股份有限公司: "/rail/operator-logos/tra.svg",
+    台灣高速鐵路股份有限公司: "/rail/operator-logos/thsr.jpg",
+    臺北大眾捷運股份有限公司: "/rail/operator-logos/trtc.svg",
+    新北大眾捷運股份有限公司: "/rail/operator-logos/ntmetro.svg",
+    桃園大眾捷運股份有限公司: "/rail/operator-logos/tym.png",
+    臺中捷運股份有限公司: "/rail/operator-logos/tcmrt.svg",
+    高雄捷運股份有限公司: "/rail/operator-logos/krtc.svg",
+    阿里山林業鐵路及文化資產管理處: "/rail/operator-logos/alsr.svg",
   };
   function companyLabel(operator) {
     if (!operator) return "";
@@ -64,6 +82,9 @@
     if (lineName.startsWith(label)) return "";
     if (operator && lineName.startsWith(operator)) return "";
     return label;
+  }
+  function operatorLogo(operator) {
+    return (operator && OPERATOR_LOGOS[operator]) || null;
   }
   function escHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
@@ -105,7 +126,10 @@
         company: companyFor(line.operator, line.name),
         label: bilingualLabel(line.name, line.nameRoma),
         color: line.color || DEFAULT_LINE_COLOR,
-        logo: line.logo || null,
+        // Japan's rail package supplies a per-line logo. Taiwan's systems use
+        // one shared company mark across their lines, so fall back to the
+        // operator logo without duplicating the asset for every compact line.
+        logo: line.logo || operatorLogo(line.operator),
       });
     };
     for (const m of members) add(m.lineId);
