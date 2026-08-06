@@ -67,34 +67,27 @@ jobs:
       # Dijkstra — that on-device cold solve (memory, not download size) is
       # what kept crashing iPhone Safari even after the gzip fix above.
       - name: Precompute sample data (per-train route parts)
-        run: node app/scripts/precompute-train-parts.mjs
+        run: npm run precompute
+        working-directory: app
 
       # Taiwan's sample is a FULLY SEPARATE dataset (api/sample-data-tw/),
       # generated from its own store. Its trains sit outside the N02 network,
       # so the precompute embeds the curated matched-routes geometry instead
       # of a solver result.
       - name: Precompute Taiwan sample data
-        run: |
-          PRECOMPUTE_STORE=app/data/train-store-tw.json \
-          PRECOMPUTE_OUT_DIR=app/data/sample-data-tw \
-            node app/scripts/precompute-train-parts.mjs
+        run: npm run precompute:tw
+        working-directory: app
 
       # The two special-sample loops ship as their own datasets (the 資料 card
-      # loads each on demand), so they need the same offline solve. Each store
-      # is written by its generator script, then precomputed into its own
-      # output dir. PRECOMPUTE_STORE / PRECOMPUTE_OUT_DIR resolve against the
-      # CWD, which is the repo root here — hence the app/ prefixes. The
+      # loads each on demand), so they need the same offline solve. Each npm
+      # script runs its generator first, then precomputes into its own output
+      # dir — app/package.json is the single owner of those command lines. The
       # assemble step below hard-fails if either manifest is missing.
       - name: Precompute special sample loops (New Year + Tokyo limited express)
         run: |
-          node app/scripts/generate-new-year-grand-loop.mjs
-          PRECOMPUTE_STORE=app/data/special-samples/new-year-grand-loop.json \
-          PRECOMPUTE_OUT_DIR=app/data/new-year-grand-loop-data \
-            node app/scripts/precompute-train-parts.mjs
-          node app/scripts/generate-tokyo-limited-express-loop.mjs
-          PRECOMPUTE_STORE=app/data/special-samples/tokyo-limited-express-loop.json \
-          PRECOMPUTE_OUT_DIR=app/data/tokyo-limited-express-loop-data \
-            node app/scripts/precompute-train-parts.mjs
+          npm run precompute:new-year-grand-loop
+          npm run precompute:tokyo-limited-express-loop
+        working-directory: app
 
       # AFTER precompute (the sample-data tests read the generated part
       # manifests, which are gitignored) but BEFORE assemble/deploy — a
@@ -109,7 +102,10 @@ jobs:
         # with .json extensions, includes the required precomputed sample data
         # (api/sample-data/), disables backend-only calls, and writes
         # .nojekyll. The same build is exercised by the local test suite.
-        run: node app/scripts/build-static-site.mjs _site
+        # No output arg: build-static-site.mjs defaults to <repo root>/_site,
+        # the same path the upload step reads.
+        run: npm run build:static
+        working-directory: app
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
