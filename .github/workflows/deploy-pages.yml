@@ -130,3 +130,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # Pages can remain deployment_queued during a transient service
+          # backlog. The action's 10-minute default canceled an otherwise
+          # successful build, so allow the Pages backend more time to drain.
+          timeout: 1800000
