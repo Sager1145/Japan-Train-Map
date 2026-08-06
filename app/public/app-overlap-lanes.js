@@ -170,10 +170,10 @@ function applyLaneShift(path, sx, sy, offsetDeg) {
 function fittedPointSegmentDistanceMeters(p, a, b) {
   const coslat =
     Math.cos((((p[1] + a[1] + b[1]) / 3) * Math.PI) / 180) || 1e-6;
-  const ax = (a[0] - p[0]) * 111320 * coslat;
-  const ay = (a[1] - p[1]) * 110540;
-  const bx = (b[0] - p[0]) * 111320 * coslat;
-  const by = (b[1] - p[1]) * 110540;
+  const ax = (a[0] - p[0]) * M_PER_DEG_LON * coslat;
+  const ay = (a[1] - p[1]) * M_PER_DEG_LAT;
+  const bx = (b[0] - p[0]) * M_PER_DEG_LON * coslat;
+  const by = (b[1] - p[1]) * M_PER_DEG_LAT;
   const vx = bx - ax;
   const vy = by - ay;
   const den = vx * vx + vy * vy;
@@ -188,7 +188,7 @@ function validateFittedCurveDeviation(points, sourceLines, budgetMeters) {
   const lines = (sourceLines || []).filter((line) => line && line.length >= 2);
   if (!points || points.length < 2 || !lines.length || !(budgetMeters > 0))
     return { valid: false, maxDeviationMeters: Infinity };
-  const cellDeg = Math.max(0.005, Math.min(0.05, budgetMeters / 110540));
+  const cellDeg = Math.max(0.005, Math.min(0.05, budgetMeters / M_PER_DEG_LAT));
   const cells = new Map();
   const segments = [];
   lines.forEach((line) => {
@@ -212,8 +212,8 @@ function validateFittedCurveDeviation(points, sourceLines, budgetMeters) {
   });
   const nearest = (p) => {
     const coslat = Math.cos((p[1] * Math.PI) / 180) || 1e-6;
-    const lonRadius = budgetMeters / (111320 * coslat);
-    const latRadius = budgetMeters / 110540;
+    const lonRadius = budgetMeters / (M_PER_DEG_LON * coslat);
+    const latRadius = budgetMeters / M_PER_DEG_LAT;
     const x0 = Math.floor((p[0] - lonRadius) / cellDeg) - 1;
     const x1 = Math.floor((p[0] + lonRadius) / cellDeg) + 1;
     const y0 = Math.floor((p[1] - latRadius) / cellDeg) - 1;
@@ -748,8 +748,8 @@ function smoothCorridorCurveUncached(line) {
 
   const lat0 = line.reduce((s, p) => s + p[1], 0) / line.length;
   const coslat = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
-  const mx = 111320 * coslat;
-  const my = 110540;
+  const mx = M_PER_DEG_LON * coslat;
+  const my = M_PER_DEG_LAT;
   const origin = anchors[0];
   const anchorMetric = anchors.map((p) => [
     (p[0] - origin[0]) * mx,
@@ -1432,7 +1432,7 @@ function refreshFittedCurveGeometry(curve) {
   );
   // Project to metric space once per point, then reuse the solver's own
   // curvature probe over the projected triples.
-  const metricPts = pts.map((p) => [p[0] * cs * 111320, p[1] * 110540]);
+  const metricPts = pts.map((p) => [p[0] * cs * M_PER_DEG_LON, p[1] * M_PER_DEG_LAT]);
   let minRadius = Infinity;
   for (let i = radiusHalf; i < pts.length - radiusHalf; i += 1)
     minRadius = Math.min(
@@ -1539,8 +1539,8 @@ function smoothJoinedStationCurve(source, template, sourceLines) {
   if (!source || source.length < 4) return null;
   const lat0 = source.reduce((sum, p) => sum + p[1], 0) / source.length;
   const coslat = Math.cos((lat0 * Math.PI) / 180) || 1e-6;
-  const mx = 111320 * coslat;
-  const my = 110540;
+  const mx = M_PER_DEG_LON * coslat;
+  const my = M_PER_DEG_LAT;
   const origin = source[0];
   const metricSource = source.map((p) => [
     (p[0] - origin[0]) * mx,

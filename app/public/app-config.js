@@ -73,14 +73,17 @@ let TRAIN_STORE_API = "train-store";
 const COUNTRY_STORAGE_KEY = "n02-active-country";
 const SUPPORTED_COUNTRIES = ["jp", "tw"];
 let activeCountry = "jp";
+// Every per-country resource name flows through AppCore.countrySuffixed
+// (Japan keeps the historical unsuffixed name, others get "-{country}") —
+// one spelling of the rule instead of a hardcoded ternary per mapper.
 function trainStoreApiForCountry(country) {
-  return country === "tw" ? "train-store-tw" : "train-store";
+  return AppCore.countrySuffixed("train-store", country);
 }
 function railPackageUrlForCountry(country) {
-  return country === "tw" ? "./rail/tw-2025.json" : "./rail/jp-2025.json";
+  return `./rail/${country}-2025.json`;
 }
 function stationReadingsApiForCountry(country) {
-  return country === "tw" ? "station-readings-tw" : "station-readings";
+  return AppCore.countrySuffixed("station-readings", country);
 }
 // Solver + statistics geometry, one FULLY SEPARATE pair per country. The two
 // pairs answer the same schema (line_name / operator / institution_type_code /
@@ -91,10 +94,10 @@ function stationReadingsApiForCountry(country) {
 // countries (松山, 板橋, 岡山 …), so a mixed graph could route a Taiwanese
 // train onto Japanese track.
 function railSectionsApiForCountry(country) {
-  return country === "tw" ? "rail-sections-tw" : "rail-sections";
+  return AppCore.countrySuffixed("rail-sections", country);
 }
 function stationsApiForCountry(country) {
-  return country === "tw" ? "stations-tw" : "stations";
+  return AppCore.countrySuffixed("stations", country);
 }
 function activeRailPackageUrl() {
   return railPackageUrlForCountry(activeCountry);
@@ -130,7 +133,7 @@ function applyCountryVisibility(root) {
 // Country-scoped IndexedDB database name (user store, pending-save journal,
 // local-file handles). Japan keeps the historical unsuffixed names.
 function countryDbName(base) {
-  return activeCountry === "tw" ? `${base}-tw` : base;
+  return AppCore.countrySuffixed(base, activeCountry);
 }
 // Does the ACTIVE country ship a solver dataset pair? Both supported
 // countries now do (railSectionsApiForCountry), so the in-browser solver and

@@ -86,7 +86,7 @@ function buildDeckOverlapMap(items) {
   if (OVERLAP_NEAR_PARALLEL_METERS > 0 && segmentGeometry.size > 1) {
     const cellM = Math.max(20, OVERLAP_NEAR_PARALLEL_METERS);
     const gridX = (lng) => lng * 80000;
-    const gridY = (lat) => lat * 110540;
+    const gridY = (lat) => lat * M_PER_DEG_LAT;
     // Numeric bucket keys, for the same reason refreshRouteVertexSnap uses
     // them: every segment probes a neighbourhood of cells, and on a
     // full-country store the discarded "gx,gy" strings dominated this scan.

@@ -22,6 +22,16 @@
   // Bucket for trains whose date could neither be supplied nor inferred.
   const UNDATED = "undated";
 
+  // Country-scoped resource naming: Japan keeps every historical unsuffixed
+  // name; any other country gets "-{country}". The ONE spelling of that
+  // rule, shared by the browser mappers (app-config.js) and the server's
+  // per-country store registry (server/create-app.js) — so a future country
+  // can never inherit Japan's store/db/API names by falling through a
+  // hardcoded `=== "tw"` ternary.
+  function countrySuffixed(base, country) {
+    return country === "jp" ? base : `${base}-${country}`;
+  }
+
   // ---- N02 5-decimal grid + shared geometry primitives -------------------
   // N02 coordinates mix 5-decimal (most lines) and full-precision 8-decimal
   // vertices (e.g. 北陸新幹線). Every cross-module coordinate identity —
@@ -394,6 +404,7 @@
     addDaysToDateString,
     compareTrainsByDateAndDeparture,
     coordKey5,
+    countrySuffixed,
     dateSortKey,
     edgeKey5,
     equirectKm,

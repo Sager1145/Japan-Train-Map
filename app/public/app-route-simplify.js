@@ -10,6 +10,20 @@
 //  §5.  Route-geometry simplification (Douglas-Peucker pre-render decimation)
 // =========================================================================
 
+// Local-metric plane scales, shared by every equirectangular projection in
+// the render/solver pipeline (this file, app-overlap-lanes.js,
+// app-route-solver.js, app-deck-records.js — all page + fit-worker
+// reachable, which is why they live here and not in app-core.js):
+//   M_PER_DEG_LON — metres per degree of longitude AT THE EQUATOR; callers
+//                   multiply by cos(lat).
+//   M_PER_DEG_LAT — metres per degree of latitude (spherical mean).
+// AppCore.equirectKm (stats) keeps its own documented 110.574 km scale, and
+// a few historical sites in this file use M_PER_DEG_LON's value for BOTH
+// axes — those are annotated in place and deliberately not "fixed", because
+// changing the scale re-simplifies every cached route.
+const M_PER_DEG_LON = 111320;
+const M_PER_DEG_LAT = 110540;
+
 // --- Route geometry simplification (pre-render decimation) -----------------
 // The N02 source geometry is survey-grade: ~50 m median vertex spacing (down
 // to <1 m at segment joins / curves), so a stitched route carries thousands
@@ -85,7 +99,10 @@ function douglasPeuckerIndices(points, epsilonMeters) {
     for (let i = 0; i < n; i += 1) all[i] = i;
     return all;
   }
-  const sx = 111320 * Math.cos(((points[0][1] || 0) * Math.PI) / 180);
+  const sx = M_PER_DEG_LON * Math.cos(((points[0][1] || 0) * Math.PI) / 180);
+  // Historical: lat shares the lon scale here (~0.7% overestimate, well
+  // inside the tolerance slack). Not switched to M_PER_DEG_LAT — that would
+  // re-decimate every route for no visible gain.
   const sy = 111320;
   const keep = new Uint8Array(n);
   keep[0] = 1;
@@ -160,7 +177,8 @@ function pointSegmentDistanceXY(px, py, ax, ay, bx, by) {
 // overlap. Coordinates are projected into a local metre plane for the test.
 function nearParallelSegmentSeparation(a0, a1, b0, b1, maxMeters) {
   const lat = (a0[1] + a1[1] + b0[1] + b1[1]) / 4;
-  const sx = 111320 * (Math.cos((lat * Math.PI) / 180) || 1e-6);
+  const sx = M_PER_DEG_LON * (Math.cos((lat * Math.PI) / 180) || 1e-6);
+  // Historical: lat shares the lon scale (see douglasPeuckerIndices).
   const sy = 111320;
   const ax = a0[0] * sx;
   const ay = a0[1] * sy;
@@ -278,10 +296,10 @@ function refreshRouteVertexSnap(items, tolMeters) {
     _routeVertexSnap = null;
     return;
   }
-  const mLat = 110540; // metres per degree latitude (mean)
+  const mLat = M_PER_DEG_LAT;
   const gridLon = 80000; // stable Japan-wide grid; distance check stays exact
   const cells = new Map(); // cellKey(gx,gy) -> array of representative [lon,lat]
-  const mLonAt = (lat) => Math.cos((lat * Math.PI) / 180) * 111320;
+  const mLonAt = (lat) => Math.cos((lat * Math.PI) / 180) * M_PER_DEG_LON;
   const tol2 = tol * tol; // squared-metre compare, avoiding Math.hypot's sqrt
   // NUMERIC cell keys. Each vertex probes 15 neighbouring cells, so the old
   // `gx + "," + gy` keys built ~2.7M throwaway strings per pass over a

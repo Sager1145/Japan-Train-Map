@@ -11,6 +11,11 @@ const {
   coerceStore,
   createTrainStore,
 } = require("./train-store");
+const { countrySuffixed } = require("../public/app-core.js");
+
+// Countries the server hosts a train store for (the frontend's
+// SUPPORTED_COUNTRIES mirrors this list in app-config.js).
+const STORE_COUNTRIES = ["jp", "tw"];
 
 const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
 const STATIC_CACHE_CONTROL = {
@@ -27,19 +32,17 @@ function createApp({
   heartbeatMs,
 } = {}) {
   const app = express();
-  // One fully separate store per country. "train-store" (Japan) keeps its
-  // historical file name and endpoint; other countries get a suffixed pair.
+  // One fully separate store per country, named by the shared rule in
+  // app-core.js (Japan keeps its historical unsuffixed file and endpoint).
   // The frontend targets one store at a time via its TRAIN_STORE_API binding.
-  const trainStores = {
-    "train-store": createTrainStore(path.join(dataDir, "train-store.json")),
-    "train-store-tw": createTrainStore(
-      path.join(dataDir, "train-store-tw.json"),
-    ),
-  };
-  const AGENT_IMPORT_COUNTRY_STORES = {
-    jp: trainStores["train-store"],
-    tw: trainStores["train-store-tw"],
-  };
+  const trainStores = {};
+  const AGENT_IMPORT_COUNTRY_STORES = {};
+  for (const country of STORE_COUNTRIES) {
+    const name = countrySuffixed("train-store", country);
+    const store = createTrainStore(path.join(dataDir, `${name}.json`));
+    trainStores[name] = store;
+    AGENT_IMPORT_COUNTRY_STORES[country] = store;
+  }
   const { serveGzippable } = createFileDelivery({ logger });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
@@ -189,8 +192,7 @@ function createApp({
           ).join(", ")}.`,
         });
       }
-      const agentStoreName =
-        country === "jp" ? "train-store" : `train-store-${country}`;
+      const agentStoreName = countrySuffixed("train-store", country);
 
       let incoming;
       try {

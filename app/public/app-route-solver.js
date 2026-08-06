@@ -1301,8 +1301,8 @@ function coordinatesClose(a, b, toleranceMeters = 1.5) {
 function projectPointToSegmentMeters(point, a, b) {
   const lat =
     (((Number(point[1]) + Number(a[1]) + Number(b[1])) / 3) * Math.PI) / 180;
-  const metersPerLon = 111320 * Math.cos(lat);
-  const metersPerLat = 110540;
+  const metersPerLon = M_PER_DEG_LON * Math.cos(lat);
+  const metersPerLat = M_PER_DEG_LAT;
   const px = Number(point[0]) * metersPerLon;
   const py = Number(point[1]) * metersPerLat;
   const ax = Number(a[0]) * metersPerLon;
