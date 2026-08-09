@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   version="1.1"
+   width="300"
+   height="300"
+   id="svg2">
+  <defs
+     id="defs4" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     transform="translate(0,-752.36218)"
+     id="layer1">
+    <g
+       transform="matrix(5.2913705,0,0,5.2913705,524.92595,860.36257)"
+       id="g3794">
+      <path
+         d="m -72.710674,1.3621826 -6.465464,-5.233183 c -4.109146,3.87010798578 -5.327209,6.977073 -5.309359,12.0317279 0.01785,5.0546545 2.137505,10.4770185 9.765497,12.7584555 l -3.3e-5,4 c -7.524054,-1.5 -13.912947,-8.906363 -13.765464,-16.7584555 0.147483,-7.85209268 4.215822,-12.8438973 9.309359,-16.0317279 l 6.465464,5.233183 c 0.08351,0.067589 0.08607,-11.5801686 0,-12.7429886 -9.723066,0.19814 -20.635533,11.1973565 -21.009613,20.3000005 l -3.88035,0 c 0,-9.6723719 10.261435,-23.5652325 26.889963,-23.8264695 l 0,53.680196 c -14.509257,0.1875 -27.104003,-12.228055 -27.000003,-23.853727 l 4,0 c 0.32172,11.436251 12.568096,20.116024 21.000003,19.7 z"
+         id="path2996"
+         style="fill:#047945;fill-opacity:1;fill-rule:evenodd;stroke:#00ffff;stroke-width:3;stroke-linecap:butt;stroke-linejoin:round;stroke-miterlimit:4;stroke-opacity:0;stroke-dasharray:none" />
+      <use
+         transform="matrix(-1,0,0,1,-141.54635,0)"
+         id="use3784"
+         x="0"
+         y="0"
+         width="744.09448"
+         height="1052.3622"
+         xlink:href="#path2996" />
+    </g>
+  </g>
+</svg>

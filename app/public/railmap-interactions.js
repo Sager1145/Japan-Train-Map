@@ -114,10 +114,30 @@
                 [point.x - routePad, point.y - routePad],
                 [point.x + routePad, point.y + routePad],
               ];
+        // Hover queries used to fan out to 3-4 queryRenderedFeatures per
+        // frame (markers box + exact point + padded route fallback). When the
+        // marker and route boxes coincide — every state except an
+        // engaged-sticky hover, whose route pad is wider — ONE box query
+        // serves both, partitioned by layer; and the exact-point lane
+        // resolution below runs only when that box proved a route is nearby
+        // at all. Idle travel over empty ground now pays one query per frame.
+        const isPickFeat = (f) =>
+          f.layer &&
+          (f.layer.id === TRAIN_PICK_FAN_LAYER || f.layer.id === TRAIN_PICK_LAYER);
+        let mk = [];
+        let boxRouteFeats = null; // null = route box not queried yet (pads differ)
+        if (routeBbox === bbox && pickLayers.length) {
+          const all = map.queryRenderedFeatures(bbox, {
+            layers: markerLayers.concat(pickLayers),
+          });
+          mk = all.filter((f) => !isPickFeat(f));
+          boxRouteFeats = all.filter(isPickFeat);
+        } else if (markerLayers.length) {
+          mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
+        }
         // Markers: prefer a sticky train's dot over foreign dots. nopick dots
         // (off-date trains while a day is active) are never interactive.
         let markerHit = null;
-        const mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         if (mk.length) {
           const recOf = (f) => self._markers && self._markers[f.properties.idx];
           const usable = (rec) => rec && !rec.nopick;
@@ -163,13 +183,26 @@
               }
             : null;
         };
-        let routeHit = routeFrom(
-          map.queryRenderedFeatures(point, { layers: pickLayers }),
-        );
-        if (!routeHit)
+        let routeHit = null;
+        if (boxRouteFeats !== null) {
+          // Merged path: the shared box already answered "is any route
+          // near?" — resolve the single lane under the pointer only then,
+          // and reuse the box features as the padded fallback.
+          if (boxRouteFeats.length) {
+            routeHit = routeFrom(
+              map.queryRenderedFeatures(point, { layers: pickLayers }),
+            );
+            if (!routeHit) routeHit = routeFrom(boxRouteFeats);
+          }
+        } else {
           routeHit = routeFrom(
-            map.queryRenderedFeatures(routeBbox, { layers: pickLayers }),
+            map.queryRenderedFeatures(point, { layers: pickLayers }),
           );
+          if (!routeHit)
+            routeHit = routeFrom(
+              map.queryRenderedFeatures(routeBbox, { layers: pickLayers }),
+            );
+        }
         // STICKY RESOLUTION: while any sticky geometry is under the pointer,
         // foreign hits are discarded entirely.
         if (sticky && ((markerHit && markerHit.sticky) || (routeHit && routeHit.sticky))) {

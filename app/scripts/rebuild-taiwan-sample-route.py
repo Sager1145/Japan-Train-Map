@@ -22,6 +22,7 @@ TRAIN_ID = "20260802_01_taoyuan_airport_mrt_express_t2_taipei"
 LINE_ID = "tw-tym-a"
 LINE_NAME = "桃園機場捷運"
 OPERATOR = "桃園大眾捷運股份有限公司"
+COMPANY = "桃園捷運"
 SOURCE = "交通部運輸資料流通服務（TDX/PTX）TYMC Shape LineID=A"
 ATTRIBUTION = "交通部運輸資料流通服務（TDX/PTX）；桃園大眾捷運股份有限公司"
 
@@ -67,7 +68,7 @@ def main() -> int:
     train.update(
         {
             "number": "桃園機場捷運 直達車（機場第二航廈站→台北車站）",
-            "company": OPERATOR,
+            "company": COMPANY,
             "origin": STOPS[0][1],
             "destination": STOPS[-1][1],
             "direction": "up",

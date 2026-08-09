@@ -331,7 +331,10 @@ function saveSelectedFields() {
     id: els.id.value.trim(),
     number: els.number.value.trim(),
     train_type: els.trainType.value.trim(),
-    company: els.company.value.trim(),
+    company:
+      activeCountry === "tw"
+        ? RailOperatorBranding.normalizeTaiwanCompanyName(els.company.value)
+        : els.company.value.trim(),
     direction: els.direction.value.trim(),
     origin: els.origin.value.trim(),
     destination: els.destination.value.trim(),
@@ -514,4 +517,3 @@ function mutateStop(index, action) {
   }
   persistAndRender();
 }
-

@@ -343,6 +343,14 @@ function resetPersistenceStateForCountrySwitch() {
   // The remembered local-JSON file handle belongs to the old country's
   // export; the handle DB is country-scoped, so drop the in-memory copy.
   localJsonFileHandle = null;
+  // The rail-content hash memo was computed from the OLD country's datasets.
+  // Left stale, the next warm/persist under the new country would run in the
+  // old country's namespace: the warm would load the old country's geometry
+  // into this session's runtime cache (same-named station pairs — 松山→板橋
+  // exist in both countries — would then serve wrong-country routes), and
+  // fresh solves would persist under a namespace the old country later
+  // evicts. Recompute it from the datasets ensureSolverReady loads next.
+  railContentHashCache = null;
 }
 
 // The read-only export textarea is a display convenience, not part of the
@@ -1050,8 +1058,14 @@ function getRailContentHash() {
 }
 
 function openRouteCacheDb() {
+  // Country-scoped like every other persistent store (countryDbName): each
+  // country's solver cache lives in its own DB, so the warm pass below can
+  // only ever evict ITS OWN country's superseded namespaces. A JP↔TW switch
+  // therefore leaves the other country's persisted geometry intact for the
+  // bulk re-warm that switchActiveCountry's comment promises. (Japan keeps
+  // the historical unsuffixed DB name, so existing users lose nothing.)
   return openIdb(
-    ROUTE_CACHE_DB_NAME,
+    countryDbName(ROUTE_CACHE_DB_NAME),
     [ROUTE_CACHE_STORE_NAME],
     "Could not open route cache DB.",
   );
@@ -1099,7 +1113,9 @@ async function warmRouteCacheFromIndexedDb() {
             warmed += 1;
           }
         } else {
-          // Entry from a previous rail-data namespace: unreachable, evict.
+          // Entry from a superseded rail-data namespace of THIS country (the
+          // DB is country-scoped, so no other country's entries are ever
+          // visible here): unreachable, evict.
           cursor.delete();
           evicted += 1;
         }

@@ -270,6 +270,11 @@ function buildDeckOverlapMap(items) {
   // original segments long it is.
   const canonicalIds = new Map(); // sorted-ids signature -> Set
   seg.forEach((ids, key) => {
+    // Single-train segments — the overwhelming majority — are never surfaced
+    // (idsForKey returns null below 2), so interning their sets was pure
+    // throwaway spread+sort+string allocation inside the most expensive
+    // rebuild. Same guard as the adjacency pass below.
+    if (ids.size < 2) return;
     const idsSig = [...ids].sort().join("\u0000");
     const canon = canonicalIds.get(idsSig);
     if (!canon) canonicalIds.set(idsSig, ids);

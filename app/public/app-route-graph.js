@@ -80,6 +80,16 @@ const STATION_TRANSFER_MAX_NODES_PER_GROUP = 24;
 // otherwise end one feature at the new platform and start the next at the old
 // one, leaving a visible gap even though connecting rail geometry exists.
 const ROUTE_SECTION_CONTINUITY_STATION_METERS = 60;
+// The candidate filter above is intentionally tight, but the final rendered
+// itinerary has a stronger invariant: two consecutive sections that name the
+// same explicit station must meet.  N02 occasionally puts the only routable
+// node hundreds of metres from that station's display point (large station
+// throats, relocated platforms, or a change between conventional/Shinkansen
+// geometry).  The graph already treats same-station nodes up to this distance
+// as an internal station connector, so use the identical bound when closing a
+// remaining feature seam after the solve.
+const ROUTE_SECTION_STITCH_MAX_METERS =
+  STATION_TRANSFER_MAX_NODE_GAP_METERS;
 
 // Build every input that identifies one deterministic route solve. The
 // precompute exporter calls this same helper inside its VM sandbox, so cache-key
@@ -205,10 +215,248 @@ function prepareTrainRouteSolve(train) {
   return { done: false, ...context };
 }
 
-// Solve ONE ride section on its on-demand regional subgraph (falling back to the
-// full graph only if a region proves too small — see solveRouteSectionOnDemand,
-// so results are identical to a full-graph solve). Pushes a "from→to" note into
-// `warnings` when a section can't route. Shared by the sync + streaming solvers.
+// Taiwan's display package and rail-sections dataset are emitted from the same
+// groomed, station-cut interval geometry.  Re-running an adjacent Taiwan
+// interval through Dijkstra can nevertheless change that geometry: a
+// switchback/reversal contains graph nodes that are intentionally visited more
+// than once, and the shortest-path graph is free to jump between those visits.
+// The dense Alishan throat is the clearest example.  Index the exact official
+// intervals by their line/operator-specific station endpoints so canonical
+// Taiwan route_sections can draw the VERY SAME ordered coordinates as the
+// "all railways" layer.  Imported/non-adjacent/ambiguous sections still fall
+// through to the normal graph solver below.
+const _taiwanOfficialIntervalIndexes = new WeakMap();
+
+function taiwanOfficialIntervalCoordinateKey(coord) {
+  const lon = Number(coord?.[0]);
+  const lat = Number(coord?.[1]);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return "";
+  // The Taiwan package is committed at six decimals.  Do NOT use coordKey's
+  // five-decimal graph grid here: separate reversal vertices in the Alishan
+  // cluster can occupy the same graph cell, which is precisely the shortcut
+  // this exact-interval lookup avoids.
+  return `${lon.toFixed(6)},${lat.toFixed(6)}`;
+}
+
+function taiwanOfficialIntervalKey(lineName, operator, fromCoord, toCoord) {
+  const fromKey = taiwanOfficialIntervalCoordinateKey(fromCoord);
+  const toKey = taiwanOfficialIntervalCoordinateKey(toCoord);
+  if (!lineName || !operator || !fromKey || !toKey) return "";
+  return `${lineName}\u001f${operator}\u001f${fromKey}\u001f${toKey}`;
+}
+
+function getTaiwanOfficialIntervalIndex() {
+  if (!railSectionsGeoJson || !Array.isArray(railSectionsGeoJson.features))
+    return null;
+  const cached = _taiwanOfficialIntervalIndexes.get(railSectionsGeoJson);
+  if (cached) return cached;
+
+  const index = new Map();
+  function add(key, record) {
+    if (!key) return;
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(record);
+  }
+
+  railSectionsGeoJson.features.forEach((feature) => {
+    const coordinates = feature?.geometry?.coordinates;
+    if (
+      feature?.geometry?.type !== "LineString" ||
+      !Array.isArray(coordinates) ||
+      coordinates.length < 2
+    )
+      return;
+    const properties = feature.properties || {};
+    const lineName = String(properties.line_name || "").trim();
+    const operator = String(properties.operator || "").trim();
+    const first = coordinates[0];
+    const last = coordinates[coordinates.length - 1];
+    const record = { feature, coordinates, lineName, operator };
+    add(
+      taiwanOfficialIntervalKey(lineName, operator, first, last),
+      { ...record, reversed: false },
+    );
+    add(
+      taiwanOfficialIntervalKey(lineName, operator, last, first),
+      { ...record, reversed: true },
+    );
+  });
+  _taiwanOfficialIntervalIndexes.set(railSectionsGeoJson, index);
+  return index;
+}
+
+function normalizedRouteSectionHintValues(values) {
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function solveTaiwanRouteSectionOnOfficialInterval(
+  section,
+  segmentIndex,
+  train,
+  allowedCodes,
+  continuityAnchor = null,
+) {
+  if (activeCountry !== "tw") return null;
+  const index = getTaiwanOfficialIntervalIndex();
+  if (!index) return null;
+
+  const requiredLines = normalizedRouteSectionHintValues(section.line_names);
+  const requiredOperators = normalizedRouteSectionHintValues(
+    section.operator_names,
+  );
+  // An explicit line is the proof that this route_section describes one
+  // physical interval rather than a request for the general graph solver.
+  if (!requiredLines.length) return null;
+
+  const fromStations = resolveStationCandidates({
+    name: section.from || "",
+    n02_station_code: section.from_n02_station_code || null,
+  });
+  const toStations = resolveStationCandidates({
+    name: section.to || "",
+    n02_station_code: section.to_n02_station_code || null,
+  });
+  if (!fromStations.length || !toStations.length) return null;
+
+  const matches = new Set();
+  for (const lineName of requiredLines) {
+    const fromOnLine = fromStations.filter(
+      (feature) =>
+        stationLineName(feature) === lineName &&
+        (!requiredOperators.length ||
+          requiredOperators.includes(stationOperator(feature))),
+    );
+    const toOnLine = toStations.filter(
+      (feature) =>
+        stationLineName(feature) === lineName &&
+        (!requiredOperators.length ||
+          requiredOperators.includes(stationOperator(feature))),
+    );
+    for (const fromStation of fromOnLine) {
+      for (const toStation of toOnLine) {
+        const fromOperator = stationOperator(fromStation);
+        const toOperator = stationOperator(toStation);
+        if (!fromOperator || fromOperator !== toOperator) continue;
+        if (
+          requiredOperators.length &&
+          !requiredOperators.includes(fromOperator)
+        )
+          continue;
+        const key = taiwanOfficialIntervalKey(
+          lineName,
+          fromOperator,
+          getFeatureDisplayCoordinate(fromStation),
+          getFeatureDisplayCoordinate(toStation),
+        );
+        (index.get(key) || []).forEach((record) => matches.add(record));
+      }
+    }
+  }
+
+  // A direct interval is safe only when line/operator/endpoints identify one
+  // geometry unambiguously.  Anything else retains the established Dijkstra
+  // behaviour instead of guessing.
+  if (matches.size !== 1) return null;
+  const match = [...matches][0];
+  const properties = match.feature.properties || {};
+  const institutionTypeCode = String(
+    properties.institution_type_code || "",
+  );
+  if (
+    train?.route_policy?.institution_filter_mode === "hard" &&
+    allowedCodes?.length &&
+    institutionTypeCode &&
+    !allowedCodes.map(String).includes(institutionTypeCode)
+  )
+    return null;
+
+  const sourceCoordinates = match.reversed
+    ? [...match.coordinates].reverse()
+    : match.coordinates;
+  // Clone every coordinate: endpoint stitching is intentionally allowed to
+  // replace array entries, but must never mutate railSectionsGeoJson (the
+  // source shared with statistics and subsequent route solves).
+  const coordinates = sourceCoordinates.map((coord) => [
+    Number(coord[0]),
+    Number(coord[1]),
+  ]);
+  if (
+    continuityAnchor &&
+    distanceMeters(continuityAnchor, coordinates[0]) >
+      ROUTE_SECTION_CONTINUITY_STATION_METERS
+  )
+    return null;
+
+  const edgeCount = coordinates.length - 1;
+  const physicalLength =
+    Math.round(pathLengthForCoordinates(coordinates) * 100) / 100;
+  const preferredLines = normalizedRouteSectionHintValues([
+    ...(train?.route_policy?.preferred_line_names || []),
+    ...requiredLines,
+  ]);
+  const preferredOperators = normalizedRouteSectionHintValues([
+    ...(train?.route_policy?.preferred_operator_names || []),
+    ...derivedPreferredOperatorNames(train),
+    match.operator,
+  ]);
+
+  return {
+    type: "Feature",
+    properties: {
+      train_id: train.id,
+      route_id: `${train.id}-runtime-primary`,
+      variant_rank: 0,
+      is_primary: true,
+      route_choice: "official_interval_exact",
+      geometry_role: "single_primary_segment",
+      source: "rail-sections-tw interval shared with tw-2025 display package",
+      segment_index: segmentIndex,
+      from: section.from || stationName(fromStations[0]),
+      to: section.to || stationName(toStations[0]),
+      from_n02_station_code:
+        section.from_n02_station_code || stationCode(fromStations[0]),
+      to_n02_station_code:
+        section.to_n02_station_code || stationCode(toStations[0]),
+      station_code_system: "TDX",
+      allowed_institution_type_codes: allowedCodes,
+      preferred_line_names: preferredLines,
+      required_line_names: requiredLines,
+      required_operator_names: requiredOperators,
+      preferred_operator_names: preferredOperators,
+      solve_mode: "official_interval_exact",
+      require_preferred_institution: false,
+      used_institution_type_codes: institutionTypeCode
+        ? [institutionTypeCode]
+        : [],
+      used_line_names: { [match.lineName]: edgeCount },
+      used_operator_names: { [match.operator]: edgeCount },
+      route_template_key: routeKeyDigest(getTrainRouteTemplateKey(train)),
+      path_coordinate_count: coordinates.length,
+      raw_path_coordinate_count: coordinates.length,
+      snap_distance_m: { from: 0, to: 0 },
+      endpoint_display_gap_m: { from: 0, to: 0 },
+      physical_length_m: physicalLength,
+      raw_physical_length_m: physicalLength,
+      cost: physicalLength,
+      // Ordered retraces are real switchback/reversal geometry, not duplicate
+      // solver output.  Both dedupe and display simplification honour this.
+      preserve_ordered_geometry: true,
+    },
+    geometry: { type: "LineString", coordinates },
+  };
+}
+
+// Solve ONE ride section on its exact Taiwan official interval where possible,
+// otherwise on its on-demand regional subgraph (falling back to the full graph
+// only if a region proves too small — see solveRouteSectionOnDemand). Pushes a
+// "from→to" note into `warnings` when a section can't route. Shared by the sync
+// + streaming solvers.
 function solveTrainRouteSection(
   train,
   section,
@@ -218,13 +466,21 @@ function solveTrainRouteSection(
   warnings,
   continuityAnchor = null,
 ) {
-  const result = solveRouteSectionOnDemand(
-    section,
-    segmentIndex,
-    train,
-    allowedCodes,
-    continuityAnchor,
-  );
+  const result =
+    solveTaiwanRouteSectionOnOfficialInterval(
+      section,
+      segmentIndex,
+      train,
+      allowedCodes,
+      continuityAnchor,
+    ) ||
+    solveRouteSectionOnDemand(
+      section,
+      segmentIndex,
+      train,
+      allowedCodes,
+      continuityAnchor,
+    );
   if (!result) {
     warnings.push(
       `${section.from || section.from_n02_station_code}→${section.to || section.to_n02_station_code}`,
@@ -427,6 +683,14 @@ function dedupeSameTrainRouteFeatures(features) {
   const seenSegmentsByTraversal = new Map();
   const cleaned = [];
   (features || []).forEach((feature, featureIndex) => {
+    // Taiwan official intervals can legitimately traverse the same physical
+    // edge twice inside ONE station interval (forest-rail switchbacks and
+    // station-throat reversals).  Removing the second traversal changes the
+    // groomed all-railways shape, so preserve its complete ordered geometry.
+    if (feature.properties?.preserve_ordered_geometry === true) {
+      cleaned.push(feature);
+      return;
+    }
     const rawSegmentIndex = feature.properties?.segment_index;
     const traversalKey =
       rawSegmentIndex === undefined || rawSegmentIndex === null
@@ -488,6 +752,14 @@ function stitchAdjacentRouteFeatureEndpoints(features) {
     ) {
       continue;
     }
+    if (
+      !routeSectionBoundarySharesExplicitStop(
+        previous.properties,
+        current.properties,
+      )
+    ) {
+      continue;
+    }
     const previousEnd = routeFeatureEndCoordinate(previous);
     const currentLines =
       current.geometry?.type === "LineString"
@@ -500,7 +772,7 @@ function stitchAdjacentRouteFeatureEndpoints(features) {
       !previousEnd ||
       !currentStart ||
       distanceMeters(previousEnd, currentStart) >
-        ROUTE_SECTION_CONTINUITY_STATION_METERS
+        ROUTE_SECTION_STITCH_MAX_METERS
     ) {
       continue;
     }
@@ -560,12 +832,29 @@ const COMPANY_OPERATOR_ALIASES = {
   阪神: "阪神電気鉄道",
   名鉄: "名古屋鉄道",
   西鉄: "西日本鉄道",
+  台鐵: "國營臺灣鐵路股份有限公司",
+  臺鐵: "國營臺灣鐵路股份有限公司",
+  台灣高鐵: "台灣高速鐵路股份有限公司",
+  臺灣高鐵: "台灣高速鐵路股份有限公司",
+  台北捷運: "臺北大眾捷運股份有限公司",
+  臺北捷運: "臺北大眾捷運股份有限公司",
+  新北捷運: "新北大眾捷運股份有限公司",
+  桃園捷運: "桃園大眾捷運股份有限公司",
+  台中捷運: "臺中捷運股份有限公司",
+  臺中捷運: "臺中捷運股份有限公司",
+  高雄捷運: "高雄捷運股份有限公司",
+  阿里山林鐵: "阿里山林業鐵路及文化資產管理處",
 };
 
 function companyParts(train) {
   return String(train?.company || "")
     .split("/")
-    .map((part) => part.trim())
+    .map((part) => {
+      const name = part.trim();
+      return activeCountry === "tw"
+        ? RailOperatorBranding.normalizeTaiwanCompanyName(name)
+        : name;
+    })
     .filter(Boolean);
 }
 
@@ -605,6 +894,9 @@ function derivedInstitutionTypeCodes(train) {
   const type = String(train?.train_type || "");
   const text = `${type} ${companyParts(train).join(" ")}`;
   const codes = new Set();
+  if (/台灣高鐵|臺灣高鐵|高速鐵路/.test(text)) codes.add("1");
+  if (/台鐵|臺鐵|臺灣鐵路|台灣鐵路/.test(text)) codes.add("2");
+  if (/捷運|林鐵|林業鐵路/.test(text)) codes.add("3");
   if (/新幹線|新干线|shinkansen/i.test(text)) codes.add("1");
   if (/JR|旅客鉄道|旅客铁道/i.test(text) && !/新幹線|新干线/.test(type))
     codes.add("2");

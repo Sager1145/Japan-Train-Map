@@ -88,3 +88,36 @@ test("Taiwan no longer resolves same-named stations through Japan readings", () 
   );
   assert.equal(vm.runInContext('I18N.nameReadingsList("板橋", "TRA-1020").length', context), 0);
 });
+
+test("region labels and island-wide statistics follow the active region and language", () => {
+  const context = loadI18n();
+  const translated = (country, lang, key) => {
+    context.country = country;
+    context.lang = lang;
+    context.key = key;
+    return vm.runInContext(
+      "I18N.setCountry(country); I18N.setLang(lang); I18N.tc(key);",
+      context,
+    );
+  };
+
+  assert.equal(translated("jp", "zh-Hant", "country.label"), "地區");
+  assert.equal(translated("tw", "zh-Hans", "country.label"), "地区");
+  assert.equal(translated("tw", "ja", "country.label"), "地域");
+  assert.equal(translated("tw", "en", "country.label"), "Region");
+
+  assert.equal(translated("jp", "zh-Hant", "stat.all"), "全國");
+  assert.equal(translated("tw", "zh-Hant", "stat.all"), "全島");
+  assert.equal(translated("tw", "zh-Hans", "stat.all"), "全岛");
+  assert.equal(translated("tw", "ja", "stat.all"), "全島");
+  assert.equal(translated("tw", "en", "stat.all"), "Island-wide");
+
+  assert.equal(
+    translated("tw", "zh-Hant", "status.countrySwitchFailed"),
+    "切換地區失敗：{msg}",
+  );
+  assert.equal(
+    translated("tw", "en", "status.countrySwitchFailed"),
+    "Region switch failed: {msg}",
+  );
+});

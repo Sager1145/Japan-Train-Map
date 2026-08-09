@@ -43,7 +43,7 @@ function dateLabel(date) {
 // The date-selector bar: a "全部" button plus one button per available date
 // (dynamically generated, no fixed cap), ordered earliest-first. The active
 // date is highlighted. Clicking only re-scopes the sidebar list.
-function renderDateButtons() {
+function renderDateButtons({ scrollIntoView = true } = {}) {
   if (!els.dateBar) return;
   const dates = getAvailableDates(trainStore.trains);
   els.dateBar.innerHTML = "";
@@ -61,20 +61,27 @@ function renderDateButtons() {
     fragment.appendChild(btn);
   };
 
+  // One pass over the store instead of one getTrainsForDate filter PER DATE —
+  // this runs once per painted frame during a progressive load, where the
+  // old O(dates × trains) recount burned a visible slice of each frame.
+  const countByDate = new Map();
+  for (const train of trainStore.trains) {
+    const date = getTrainDate(train);
+    countByDate.set(date, (countByDate.get(date) || 0) + 1);
+  }
   makeButton(ALL_DATES, I18N.t("date.all"), trainStore.trains.length);
   dates.forEach((date) => {
-    makeButton(
-      date,
-      dateLabel(date),
-      getTrainsForDate(trainStore.trains, date).length,
-    );
+    makeButton(date, dateLabel(date), countByDate.get(date) || 0);
   });
 
   els.dateBar.appendChild(fragment);
   // Keep the active chip visible after initial load, locale changes, and any
   // full re-render. The iOS-style date strip is intentionally single-line,
   // so the selected date may otherwise start outside the horizontal viewport.
-  scrollActiveDateButtonIntoView();
+  // (The progressive-load count refresh opts out: the strip's scroll position
+  // survives the chip rebuild, and a per-frame scrollIntoView both forces
+  // layout and fights the user scrolling the strip mid-load.)
+  if (scrollIntoView) scrollActiveDateButtonIntoView();
   if (els.mapDateFilter) {
     els.mapDateFilter.checked = mapFollowsSelectedDate;
     // The hard-hide toggle only has an effect while a CONCRETE date is
@@ -93,7 +100,7 @@ function renderDateButtons() {
 // cheap next to the route solves around it. The full list/card rebuild stays
 // where it was — only the numbers go live.
 function renderProgressiveCounts() {
-  renderDateButtons();
+  renderDateButtons({ scrollIntoView: false });
   if (els.listTitle && selectedDate === ALL_DATES)
     els.listTitle.textContent = I18N.t("list.allTitle", {
       count: trainStore.trains.length,

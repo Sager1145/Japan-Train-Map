@@ -182,7 +182,11 @@ const ROUTE_CACHE_STORE_NAME = "routes";
 // 15: route_id / route_template_key now carry a digest of their key instead
 // of the key itself, so entries persisted by 14 would compare unequal against
 // a freshly built template key and silently miss the matched-routes fallback.
-const ROUTE_SOLVER_CACHE_VERSION = "15";
+// 16: adjacent Taiwan sections reuse the exact groomed rail-package interval
+// instead of graph-shortcutting switchbacks (and preserve ordered retraces).
+// 17: consecutive Japan sections that share an explicit station are stitched
+// across large N02 station throats, preventing stale discontinuous geometry.
+const ROUTE_SOLVER_CACHE_VERSION = "17";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],

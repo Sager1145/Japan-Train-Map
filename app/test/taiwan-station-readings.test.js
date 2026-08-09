@@ -16,6 +16,7 @@ test("Taiwan station table covers every network alias and canonical sample UID",
 
   assert.equal(table.country, "TW");
   assert.deepEqual(table.languages, ["zh-Hant", "zh-Hans", "ja", "en"]);
+  assert.equal(table.stats.byCode, 1136);
   assert.equal(table.stats.officialStationUIDs, 532);
   assert.equal(table.stats.matchedOfficialStationUIDs, 517);
   assert.equal(table.stats.networkAliases, 585);
@@ -86,6 +87,7 @@ test("Taiwan station translations use official values and documented fallbacks",
     ja: "",
     en: "",
   });
+  assert.deepEqual(table.byCode["AFR-Q0000004483"], alishan);
 
   // Ambiguous names require an exact StationUID: Taipei and Taichung publish
   // different official English translations for 市政府.

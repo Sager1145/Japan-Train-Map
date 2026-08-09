@@ -80,16 +80,28 @@ const formatFitDistance = (x) =>
 // `advanced: true` renders the control inside the collapsible 進階 group
 // (collapsed on mobile, auto-opened on desktop by bindEvents) — the common
 // visual knobs stay on the panel's first screen.
+// One drag pause worth of coalescing for the rebuilding sliders: long enough
+// to swallow per-step `input` ticks, short enough that the settled value
+// applies without a perceptible wait.
+const DISPLAY_SLIDER_DEBOUNCE_MS = 150;
+
 const DISPLAY_CONTROLS = [
-  { key: "routeWidthScale", labelKey: "disp.routeWidthScale", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×" },
-  { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2) },
-  { key: "mapOpacity", labelKey: "disp.mapOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2) },
-  { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px", advanced: true },
-  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => (x * 0.4).toFixed(1) + "px", advanced: true },
-  { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px", advanced: true },
-  { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×", advanced: true },
-  { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x, advanced: true },
+  // `invalidate` picks how much of the deck pipeline a slider drag must
+  // rebuild (see sliderInvalidateLevel): "none" = paint only, "markers" =
+  // marker records only, "records" = records but keep the overlap graph,
+  // "opacity" = records normally but FULL when the value crosses 0 (the one
+  // case that changes which segments are drawn, and so the lane counts).
+  // Rebuilding sliders debounce to DISPLAY_SLIDER_DEBOUNCE_MS (label text
+  // still updates per tick); a per-control `debounceMs` overrides it.
+  { key: "routeWidthScale", labelKey: "disp.routeWidthScale", min: 0.2, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×", invalidate: "records" },
+  { key: "riddenOpacity", labelKey: "disp.riddenOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2), invalidate: "opacity" },
+  { key: "dimOpacity", labelKey: "disp.dimOpacity", min: 0, max: 1, step: 0.02, fmt: (x) => x.toFixed(2), invalidate: "opacity" },
+  { key: "mapOpacity", labelKey: "disp.mapOpacity", min: 0, max: 1, step: 0.05, fmt: (x) => x.toFixed(2), invalidate: "none" },
+  { key: "terminalRadius", labelKey: "disp.terminalRadius", min: 3, max: 20, step: 1, fmt: (x) => x + "px", advanced: true, invalidate: "markers" },
+  { key: "stopRadius", labelKey: "disp.stopRadius", min: 2, max: 16, step: 1, fmt: (x) => (x * 0.4).toFixed(1) + "px", advanced: true, invalidate: "markers" },
+  { key: "passRadius", labelKey: "disp.passRadius", min: 1, max: 12, step: 1, fmt: (x) => x + "px", advanced: true, invalidate: "markers" },
+  { key: "markerStrokeScale", labelKey: "disp.markerStrokeScale", min: 0.5, max: 3, step: 0.1, fmt: (x) => x.toFixed(1) + "×", advanced: true, invalidate: "markers" },
+  { key: "focusBoost", labelKey: "disp.focusBoost", min: 0, max: 6, step: 1, fmt: (x) => "+" + x, advanced: true, invalidate: "records" },
   { key: "fitCurvePrecision", labelKey: "disp.fitCurvePrecision", min: 0.5, max: 2, step: 0.1, fmt: (x) => x.toFixed(1) + "×", manualFitRebuild: true, advanced: true },
   { key: "fitCurveMinRadius", labelKey: "disp.fitCurveMinRadius", min: 200, max: 30000, step: 100, fmt: formatFitDistance, manualFitRebuild: true, advanced: true },
   { key: "fitCurveMinDetail", labelKey: "disp.fitCurveMinDetail", min: 100, max: 20000, step: 100, fmt: formatFitDistance, manualFitRebuild: true, advanced: true },
@@ -365,9 +377,16 @@ function persistDisplaySettings() {
   }
 }
 
-// Apply a settings change: persist, drop the route-item cache so segments are
-// re-emitted with the new numbers, then re-render both layers.
-function applyDisplaySettings({ rebuild = true } = {}) {
+// Apply a settings change: persist, drop the caches the change actually
+// reaches (see `invalidate` below), then re-render both layers.
+// `invalidate` levels:
+//   "full"    — everything incl. the overlap graph (default; checkboxes,
+//               reset, and opacity sliders crossing 0 use this)
+//   "records" — records/items/markers but KEEP the overlap graph; correct
+//               whenever the change can't alter which segments are drawn
+//               (width, focus boost, opacity moves not crossing 0)
+//   "markers" — marker records only (marker radii / stroke sliders)
+function applyDisplaySettings({ rebuild = true, invalidate = "full" } = {}) {
   persistDisplaySettings();
   applyMapOpacity();
   if (window.RailMap && RailMap.setFitCurvesVisible)
@@ -378,18 +397,35 @@ function applyDisplaySettings({ rebuild = true } = {}) {
   if (window.RailMap && RailMap.setCrossDayDash)
     RailMap.setCrossDayDash(!DISPLAY.showFullCrossDay);
   if (!rebuild) return;
-  cachedRouteItems = null;
-  cachedRouteSignature = "";
-  // DISPLAY values (dimOpacity, routeWidthScale, …) are NOT part of the route
-  // signature, so the signature-keyed overlap/record caches must be dropped
-  // explicitly — e.g. dimOpacity crossing 0 changes which segments are drawn
-  // and therefore the lane counts.
-  if (typeof invalidateDeckRouteCaches === "function")
-    invalidateDeckRouteCaches();
   // focusBoost is drawn by the SEL layer's paint expression, not the records.
   if (window.RailMap && RailMap.setFocusBoost)
     RailMap.setFocusBoost(DISPLAY.focusBoost);
+  if (invalidate === "markers") {
+    if (typeof invalidateDeckMarkerCaches === "function")
+      invalidateDeckMarkerCaches();
+  } else {
+    cachedRouteItems = null;
+    cachedRouteSignature = "";
+    // DISPLAY values (dimOpacity, routeWidthScale, …) are NOT part of the
+    // route signature, so the signature-keyed overlap/record caches must be
+    // dropped explicitly — e.g. dimOpacity crossing 0 changes which segments
+    // are drawn and therefore the lane counts.
+    if (typeof invalidateDeckRouteCaches === "function")
+      invalidateDeckRouteCaches({ keepOverlapMap: invalidate === "records" });
+  }
   if (typeof renderTrainLayers === "function") renderTrainLayers();
+}
+
+// How much pipeline a slider's debounced apply must invalidate. The opacity
+// sliders are "records" while the drag stays on one side of 0; comparing
+// against the value the LAST APPLIED rebuild used (not the previous tick)
+// keeps the 0-crossing detection correct across coalesced drag ticks.
+function sliderInvalidateLevel(cfg) {
+  if (cfg.invalidate === "opacity") {
+    const now = Number(DISPLAY[cfg.key]);
+    return (cfg._appliedValue === 0) !== (now === 0) ? "full" : "records";
+  }
+  return cfg.invalidate || "full";
 }
 
 let fitCurveSettingsDirty = false;
@@ -443,6 +479,7 @@ function setupDisplaySettingsPanel() {
     input.step = cfg.step;
     input.value = DISPLAY[cfg.key];
     val.textContent = cfg.fmt(Number(DISPLAY[cfg.key]));
+    cfg._appliedValue = Number(DISPLAY[cfg.key]);
     input.addEventListener("input", () => {
       DISPLAY[cfg.key] = Number(input.value);
       val.textContent = cfg.fmt(Number(input.value));
@@ -450,11 +487,21 @@ function setupDisplaySettingsPanel() {
         fitCurveSettingsDirty = true;
         persistDisplaySettings();
         updateFitCurveRebuildButton();
-      } else if (cfg.debounceMs) {
-        clearTimeout(cfg._applyTimer);
-        cfg._applyTimer = setTimeout(() => applyDisplaySettings(), cfg.debounceMs);
+      } else if (cfg.invalidate === "none") {
+        // Pure paint (map opacity): apply per tick for live feedback — no
+        // caches are touched, so there is nothing to debounce.
+        applyDisplaySettings({ rebuild: false });
       } else {
-        applyDisplaySettings();
+        // The label above already updated live; the pipeline apply coalesces
+        // to the drag pauses. Without this, EVERY slider step ran a
+        // synchronous cold rebuild (overlap graph included) — a one-second
+        // drag queued 10+ multi-second blocks on the full store.
+        clearTimeout(cfg._applyTimer);
+        cfg._applyTimer = setTimeout(() => {
+          const level = sliderInvalidateLevel(cfg);
+          cfg._appliedValue = Number(DISPLAY[cfg.key]);
+          applyDisplaySettings({ invalidate: level });
+        }, cfg.debounceMs || DISPLAY_SLIDER_DEBOUNCE_MS);
       }
     });
     head.appendChild(name);

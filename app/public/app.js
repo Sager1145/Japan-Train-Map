@@ -546,15 +546,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   // phase. Both loaders resolve null on failure (never throw).
   const initialMapTheme = resolveDisplayTheme();
   const alternateMapTheme = initialMapTheme === "dark" ? "light" : "dark";
-  const mapAssetsReady = Promise.all([
-    RailMap.loadBasemap(initialMapTheme),
-    RailMap.loadBasemap(alternateMapTheme),
-    // The 9.2 MB national-network package is HIDDEN by default (opt-in via the
-    // 全部鐵路線 layer toggle). Deferred out of boot: RailMap.ensureNetwork()
-    // fetches + builds + setData's it lazily the first time the user enables
-    // that toggle, so its parse/build/upload never blocks first map paint.
-    Promise.resolve(null),
-  ]);
+  const mapAssetsReady = {
+    primary: Promise.all([
+      RailMap.loadBasemap(initialMapTheme),
+      // The 9.2 MB national-network package is HIDDEN by default (opt-in via
+      // the 全部鐵路線 layer toggle). Deferred out of boot: RailMap
+      // .ensureNetwork() fetches + builds + setData's it lazily the first
+      // time the user enables that toggle, so its parse/build/upload never
+      // blocks first map paint.
+      Promise.resolve(null),
+    ]),
+    // The alternate theme is fetched ONLY to warm loadBasemap's cache for an
+    // instant first theme switch. It used to sit inside the Promise.all that
+    // gates map creation — a cache-warming download on the first-paint
+    // critical path. Now it rides in parallel; initMap only awaits it in the
+    // corner case where the initial theme failed to load (see
+    // buildMapLayersControl's fallback).
+    alternate: RailMap.loadBasemap(alternateMapTheme).catch(() => null),
+  };
+  // Static deploy: the sample-manifest round trip has no dependency on the
+  // map, but used to start only after initMap's basemap + first-tiles
+  // handshake resolved. makeManifestLoader memoizes the in-flight promise,
+  // so this early kick just overlaps the fetch with map startup and the real
+  // boot path below reuses the same promise. (User-store IndexedDB reads are
+  // local-fast and the backend GET isn't memoized — both stay where they are.)
+  if (!HAS_BACKEND && typeof loadSampleManifest === "function")
+    loadSampleManifest().catch(() => {});
   try {
     await loadAppData();
   } catch (err) {

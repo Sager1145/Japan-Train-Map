@@ -8,14 +8,14 @@
     "en"
   ],
   "officialRevision": "2026-08-04T23:38:39+08:00",
-  "packageVersion": "2025.5.1",
+  "packageVersion": "2025.5.2",
   "sources": [
     "交通部運輸資料流通服務（TDX/PTX）",
     "內政部國土測繪中心（NLSC）",
     "農業部林業及自然保育署阿里山林業鐵路及文化資產管理處（AFR）"
   ],
   "stats": {
-    "byCode": 1117,
+    "byCode": 1136,
     "byName": 480,
     "officialStationUIDs": 532,
     "matchedOfficialStationUIDs": 517,
@@ -24,6 +24,139 @@
     "ambiguousNamesWithoutFallback": 22
   },
   "byCode": {
+    "AFR-I0000000551": {
+      "name": "北門",
+      "zh_Hant": "北門",
+      "zh_Hans": "北门",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-M0000005225": {
+      "name": "對高岳",
+      "zh_Hant": "對高岳",
+      "zh_Hans": "对高岳",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001023": {
+      "name": "竹崎",
+      "zh_Hant": "竹崎",
+      "zh_Hans": "竹崎",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001047": {
+      "name": "交力坪",
+      "zh_Hant": "交力坪",
+      "zh_Hans": "交力坪",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001054": {
+      "name": "樟腦寮",
+      "zh_Hant": "樟腦寮",
+      "zh_Hans": "樟脑寮",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001073": {
+      "name": "獨立山",
+      "zh_Hant": "獨立山",
+      "zh_Hans": "独立山",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001080": {
+      "name": "梨園寮",
+      "zh_Hant": "梨園寮",
+      "zh_Hans": "梨园寮",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001597": {
+      "name": "多林",
+      "zh_Hant": "多林",
+      "zh_Hans": "多林",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001623": {
+      "name": "十字路",
+      "zh_Hant": "十字路",
+      "zh_Hans": "十字路",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001627": {
+      "name": "屏遮那",
+      "zh_Hant": "屏遮那",
+      "zh_Hans": "屏遮那",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001630": {
+      "name": "二萬平",
+      "zh_Hant": "二萬平",
+      "zh_Hans": "二万平",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001651": {
+      "name": "阿里山",
+      "zh_Hant": "阿里山",
+      "zh_Hans": "阿里山",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000001660": {
+      "name": "神木",
+      "zh_Hant": "神木",
+      "zh_Hans": "神木",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000002368": {
+      "name": "水社寮",
+      "zh_Hant": "水社寮",
+      "zh_Hans": "水社寮",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000002380": {
+      "name": "奮起湖",
+      "zh_Hant": "奮起湖",
+      "zh_Hans": "奋起湖",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000002437": {
+      "name": "沼平",
+      "zh_Hant": "沼平",
+      "zh_Hans": "沼平",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000004483": {
+      "name": "鹿麻產",
+      "zh_Hant": "鹿麻產",
+      "zh_Hans": "鹿麻产",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000004496": {
+      "name": "木屐寮",
+      "zh_Hant": "木屐寮",
+      "zh_Hans": "木屐寮",
+      "ja": "",
+      "en": ""
+    },
+    "AFR-Q0000004704": {
+      "name": "祝山",
+      "zh_Hant": "祝山",
+      "zh_Hans": "祝山",
+      "ja": "",
+      "en": ""
+    },
     "KLRT-NETWORK-C1": {
       "name": "籬仔內",
       "zh_Hant": "籬仔內",

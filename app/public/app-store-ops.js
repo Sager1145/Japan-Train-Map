@@ -256,7 +256,7 @@ function normalizeExportTrain(train) {
     date: normalizeTrainDate(train),
     number: train.number || "",
     train_type: train.train_type || "",
-    company: train.company || "",
+    company: normalizeTrainCompany(train.company),
     origin: train.origin || "",
     destination: train.destination || "",
     direction: train.direction || "down",
@@ -273,6 +273,13 @@ function normalizeExportTrain(train) {
   // boot) and re-solved on a miss, so embedding it here only bloated
   // train-store.json (~96% of the file) and the in-memory train objects.
   return normalized;
+}
+
+function normalizeTrainCompany(value) {
+  const company = typeof value === "string" ? value.trim() : "";
+  return activeCountry === "tw"
+    ? RailOperatorBranding.normalizeTaiwanCompanyName(company)
+    : company;
 }
 
 // Export-only: drop a route_section's from/to NAME when it is derivable from
@@ -464,7 +471,7 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
     number: train.number,
     train_type:
       typeof train.train_type === "string" ? train.train_type.trim() : "",
-    company: typeof train.company === "string" ? train.company.trim() : "",
+    company: normalizeTrainCompany(train.company),
     origin: train.origin,
     destination: train.destination,
     direction: train.direction || "down",
@@ -620,7 +627,7 @@ function createBlankTrainTw() {
     id: "TW-LE",
     number: "",
     train_type: "直達車",
-    company: "桃園大眾捷運股份有限公司",
+    company: "桃園捷運",
     origin: "台北車站",
     destination: "機場第二航廈站",
     direction: "down",

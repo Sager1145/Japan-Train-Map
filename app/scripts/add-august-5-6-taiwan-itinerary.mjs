@@ -8,6 +8,8 @@ const STORE_FILE = path.join(APP_DIR, "data", "train-store-tw.json");
 
 const TRA_OPERATOR = "國營臺灣鐵路股份有限公司";
 const THSR_OPERATOR = "台灣高速鐵路股份有限公司";
+const TRA_COMPANY = "台鐵";
+const THSR_COMPANY = "台灣高鐵";
 const TAICHUNG_LINE = "臺中線";
 const THSR_LINE = "台灣高速鐵路";
 
@@ -34,6 +36,7 @@ function makeTrain({
   number,
   trainType,
   company,
+  operator,
   direction,
   color,
   line,
@@ -50,14 +53,14 @@ function makeTrain({
     direction,
     visible: true,
     style: { color },
-    route_policy: routePolicy(line, company),
+    route_policy: routePolicy(line, operator),
     route_sections: stations.slice(0, -1).map((item, index) => ({
       from: item.name,
       to: stations[index + 1].name,
       from_n02_station_code: item.code,
       to_n02_station_code: stations[index + 1].code,
       line_names: [line],
-      operator_names: [company],
+      operator_names: [operator],
     })),
     stops: stations.map((item, index) => ({
       name: item.name,
@@ -80,7 +83,8 @@ const thsr165 = makeTrain({
   date: "2026-08-05",
   number: "台灣高鐵 165次（台北→台中）",
   trainType: "高鐵",
-  company: THSR_OPERATOR,
+  company: THSR_COMPANY,
+  operator: THSR_OPERATOR,
   direction: "down",
   color: "#f1662d",
   line: THSR_LINE,
@@ -99,7 +103,8 @@ const tra3262 = makeTrain({
   date: "2026-08-05",
   number: "區間 3262次（新烏日→臺中）",
   trainType: "區間",
-  company: TRA_OPERATOR,
+  company: TRA_COMPANY,
+  operator: TRA_OPERATOR,
   direction: "up",
   color: "#1971c2",
   line: TAICHUNG_LINE,
@@ -117,7 +122,8 @@ const tra137 = makeTrain({
   date: "2026-08-06",
   number: "自強(3000) 137次（臺中→彰化）",
   trainType: "自強(3000)",
-  company: TRA_OPERATOR,
+  company: TRA_COMPANY,
+  operator: TRA_OPERATOR,
   direction: "down",
   color: "#c92a2a",
   line: TAICHUNG_LINE,
@@ -137,7 +143,8 @@ const tra2204 = makeTrain({
   date: "2026-08-06",
   number: "區間 2204次（彰化→臺中）",
   trainType: "區間",
-  company: TRA_OPERATOR,
+  company: TRA_COMPANY,
+  operator: TRA_OPERATOR,
   direction: "up",
   color: "#2b8a3e",
   line: TAICHUNG_LINE,

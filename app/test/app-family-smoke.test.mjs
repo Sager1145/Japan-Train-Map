@@ -55,12 +55,192 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     })()`,
     context,
   );
-  assert.equal(result.trains.length, 6);
+  assert.equal(result.trains.length, 17);
+  context.__legacyTaiwanTrain = {
+    ...context.__taiwanStore.trains[0],
+    company: "桃園大眾捷運股份有限公司",
+  };
+  const migratedCompany = vm.runInContext(
+    `(() => {
+      activeCountry = "tw";
+      return normalizeImportedTrain(__legacyTaiwanTrain).company;
+    })()`,
+    context,
+  );
+  assert.equal(migratedCompany, "桃園捷運");
+  assert.deepEqual(
+    Array.from(
+      vm.runInContext(
+        'derivedPreferredOperatorNames({ company: "台鐵" })',
+        context,
+      ),
+    ),
+    ["國營臺灣鐵路股份有限公司"],
+  );
+  assert.deepEqual(
+    Array.from(
+      vm.runInContext(
+        'derivedInstitutionTypeCodes({ company: "台灣高鐵" })',
+        context,
+      ),
+    ),
+    ["1"],
+  );
   const airportMrt = result.trains.find(
     (train) => train.id === "20260802_01_taoyuan_airport_mrt_express_t2_taipei",
   );
   assert.equal(airportMrt.stops.length, 13);
   assert.equal(airportMrt.route_sections.length, 12);
+  const taipeiMainToXimen = result.trains.find(
+    (train) => train.id === "20260802_02_trtc_bl_taipei_main_ximen",
+  );
+  assert.equal(taipeiMainToXimen.stops[0].departure, "14:45");
+  assert.equal(taipeiMainToXimen.stops.at(-1).arrival, "14:47");
+  assert.deepEqual(taipeiMainToXimen.route_policy.preferred_line_names, [
+    "板南線",
+  ]);
+  const ximenToZhongxiaoFuxing = result.trains.find(
+    (train) => train.id === "20260802_03_trtc_bl_ximen_zhongxiao_fuxing",
+  );
+  assert.equal(ximenToZhongxiaoFuxing.stops[0].departure, "15:52");
+  assert.equal(ximenToZhongxiaoFuxing.stops.at(-1).arrival, "16:00");
+  assert.deepEqual(
+    Array.from(
+      ximenToZhongxiaoFuxing.stops.map(
+        (stop) => stop.n02_station_code,
+      ),
+    ),
+    ["TRTC-BL11", "TRTC-BL12", "TRTC-BL13", "TRTC-BL14", "TRTC-BL15"],
+  );
+  const zhongxiaoFuxingToXimen = result.trains.find(
+    (train) => train.id === "20260802_04_trtc_bl_zhongxiao_fuxing_ximen",
+  );
+  assert.equal(zhongxiaoFuxingToXimen.stops[0].departure, "20:00");
+  assert.equal(zhongxiaoFuxingToXimen.stops.at(-1).arrival, "20:08");
+  assert.equal(zhongxiaoFuxingToXimen.company, "台北捷運");
+  assert.deepEqual(
+    Array.from(zhongxiaoFuxingToXimen.route_sections[0].operator_names),
+    ["臺北大眾捷運股份有限公司"],
+  );
+  const tra191 = result.trains.find(
+    (train) =>
+      train.id === "20260808_01_tra_tze_chiang_3000_191_taichung_chiayi",
+  );
+  assert.equal(tra191.stops[0].departure, "07:39");
+  assert.equal(tra191.stops.at(-1).arrival, "08:43");
+  assert.equal(tra191.stops.length, 23);
+  assert.equal(tra191.route_sections.length, 22);
+  assert.equal(
+    tra191.stops.filter((stop) => stop.stop_type === "pass_through").length,
+    20,
+  );
+  const tra191Changhua = tra191.stops.find((stop) => stop.name === "彰化");
+  assert.equal(tra191Changhua.arrival, "07:53");
+  assert.equal(tra191Changhua.departure, "07:55");
+  assert.deepEqual(Array.from(tra191.route_sections[5].line_names), ["臺中線"]);
+  assert.deepEqual(Array.from(tra191.route_sections[6].line_names), [
+    "縱貫線南段",
+  ]);
+  const alishan5 = result.trains.find(
+    (train) => train.id === "20260808_02_alsr_5_chiayi_alishan",
+  );
+  assert.equal(alishan5.stops[0].departure, "10:00");
+  assert.equal(alishan5.stops.at(-1).arrival, "14:56");
+  assert.equal(alishan5.stops.length, 17);
+  assert.equal(alishan5.route_sections.length, 16);
+  assert.equal(
+    alishan5.stops.filter((stop) => stop.stop_type === "pass_through").length,
+    10,
+  );
+  const alishan5Fenqihu = alishan5.stops.find(
+    (stop) => stop.name === "奮起湖",
+  );
+  assert.equal(alishan5Fenqihu.arrival, "12:16");
+  assert.equal(alishan5Fenqihu.departure, "13:21");
+  assert.deepEqual(Array.from(alishan5.route_sections[0].line_names), [
+    "阿里山線",
+  ]);
+  assert.equal(alishan5.company, "阿里山林鐵");
+  const alishan8 = result.trains.find(
+    (train) => train.id === "20260809_01_alsr_8_alishan_chiayi",
+  );
+  assert.equal(alishan8.stops[0].departure, "11:50");
+  assert.equal(alishan8.stops.at(-1).arrival, "15:45");
+  assert.equal(alishan8.stops.length, 17);
+  assert.equal(alishan8.route_sections.length, 16);
+  assert.equal(
+    alishan8.stops.filter((stop) => stop.stop_type === "pass_through").length,
+    10,
+  );
+  assert.deepEqual(Array.from(alishan8.route_sections[0].operator_names), [
+    "阿里山林業鐵路及文化資產管理處",
+  ]);
+  const shenmu120 = result.trains.find(
+    (train) => train.id === "20260808_03_alsr_120_alishan_shenmu",
+  );
+  assert.equal(shenmu120.stops[0].departure, "15:50");
+  assert.equal(shenmu120.stops.at(-1).arrival, "15:57");
+  assert.deepEqual(Array.from(shenmu120.route_sections[0].line_names), [
+    "神木線",
+  ]);
+  const shenmu121 = result.trains.find(
+    (train) => train.id === "20260808_04_alsr_121_shenmu_alishan",
+  );
+  assert.equal(shenmu121.stops[0].departure, "16:10");
+  assert.equal(shenmu121.stops.at(-1).arrival, "16:17");
+  const zhushanObservation = result.trains.find(
+    (train) =>
+      train.id === "20260809_02_alsr_zhushan_observation_alishan_zhushan",
+  );
+  assert.equal(zhushanObservation.stops[0].departure, "04:40");
+  assert.equal(zhushanObservation.stops.at(-1).arrival, "05:05");
+  assert.deepEqual(
+    Array.from(zhushanObservation.stops.map((stop) => stop.name)),
+    ["阿里山", "對高岳", "祝山"],
+  );
+  assert.equal(zhushanObservation.route_sections.length, 2);
+  assert.equal(
+    zhushanObservation.stops.filter(
+      (stop) => stop.stop_type === "pass_through",
+    ).length,
+    1,
+  );
+  zhushanObservation.route_sections.forEach((section) => {
+    assert.deepEqual(Array.from(section.line_names), ["祝山線"]);
+  });
+  const zhushanReturn = result.trains.find(
+    (train) =>
+      train.id === "20260809_03_alsr_zhushan_observation_zhushan_alishan",
+  );
+  assert.equal(zhushanReturn.stops[0].departure, "06:20");
+  assert.equal(zhushanReturn.stops.at(-1).arrival, "06:45");
+  const tra125 = result.trains.find(
+    (train) =>
+      train.id ===
+      "20260809_04_tra_tze_chiang_3000_125_chiayi_kaohsiung",
+  );
+  assert.equal(tra125.stops[0].departure, "16:19");
+  assert.equal(tra125.stops.at(-1).arrival, "17:34");
+  assert.equal(tra125.stops.length, 30);
+  assert.equal(tra125.route_sections.length, 29);
+  assert.equal(
+    tra125.stops.filter((stop) => stop.stop_type === "pass_through").length,
+    24,
+  );
+  assert.deepEqual(
+    Array.from(
+      tra125.stops
+        .filter((stop) => stop.stop_type !== "pass_through")
+        .map((stop) => stop.name),
+    ),
+    ["嘉義", "新營", "永康", "臺南", "新左營", "高雄"],
+  );
+  assert.equal(
+    result.trains.every(
+      (train) => !/(?:股份有限公司|管理局|管理處)/.test(train.company),
+    ),
+    true,
+  );
   const thsr165 = result.trains.find(
     (train) => train.id === "20260805_01_thsr_165_taipei_taichung",
   );
@@ -96,6 +276,95 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
   assert.equal(
     roundIsland.stops.filter((stop) => stop.stop_type !== "pass_through").length,
     24,
+  );
+});
+
+test("Taiwan ridden routes keep the exact ordered Alishan display interval", async () => {
+  const { context } = loadAppFamily();
+  context.__twSections = JSON.parse(
+    fs.readFileSync(
+      new URL("../data/rail-sections-tw.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  context.__twStations = JSON.parse(
+    fs.readFileSync(
+      new URL("../data/stations-tw.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  context.__twStore = JSON.parse(
+    fs.readFileSync(
+      new URL("../data/train-store-tw.json", import.meta.url),
+      "utf8",
+    ),
+  );
+
+  const result = await vm.runInContext(
+    `(async () => {
+      activeCountry = "tw";
+      railSectionsGeoJson = __twSections;
+      stationsGeoJson = __twStations;
+      await buildStationIndexesSliced(stationsGeoJson);
+      const uphill = __twStore.trains.find(
+        (train) => train.id === "20260808_02_alsr_5_chiayi_alishan"
+      );
+      const downhill = __twStore.trains.find(
+        (train) => train.id === "20260809_01_alsr_8_alishan_chiayi"
+      );
+      const uphillFeature = solveTaiwanRouteSectionOnOfficialInterval(
+        uphill.route_sections.at(-1),
+        uphill.route_sections.length - 1,
+        uphill,
+        ["3"],
+      );
+      const downhillFeature = solveTaiwanRouteSectionOnOfficialInterval(
+        downhill.route_sections[0],
+        0,
+        downhill,
+        ["3"],
+      );
+      const deduped = dedupeSameTrainRouteFeatures([uphillFeature]);
+      return {
+        uphillFeature,
+        downhillFeature,
+        dedupedCoordinates: deduped[0].geometry.coordinates,
+        renderKeepIndices: getRouteLinePairs(uphillFeature)[0].keepIdx,
+      };
+    })()`,
+    context,
+  );
+  const plain = JSON.parse(JSON.stringify(result));
+  const official = context.__twSections.features.find((feature) => {
+    const coordinates = feature.geometry.coordinates;
+    return (
+      feature.properties.line_name === "阿里山線" &&
+      coordinates[0][0] === 120.806072 &&
+      coordinates[0][1] === 23.518996 &&
+      coordinates.at(-1)[0] === 120.805009 &&
+      coordinates.at(-1)[1] === 23.510618
+    );
+  });
+  assert.ok(official, "the groomed 神木→阿里山 interval is missing");
+  assert.equal(official.geometry.coordinates.length, 86);
+  assert.equal(
+    plain.uphillFeature.properties.route_choice,
+    "official_interval_exact",
+  );
+  assert.equal(plain.uphillFeature.properties.preserve_ordered_geometry, true);
+  assert.deepEqual(
+    plain.uphillFeature.geometry.coordinates,
+    official.geometry.coordinates,
+  );
+  assert.deepEqual(
+    plain.downhillFeature.geometry.coordinates,
+    [...official.geometry.coordinates].reverse(),
+  );
+  assert.deepEqual(plain.dedupedCoordinates, official.geometry.coordinates);
+  assert.equal(
+    plain.renderKeepIndices,
+    null,
+    "exact official intervals must bypass display simplification",
   );
 });
 
@@ -514,7 +783,7 @@ test("route cache keys include the solver version", () => {
     }).cacheKey`,
     context,
   );
-  assert.match(key, /^solver:15\|/);
+  assert.match(key, /^solver:17\|/);
 });
 
 test("precomputed sample geometry replaces stale warmed geometry", () => {

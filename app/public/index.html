@@ -64,7 +64,7 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260804-mobile1" />
+    <link rel="stylesheet" href="styles.css?v=20260807-jplogos2" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -81,11 +81,11 @@
             <h1><span class="brand-mark" aria-hidden="true">■</span><span data-i18n="app.title">N02 特急列車管理</span></h1>
             <div class="header-actions">
               <div class="country-switch">
-                <label for="country-select" data-i18n="country.label">國家</label>
+                <label for="country-select" data-i18n="country.label">地區</label>
                 <select
                   id="country-select"
                   data-i18n-aria-label="country.label"
-                  aria-label="國家"
+                  aria-label="地區"
                 >
                   <option value="jp" data-i18n="country.jp">日本</option>
                   <option value="tw" data-i18n="country.tw">台灣</option>
@@ -376,11 +376,12 @@
      RailMap manager → its interaction methods. -->
     <script src="vendor/maplibre/maplibre-gl.js"></script>
     <script src="app-core.js"></script>
-    <script src="i18n-strings.js?v=20260804-mobile1"></script>
+    <script src="app-operator-branding.js?v=20260807-jplogos2"></script>
+    <script src="i18n-strings.js?v=20260807-region1"></script>
     <script src="i18n.js?v=20260802-device6"></script>
     <script src="rail-network.js"></script>
     <script src="railmap-basemap.js?v=20260720-routecache2"></script>
-    <script src="railmap-popup.js?v=20260807-twlogos1"></script>
+    <script src="railmap-popup.js?v=20260807-jplogos2"></script>
     <script src="railmap-style.js?v=20260807-hover2"></script>
     <script src="railmap-geometry.js?v=20260802-hover1"></script>
     <script src="railmap.js?v=20260807-hover2"></script>
@@ -391,31 +392,31 @@
          reference bindings from earlier files, and the precompute exporter
          (scripts/precompute-train-parts.mjs) replays this exact list minus
          the stubbed modules inside its Node vm sandbox. -->
-    <script src="app-config.js?v=20260720-routecache2"></script>
+    <script src="app-config.js?v=20260808-jpcontinuity1"></script>
     <script src="app-modal.js?v=20260804-mobile1"></script>
     <script src="app-display-settings.js?v=20260802-device6"></script>
     <script src="app-display-features.js?v=20260725-uistyle1"></script>
-    <script src="app-route-simplify.js?v=20260720-routecache2"></script>
+    <script src="app-route-simplify.js?v=20260807-twgeometry1"></script>
     <script src="app-dates.js?v=20260720-routecache2"></script>
     <script src="app.js?v=20260804-mobile1"></script>
     <script src="app-stations.js?v=20260720-routecache2"></script>
     <script src="app-persistence.js?v=20260720-routecache2"></script>
     <script src="app-import.js?v=20260720-routecache2"></script>
-    <script src="app-store-ops.js?v=20260720-routecache2"></script>
+    <script src="app-store-ops.js?v=20260807-twlogos2"></script>
     <script src="app-map-init.js?v=20260802-layers9"></script>
     <script src="app-events.js?v=20260804-mobile1"></script>
-    <script src="app-stats.js?v=20260720-routecache2"></script>
+    <script src="app-stats.js?v=20260807-region1"></script>
     <script src="app-render.js?v=20260804-mobile1"></script>
-    <script src="app-editor.js?v=20260720-routecache2"></script>
+    <script src="app-editor.js?v=20260807-twlogos2"></script>
     <script src="app-route-render.js?v=20260720-routecache2"></script>
     <script src="app-overlap-lanes.js?v=20260720-routecache2"></script>
     <script src="app-deck-records.js?v=20260720-routecache2"></script>
-    <script src="app-route-graph.js?v=20260720-routecache2"></script>
+    <script src="app-route-graph.js?v=20260808-jpcontinuity1"></script>
     <script src="app-route-solver.js?v=20260720-routecache2"></script>
     <script src="app-route-features.js?v=20260720-routecache2"></script>
     <script src="app-style.js?v=20260720-routecache2"></script>
     <script src="app-map-fit.js?v=20260720-routecache2"></script>
     <script src="app-validation.js?v=20260720-routecache2"></script>
-    <script src="app-ui-utils.js?v=20260804-mobile1"></script>
+    <script src="app-ui-utils.js?v=20260807-twlogos2"></script>
   </body>
 </html>

@@ -443,7 +443,15 @@ const _routeLinePairCache = new WeakMap();
 function getRouteLinePairs(feature) {
   const geometry = feature && feature.geometry;
   if (!geometry) return [];
-  let cached = _routeLinePairCache.get(geometry);
+  // Exact Taiwan intervals share their source coordinates with the all-rail
+  // display package.  In dense forest-rail switchbacks an 8 m Douglas-Peucker
+  // chord can cross to a neighbouring fold, so these features retain every
+  // ordered display vertex.  Keep two cache variants because a geometry object
+  // may theoretically be wrapped by both an exact and a normal feature.
+  const preserveOrderedGeometry =
+    feature.properties?.preserve_ordered_geometry === true;
+  let cacheVariants = _routeLinePairCache.get(geometry);
+  let cached = cacheVariants?.[preserveOrderedGeometry ? "exact" : "normal"];
   if (cached && cached._snapVer === _routeVertexSnapVer) return cached;
   const snap = _routeVertexSnap;
   cached = iterateGeometryLines(geometry).map((orig) => {
@@ -472,13 +480,17 @@ function getRouteLinePairs(feature) {
     return {
       orig,
       keepIdx:
-        ROUTE_SIMPLIFY_METERS > 0
+        !preserveOrderedGeometry && ROUTE_SIMPLIFY_METERS > 0
           ? douglasPeuckerIndices(orig, ROUTE_SIMPLIFY_METERS)
           : null,
       segKeys,
     };
   });
   cached._snapVer = _routeVertexSnapVer;
-  _routeLinePairCache.set(geometry, cached);
+  if (!cacheVariants) {
+    cacheVariants = {};
+    _routeLinePairCache.set(geometry, cacheVariants);
+  }
+  cacheVariants[preserveOrderedGeometry ? "exact" : "normal"] = cached;
   return cached;
 }

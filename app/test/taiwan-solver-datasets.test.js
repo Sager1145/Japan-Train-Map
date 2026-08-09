@@ -126,28 +126,33 @@ test("Taiwan section geometry matches the drawn rail package", () => {
   const sections = readJson(SECTIONS_PATH);
   const compact = readJson(PACKAGE_PATH);
 
-  // Both outputs come from the same routed geometry, so the solver can only
-  // return paths that lie on the line the map draws. Compare the vertex sets:
-  // the compact package share-joins adjacent intervals, so it holds each
-  // shared boundary once while the sections repeat it.
-  const packageVertices = new Set();
+  // Both outputs come from the same groomed station intervals.  Compare every
+  // complete ordered interval, not just the global vertex set: a shortest-path
+  // shortcut through an Alishan switchback can use only legitimate package
+  // vertices while still dropping/reordering the intentional reversal tail.
+  let checked = 0;
   for (const line of compact.lines) {
     let previous = null;
-    for (const [, shared, coords] of line.segments) {
+    const lineSections = sections.features.filter(
+      (feature) =>
+        feature.properties.line_name === line.name &&
+        feature.properties.operator === line.operator,
+    );
+    assert.equal(
+      lineSections.length,
+      line.segments.length,
+      `${line.id} solver/display interval count`,
+    );
+    for (let index = 0; index < line.segments.length; index += 1) {
+      const [, shared, coords] = line.segments[index];
       const full = shared && previous ? [previous, ...coords] : coords;
-      for (const [lon, lat] of full) packageVertices.add(`${lon},${lat}`);
-      previous = full[full.length - 1];
-    }
-  }
-
-  let checked = 0;
-  for (const feature of sections.features) {
-    for (const [lon, lat] of feature.geometry.coordinates) {
-      assert.ok(
-        packageVertices.has(`${lon},${lat}`),
-        `section vertex ${lon},${lat} is absent from the drawn package`,
+      assert.deepEqual(
+        lineSections[index].geometry.coordinates,
+        full,
+        `${line.id} interval ${index} differs from the drawn package`,
       );
-      checked += 1;
+      previous = full[full.length - 1];
+      checked += full.length;
     }
   }
   assert.ok(checked > 10000, "compared the full section vertex set");

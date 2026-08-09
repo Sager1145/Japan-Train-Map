@@ -861,9 +861,11 @@ async function switchActiveCountry(next) {
     // a country, so a same-named station pair (松山→板橋 exists in BOTH
     // countries) or a reused train id ("LE") in the new country could
     // otherwise pick up the OLD country's geometry from this session.
-    // Persisted (IndexedDB) entries stay: resetting solverReadyPromise makes
-    // the next Japan-side solve re-warm them in bulk, so a JP→TW→JP round
-    // trip doesn't degenerate into a full cold re-solve.
+    // Persisted (IndexedDB) entries stay: the route cache DB is
+    // country-scoped (openRouteCacheDb → countryDbName), so the other
+    // country's warm pass cannot evict them, and resetting solverReadyPromise
+    // makes the next Japan-side solve re-warm them in bulk — a JP→TW→JP
+    // round trip doesn't degenerate into a full cold re-solve.
     runtimeRouteCache.clear();
     runtimeRouteNegativeCache.clear();
     _pendingRouteSolves.clear();

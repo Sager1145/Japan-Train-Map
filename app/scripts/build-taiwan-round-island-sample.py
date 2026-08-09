@@ -28,6 +28,7 @@ from tw_sample_lib import (
 
 TRAIN_ID = "20260813_01_star_of_taiwan_round_island_loop"
 OPERATOR = "國營臺灣鐵路股份有限公司"
+COMPANY = "台鐵"
 SOURCE = "交通部運輸資料流通服務（TDX/PTX）TRA Shape + 內政部國土測繪中心 NLSC"
 ATTRIBUTION = (
     "交通部運輸資料流通服務（TDX/PTX）；國營臺灣鐵路股份有限公司；內政部國土測繪中心"
@@ -60,6 +61,7 @@ def main() -> int:
     train = next((row for row in store["trains"] if row["id"] == TRAIN_ID), None)
     if train is None:
         raise RuntimeError(f"round-island train missing from store: {TRAIN_ID}")
+    train["company"] = COMPANY
 
     official_hash = source.get("sourceSha256", {}).get("TRA:shape", "")
     route_features = []

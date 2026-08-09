@@ -76,7 +76,10 @@ function buildStopPopup(stopFeature, train) {
       p.n02_group_code || p.official_station_group_id || "-",
     ],
     [I18N.t("popup.line"), p.line_name || "-"],
-    [I18N.t("popup.operator"), p.operator || "-"],
+    [
+      I18N.t("popup.operator"),
+      RailOperatorBranding.companyLabel(p.operator || "") || "-",
+    ],
     [
       I18N.t("popup.computed"),
       p.pass_through_computed ? I18N.t("popup.yes") : I18N.t("popup.no"),

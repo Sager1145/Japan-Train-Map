@@ -239,6 +239,13 @@ def fallback_entry(name: str) -> Dict[str, str]:
     return entry(name, simplified_name(name), "", "")
 
 
+def afr_station_uid(group_id: str) -> Optional[str]:
+    prefix = "tw-official-afr-"
+    if not group_id.startswith(prefix):
+        return None
+    return f"AFR-{group_id.removeprefix(prefix).upper()}"
+
+
 def build_table(
     package: Dict[str, object],
     official_stations: Sequence[OfficialStation],
@@ -274,16 +281,30 @@ def build_table(
             )
             alias = f"{line_id}:{group_id}"
             if official is None:
-                by_code[alias] = fallback_entry(name)
+                localized_entry = fallback_entry(name)
+                by_code[alias] = localized_entry
                 fallback_aliases.append(alias)
-                continue
-            matched_uids.add(official.uid)
-            by_code[alias] = entry(
-                official.zh_hant,
-                official.zh_hans,
-                official.japanese,
-                official.english,
-            )
+            else:
+                matched_uids.add(official.uid)
+                localized_entry = entry(
+                    official.zh_hant,
+                    official.zh_hans,
+                    official.japanese,
+                    official.english,
+                )
+                by_code[alias] = localized_entry
+
+            # AFR stations come from the official NLSC/Forest Railway layer,
+            # not the TDX/PTX station snapshots. The solver still exposes
+            # their official MARKID as an AFR StationUID, so give that
+            # canonical jsonspec code the same localized fallback as the
+            # line-specific network alias.
+            afr_uid = afr_station_uid(group_id)
+            if afr_uid:
+                existing = by_code.get(afr_uid)
+                if existing is not None and existing != localized_entry:
+                    raise RuntimeError(f"conflicting AFR station alias: {afr_uid}")
+                by_code[afr_uid] = localized_entry
 
     # Name lookup is only safe when every station with that normalized name has
     # byte-identical language values.  Ambiguous names (e.g. 市政府 in Taipei and

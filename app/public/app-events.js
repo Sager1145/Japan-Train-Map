@@ -699,7 +699,12 @@ function bindEvents() {
   document.getElementById("clear-selection").addEventListener("click", () => {
     selectedTrainId = null;
     focusedTrainId = null;
-    renderAll();
+    // Mirror selectTrain's minimal path instead of a full renderAll: the
+    // date bar and list CONTENT are untouched by a selection change, so only
+    // the card highlight, the editor and the (cache-hit) layer pass matter.
+    updateSelectionHighlight();
+    renderEditor();
+    renderTrainLayers();
   });
   document
     .getElementById("save-fields")

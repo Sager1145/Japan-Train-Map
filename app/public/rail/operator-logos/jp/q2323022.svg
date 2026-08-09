@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="300" height="300">
+<circle fill="none" stroke="#800000" stroke-width="12" cx="150" cy="150" r="144"/>
+<path id="a" fill="#800000" d="m 147.99943,117.7433 -13.81654,10.96016 -110.48545,0 68.58936,30.58235 -21.92031,0 -37.65343,21.38998 74.19076,0 c 16.74079,0 41.09561,-17.51434 41.09561,-40.18375 z"/>
+<use xlink:href="#a" transform="translate(300,0)scale(-1,1)"/>
+</svg>

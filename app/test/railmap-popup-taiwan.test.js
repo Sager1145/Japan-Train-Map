@@ -14,17 +14,23 @@ function loadPopup() {
     RailNetwork: { DEFAULT_LINE_COLOR: "#7C8A82" },
   };
   win.window = win;
+  const context = vm.createContext(win);
+  vm.runInContext(
+    fs.readFileSync(path.join(PUBLIC_DIR, "app-operator-branding.js"), "utf8"),
+    context,
+    { filename: "app-operator-branding.js" },
+  );
   vm.runInContext(
     fs.readFileSync(path.join(PUBLIC_DIR, "railmap-popup.js"), "utf8"),
-    vm.createContext(win),
+    context,
     { filename: "railmap-popup.js" },
   );
-  return win.RailMapPopup;
+  return { popup: win.RailMapPopup, branding: win.RailOperatorBranding };
 }
 
 const TAIWAN_OPERATORS = [
   ["國營臺灣鐵路股份有限公司", "台鐵", "tra.svg"],
-  ["台灣高速鐵路股份有限公司", "台灣高鐵", "thsr.jpg"],
+  ["台灣高速鐵路股份有限公司", "台灣高鐵", "thsr.svg"],
   ["臺北大眾捷運股份有限公司", "台北捷運", "trtc.svg"],
   ["新北大眾捷運股份有限公司", "新北捷運", "ntmetro.svg"],
   ["桃園大眾捷運股份有限公司", "桃園捷運", "tym.png"],
@@ -33,8 +39,8 @@ const TAIWAN_OPERATORS = [
   ["阿里山林業鐵路及文化資產管理處", "阿里山林鐵", "alsr.svg"],
 ];
 
-test("Taiwan hover popup uses short operator names and shared company logos", () => {
-  const popup = loadPopup();
+test("Taiwan hover popup uses short operator names and company-logo fallbacks", () => {
+  const { popup } = loadPopup();
   const stationId = "line-0:station";
   const lineById = new Map();
   const members = [];
@@ -79,4 +85,83 @@ test("Taiwan hover popup uses short operator names and shared company logos", ()
   assert.match(html, />台鐵<\/span>/);
   assert.match(html, />台灣高鐵<\/span>/);
   assert.match(html, />台北捷運<\/span>/);
+});
+
+const TAIWAN_LINE_LOGOS = [
+  ["tw-trtc-bl", "trtc-bl.svg"],
+  ["tw-trtc-r", "trtc-r.svg"],
+  ["tw-trtc-r-xinbeitou", "trtc-r.svg"],
+  ["tw-trtc-g", "trtc-g.svg"],
+  ["tw-trtc-g-xiaobitan", "trtc-g.svg"],
+  ["tw-trtc-o-luzhou", "trtc-o.svg"],
+  ["tw-trtc-o-huilong", "trtc-o.svg"],
+  ["tw-trtc-br", "trtc-br.svg"],
+  ["tw-trtc-y", "ntmetro-y.svg"],
+  ["tw-ntmetro-v-green", "ntmetro-v.svg"],
+  ["tw-ntmetro-v-blue", "ntmetro-v.svg"],
+  ["tw-ntmetro-k", "ntmetro-k.svg"],
+  ["tw-tym-a", "tym-a.svg"],
+  ["tw-tcmrt-g", "tcmrt-g.svg"],
+  ["tw-krtc-r", "krtc-r.svg"],
+  ["tw-krtc-o", "krtc-o.svg"],
+  ["tw-klrt-c", "krtc-c.svg"],
+];
+
+test("Taiwan metro lines prefer their dedicated line badge", () => {
+  const { branding } = loadPopup();
+  for (const [lineId, asset] of TAIWAN_LINE_LOGOS) {
+    assert.equal(branding.lineLogo(lineId), `/rail/line-logos/${asset}`);
+    assert.equal(
+      fs.existsSync(path.join(PUBLIC_DIR, "rail", "line-logos", asset)),
+      true,
+      `${asset} exists`,
+    );
+  }
+
+  assert.equal(
+    branding.logoForLine({
+      lineId: "tw-trtc-bl",
+      operator: "臺北大眾捷運股份有限公司",
+    }),
+    "/rail/line-logos/trtc-bl.svg",
+  );
+  assert.equal(
+    branding.logoForLine({
+      lineId: "tw-tra-western-north",
+      operator: "國營臺灣鐵路股份有限公司",
+    }),
+    "/rail/operator-logos/tra.svg",
+  );
+  assert.equal(
+    branding.logoForLine({
+      lineId: "custom",
+      operator: "臺北大眾捷運股份有限公司",
+      logo: "/rail/logos/custom.png",
+    }),
+    "/rail/logos/custom.png",
+  );
+});
+
+test("Taiwan company names normalize to passenger-facing short names", () => {
+  const { branding } = loadPopup();
+  assert.equal(
+    branding.normalizeTaiwanCompanyName("國營臺灣鐵路股份有限公司"),
+    "台鐵",
+  );
+  assert.equal(
+    branding.normalizeTaiwanCompanyName(
+      "臺北大眾捷運股份有限公司/台灣高速鐵路股份有限公司",
+    ),
+    "台北捷運/台灣高鐵",
+  );
+  assert.equal(
+    branding.companyLabel("農業部阿里山林業鐵路及文化資產管理處"),
+    "阿里山林鐵",
+  );
+
+  const thsrSvg = fs.readFileSync(
+    path.join(PUBLIC_DIR, "rail", "operator-logos", "thsr.svg"),
+    "utf8",
+  );
+  assert.doesNotMatch(thsrSvg, /<(?:rect|image)\b/i);
 });

@@ -66,7 +66,7 @@
     "圍": "围", "紅": "红", "採": "采", "許": "许", "測": "测",
     "東": "东", "捨": "舍", "棄": "弃", "蓋": "盖", "疊": "叠",
     "營": "营", "偵": "侦", "機": "机", "電": "电", "腦": "脑",
-    "灣": "湾",
+    "灣": "湾", "島": "岛",
     // Taiwanese authority names in the data-source panel (交通部運輸資料流通
     // 服務平臺, 國土測繪中心, 農業部…林業鐵路及文化資產管理處, 臺北市…).
     // 臺 is the Traditional form Taiwan's own agencies use; Simplified writes

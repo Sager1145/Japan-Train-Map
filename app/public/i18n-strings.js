@@ -57,8 +57,8 @@
     "state.on": { zh: "開", en: "On" },
     "state.off": { zh: "關", en: "Off" },
 
-    // country switch (per-country separate stores)
-    "country.label": { zh: "國家", en: "Country" },
+    // region switch (per-region separate stores)
+    "country.label": { zh: "地區", en: "Region" },
     "country.jp": { zh: "日本", en: "Japan" },
     "country.tw": { zh: "台灣", en: "Taiwan" },
 
@@ -285,6 +285,7 @@
     "nav.stats": { zh: "統計", en: "Stats" },
     "sec.stats": { zh: "里程統計", en: "Mileage Stats" },
     "stat.all": { zh: "全國", en: "Nationwide" },
+    "stat.all.tw": { zh: "全島", en: "Island-wide" },
     "stat.hsr": { zh: "新幹線", en: "Shinkansen" },
     "stat.conv": { zh: "普通鐵道（在來線）", en: "Conventional rail" },
     "stat.jr": { zh: "JR（含新幹線）", en: "JR (incl. Shinkansen)" },
@@ -537,8 +538,8 @@
       en: "Switched to {name} data.",
     },
     "status.countrySwitchFailed": {
-      zh: "切換國家失敗：{msg}",
-      en: "Country switch failed: {msg}",
+      zh: "切換地區失敗：{msg}",
+      en: "Region switch failed: {msg}",
     },
     "status.noSavedStore": {
       zh: "尚未有保存的 train-store.json，已載入內建預設資料。編輯後會自動保存到伺服器。",
@@ -787,7 +788,7 @@
     "btn.autoFocus": "自動フォーカス：",
     "state.on": "オン",
     "state.off": "オフ",
-    "country.label": "国",
+    "country.label": "地域",
     "country.jp": "日本",
     "country.tw": "台湾",
     "disp.reset": "初期設定に戻す",
@@ -920,6 +921,7 @@
     "fmt.duration": "{h}時間{m}分",
     "fmt.durationM": "{m}分",
     "stat.all": "全国",
+    "stat.all.tw": "全島",
     "stat.hsr": "新幹線",
     "stat.conv": "普通鉄道（在来線）",
     "stat.jr": "JR（新幹線を含む）",
@@ -1050,7 +1052,7 @@
     "src.emptyStore": "空のデータ",
     "status.loadFailed": "データの読み込みに失敗しました：{msg}",
     "status.countrySwitched": "{name}のデータに切り替えました。",
-    "status.countrySwitchFailed": "国の切り替えに失敗しました：{msg}",
+    "status.countrySwitchFailed": "地域の切り替えに失敗しました：{msg}",
     "status.noSavedStore": "保存済みの train-store.json がないため、内蔵初期データを読み込みました。編集内容はサーバーへ自動保存されます。",
     "status.recoveryEntered": "保存データの読み込みに失敗しました：{msg}。読み取り専用の復旧モードに切り替えました：自動保存は無効化され、元の JSON は「JSON エクスポート」欄にあります。修正して再読み込みするか、「サンプルへリセット／保存データを消去」でやり直してください。",
     "status.recoveryNoSave": "読み取り専用の復旧モード：自動保存は無効です（保存データの読み込みに失敗）。",

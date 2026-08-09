@@ -13,79 +13,8 @@
   const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
 
   // ───────────────────────── C5 hover popup (popup.ts + company.ts) ─────────────────────
-  const COMPANY_LABELS = {
-    東日本旅客鉄道: "JR東日本",
-    西日本旅客鉄道: "JR西日本",
-    東海旅客鉄道: "JR東海",
-    九州旅客鉄道: "JR九州",
-    北海道旅客鉄道: "JR北海道",
-    四国旅客鉄道: "JR四国",
-    東京地下鉄: "東京メトロ",
-    東京都: "都営",
-    大阪市高速電気軌道: "大阪メトロ",
-    名古屋市: "名古屋市営",
-    横浜市: "横浜市営",
-    神戸市: "神戸市営",
-    京都市: "京都市営",
-    札幌市: "札幌市営",
-    仙台市: "仙台市営",
-    福岡市: "福岡市営",
-    熊本市: "熊本市電",
-    鹿児島市: "鹿児島市電",
-    函館市: "函館市電",
-    一般社団法人札幌市交通事業振興公社: "札幌市電",
-    東急電鉄: "東急",
-    京王電鉄: "京王",
-    京成電鉄: "京成",
-    京浜急行電鉄: "京急",
-    小田急電鉄: "小田急",
-    西武鉄道: "西武",
-    東武鉄道: "東武",
-    相模鉄道: "相鉄",
-    近畿日本鉄道: "近鉄",
-    南海電気鉄道: "南海",
-    京阪電気鉄道: "京阪",
-    阪急電鉄: "阪急",
-    阪神電気鉄道: "阪神",
-    名古屋鉄道: "名鉄",
-    西日本鉄道: "西鉄",
-    國營臺灣鐵路股份有限公司: "台鐵",
-    台灣高速鐵路股份有限公司: "台灣高鐵",
-    臺北大眾捷運股份有限公司: "台北捷運",
-    新北大眾捷運股份有限公司: "新北捷運",
-    桃園大眾捷運股份有限公司: "桃園捷運",
-    臺中捷運股份有限公司: "台中捷運",
-    高雄捷運股份有限公司: "高雄捷運",
-    阿里山林業鐵路及文化資產管理處: "阿里山林鐵",
-  };
-  const OPERATOR_LOGOS = {
-    國營臺灣鐵路股份有限公司: "/rail/operator-logos/tra.svg",
-    台灣高速鐵路股份有限公司: "/rail/operator-logos/thsr.jpg",
-    臺北大眾捷運股份有限公司: "/rail/operator-logos/trtc.svg",
-    新北大眾捷運股份有限公司: "/rail/operator-logos/ntmetro.svg",
-    桃園大眾捷運股份有限公司: "/rail/operator-logos/tym.png",
-    臺中捷運股份有限公司: "/rail/operator-logos/tcmrt.svg",
-    高雄捷運股份有限公司: "/rail/operator-logos/krtc.svg",
-    阿里山林業鐵路及文化資產管理處: "/rail/operator-logos/alsr.svg",
-  };
-  function companyLabel(operator) {
-    if (!operator) return "";
-    if (COMPANY_LABELS[operator]) return COMPANY_LABELS[operator];
-    return operator
-      .replace(/(?:株式会社|有限会社)/g, "")
-      .replace(/^(?:一般社団法人|一般財団法人|公益社団法人|公益財団法人|地方独立行政法人)/, "")
-      .trim();
-  }
-  function companyFor(operator, lineName) {
-    const label = companyLabel(operator);
-    if (!label) return "";
-    if (lineName.startsWith(label)) return "";
-    if (operator && lineName.startsWith(operator)) return "";
-    return label;
-  }
-  function operatorLogo(operator) {
-    return (operator && OPERATOR_LOGOS[operator]) || null;
-  }
+  const companyLabel = global.RailOperatorBranding.companyLabel;
+  const companyFor = global.RailOperatorBranding.companyFor;
   function escHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       "&": "&amp;",
@@ -104,7 +33,9 @@
   function lineBadgeHtml(row) {
     if (row.logo)
       return (
-        '<img class="rp-line-logo" src="' +
+        '<img class="rp-line-logo' +
+        (row.logoNeedsDarkMatte ? " rp-line-logo--dark-matte" : "") +
+        '" src="' +
         escHtml(assetUrl(row.logo)) +
         '" alt="" loading="lazy" />'
       );
@@ -121,15 +52,18 @@
       const line = network.lineById.get(lineId);
       if (!line) return;
       seen.add(lineId);
+      const logo = global.RailOperatorBranding.logoForLine(line);
       rows.push({
         lineId: line.lineId,
         company: companyFor(line.operator, line.name),
         label: bilingualLabel(line.name, line.nameRoma),
         color: line.color || DEFAULT_LINE_COLOR,
-        // Japan's rail package supplies a per-line logo. Taiwan's systems use
-        // one shared company mark across their lines, so fall back to the
-        // operator logo without duplicating the asset for every compact line.
-        logo: line.logo || operatorLogo(line.operator),
+        // Prefer a package-provided/per-line badge, then fall back to the
+        // operator mark when the line has no dedicated identity.
+        logo,
+        logoNeedsDarkMatte:
+          typeof global.RailOperatorBranding.logoNeedsDarkMatte === "function" &&
+          global.RailOperatorBranding.logoNeedsDarkMatte(logo),
       });
     };
     for (const m of members) add(m.lineId);

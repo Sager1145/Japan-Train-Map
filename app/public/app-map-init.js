@@ -359,12 +359,15 @@ async function initMap(mapAssetsReady) {
   // place — a second staged stack would collide-out every basemap label.
   const theme = resolveDisplayTheme();
   const alternateTheme = theme === "dark" ? "light" : "dark";
-  const [basemap, alternateBasemap, network] = await (mapAssetsReady ||
-    Promise.all([
-      RailMap.loadBasemap(theme),
-      RailMap.loadBasemap(alternateTheme),
-      Promise.resolve(null),
-    ]));
+  // `mapAssetsReady` is { primary: Promise<[basemap, network]>, alternate:
+  // Promise<basemap|null> } — map creation blocks only on its own theme; the
+  // alternate warm rides in parallel and is awaited solely in the fallback
+  // below when the initial theme failed.
+  const assets = mapAssetsReady || {
+    primary: Promise.all([RailMap.loadBasemap(theme), Promise.resolve(null)]),
+    alternate: RailMap.loadBasemap(alternateTheme).catch(() => null),
+  };
+  const [basemap, network] = await assets.primary;
   const style = RailMap.buildBaseStyle({
     basemap,
     network,
@@ -459,7 +462,11 @@ async function initMap(mapAssetsReady) {
   RailMap.setFocusBoost(DISPLAY.focusBoost);
   RailMap.setFitCurvesVisible(DISPLAY.showFitCurves);
   RailMap.setHoverRegionsVisible(DISPLAY.showHoverRegions);
-  buildMapLayersControl(Boolean(basemap || alternateBasemap));
+  // Show the layers control if EITHER theme's basemap loaded: when the
+  // initial theme failed but the alternate succeeded, a theme switch can
+  // still rescue the basemap, so the control must stay. Short-circuit keeps
+  // the await off the path whenever the initial theme is fine.
+  buildMapLayersControl(Boolean(basemap || (await assets.alternate)));
   buildMapInfoControl();
 
   // Online basemap tile failures degrade to the plain background — never fatal.

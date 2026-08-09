@@ -63,6 +63,15 @@ function invalidateDeckRouteCaches({ keepOverlapMap = false } = {}) {
   _lastPushedMarkerRecords = null;
 }
 
+// DISPLAY marker radii/strokes bake into MARKER records only — route items,
+// route records and the overlap graph never read them — so a marker-slider
+// change invalidates just these and the next render rebuilds markers against
+// untouched (cache-hit) route layers.
+function invalidateDeckMarkerCaches() {
+  _markerRecordsCacheBySig.clear();
+  _lastPushedMarkerRecords = null;
+}
+
 // Selection-free style scope for ROUTE RECORDS: the record cache must not
 // depend on which train is picked (focus emphasis is drawn by railmap's SEL
 // layers + the focus-boost width expression), so `focused` is always false

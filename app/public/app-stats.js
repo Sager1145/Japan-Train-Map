@@ -652,13 +652,20 @@ function dropContainedSections(rows) {
 // View model shared by the sync path and the time-sliced job: the all-time
 // aggregate plus (when a concrete date bucket is active) that day's own
 // km/time aggregate, computed from the SAME per-train cache entries.
-function buildMileageStatsView(idx, trains, entries) {
+// Each phase here is a real chunk of work on a full store (the union-edge
+// aggregate sweep, the O(R²) containment pass inside topRiddenSegments, the
+// second aggregate for a concrete day), so the caller passes a `yieldPoint`
+// that parks between phases — and aborts by throwing when a newer job token
+// superseded this one.
+async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
   const overall = aggregateMileageStats(idx, entries);
   overall.rideMinutes = sumRideMinutes(trains);
   overall.services = serviceGroupStats(trains, entries);
+  if (yieldPoint) await yieldPoint();
   overall.topSegments = topRiddenSegments(entries);
   let daily = null;
   if (selectedDate && selectedDate !== ALL_DATES) {
+    if (yieldPoint) await yieldPoint();
     const dayTrains = [];
     const dayEntries = [];
     trains.forEach((t, i) => {
@@ -682,21 +689,29 @@ function buildMileageStatsView(idx, trains, entries) {
 // untouched. Each route feature is classified once by dominant km over the
 // same N02 edge index the mileage stats use.
 const RIDDEN_CATEGORY_FILTER = { hsr: true, jr: true, metro: true, priv: true };
+// Keyed by feature.GEOMETRY, not the feature wrapper: wrappers are minted
+// fresh by every buildRouteItems pass (edits, date-scope first visits, slider
+// applies) while the geometry objects are shared — the same reason
+// getRouteLinePairs keys on geometry. Keying on the wrapper orphaned every
+// entry on each rebuild and re-ran the O(vertices) classification for the
+// whole store. Geometry ⇒ category is stable per country; a country switch
+// replaces the geometry objects themselves, so entries retire naturally.
 const _featureCategoryCache = new WeakMap();
 
 function riddenFeatureCategory(feature) {
-  if (_featureCategoryCache.has(feature))
-    return _featureCategoryCache.get(feature);
+  const geom = feature && feature.geometry;
+  if (!geom) return null;
+  if (_featureCategoryCache.has(geom)) return _featureCategoryCache.get(geom);
   // Read-only: NEVER build the (expensive) edge index from the render path —
   // the stats job builds it off-thread-budget; until then stay visible.
   const idx = _statsEdgeIndex;
   if (!idx) return null; // network still loading -> undetermined, stays visible
   const km = { hsr: 0, jr: 0, metro: 0, priv: 0 };
   const lines =
-    feature.geometry.type === "LineString"
-      ? [feature.geometry.coordinates]
-      : feature.geometry.type === "MultiLineString"
-        ? feature.geometry.coordinates
+    geom.type === "LineString"
+      ? [geom.coordinates]
+      : geom.type === "MultiLineString"
+        ? geom.coordinates
         : [];
   for (const cs of lines) {
     for (let i = 1; i < cs.length; i += 1) {
@@ -713,7 +728,7 @@ function riddenFeatureCategory(feature) {
       best = c;
     }
   }
-  _featureCategoryCache.set(feature, best);
+  _featureCategoryCache.set(geom, best);
   return best;
 }
 
@@ -920,18 +935,27 @@ async function buildStatsEdgeIndexSliced() {
   // 山形新幹線 corridor touches 山形鉄道 track), and first-wins let that one edge
   // label the whole line with the wrong company.
   const lineOpKm = new Map();
+  // Several hundred thousand edges: stay on the same 12 ms yield budget as
+  // the feature loop above — this sweep used to run as one long task right
+  // when the user first opens the 統計 tab. The category list is loop-stable,
+  // so hoist it instead of re-deriving it twice per edge.
+  const cats = activeStatCategories();
   for (let i = 0; i < kmArr.length; i += 1) {
+    if ((i & 8191) === 8191 && performance.now() - t0 > 12) {
+      await _statsYield();
+      t0 = performance.now();
+    }
     totals.all += kmArr[i];
     const km = kmArr[i];
     const m = maskArr[i];
-    for (const c of activeStatCategories())
+    for (const c of cats)
       if (m & c.mask) totals.byMask.set(c.mask, totals.byMask.get(c.mask) + km);
     const ln = lineArr[i];
     if (ln) {
       const lm = lineMaskArr[i];
       let o = lineTotByCat.get(ln);
       if (!o) lineTotByCat.set(ln, (o = statsZeroCatKm()));
-      for (const c of activeStatCategories()) if (lm & c.mask) o[c.mask] += km;
+      for (const c of cats) if (lm & c.mask) o[c.mask] += km;
       const op = lineOpArr[i];
       if (op) {
         let byOp = lineOpKm.get(ln);
@@ -1003,7 +1027,22 @@ async function runMileageStatsJob() {
       t0 = performance.now();
     }
   }
-  renderMileageStatsDom(buildMileageStatsView(idx, trains, entries));
+  // The per-train loop above yields on budget, but the aggregate → containment
+  // → daily → DOM tail used to run as ONE synchronous task — exactly the
+  // block _statsYield exists to break up. Yield between the phases and abandon
+  // stale work as soon as a newer schedule takes the token.
+  const superseded = Symbol("stats-superseded");
+  const yieldPoint = async () => {
+    await _statsYield();
+    if (token !== _statsJobToken) throw superseded;
+  };
+  try {
+    const view = await buildMileageStatsView(idx, trains, entries, yieldPoint);
+    await yieldPoint();
+    renderMileageStatsDom(view);
+  } catch (err) {
+    if (err !== superseded) throw err;
+  }
 }
 
 // Collator for the per-line breakdown order: `numeric` makes an embedded line
@@ -1128,7 +1167,7 @@ function renderMileageStatsDom(view) {
     <h3 class="subhead">${escapeHtml(I18N.t("stats.coverageTitle"))}</h3>
     <div class="stats-hero">
       <span class="stats-pct">${formatStatPct(pctAll)}<span class="unit">%</span></span>
-      <span class="stats-sub">${formatStatKm(s.riddenAll)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.t("stat.all"))}</span>
+      <span class="stats-sub">${formatStatKm(s.riddenAll)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.tc("stat.all"))}</span>
     </div>
     <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pctAll).toFixed(2)}%"></div></div>`;
   const timeRow = `
@@ -1269,4 +1308,3 @@ function scheduleMileageStats() {
     );
   }, 400);
 }
-
