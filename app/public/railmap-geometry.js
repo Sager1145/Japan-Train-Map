@@ -44,6 +44,10 @@
           color: rgbCss(r.color),
           alpha: r.color.length > 3 ? r.color[3] / 255 : 1,
           width: r.width,
+          // Painter's order (higher = on top): emphasis tier, then shorter
+          // total ride, then earlier date — assigned per train by
+          // buildDeckRouteRecords.
+          sortKey: r.sortKey || 0,
         },
       })),
     };

@@ -357,11 +357,18 @@
     });
 
     // ── the trains ("ridden") — full-color line (glow removed by request) ──
+    // line-sort-key (higher = on top) carries the static painter's order:
+    // dimmed off-date tier under the active tier, then shorter total ride
+    // over longer, then earlier date over later (see buildDeckRouteRecords).
     layers.push({
       id: TRAIN_ROUTES_LAYER,
       type: "line",
       source: TRAIN_ROUTES_SOURCE,
-      layout: { "line-cap": "round", "line-join": "round" },
+      layout: {
+        "line-cap": "round",
+        "line-join": "round",
+        "line-sort-key": ["get", "sortKey"],
+      },
       paint: {
         "line-color": ["get", "color"],
         "line-opacity": ["get", "alpha"],
@@ -378,7 +385,11 @@
       type: "line",
       source: TRAIN_ROUTES_SOURCE,
       filter: MATCH_NONE,
-      layout: { "line-cap": "butt", "line-join": "round" },
+      layout: {
+        "line-cap": "butt",
+        "line-join": "round",
+        "line-sort-key": ["get", "sortKey"],
+      },
       paint: {
         "line-color": ["get", "color"],
         "line-opacity": ["get", "alpha"],

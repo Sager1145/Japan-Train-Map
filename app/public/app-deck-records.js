@@ -462,6 +462,11 @@ function mergeDrawnIndices(keepIdx, runs, nSeg) {
 // Overlap detection and run boundaries use the ORIGINAL geometry (exact
 // shared N02 coordinates); drawn paths use the Douglas-Peucker subset plus
 // the exact boundary vertices.
+
+// line-sort-key stride between the dimmed (off-date) tier and the active
+// tier; only needs to exceed the train count.
+const ROUTE_SORT_TIER = 1e6;
+
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx(items);
@@ -497,6 +502,11 @@ function buildDeckRouteRecords(items) {
   const records = [];
   const expandRecords = [];
   const groupInfo = new Map();
+  // Total drawn ridden meters per train — the primary input of the painter's
+  // order assigned after the build (see the line-sort-key pass below). Run
+  // lengths can't serve: on a shared corridor every member's run has
+  // IDENTICAL geometry, so they tie exactly where the order matters.
+  const drawnLenByTid = new Map();
   items.forEach((item) => {
     const train = item.train;
     const feature = item.feature;
@@ -615,6 +625,10 @@ function buildDeckRouteRecords(items) {
         drawn[k] = orig[drawnIdx[k]];
         posOf.set(drawnIdx[k], k);
       }
+      let drawnLen = 0;
+      for (let k = 1; k < drawn.length; k += 1)
+        drawnLen += distanceMeters(drawn[k - 1], drawn[k]);
+      drawnLenByTid.set(tid, (drawnLenByTid.get(tid) || 0) + drawnLen);
 
       // ── base + pick records, one per run ──
       // The visible line stays on its TRUE track at full width (no permanent
@@ -1062,6 +1076,40 @@ function buildDeckRouteRecords(items) {
       pendingDeferredFit = { jobs: fitJobs, joinGroups };
     } else smoothCurveStationJoins(groupInfo);
   }
+
+  // ── static painter's order (line-sort-key, higher = on top) ──
+  // The sort key overrides feature order inside the route layers, so the
+  // emphasis tier (dimmed off-date trains under the active date's) must ride
+  // in the key's high digits. Within a tier, bottom→top: longer total ride
+  // under shorter (a short ride covered by a long one loses ALL of its ink;
+  // the long one only loses the shared stretch), and among equal-length rides
+  // the later date under the earlier (repeat rides of one interval show the
+  // first traversal — the same earliest-first convention as the fan lanes).
+  // Per-TRAIN ranks: every record of a train shares one rank.
+  const sortTrains = [];
+  const sortSeen = new Set();
+  records.forEach((r) => {
+    const rid = r.train && r.train.id;
+    if (sortSeen.has(rid)) return;
+    sortSeen.add(rid);
+    sortTrains.push(r.train);
+  });
+  // Whole-meter lengths: the same interval ridden in opposite directions
+  // sums the same segment set in reverse order, so raw float totals differ
+  // by noise — which would decide the primary key and starve the date
+  // tie-break.
+  sortTrains.sort(
+    (a, b) =>
+      Math.round(drawnLenByTid.get(b.id) || 0) -
+        Math.round(drawnLenByTid.get(a.id) || 0) ||
+      compareTrainsByDateAndDeparture(b, a),
+  );
+  const sortRank = new Map(sortTrains.map((t, i) => [t.id, i]));
+  records.forEach((r) => {
+    r.sortKey =
+      (r.nopick ? 0 : ROUTE_SORT_TIER) +
+      (sortRank.get(r.train && r.train.id) || 0);
+  });
 
   const bundle = {
     records,
