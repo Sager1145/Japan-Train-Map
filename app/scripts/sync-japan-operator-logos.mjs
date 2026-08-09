@@ -21,6 +21,15 @@ const NETWORK_PATH = path.join(PUBLIC_DIR, "rail", "jp-2025.json");
 const OUTPUT_DIR = path.join(PUBLIC_DIR, "rail", "operator-logos", "jp");
 const MANIFEST_PATH = path.join(OUTPUT_DIR, "manifest.json");
 
+// These package entries carried a historical predecessor mark or a parent
+// company's mark, so they need a verified operator fallback even though an
+// image is present in the legacy line-logo package.
+const FORCED_OPERATOR_FALLBACKS = Object.freeze([
+  "伊賀鉄道",
+  "筑波観光鉄道",
+  "養老鉄道",
+]);
+
 const PAGE_ALIASES = Object.freeze({
   京都市: "京都市交通局",
   熊本市: "熊本市交通局",
@@ -197,6 +206,24 @@ const OFFICIAL_LOGOS = Object.freeze({
   鹿児島市: {
     url: "https://www.kotsu-city-kagoshima.jp/wp/wp-content/themes/kotsuTemp/img/logo.gif",
     sourcePage: "https://www.kotsu-city-kagoshima.jp/",
+  },
+  伊賀鉄道: {
+    url: "https://www.igatetsu.co.jp/igatetsu/wp-content/themes/igatetsuwp/images/logo.png",
+    sourcePage: "https://www.igatetsu.co.jp/",
+    assetBase: "iga-railway",
+    preferOfficial: true,
+  },
+  筑波観光鉄道: {
+    url: "https://mt-tsukuba.com/wordpress2026/wp-content/themes/tsukubasan/img/common/icon_logo01.png",
+    sourcePage: "https://mt-tsukuba.com/company/",
+    assetBase: "tsukuba-kanko",
+    preferOfficial: true,
+  },
+  養老鉄道: {
+    url: "https://www.yororailway.co.jp/wp-content/themes/yororailway/img/webp/logo.webp",
+    sourcePage: "https://www.yororailway.co.jp/about/",
+    assetBase: "yoro-railway",
+    preferOfficial: true,
   },
 });
 
@@ -496,7 +523,12 @@ async function download(url, filePath) {
 async function main() {
   const network = JSON.parse(await fs.readFile(NETWORK_PATH, "utf8"));
   const missingLines = network.lines.filter((line) => !line.logo);
-  const operators = [...new Set(missingLines.map((line) => line.operator))].sort();
+  const operators = [
+    ...new Set([
+      ...missingLines.map((line) => line.operator),
+      ...FORCED_OPERATOR_FALLBACKS,
+    ]),
+  ].sort();
   const entities = await wikipediaEntities(operators);
   const wikidataLogoFiles = await wikidataLogos(entities);
   const commonsLogoFiles = new Map(
@@ -516,7 +548,7 @@ async function main() {
     const logoFile = commonsLogoFiles.get(operator);
     const info = fileInfo.get(logoFile);
     const official = OFFICIAL_LOGOS[operator];
-    if (entity && logoFile && info) {
+    if (entity && logoFile && info && !official?.preferOfficial) {
       const extension = extensionFor(logoFile, info.mime);
       const asset = `${entity.entityId.toLowerCase()}${extension}`;
       const outputPath = path.join(OUTPUT_DIR, asset);
@@ -541,7 +573,7 @@ async function main() {
 
     if (official) {
       const extension = extensionFor(new URL(official.url).pathname, "");
-      const assetBase = entity?.entityId?.toLowerCase() || official.assetBase;
+      const assetBase = official.assetBase || entity?.entityId?.toLowerCase();
       const asset = `${assetBase}${extension}`;
       const outputPath = path.join(OUTPUT_DIR, asset);
       if (OVERWRITE || !(await exists(outputPath))) {

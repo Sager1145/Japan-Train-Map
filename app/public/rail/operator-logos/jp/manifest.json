@@ -1106,6 +1106,45 @@
     "status": "downloaded"
   },
   {
+    "operator": "伊賀鉄道",
+    "linesWithoutBadge": 0,
+    "articleTitle": "伊賀鉄道",
+    "entityId": null,
+    "logoFile": "logo.png",
+    "asset": "iga-railway.png",
+    "sourceType": "official-operator-site",
+    "sourcePage": "https://www.igatetsu.co.jp/",
+    "license": "Operator trademark",
+    "licenseUrl": "",
+    "status": "downloaded"
+  },
+  {
+    "operator": "筑波観光鉄道",
+    "linesWithoutBadge": 0,
+    "articleTitle": "筑波観光鉄道",
+    "entityId": null,
+    "logoFile": "icon_logo01.png",
+    "asset": "tsukuba-kanko.png",
+    "sourceType": "official-operator-site",
+    "sourcePage": "https://mt-tsukuba.com/company/",
+    "license": "Operator trademark",
+    "licenseUrl": "",
+    "status": "downloaded"
+  },
+  {
+    "operator": "養老鉄道",
+    "linesWithoutBadge": 0,
+    "articleTitle": "養老鉄道",
+    "entityId": null,
+    "logoFile": "logo.webp",
+    "asset": "yoro-railway.webp",
+    "sourceType": "official-operator-site",
+    "sourcePage": "https://www.yororailway.co.jp/about/",
+    "license": "Operator trademark",
+    "licenseUrl": "",
+    "status": "downloaded"
+  },
+  {
     "operator": "鹿児島市",
     "linesWithoutBadge": 4,
     "articleTitle": "鹿児島市交通局",

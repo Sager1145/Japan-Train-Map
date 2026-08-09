@@ -27,11 +27,19 @@ function loadPopup() {
   return { popup: win.RailMapPopup, branding: win.RailOperatorBranding };
 }
 
-test("Japanese package line badges stay ahead of operator-logo fallbacks", () => {
+test("only audited Japanese line badges stay ahead of operator fallbacks", () => {
   const { branding } = loadPopup();
-  const linesWithBadges = JAPAN_NETWORK.lines.filter((line) => line.logo);
+  const packageImages = JAPAN_NETWORK.lines.filter((line) => line.logo);
+  const linesWithBadges = packageImages.filter((line) =>
+    branding.verifiedPackageLineLogo({
+      ...line,
+      lineId: line.id,
+      logo: `/rail/logos/${line.id}.png`,
+    }),
+  );
 
-  assert.equal(linesWithBadges.length, 349);
+  assert.equal(packageImages.length, 349);
+  assert.equal(linesWithBadges.length, 285);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -47,28 +55,91 @@ test("Japanese package line badges stay ahead of operator-logo fallbacks", () =>
       `${line.operator} ${line.name} keeps its existing line badge`,
     );
   }
+
+  assert.equal(packageImages.length - linesWithBadges.length, 64);
 });
 
-test("Japanese routes without line badges use verified operator-logo assets", () => {
+test("every non-line image falls back to the exact operator, never a parent or predecessor", () => {
   const { branding } = loadPopup();
-  const missingBadgeLines = JAPAN_NETWORK.lines.filter((line) => !line.logo);
+  const missingBadgeLines = JAPAN_NETWORK.lines.filter((line) => {
+    const packageLogo = line.logo ? `/rail/logos/${line.id}.png` : null;
+    return !branding.verifiedPackageLineLogo({
+      ...line,
+      lineId: line.id,
+      logo: packageLogo,
+    });
+  });
   const unresolvedOperators = new Set(["万葉線", "鞍馬寺"]);
   const coveredLines = missingBadgeLines.filter(
     (line) => !unresolvedOperators.has(line.operator),
   );
 
-  assert.equal(missingBadgeLines.length, 245);
-  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 87);
-  assert.equal(coveredLines.length, 242);
+  assert.equal(missingBadgeLines.length, 309);
+  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
+  assert.equal(coveredLines.length, 306);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
-    assert.match(logo, /^\/rail\/operator-logos\/jp\//, line.operator);
+    assert.match(logo, /^\/rail\/(?:operator-logos\/jp|logos)\//, line.operator);
     assert.equal(
       fs.existsSync(path.join(PUBLIC_DIR, logo.replace(/^\//, ""))),
       true,
       `${line.operator} asset exists`,
     );
+    if (logo.startsWith("/rail/logos/")) {
+      const sourceLineId = path.basename(logo, path.extname(logo));
+      const sourceLine = JAPAN_NETWORK.lines.find(
+        (entry) => entry.id === sourceLineId,
+      );
+      assert.equal(
+        sourceLine?.operator,
+        line.operator,
+        `${line.operator} may reuse only its own company mark`,
+      );
+    }
     assert.equal(branding.logoForLine({ ...line, lineId: line.id }), logo);
+  }
+
+  const replacedWrongAssets = new Map([
+    [
+      "jp-四日市あすなろう鉄道-内部線",
+      "/rail/operator-logos/jp/q17211160.svg",
+    ],
+    ["jp-養老鉄道-養老線", "/rail/operator-logos/jp/yoro-railway.webp"],
+    ["jp-伊賀鉄道-伊賀線", "/rail/operator-logos/jp/iga-railway.png"],
+    [
+      "jp-筑波観光鉄道-筑波山鋼索鉄道線",
+      "/rail/operator-logos/jp/tsukuba-kanko.png",
+    ],
+  ]);
+  for (const [lineId, expected] of replacedWrongAssets) {
+    const line = JAPAN_NETWORK.lines.find((entry) => entry.id === lineId);
+    const legacyWrongAsset = `/rail/logos/${lineId}.png`;
+    assert.equal(
+      branding.logoForLine({ ...line, lineId, logo: legacyWrongAsset }),
+      expected,
+      lineId,
+    );
+    assert.notEqual(expected, legacyWrongAsset, lineId);
+  }
+
+  for (const lineId of [
+    "jp-東日本旅客鉄道-常磐線",
+    "jp-東日本旅客鉄道-中央線",
+    "jp-東日本旅客鉄道-東北線",
+    "jp-西日本旅客鉄道-山陽線",
+    "jp-西日本旅客鉄道-関西線",
+    "jp-九州旅客鉄道-鹿児島線",
+  ]) {
+    const line = JAPAN_NETWORK.lines.find((entry) => entry.id === lineId);
+    assert.equal(
+      branding.logoForLine({
+        ...line,
+        lineId,
+        logo: `/rail/logos/${lineId}.png`,
+      }),
+      branding.operatorLogo(line.operator),
+      `${lineId} regional code is not valid over the package's full line`,
+    );
   }
 
   // Neither operator publishes a distinct company mark. Keep the established
@@ -80,7 +151,7 @@ test("Japanese routes without line badges use verified operator-logo assets", ()
 test("Japanese operator logo sources are auditable and render in hover popup", () => {
   const { popup, branding } = loadPopup();
   const downloaded = JAPAN_MANIFEST.filter((entry) => entry.status === "downloaded");
-  assert.equal(downloaded.length, 85);
+  assert.equal(downloaded.length, 88);
   assert.deepEqual(
     JAPAN_MANIFEST.filter((entry) => entry.status !== "downloaded").map(
       (entry) => entry.operator,
@@ -107,7 +178,10 @@ test("Japanese operator logo sources are auditable and render in hover popup", (
         /<svg\b/.test(bytes.subarray(0, 2048).toString("utf8"))) ||
       (entry.asset.endsWith(".png") && signature === "89504e470d0a1a0a") ||
       (entry.asset.endsWith(".jpg") && signature.startsWith("ffd8ff")) ||
-      (entry.asset.endsWith(".gif") && bytes.subarray(0, 3).toString() === "GIF");
+      (entry.asset.endsWith(".gif") && bytes.subarray(0, 3).toString() === "GIF") ||
+      (entry.asset.endsWith(".webp") &&
+        bytes.subarray(0, 4).toString() === "RIFF" &&
+        bytes.subarray(8, 12).toString() === "WEBP");
     assert.equal(validSignature, true, `${entry.asset} is a real image asset`);
   }
 

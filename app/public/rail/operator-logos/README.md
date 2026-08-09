@@ -2,10 +2,25 @@
 
 ## Japan
 
-Japanese routes keep the package-provided badge in `../logos/` whenever one
-exists. For routes without one, `jp/` contains a company-level fallback. The
-current package has 349 dedicated Japanese line badges; the operator fallbacks
-cover 242 of the remaining 245 routes (85 of 87 operators).
+Japanese routes keep a package-provided badge in `../logos/` only after its
+scope is verified against the corresponding line. The old package flag merely
+meant that an image existed: 64 of its 349 images were actually company marks,
+generic Shinkansen marks, regional JR codes applied beyond their official
+scope, historical predecessor marks, or a parent-company mark. The audited
+runtime therefore treats 285 images as line badges and sends the other 309
+routes through the exact operator fallback. In total, 591 of 594 Japanese
+routes resolve to a verified line or operator mark; the three deliberate
+exceptions are the two 万葉線 routes and 鞍馬寺, whose operators publish no
+distinct mark in the checked sources.
+
+Operator ownership follows the package's `N02_004` value, the Japanese MLIT
+field defined as the company operating the line. Regional JR letter badges are
+accepted only where the package line has the same scope as the operator's
+published route identity; the audit references the official [JR East station
+numbering scope](https://www.jreast.co.jp/press/2016/20160402.pdf), [JR Central
+scope](https://jr-central.co.jp/news/release/_pdf/000035928.pdf), [JR West line
+symbol guide](https://www.westjr.co.jp/travel-information/en/train-usage-guide/howto/howtosign/),
+and [JR Kyushu route maps](https://www.jrkyushu.co.jp/railway/routemap/index.html).
 
 Every downloaded file, its operator, source page, license/source type, and the
 number of affected routes are recorded in [`jp/manifest.json`](jp/manifest.json).
@@ -16,14 +31,19 @@ or the operator's current official website. Run
 download without overwriting existing assets; pass `--overwrite` to refresh
 them intentionally.
 
+The legacy Mie Railway mark on 四日市あすなろう鉄道・内部線, the 1911/1917
+predecessor marks on 養老鉄道 and 伊賀鉄道, and the Keisei parent mark on
+筑波観光鉄道 are explicitly rejected. The latter three now use current assets
+from each operator's official site; 四日市 uses its current YAR company mark.
+
 `万葉線` and `鞍馬寺` do not publish a distinct operator logo in the checked
 sources. Their three lines deliberately retain the established color-swatch
 fallback instead of using a fabricated or unrelated mark.
 
-The complete mapping was refreshed against those live sources on 2026-08-07.
-Automated popup tests verify all 349 package-provided line badges, all 85
-operator fallbacks, their image signatures, and the exact operator-to-manifest
-assignment. Four official marks are designed for dark website headers (青函
+The complete mapping was re-audited against those live sources on 2026-08-09.
+Automated popup tests verify the 285 accepted line badges, all 309 fallback
+decisions, the 88 downloaded operator assets, their image signatures, and the
+exact operator-to-manifest assignment. Four official marks are designed for dark website headers (青函
 トンネル記念館, 四国ケーブル, 錦川鉄道, 阿佐海岸鉄道); the popup gives
 only those original assets a dark matte so they remain legible in light mode.
 

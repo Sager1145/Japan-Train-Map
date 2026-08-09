@@ -83,9 +83,10 @@ const RailOperatorBranding = (() => {
     阿里山林鐵: "阿里山林鐵",
   });
 
-  // Company-level fallbacks for Japanese routes without a dedicated line
-  // badge. Package-provided line.logo assets always win in logoForLine(), so
-  // adding these does not alter any existing Japanese line identity.
+  // Company-level fallbacks for Japanese routes without a verified line
+  // badge. Some older package assets are company marks (or worse, historical
+  // predecessor/parent-company marks), so logoForLine() only treats package
+  // artwork as a line badge when it is not in JAPAN_NON_LINE_LOGO_IDS below.
   const JAPAN_OPERATOR_LOGOS = Object.freeze({
     JR東海交通事業: "/rail/operator-logos/jp/q7862679.svg",
     "WILLER　TRAINS": "/rail/operator-logos/jp/q19727758.svg",
@@ -111,6 +112,7 @@ const RailOperatorBranding = (() => {
     京都市: "/rail/operator-logos/jp/q5359594.svg",
     京阪電気鉄道: "/rail/operator-logos/jp/q1188274.svg",
     伊予鉄道: "/rail/operator-logos/jp/q3138970.svg",
+    伊賀鉄道: "/rail/operator-logos/jp/iga-railway.png",
     信楽高原鐵道: "/rail/operator-logos/jp/q7496306.jpg",
     函館市: "/rail/operator-logos/jp/q3082613.png",
     北大阪急行電鉄: "/rail/operator-logos/jp/q2323022.svg",
@@ -172,8 +174,133 @@ const RailOperatorBranding = (() => {
     静岡鉄道: "/rail/operator-logos/jp/q5362040.svg",
     高尾登山電鉄: "/rail/operator-logos/jp/q7677245.svg",
     高松琴平電気鉄道: "/rail/operator-logos/jp/q566998.svg",
+    筑波観光鉄道: "/rail/operator-logos/jp/tsukuba-kanko.png",
+    養老鉄道: "/rail/operator-logos/jp/yoro-railway.webp",
     鹿児島市: "/rail/operator-logos/jp/q3537114.gif",
   });
+
+  // Existing package assets whose source artwork is a company mark. Keep
+  // these separate from verified line badges: they are valid only after the
+  // line-level lookup has failed and the exact operator has been matched.
+  const JAPAN_PACKAGE_OPERATOR_LOGOS = Object.freeze({
+    沖縄都市モノレール:
+      "/rail/logos/jp-沖縄都市モノレール-沖縄都市モノレール線.png",
+    いすみ鉄道: "/rail/logos/jp-いすみ鉄道-いすみ線.png",
+    わたらせ渓谷鐵道:
+      "/rail/logos/jp-わたらせ渓谷鐵道-わたらせ渓谷線.png",
+    愛知環状鉄道: "/rail/logos/jp-愛知環状鉄道-愛知環状鉄道線.png",
+    伊勢鉄道: "/rail/logos/jp-伊勢鉄道-伊勢線.png",
+    井原鉄道: "/rail/logos/jp-井原鉄道-井原線.png",
+    会津鉄道: "/rail/logos/jp-会津鉄道-会津線.png",
+    岳南電車: "/rail/logos/jp-岳南電車-岳南鉄道線.png",
+    紀州鉄道: "/rail/logos/jp-紀州鉄道-紀州鉄道線.png",
+    黒部峡谷鉄道: "/rail/logos/jp-黒部峡谷鉄道-本線.png",
+    三岐鉄道: "/rail/logos/jp-三岐鉄道-北勢線.png",
+    小湊鐵道: "/rail/logos/jp-小湊鐵道-小湊鐵道線.png",
+    湘南モノレール: "/rail/logos/jp-湘南モノレール-江の島線.png",
+    上信電鉄: "/rail/logos/jp-上信電鉄-上信線.png",
+    上毛電気鉄道: "/rail/logos/jp-上毛電気鉄道-上毛線.png",
+    真岡鐵道: "/rail/logos/jp-真岡鐵道-真岡線.png",
+    水間鉄道: "/rail/logos/jp-水間鉄道-水間線.png",
+    水島臨海鉄道: "/rail/logos/jp-水島臨海鉄道-水島本線.png",
+    あいの風とやま鉄道:
+      "/rail/logos/jp-あいの風とやま鉄道-あいの風とやま鉄道線.png",
+    IRいしかわ鉄道:
+      "/rail/logos/jp-IRいしかわ鉄道-IRいしかわ鉄道線.png",
+    ハピラインふくい:
+      "/rail/logos/jp-ハピラインふくい-ハピラインふくい線.png",
+    青い森鉄道: "/rail/logos/jp-青い森鉄道-青い森鉄道線.png",
+    仙台市: "/rail/logos/jp-仙台市-南北線.png",
+    流鉄: "/rail/logos/jp-流鉄-流山線.png",
+    多摩都市モノレール:
+      "/rail/logos/jp-多摩都市モノレール-多摩都市モノレール線.png",
+    筑豊電気鉄道:
+      "/rail/logos/jp-筑豊電気鉄道-筑豊電気鉄道線.png",
+    津軽鉄道: "/rail/logos/jp-津軽鉄道-津軽鉄道線.png",
+    天竜浜名湖鉄道:
+      "/rail/logos/jp-天竜浜名湖鉄道-天竜浜名湖線.png",
+    島原鉄道: "/rail/logos/jp-島原鉄道-島原鉄道線.png",
+    肥薩おれんじ鉄道:
+      "/rail/logos/jp-肥薩おれんじ鉄道-肥薩おれんじ鉄道線.png",
+    道南いさりび鉄道:
+      "/rail/logos/jp-道南いさりび鉄道-道南いさりび鉄道線.png",
+    北九州高速鉄道: "/rail/logos/jp-北九州高速鉄道-小倉線.png",
+    仙台空港鉄道: "/rail/logos/jp-仙台空港鉄道-仙台空港線.png",
+    ひたちなか海浜鉄道:
+      "/rail/logos/jp-ひたちなか海浜鉄道-湊線.png",
+  });
+
+  // The original package flag only meant "an image was downloaded". It did
+  // not prove that the image was a line badge. This exhaustive audit set
+  // contains company marks, generic Shinkansen marks, out-of-scope regional
+  // JR codes, three historical predecessor marks, and one parent-company
+  // mark. These assets must never outrank the line's actual operator.
+  const JAPAN_NON_LINE_LOGO_IDS = new Set([
+    "jp-沖縄都市モノレール-沖縄都市モノレール線",
+    "jp-いすみ鉄道-いすみ線",
+    "jp-しなの鉄道-しなの鉄道線",
+    "jp-わたらせ渓谷鐵道-わたらせ渓谷線",
+    "jp-愛知環状鉄道-愛知環状鉄道線",
+    "jp-伊勢鉄道-伊勢線",
+    "jp-井原鉄道-井原線",
+    "jp-会津鉄道-会津線",
+    "jp-岳南電車-岳南鉄道線",
+    "jp-紀州鉄道-紀州鉄道線",
+    "jp-四日市あすなろう鉄道-内部線",
+    "jp-九州旅客鉄道-九州新幹線",
+    "jp-九州旅客鉄道-鹿児島線",
+    "jp-九州旅客鉄道-日豊線",
+    "jp-黒部峡谷鉄道-本線",
+    "jp-三岐鉄道-北勢線",
+    "jp-小湊鐵道-小湊鐵道線",
+    "jp-湘南モノレール-江の島線",
+    "jp-上信電鉄-上信線",
+    "jp-上毛電気鉄道-上毛線",
+    "jp-真岡鐵道-真岡線",
+    "jp-水間鉄道-水間線",
+    "jp-水島臨海鉄道-水島本線",
+    "jp-西日本旅客鉄道-関西線",
+    "jp-西日本旅客鉄道-山陽新幹線",
+    "jp-西日本旅客鉄道-山陽線",
+    "jp-西日本旅客鉄道-赤穂線",
+    "jp-西日本旅客鉄道-博多南線",
+    "jp-西日本旅客鉄道-姫新線",
+    "jp-あいの風とやま鉄道-あいの風とやま鉄道線",
+    "jp-IRいしかわ鉄道-IRいしかわ鉄道線",
+    "jp-ハピラインふくい-ハピラインふくい線",
+    "jp-青い森鉄道-青い森鉄道線",
+    "jp-仙台市-南北線",
+    "jp-流鉄-流山線",
+    "jp-多摩都市モノレール-多摩都市モノレール線",
+    "jp-大井川鐵道-大井川本線",
+    "jp-筑波観光鉄道-筑波山鋼索鉄道線",
+    "jp-筑豊電気鉄道-筑豊電気鉄道線",
+    "jp-津軽鉄道-津軽鉄道線",
+    "jp-天竜浜名湖鉄道-天竜浜名湖線",
+    "jp-島原鉄道-島原鉄道線",
+    "jp-東海旅客鉄道-東海道新幹線",
+    "jp-東日本旅客鉄道-上越新幹線",
+    "jp-東日本旅客鉄道-常磐線",
+    "jp-東日本旅客鉄道-成田線",
+    "jp-東日本旅客鉄道-川越線",
+    "jp-東日本旅客鉄道-中央線",
+    "jp-東日本旅客鉄道-東海道線",
+    "jp-東日本旅客鉄道-東北新幹線",
+    "jp-東日本旅客鉄道-東北線",
+    "jp-東日本旅客鉄道-北陸新幹線",
+    "jp-肥薩おれんじ鉄道-肥薩おれんじ鉄道線",
+    "jp-豊橋鉄道-渥美線",
+    "jp-道南いさりび鉄道-道南いさりび鉄道線",
+    "jp-北九州高速鉄道-小倉線",
+    "jp-仙台空港鉄道-仙台空港線",
+    "jp-ひたちなか海浜鉄道-湊線",
+    "jp-養老鉄道-養老線",
+    "jp-伊賀鉄道-伊賀線",
+    "jp-西日本旅客鉄道-北陸新幹線",
+    "jp-仙台市-東西線",
+    "jp-北海道旅客鉄道-北海道新幹線",
+    "jp-九州旅客鉄道-西九州新幹線",
+  ]);
 
   // These are the operators' correct, current marks, but their artwork is
   // predominantly white because the official sites place it on a dark
@@ -258,6 +385,7 @@ const RailOperatorBranding = (() => {
     const rawOperator = String(operator || "").trim();
     return (
       JAPAN_OPERATOR_LOGOS[rawOperator] ||
+      JAPAN_PACKAGE_OPERATOR_LOGOS[rawOperator] ||
       OPERATOR_LOGOS[normalizeTaiwanCompanyName(rawOperator)] ||
       null
     );
@@ -267,9 +395,22 @@ const RailOperatorBranding = (() => {
     return LINE_LOGOS[lineId] || null;
   }
 
+  function verifiedPackageLineLogo(line) {
+    if (!line || !line.logo) return null;
+    const lineId = String(line.lineId || line.id || "");
+    if (lineId.startsWith("jp-") && JAPAN_NON_LINE_LOGO_IDS.has(lineId)) {
+      return null;
+    }
+    return line.logo;
+  }
+
   function logoForLine(line) {
     if (!line) return null;
-    return line.logo || lineLogo(line.lineId || line.id) || operatorLogo(line.operator);
+    return (
+      verifiedPackageLineLogo(line) ||
+      lineLogo(line.lineId || line.id) ||
+      operatorLogo(line.operator)
+    );
   }
 
   function logoNeedsDarkMatte(logo) {
@@ -282,6 +423,7 @@ const RailOperatorBranding = (() => {
     companyFor,
     operatorLogo,
     lineLogo,
+    verifiedPackageLineLogo,
     logoForLine,
     logoNeedsDarkMatte,
   });
