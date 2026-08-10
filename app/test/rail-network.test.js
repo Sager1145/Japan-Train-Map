@@ -173,8 +173,8 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
 
   assert.equal(lines.filter, undefined);
   assert.equal(stations.filter, undefined);
-  assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0);
-  assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0);
+  assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0.5);
+  assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0.5);
   assert.equal(lines.paint["line-opacity"][0], "step");
   assert.equal(stations.paint["circle-opacity"][0], "step");
   assert.equal(stations.paint["circle-opacity"].at(-2), 14);

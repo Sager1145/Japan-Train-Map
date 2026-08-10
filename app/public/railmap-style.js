@@ -267,10 +267,10 @@
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
       attribution: railAttributionForCountry(opts.country),
-      // Never let source tiling simplify a railway as the map zooms out.
-      // Scale hierarchy comes only from hiding complete shorter lines; every
-      // line that remains visible keeps all of its canonical coordinates.
-      tolerance: 0,
+      // Simplify very slightly (0.5 px tolerance) to prevent geojson-vt from
+      // dropping complex/dense tiles at low zoom levels, while keeping the
+      // coordinates virtually identical to the canonical lines on screen.
+      tolerance: 0.5,
     };
     sources[STATIONS_SOURCE] = {
       type: "geojson",
@@ -281,7 +281,7 @@
     sources[TRAIN_ROUTES_SOURCE] = {
       type: "geojson",
       data: EMPTY_FC,
-      tolerance: 0,
+      tolerance: 0.5,
     };
     sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_PICK_FAN_SOURCE] = { type: "geojson", data: EMPTY_FC };
