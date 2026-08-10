@@ -16668,7 +16668,7 @@
           "n02_station_code": "000124",
           "arrival": null,
           "departure": null,
-          "stop_type": "passenger_stop",
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
