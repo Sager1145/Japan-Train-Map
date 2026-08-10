@@ -107,6 +107,8 @@ function makeMap(win) {
   };
   const filters = {};
   const paints = {};
+  const layouts = {};
+  const listeners = {};
   const canvas = { style: {}, addEventListener() {} };
   return {
     counts,
@@ -115,6 +117,12 @@ function makeMap(win) {
     paints,
     getSource: (id) => srcFor(id),
     getLayer: (id) => (layerIds.has(id) ? { id } : undefined),
+    addLayer(layer) {
+      layerIds.add(layer.id);
+      filters[layer.id] = layer.filter;
+      paints[layer.id] = { ...(layer.paint || {}) };
+      layouts[layer.id] = { ...(layer.layout || {}) };
+    },
     setFilter(id, f) {
       filters[id] = f;
     },
@@ -122,12 +130,22 @@ function makeMap(win) {
       if (!paints[id]) paints[id] = {};
       paints[id][prop] = value;
     },
-    setLayoutProperty() {},
-    getPaintProperty: () => 0,
+    setLayoutProperty(id, prop, value) {
+      if (!layouts[id]) layouts[id] = {};
+      layouts[id][prop] = value;
+    },
+    getPaintProperty: (id, prop) => (paints[id] ? paints[id][prop] : 0),
     getZoom: () => 8,
     getCenter: () => ({ lat: 35 }),
     unproject: () => ({ lng: 139, lat: 35 }),
-    on() {},
+    project: (p) => ({ x: p[0] ?? p.lng, y: p[1] ?? p.lat }),
+    on(event, cb) {
+      if (!listeners[event]) listeners[event] = [];
+      listeners[event].push(cb);
+    },
+    emit(event, payload) {
+      (listeners[event] || []).forEach((cb) => cb(payload));
+    },
     once() {},
     off() {},
     queryRenderedFeatures: () => [],
@@ -172,18 +190,25 @@ function assertNear(actual, expected, message) {
 }
 
 function fixtureData() {
-  // Two trains sharing a corridor (one overlap group) + one lone train.
+  // Two trains sharing a corridor (G1), an adjacent corridor shared by one of
+  // them plus a fourth train (G2 — exercises the cross-group transition), and
+  // one lone train.
   const tA = { id: "A" };
   const tB = { id: "B" };
   const tC = { id: "C" };
+  const tD = { id: "D" };
   const line = [
     [139.0, 35.0],
     [139.1, 35.05],
     [139.2, 35.1],
   ];
-  const mk = (train, mult) => ({
-    path: line,
-    pickPath: line,
+  const line2 = [
+    [139.2, 35.1],
+    [139.3, 35.15],
+    [139.4, 35.2],
+  ];
+  const mk = (train, mult, groupKey = "G1", path = line) => ({
+    path,
     shiftX: 0.5,
     shiftY: -0.5,
     laneMult: mult,
@@ -194,16 +219,17 @@ function fixtureData() {
     pickWidth: 12,
     overlapCount: 2,
     overlapSlot: 0,
-    groupKey: "G1",
+    groupKey,
     nopick: false,
     tdate: "2026-07-01",
   });
   const records = [
     mk(tA, -0.5),
     mk(tB, 0.5),
+    mk(tB, -0.5, "G2", line2),
+    mk(tD, 0.5, "G2", line2),
     {
       path: line,
-      pickPath: line,
       shiftX: 0,
       shiftY: 0,
       laneMult: 0,
@@ -223,17 +249,22 @@ function fixtureData() {
     { path: line, color: [10, 20, 30, 255], width: 4, train: tA },
     { path: line, color: [40, 50, 60, 255], width: 4, train: tB },
     { path: line, color: [1, 2, 3, 255], width: 4, train: tC },
+    { path: line2, color: [70, 80, 90, 255], width: 4, train: tD },
   ];
   const groupInfo = new Map([
     [
       "G1",
       { sx: 0.5, sy: -0.5, mults: { A: -0.5, B: 0.5 }, curve: null },
     ],
+    [
+      "G2",
+      { sx: 0.5, sy: -0.5, mults: { B: -0.5, D: 0.5 }, curve: null },
+    ],
   ]);
   return { records, expandRecords, groupInfo };
 }
 
-test("fan open/close touches only the fan pick source; expand pushes coalesce", () => {
+test("fan open/close uploads true geometry once; animation is paint-only", () => {
   const win = loadScripts(makeWindow());
   const style = win.RailMapStyle;
   const RailMap = win.RailMap;
@@ -241,7 +272,7 @@ test("fan open/close touches only the fan pick source; expand pushes coalesce", 
   RailMap.attach(map, null, {}, [], [], "light", {});
 
   const { records, expandRecords, groupInfo } = fixtureData();
-  RailMap.setData(records, expandRecords, groupInfo, 0.001);
+  RailMap.setData(records, expandRecords, groupInfo, 12);
   flushFrames(win, 2);
 
   const staticAfterData = map.counts[style.TRAIN_PICK_SOURCE] || 0;
@@ -250,6 +281,8 @@ test("fan open/close touches only the fan pick source; expand pushes coalesce", 
   // ── open the fan ──
   RailMap._setFanDirTarget("G1", { lng: 139.1, lat: 35.05 });
   RailMap._setExpandedGroup("G1");
+  const expandUploadsAfterOpen = map.counts[style.TRAIN_EXPAND_SOURCE] || 0;
+  const fanUploadsAfterOpen = map.counts[style.TRAIN_PICK_FAN_SOURCE] || 0;
   // run the slide animation to completion (240ms / 16ms ≈ 15 frames + slack)
   flushFrames(win, 25);
 
@@ -266,17 +299,33 @@ test("fan open/close touches only the fan pick source; expand pushes coalesce", 
     JSON.stringify(fanFC.features.map((f) => f.properties.tid).sort()),
     JSON.stringify(["A", "B"]),
   );
+  assert.strictEqual(
+    map.counts[style.TRAIN_EXPAND_SOURCE] || 0,
+    expandUploadsAfterOpen,
+    "slide frames never re-upload expand GeoJSON",
+  );
+  assert.strictEqual(
+    map.counts[style.TRAIN_PICK_FAN_SOURCE] || 0,
+    fanUploadsAfterOpen,
+    "slide frames never re-upload pick GeoJSON",
+  );
+  const assigned = RailMap._fanLanePool.filter((slot) => slot.tid);
+  assert.strictEqual(assigned.length, 2, "one pooled slot per member tid");
+  assigned.forEach((slot) => {
+    const visible = map.paints[slot.visibleId]["line-translate"];
+    assert.ok(Math.hypot(visible[0], visible[1]) > 0, `${slot.tid} translated`);
+    assert.strictEqual(
+      JSON.stringify(map.paints[slot.hoverId]["line-translate"]),
+      JSON.stringify(visible),
+    );
+    assert.strictEqual(
+      JSON.stringify(map.paints[slot.pickId]["line-translate"]),
+      JSON.stringify(visible),
+    );
+  });
   // Engaged trains are filtered out of the static pick layer.
   const pickFilter = JSON.stringify(map.filters[style.TRAIN_PICK_LAYER] || null);
   assert.ok(pickFilter.includes("A") && pickFilter.includes("B"));
-
-  // Expand slide must coalesce: never more uploads than frames elapsed + the
-  // synchronous open/commit pushes (was previously up to 2-3 per frame).
-  const expandUploads = map.counts[style.TRAIN_EXPAND_SOURCE] || 0;
-  assert.ok(
-    expandUploads <= 25 + 3,
-    `expand uploads (${expandUploads}) stay ≤ one per frame`,
-  );
 
   // ── close the fan ──
   RailMap._setExpandedGroup(null);
@@ -293,21 +342,83 @@ test("fan open/close touches only the fan pick source; expand pushes coalesce", 
   assert.ok(releasedFilter.includes('"literal",[]'));
 });
 
-test("updateLaneSpacing skips the static pick source entirely", () => {
+test("zoom keeps GPU lane offsets without any fan source upload", () => {
   const win = loadScripts(makeWindow());
   const style = win.RailMapStyle;
   const RailMap = win.RailMap;
   const map = makeMap(win);
   RailMap.attach(map, null, {}, [], [], "light", {});
   const { records, expandRecords, groupInfo } = fixtureData();
-  RailMap.setData(records, expandRecords, groupInfo, 0.001);
-  const staticBefore = map.counts[style.TRAIN_PICK_SOURCE] || 0;
-  RailMap.updateLaneSpacing(0.002);
-  assert.strictEqual(
-    map.counts[style.TRAIN_PICK_SOURCE] || 0,
-    staticBefore,
-    "zoom-driven lane spacing must not re-upload the static pick source",
+  RailMap.setData(records, expandRecords, groupInfo, 12);
+  RailMap._setFanDirTarget("G1", { lng: 139.1, lat: 35.05 });
+  RailMap._setExpandedGroup("G1");
+  flushFrames(win, 25);
+  const expandBefore = map.counts[style.TRAIN_EXPAND_SOURCE] || 0;
+  const pickBefore = map.counts[style.TRAIN_PICK_FAN_SOURCE] || 0;
+  const translations = RailMap._fanLanePool.map((slot) =>
+    JSON.stringify(slot.translate),
   );
+  map.emit("zoom");
+  flushFrames(win, 2);
+  assert.strictEqual(
+    map.counts[style.TRAIN_EXPAND_SOURCE] || 0,
+    expandBefore,
+  );
+  assert.strictEqual(
+    map.counts[style.TRAIN_PICK_FAN_SOURCE] || 0,
+    pickBefore,
+  );
+  assert.strictEqual(
+    JSON.stringify(RailMap._fanLanePool.map((slot) => JSON.stringify(slot.translate))),
+    JSON.stringify(translations),
+  );
+});
+
+test("a settled group switch re-scopes the fan sources to the target group", () => {
+  const win = loadScripts(makeWindow());
+  const style = win.RailMapStyle;
+  const RailMap = win.RailMap;
+  const map = makeMap(win);
+  RailMap.attach(map, null, {}, [], [], "light", {});
+  const { records, expandRecords, groupInfo } = fixtureData();
+  RailMap.setData(records, expandRecords, groupInfo, 12);
+  RailMap._setFanDirTarget("G1", { lng: 139.1, lat: 35.05 });
+  RailMap._setExpandedGroup("G1");
+  flushFrames(win, 25);
+
+  // Fully-fanned G1 → G2 takes the cross-group transition path.
+  RailMap._setFanDirTarget("G2", { lng: 139.3, lat: 35.15 });
+  RailMap._setExpandedGroup("G2");
+  const midFC = map.lastData[style.TRAIN_PICK_FAN_SOURCE];
+  // Mid-transition both corridors stay hit-testable (union upload).
+  assert.strictEqual(
+    JSON.stringify([...new Set(midFC.features.map((f) => f.properties.tid))].sort()),
+    JSON.stringify(["A", "B", "D"]),
+  );
+  flushFrames(win, 30); // 320ms transition + slack
+
+  // Settled: the FROM group's records must leave the pick source, or the
+  // staying member's tid-filtered pool layer would keep a translated ghost
+  // hit lane along the old corridor.
+  const settledFC = map.lastData[style.TRAIN_PICK_FAN_SOURCE];
+  assert.strictEqual(
+    JSON.stringify(
+      [...new Set(settledFC.features.map((f) => f.properties.tid))].sort(),
+    ),
+    JSON.stringify(["B", "D"]),
+  );
+  const settledExpand = map.lastData[style.TRAIN_EXPAND_SOURCE];
+  assert.strictEqual(
+    JSON.stringify(
+      [...new Set(settledExpand.features.map((f) => f.properties.tid))].sort(),
+    ),
+    JSON.stringify(["B", "D"]),
+  );
+  const assigned = RailMap._fanLanePool
+    .filter((slot) => slot.tid)
+    .map((slot) => slot.tid)
+    .sort();
+  assert.strictEqual(JSON.stringify(assigned), JSON.stringify(["B", "D"]));
 });
 
 test("hovering directly from route A to B crossfades every opacity layer", () => {
@@ -436,7 +547,7 @@ test("switching lanes in an expanded fan crossfades only the wide focus", () => 
   const map = makeMap(win);
   RailMap.attach(map, null, {}, [], [], "light", {});
   const { records, expandRecords, groupInfo } = fixtureData();
-  RailMap.setData(records, expandRecords, groupInfo, 0.001);
+  RailMap.setData(records, expandRecords, groupInfo, 12);
 
   RailMap._hoverTrainId = "A";
   RailMap._applyHoverFilter();
@@ -481,40 +592,54 @@ test("switching lanes in an expanded fan crossfades only the wide focus", () => 
   assert.ok(expandedBMid > 0 && expandedBMid < 1, "new fan lane focus fades in");
 });
 
-test("routeExpandFC reuses its feature template across animation frames", () => {
+test("routeExpandBaseFC keeps true geometry for pooled GPU translation", () => {
   const win = loadScripts(makeWindow());
   const geo = win.RailMapGeometry;
   const { expandRecords, groupInfo } = fixtureData();
-  const gi = groupInfo.get("G1");
-  const a = geo.routeExpandFC(expandRecords, gi, 0.001, null);
-  const y1 = a.features[0].geometry.coordinates[0][1];
-  const b = geo.routeExpandFC(expandRecords, gi, 0.002, null);
-  // Same skeleton objects (no per-frame allocation) …
+  const a = geo.routeExpandBaseFC(expandRecords, ["A", "B"]);
+  const b = geo.routeExpandBaseFC(expandRecords, ["A", "B"]);
   assert.strictEqual(a.features[0], b.features[0]);
-  assert.strictEqual(a.features.length, 2); // members A + B only
-  // … but the coordinates moved with the new spacing.
-  assert.notStrictEqual(b.features[0].geometry.coordinates[0][1], y1);
+  assert.strictEqual(a.features.length, 2);
+  assert.strictEqual(a.features[0].geometry.coordinates[0][1], 35.0);
 });
 
-test("routePickFanFC returns EMPTY when no group and lanes for an open group", () => {
+test("routePickFanBaseFC returns true-track lanes for active groups", () => {
   const win = loadScripts(makeWindow());
   const geo = win.RailMapGeometry;
   const { records, groupInfo } = fixtureData();
   assert.strictEqual(
-    geo.routePickFanFC(records, groupInfo, null, null, 0.001, null).features
-      .length,
+    geo.routePickFanBaseFC(records, groupInfo, []).features.length,
     0,
   );
-  const fc = geo.routePickFanFC(
-    records,
-    groupInfo,
-    "G1",
-    { sx: 0.5, sy: -0.5 },
-    0.001,
-    null,
-  );
+  const fc = geo.routePickFanBaseFC(records, groupInfo, ["G1"]);
   assert.strictEqual(fc.features.length, 2);
-  // Lanes are actually translated off the true track.
   const y0 = fc.features[0].geometry.coordinates[0][1];
-  assert.notStrictEqual(y0, 35.0);
+  assert.strictEqual(y0, 35.0);
+});
+
+test("fanPerpAt applies the 70m branch tolerance to distance, not squared distance", () => {
+  const win = loadScripts(makeWindow());
+  const { fanPerpAt } = win.RailMapGeometry;
+  const deg = (metres) => metres / 111320;
+  const curve = (localMetres) => ({
+    pts: [
+      [0, deg(localMetres)],
+      [0.01, deg(localMetres)],
+      [1, deg(100)],
+      [0.01, deg(100)],
+      [0, deg(100)],
+    ],
+    cum: [0, 100, 50000, 100000, 100100],
+    totalMeters: 100100,
+    coslat: 1,
+    radiusMeters: 800,
+    dirs: [[1, 0], [1, 0], [1, 0], [-1, 0], [-1, 0]],
+  });
+  const point = { lng: 0.005, lat: 0 };
+
+  const withinTolerance = fanPerpAt(curve(150), point, 50);
+  assert.ok(withinTolerance.s < 1200, "50m farther hinted branch stays engaged");
+
+  const outsideTolerance = fanPerpAt(curve(180), point, 50);
+  assert.ok(outsideTolerance.s > 90000, "80m farther hinted branch yields globally");
 });

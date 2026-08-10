@@ -71,7 +71,7 @@ function installLongTaskObserver() {
 // stays reachable.
 let TRAIN_STORE_API = "train-store";
 const COUNTRY_STORAGE_KEY = "n02-active-country";
-const SUPPORTED_COUNTRIES = ["jp", "tw"];
+const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo"];
 let activeCountry = "jp";
 // Every per-country resource name flows through AppCore.countrySuffixed
 // (Japan keeps the historical unsuffixed name, others get "-{country}") —
@@ -158,7 +158,12 @@ function activeCountryHasRouteSolver() {
 // publishes api/sample-data-tw/ (npm run precompute:tw). The 資料 card shows
 // only the ACTIVE country's loaders.
 const SAMPLE_DATA_API = "sample-data";
-const COUNTRY_SAMPLE_DATA_APIS = { jp: SAMPLE_DATA_API, tw: "sample-data-tw" };
+const COUNTRY_SAMPLE_DATA_APIS = {
+  jp: SAMPLE_DATA_API,
+  tw: "sample-data-tw",
+  hk: "sample-data-hk",
+  mo: "sample-data-mo",
+};
 const NEW_YEAR_GRAND_LOOP_API = "new-year-grand-loop-data";
 const TOKYO_LIMITED_EXPRESS_LOOP_API = "tokyo-limited-express-loop-data";
 const USER_STORE_DB_NAME = "n02-user-train-store-db";
@@ -206,16 +211,32 @@ const TAIWAN_FULL_TERRITORY_BOUNDS = [
   [21.6, 119.2],
   [25.5, 122.1],
 ];
+const HONG_KONG_BOUNDS = [
+  [22.14, 113.82],
+  [22.58, 114.45],
+];
+const MACAO_BOUNDS = [
+  [22.1, 113.52],
+  [22.23, 113.61],
+];
+const COUNTRY_OVERVIEW_BOUNDS = {
+  jp: JAPAN_MAIN_ISLANDS_BOUNDS,
+  tw: TAIWAN_MAIN_ISLAND_BOUNDS,
+  hk: HONG_KONG_BOUNDS,
+  mo: MACAO_BOUNDS,
+};
+const COUNTRY_TERRITORY_BOUNDS = {
+  jp: JAPAN_FULL_TERRITORY_BOUNDS,
+  tw: TAIWAN_FULL_TERRITORY_BOUNDS,
+  hk: HONG_KONG_BOUNDS,
+  mo: MACAO_BOUNDS,
+};
 // The map frames / clamps to the ACTIVE country (see loadActiveCountry).
 function activeCountryOverviewBounds() {
-  return activeCountry === "tw"
-    ? TAIWAN_MAIN_ISLAND_BOUNDS
-    : JAPAN_MAIN_ISLANDS_BOUNDS;
+  return COUNTRY_OVERVIEW_BOUNDS[activeCountry] || JAPAN_MAIN_ISLANDS_BOUNDS;
 }
 function activeCountryTerritoryBounds() {
-  return activeCountry === "tw"
-    ? TAIWAN_FULL_TERRITORY_BOUNDS
-    : JAPAN_FULL_TERRITORY_BOUNDS;
+  return COUNTRY_TERRITORY_BOUNDS[activeCountry] || JAPAN_FULL_TERRITORY_BOUNDS;
 }
 
 // Protocol/schema constants: AppCore (app-core.js, shared with the Node

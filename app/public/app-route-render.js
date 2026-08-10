@@ -270,7 +270,6 @@ function buildRouteItems(orderedTrains) {
 // pan or zoom. clearLayers() first so any segments added incrementally by
 // appendTrainToLayers during a progressive import are not double-counted.
 let _lastPushedBuilt = null;
-let _lastPushedSpacingDeg = 0;
 function renderRoutesInView() {
   if (!map || !cachedRouteItems || !window.RailMap) return;
   // One GeoJSON source for the whole train set; MapLibre re-tiles it on the
@@ -279,28 +278,19 @@ function renderRoutesInView() {
   // dedicated hover-expand source, so a fanned parallel line is the member
   // train's complete course translated intact — never broken mid-route.
   const built = buildDeckRouteRecords(cachedRouteItems);
-  // Three cases, cheapest first:
-  //   • same record object AND same spacing (a pure selection/marker change) —
-  //     push nothing; RailMap.setSelected below does the whole job.
-  //   • same record object, spacing drifted (a zoom) — only the invisible pick
-  //     lanes moved; re-upload just the pick source, not the identical base
-  //     route source.
-  //   • new record object (geometry/style/visibility/date changed) — full push.
+  // A stable record bundle needs no source or lane update: line-translate is
+  // pixel-valued, so pan/zoom do not alter fan spacing. Geometry/style/
+  // visibility/date changes produce a new bundle and take the full path.
   if (built !== _lastPushedBuilt) {
     RailMap.setData(
       built.records,
       built.expandRecords,
       built.groupInfo,
-      built.spacingDeg,
+      built.spacingPx,
     );
     _lastPushedBuilt = built;
-    _lastPushedSpacingDeg = built.spacingDeg;
-  } else if (built.spacingDeg !== _lastPushedSpacingDeg) {
-    RailMap.updateLaneSpacing(built.spacingDeg);
-    _lastPushedSpacingDeg = built.spacingDeg;
   }
   // The selected train re-draws in the dedicated selection layers (dark ink
   // casing + full-color line) above all other routes.
   RailMap.setSelected(focusedTrainId || null);
 }
-

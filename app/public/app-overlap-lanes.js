@@ -22,10 +22,10 @@ let _deckHasOverlaps = false;
 // The overlap map (segment counts + corridor direction graph) and the split
 // route records depend only on the route signature (train set / order / ride
 // flags / selection / date scope / per-train style) — never on zoom or pan.
-// Zoom/pan only move the LANE OFFSETS (pixel spacing re-expressed in degrees),
-// so view changes refresh pickPath on the cached records instead of re-walking
-// every segment. DISPLAY slider changes bypass the signature (it does not
-// encode DISPLAY), so applyDisplaySettings() clears these explicitly.
+// Lane offsets are pixel-valued MapLibre line-translate paint state, so zoom
+// and pan never invalidate these caches. DISPLAY slider changes bypass the
+// signature (it does not encode DISPLAY), so applyDisplaySettings() clears
+// these explicitly.
 // MULTI-ENTRY: the caches keep the last few signatures (typically the "全部"
 // scope plus a couple of concrete dates) instead of a single entry, so
 // toggling 日期 ⇄ 全部 is a lookup, not a full overlap/record/marker rebuild.
@@ -34,7 +34,6 @@ let _deckHasOverlaps = false;
 const DECK_SCOPE_CACHE_MAX = 4;
 let _overlapCacheBySig = new Map(); // overlapSig → overlap map
 let _deckRecordsCacheBySig = new Map(); // recordSig → built record bundle
-let _lastOverlapSpacingDeg = 0;
 
 // Insert with FIFO eviction so long sessions flipping through many dates
 // don't grow the caches without bound.
@@ -122,55 +121,6 @@ function getDeckOverlapMapCached(items) {
     ensureRouteVertexSnap(items, OVERLAP_SNAP_METERS);
   }
   return overlap;
-}
-
-// zoomend/moveend hook: rebuild lane offsets only when the px→degree factor
-// actually drifted (zoom changed, or the map centre moved far enough north/
-// south that the latitude correction is off by ≥5%). Cheap no-op otherwise.
-function maybeRefreshOverlapOffsets() {
-  if (!map || !_deckHasOverlaps || !cachedRouteItems) return;
-  const deg = overlapOffsetDeg(currentOverlapSpacingPx());
-  if (!deg) return;
-  if (
-    _lastOverlapSpacingDeg &&
-    Math.abs(deg - _lastOverlapSpacingDeg) / _lastOverlapSpacingDeg < 0.05
-  )
-    return;
-  renderRoutesInView();
-}
-
-function overlapOffsetDeg(px) {
-  if (!map || !px) return 0;
-  // MapLibre zoom convention: z0 = whole world in 512px (one level lower than
-  // Leaflet's 256px-tile zoom for the same view), hence z + 1 here.
-  const z = map.getZoom() + 1;
-  const lat = map.getCenter().lat;
-  const metersPerPx =
-    (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z);
-  return (px * metersPerPx) / 111320; // degrees of latitude per `px` pixels
-}
-
-// --- rigid lane translation ---------------------------------------------------
-// A lane is a RIGID TRANSLATION of the line: every vertex moves by the SAME
-// constant vector, so corners, curve radii and segment lengths are preserved
-// exactly — the fanned copy is the original shape, just shifted sideways.
-// (Per-vertex perpendicular offsetting was abandoned on request: it distorts
-// bends and tapers at corridor ends.)
-//
-// The shift direction is computed ONCE per overlap group: the unit vector
-// perpendicular (right-hand) to the group's dominant canonical direction,
-// expressed in degree space ([sx, sy] with sx pre-divided by cos(latRef) so a
-// shift of `offsetDeg` covers the same number of PIXELS in any direction).
-// The corridor is oriented east-/north-dominant, so a negative multiplier
-// (slot 0 = earliest date) is the LEFT / TOP lane on screen.
-function applyLaneShift(path, sx, sy, offsetDeg) {
-  if (!offsetDeg) return path;
-  const dx = sx * offsetDeg;
-  const dy = sy * offsetDeg;
-  const out = new Array(path.length);
-  for (let i = 0; i < path.length; i += 1)
-    out[i] = [path[i][0] + dx, path[i][1] + dy];
-  return out;
 }
 
 // Exact-enough local metric distance used by final fit validation.  Unlike the
@@ -1691,8 +1641,12 @@ function smoothCurveStationJoins(groupInfo) {
   const ends = [];
   curves.forEach((curve, curveIndex) => {
     const trainIds = new Set();
-    (owners.get(curve) || []).forEach(({ gi }) => {
+    const curveOwners = owners.get(curve) || [];
+    let endpointNodeKeys = null;
+    curveOwners.forEach(({ gi }) => {
       Object.keys((gi && gi.mults) || {}).forEach((id) => trainIds.add(id));
+      if (!endpointNodeKeys && gi && gi._curveEndpointNodeKeys)
+        endpointNodeKeys = gi._curveEndpointNodeKeys;
     });
     [0, 1].forEach((side) => {
       const p = side === 0 ? curve.pts[0] : curve.pts[curve.pts.length - 1];
@@ -1715,6 +1669,10 @@ function smoothCurveStationJoins(groupInfo) {
         p,
         outward: [dx / len, dy / len],
         trainIds,
+        nodeKey:
+          endpointNodeKeys && endpointNodeKeys[side] != null
+            ? String(endpointNodeKeys[side])
+            : null,
       });
     });
   });
@@ -1731,24 +1689,35 @@ function smoothCurveStationJoins(groupInfo) {
       });
       if (!sharedTrains) continue;
       const metres = distanceMeters(a.p, b.p);
-      // Geometry-only station matching is a fallback (the fitted curves do
-      // not carry stable station ids), so keep it deliberately conservative.
-      // Long gaps are accepted only when the continuation is almost straight.
-      if (metres > 120) continue;
       const continuationDot = Math.max(
         -1,
         Math.min(1, -(a.outward[0] * b.outward[0] + a.outward[1] * b.outward[1])),
       );
       const turn = Math.acos(continuationDot);
-      if (turn > (60 * Math.PI) / 180) continue;
-      if (metres > 40 && turn > (25 * Math.PI) / 180) continue;
+      const exactNode = Boolean(
+        a.nodeKey && b.nodeKey && a.nodeKey === b.nodeKey,
+      );
+      // Stable snapped-node identity selects the station first; geometry then
+      // rejects only an implausible fold. When ids are missing or line-specific
+      // nodes differ, retain the deliberately conservative geometric fallback.
+      if (exactNode) {
+        if (metres > 120 || turn > (90 * Math.PI) / 180) continue;
+      } else {
+        if (metres > 120 || turn > (60 * Math.PI) / 180) continue;
+        if (metres > 40 && turn > (25 * Math.PI) / 180) continue;
+      }
       candidates.push({
         a,
         b,
         metres,
         turn,
         sharedTrains,
-        score: turn * 1200 + metres - Math.min(5, sharedTrains) * 4,
+        matchKind: exactNode ? "node-id" : "geometry",
+        score:
+          (exactNode ? -1000000 : 0) +
+          turn * 1200 +
+          metres -
+          Math.min(5, sharedTrains) * 4,
       });
   }
   candidates.sort((a, b) => a.score - b.score);
@@ -1819,6 +1788,9 @@ function smoothCurveStationJoins(groupInfo) {
             b: edge.meta.b.p,
             gapM: +edge.meta.metres.toFixed(1),
             turnDeg: +((edge.meta.turn * 180) / Math.PI).toFixed(2),
+            matchKind: edge.meta.matchKind,
+            nodeKey:
+              edge.meta.matchKind === "node-id" ? edge.meta.a.nodeKey : null,
           });
         }
       }
@@ -1914,6 +1886,9 @@ function smoothCurveStationJoins(groupInfo) {
       Math.PI
     ).toFixed(2);
     fitted.stationJoinMaxGapMeters = +worstGap.toFixed(1);
+    fitted.stationJoinIdMatchedCount = joinEdges.filter(
+      (edge) => edge.matchKind === "node-id",
+    ).length;
     fitted.fitType = "cubic-bspline-c2-station-continuous";
     component.forEach(({ curve }) => {
       (owners.get(curve) || []).forEach(({ gi }) => {
@@ -1944,8 +1919,8 @@ function runFitCurveJobs(jobs, joinGroups) {
     if (curve && job.nearParallel) curve.nearParallel = true;
     curveByKey.set(job.key, curve);
   });
-  // Minimal groupInfo mirror: smoothCurveStationJoins only reads gi.curve and
-  // the train-id KEYS of gi.mults, so lane multipliers are irrelevant here.
+  // Minimal groupInfo mirror: the join pass needs each fitted curve, its train
+  // membership, and the stable snapped-node keys for both curve endpoints.
   const mirror = new Map();
   (joinGroups || []).forEach((g) => {
     const mults = {};
@@ -1955,6 +1930,7 @@ function runFitCurveJobs(jobs, joinGroups) {
     mirror.set(g.groupKey, {
       curve: curveByKey.get(g.groupKey) || null,
       mults,
+      _curveEndpointNodeKeys: (g.endpointNodeKeys || []).slice(),
     });
   });
   const { roundedJoins, failures } = smoothCurveStationJoins(mirror);

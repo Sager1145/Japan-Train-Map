@@ -83,6 +83,22 @@ const RailOperatorBranding = (() => {
     阿里山林鐵: "阿里山林鐵",
   });
 
+  const HONG_KONG_COMPANY_LABELS = Object.freeze({
+    MTR: "MTR",
+    香港鐵路有限公司: "MTR",
+    "香港鐵路有限公司 MTR Corporation": "MTR",
+    "MTR Corporation Limited": "MTR",
+  });
+
+  const MACAO_COMPANY_LABELS = Object.freeze({
+    澳門輕軌: "澳門輕軌",
+    澳门轻轨: "澳門輕軌",
+    澳門輕軌股份有限公司: "澳門輕軌",
+    澳门轻轨股份有限公司: "澳門輕軌",
+    "Macao Light Rapid Transit Corporation, Limited": "澳門輕軌",
+    "Macao LRT": "澳門輕軌",
+  });
+
   // Company-level fallbacks for Japanese routes without a verified line
   // badge. Some older package assets are company marks (or worse, historical
   // predecessor/parent-company marks), so logoForLine() only treats package
@@ -315,6 +331,8 @@ const RailOperatorBranding = (() => {
   ]);
 
   const OPERATOR_LOGOS = Object.freeze({
+    MTR: "/rail/operator-logos/mtr-badge.png",
+    澳門輕軌: "/rail/operator-logos/macao-lrt-badge.png",
     台鐵: "/rail/operator-logos/tra.svg",
     台灣高鐵: "/rail/operator-logos/thsr.svg",
     台北捷運: "/rail/operator-logos/trtc.svg",
@@ -353,10 +371,23 @@ const RailOperatorBranding = (() => {
     "tw-krtc-r": "/rail/line-logos/krtc-r.svg",
     "tw-krtc-o": "/rail/line-logos/krtc-o.svg",
     "tw-klrt-c": "/rail/line-logos/krtc-c.svg",
+    "hk-mtr-lr-505": "/rail/line-logos/mtr-lr-505.svg",
+    "hk-mtr-lr-507": "/rail/line-logos/mtr-lr-507.svg",
+    "hk-mtr-lr-610": "/rail/line-logos/mtr-lr-610.svg",
+    "hk-mtr-lr-614": "/rail/line-logos/mtr-lr-614.svg",
+    "hk-mtr-lr-614p": "/rail/line-logos/mtr-lr-614p.svg",
+    "hk-mtr-lr-615": "/rail/line-logos/mtr-lr-615.svg",
+    "hk-mtr-lr-615p": "/rail/line-logos/mtr-lr-615p.svg",
+    "hk-mtr-lr-705": "/rail/line-logos/mtr-lr-705.svg",
+    "hk-mtr-lr-706": "/rail/line-logos/mtr-lr-706.svg",
+    "hk-mtr-lr-751": "/rail/line-logos/mtr-lr-751.svg",
+    "hk-mtr-lr-761p": "/rail/line-logos/mtr-lr-761p.svg",
   });
 
   function labelOne(name) {
     if (!name) return "";
+    if (MACAO_COMPANY_LABELS[name]) return MACAO_COMPANY_LABELS[name];
+    if (HONG_KONG_COMPANY_LABELS[name]) return HONG_KONG_COMPANY_LABELS[name];
     if (TAIWAN_COMPANY_LABELS[name]) return TAIWAN_COMPANY_LABELS[name];
     if (COMPANY_LABELS[name]) return COMPANY_LABELS[name];
     return name
@@ -397,6 +428,8 @@ const RailOperatorBranding = (() => {
     return (
       JAPAN_OPERATOR_LOGOS[rawOperator] ||
       JAPAN_PACKAGE_OPERATOR_LOGOS[rawOperator] ||
+      OPERATOR_LOGOS[MACAO_COMPANY_LABELS[rawOperator]] ||
+      OPERATOR_LOGOS[HONG_KONG_COMPANY_LABELS[rawOperator]] ||
       OPERATOR_LOGOS[normalizeTaiwanCompanyName(rawOperator)] ||
       null
     );

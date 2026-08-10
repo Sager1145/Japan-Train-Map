@@ -678,7 +678,7 @@ test("Taiwan precomputed parts include every added official-line journey", async
   const officialSections = await readJson(
     path.join(APP_DIR, "data", "rail-sections-tw.json"),
   );
-  assert.equal(manifest.total, 17);
+  assert.equal(manifest.total, 23);
   assert.equal(manifest.total, store.trains.length);
   assert.equal(manifest.solved, store.trains.length);
   assert.equal(manifest.unsolvable, 0);
@@ -686,6 +686,7 @@ test("Taiwan precomputed parts include every added official-line journey", async
   assert.equal(manifest.dates["2026-08-02"].length, 4);
   assert.equal(manifest.dates["2026-08-08"].length, 4);
   assert.equal(manifest.dates["2026-08-09"].length, 4);
+  assert.equal(manifest.dates["2026-08-10"].length, 6);
 
   const parts = await Promise.all(
     manifest.parts.map((partName) =>
@@ -759,6 +760,61 @@ test("Taiwan precomputed parts include every added official-line journey", async
       assert.deepEqual(feature.properties.used_institution_type_codes, ["3"]);
     });
   });
+
+  const kaohsiungIds = new Set([
+    "20260810_01_krtc_red_kaohsiung_gangshan_station",
+    "20260810_02_krtc_red_gangshan_station_siaogang",
+    "20260810_03_krtc_red_siaogang_sanduo",
+    "20260810_04_krtc_red_sanduo_kaisyuan",
+    "20260810_05_klrt_c3_counterclockwise_loop",
+    "20260810_06_krtc_red_kaisyuan_kaohsiung",
+  ]);
+  const kaohsiungParts = parts.filter((part) =>
+    kaohsiungIds.has(part.train.id),
+  );
+  assert.equal(kaohsiungParts.length, 6);
+  kaohsiungParts.forEach((part) => {
+    assert.equal(
+      part.route.features.length,
+      part.train.route_sections.length,
+      `${part.train.id} did not solve every physical station interval`,
+    );
+    part.route.features.forEach((feature) => {
+      assert.deepEqual(feature.properties.required_operator_names, [
+        "高雄捷運股份有限公司",
+      ]);
+      assert.deepEqual(feature.properties.used_institution_type_codes, ["3"]);
+    });
+  });
+  const kaohsiungRedParts = kaohsiungParts.filter(
+    (part) => part.train.train_type === "捷運",
+  );
+  assert.equal(kaohsiungRedParts.length, 5);
+  kaohsiungRedParts.forEach((part) => {
+    part.route.features.forEach((feature) => {
+      assert.deepEqual(feature.properties.required_line_names, [
+        "高雄捷運紅線",
+      ]);
+    });
+  });
+  const lightRailLoop = kaohsiungParts.find(
+    (part) => part.train.id === "20260810_05_klrt_c3_counterclockwise_loop",
+  );
+  assert.equal(lightRailLoop.route.features.length, 38);
+  lightRailLoop.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_line_names, [
+      "高雄環狀輕軌",
+    ]);
+  });
+  assert.deepEqual(
+    lightRailLoop.route.features
+      .filter((_, index) => index === 0 || index === 37)
+      .map((feature) => [feature.properties.from, feature.properties.to]),
+    [
+      ["前鎮之星", "凱旋瑞田"],
+      ["凱旋中華", "前鎮之星"],
+    ],
+  );
 
   const tra191 = parts.find(
     (part) =>

@@ -440,14 +440,13 @@ function mergeDrawnIndices(keepIdx, runs, nSeg) {
 }
 
 // Flatten cached route items into MapLibre route records. Returns
-// { records, expandRecords, groupInfo, spacingDeg }:
+// { records, expandRecords, groupInfo, spacingPx }:
 //
 //   records       — base + pick runs. One polyline per maximal stretch of
 //                   constant overlap MEMBERSHIP (same sharing-train set), so
 //                   run boundaries coincide exactly across all sharing
-//                   trains. The visible line stays on its TRUE track; the
-//                   invisible pickPath is the run rigidly translated into
-//                   the train's date-ordered lane.
+//                   trains. All source geometry stays on its TRUE track;
+//                   pooled GPU layers apply the date-ordered lane translation.
 //   expandRecords — one polyline per (train, line): the train's complete
 //                   course on its true track. When a group is hovered,
 //                   railmap.js translates every member train's complete
@@ -457,7 +456,7 @@ function mergeDrawnIndices(keepIdx, runs, nSeg) {
 //   groupInfo     — Map(groupKey → { sx, sy, mults: {tid: laneMultiplier} }):
 //                   the group's unit shift vector (degree space) and every
 //                   member's slot-centered lane multiplier.
-//   spacingDeg    — the current lane spacing (degrees) matching pickPath.
+//   spacingPx     — the constant on-screen lane spacing used by line-translate.
 //
 // Overlap detection and run boundaries use the ORIGINAL geometry (exact
 // shared N02 coordinates); drawn paths use the Douglas-Peucker subset plus
@@ -470,31 +469,14 @@ const ROUTE_SORT_TIER = 1e6;
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx(items);
-  const spacingDeg = overlapOffsetDeg(spacingPx);
   // Fast path (zoom/pan OR returning to an already-built scope): geometry,
-  // styles, runs, shift vectors and lane multipliers are unchanged — only
-  // re-express the pixel lane spacing in degrees and re-translate the pick
-  // lanes if the zoom drifted since this scope was last shown.
+  // styles, runs, shift vectors, lane multipliers and pixel spacing are all
+  // unchanged. MapLibre owns the pixel translation across view changes.
   const cachedBundle = sig ? _deckRecordsCacheBySig.get(sig) : null;
   if (cachedBundle) {
-    if (spacingDeg !== cachedBundle.spacingDeg) {
-      cachedBundle.records.forEach((r) => {
-        if (r.overlapCount > 1) {
-          r.pickPath = applyLaneShift(
-            r.path,
-            r.shiftX,
-            r.shiftY,
-            r.laneMult * spacingDeg,
-          );
-          r.pickWidth = Math.max(spacingPx, 6);
-        }
-      });
-      cachedBundle.spacingDeg = spacingDeg;
-    }
     // Per-scope flags must be restored on a cross-scope cache hit (they are
     // module-level state written by the build below).
     _deckHasOverlaps = cachedBundle.hasOverlaps;
-    _lastOverlapSpacingDeg = spacingDeg;
     return cachedBundle;
   }
   const overlap = getDeckOverlapMapCached(items);
@@ -752,9 +734,6 @@ function buildDeckRouteRecords(items) {
         }
         records.push({
           path: runLine,
-          pickPath: gi
-            ? applyLaneShift(runLine, gi.sx, gi.sy, mult * spacingDeg)
-            : runLine,
           shiftX: gi ? gi.sx : 0,
           shiftY: gi ? gi.sy : 0,
           laneMult: mult,
@@ -809,7 +788,13 @@ function buildDeckRouteRecords(items) {
     const queueFitJob = (key, line, nearParallel) => {
       fitJobs.push({ key, line, nearParallel: Boolean(nearParallel) });
     };
-    groupInfo.forEach((gi) => rebuildGroupRepresentativeGeometry(gi));
+    groupInfo.forEach((gi) => {
+      rebuildGroupRepresentativeGeometry(gi);
+      gi._curveEndpointNodeKeys = [
+        overlapNodeKey(gi._line[0]),
+        overlapNodeKey(gi._line[gi._line.length - 1]),
+      ];
+    });
     const parent = new Map();
     const find = (k) => {
       let r = k;
@@ -907,6 +892,10 @@ function buildDeckRouteRecords(items) {
           corridorAliases.set(k, k);
           corridorMasters.add(k);
           g._corridorJoins = [];
+          g._curveEndpointNodeKeys = [
+            overlapNodeKey(g._line[0]),
+            overlapNodeKey(g._line[g._line.length - 1]),
+          ];
           if (deferFit) {
             g.curve = null;
             queueFitJob(k, g._line);
@@ -948,6 +937,11 @@ function buildDeckRouteRecords(items) {
       const curve = !deferFit && chain ? smoothCorridorCurve(chain) : null;
       const canonicalKey = c.keys.slice().sort()[0];
       const master = groupInfo.get(canonicalKey);
+      if (chain)
+        master._curveEndpointNodeKeys = [
+          overlapNodeKey(chain[0]),
+          overlapNodeKey(chain[chain.length - 1]),
+        ];
       const nearInfos = c.keys
         .map((k) => groupInfo.get(k)._nearParallel)
         .filter(Boolean);
@@ -1032,7 +1026,6 @@ function buildDeckRouteRecords(items) {
       if (g) {
         r.shiftX = g.sx;
         r.shiftY = g.sy;
-        r.pickPath = applyLaneShift(r.path, g.sx, g.sy, r.laneMult * spacingDeg);
       }
       const tid = r.train && r.train.id;
       const rk = canonicalKey + "::" + tid;
@@ -1071,6 +1064,7 @@ function buildDeckRouteRecords(items) {
         joinGroups.push({
           groupKey,
           trainIds: Object.keys(gi.mults || {}),
+          endpointNodeKeys: (gi._curveEndpointNodeKeys || []).slice(),
         });
       });
       pendingDeferredFit = { jobs: fitJobs, joinGroups };
@@ -1115,12 +1109,11 @@ function buildDeckRouteRecords(items) {
     records,
     expandRecords,
     groupInfo,
-    spacingDeg,
+    spacingPx,
     hasOverlaps: _deckHasOverlaps,
   };
   if (pendingDeferredFit) bundle._pendingFit = pendingDeferredFit;
   if (sig) _deckCachePut(_deckRecordsCacheBySig, sig, bundle);
-  _lastOverlapSpacingDeg = spacingDeg;
   if (bundle._pendingFit) scheduleFitCurveWorker(bundle);
   return bundle;
 }

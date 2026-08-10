@@ -1,6 +1,6 @@
 # Taiwan sample train sources
 
-The bundled Taiwan store contains seventeen journeys dated 2026-08-02 through
+The bundled Taiwan store contains twenty-three journeys dated 2026-08-02 through
 2026-08-13. Three Taipei Metro trips were added for the 2026-08-02 itinerary:
 
 - Bannan Line, Taipei Main Station to Ximen at about 14:45.
@@ -27,6 +27,18 @@ Eight trips were added for the 2026-08-08 and 2026-08-09 itinerary:
 - Alishan train 8, Alishan to Chiayi on 2026-08-09.
 - TRA Tze-Chiang Limited Express (3000) train 125, Chiayi to Kaohsiung on
   2026-08-09.
+
+Six Kaohsiung Metro and Light Rail trips were added for 2026-08-10:
+
+- Red Line, Kaohsiung Main Station to Gangshan Station.
+- The next southbound Red Line train, Gangshan Station to Siaogang.
+- The next northbound Red Line train, Siaogang to Sanduo Shopping District.
+- A later southbound Red Line train, Sanduo Shopping District to Kaisyuan,
+  timed to leave about ten minutes for the Light Rail transfer.
+- A complete counterclockwise Light Rail circuit from C3 Cianjhen Star, first
+  heading toward C2 Kaisyuan Rueitian, and returning to C3.
+- The next feasible northbound Red Line train after the C3/R6 walking
+  transfer, Kaisyuan to Kaohsiung Main Station.
 
 ## Official Taipei Metro checks for the August 2 additions
 
@@ -123,6 +135,47 @@ Eight trips were added for the 2026-08-08 and 2026-08-09 itinerary:
     The 24 stations absent from the official call list are recorded as
     `pass_through`.
 
+## Official timetable checks for the August 10 additions
+
+- Kaohsiung Metro ordinary-weekday station timetables, updated 2026-07-01:
+  <https://www.krtc.com.tw/Guide/train_times?n=R11>
+  <https://www.krtc.com.tw/Guide/train_times?n=R24>
+  <https://www.krtc.com.tw/Guide/train_times?n=RK1>
+  <https://www.krtc.com.tw/Guide/train_times?n=R3>
+  <https://www.krtc.com.tw/Guide/train_times?n=R8>
+  <https://www.krtc.com.tw/Guide/train_times?n=R6>
+  - The first train leaves R11 Kaohsiung Main Station at 14:38, calls at R24
+    `岡山高醫` at 15:08, and continues to the requested RK1 `岡山車站`
+    terminal at 15:10.
+  - The next southbound train leaves RK1 at 15:16 and reaches R3 Siaogang at
+    16:06. The next northbound train leaves R3 at 16:12 and reaches R8 Sanduo
+    Shopping District at 16:24. To keep the final Metro-to-Light-Rail transfer
+    at ten minutes, the selected southbound train leaves R8 at 17:03, calls at
+    R7 at 17:05, and reaches R6 Kaisyuan at 17:08.
+  - After the Light Rail circuit and the approximately 80-metre walk from C3
+    Cianjhen Star, the next feasible northbound Red Line train leaves R6 at
+    18:54 and reaches R11 at 19:04.
+- Kaohsiung Metro official Red/Orange Line station-to-station travel-time
+  table, updated 2026-03-02:
+  <https://www.krtc.com.tw/Guide/time_between_train>
+  - The table supplies terminal arrivals where station departure-time pages do
+    not list arrivals, including R11 to RK1 in 32 minutes and RK1 to R3 in 50
+    minutes.
+- C3 Cianjhen Star ordinary-weekday Light Rail timetable, updated 2026-08-04:
+  <https://www.krtc.com.tw/KLRT/train_timesLRT?n=C3>
+  - From C3 toward C2 Kaisyuan Rueitian is the counterclockwise (`逆行`)
+    direction. The closest official departure to the requested 17:20 is
+    17:18.
+- Kaohsiung Light Rail official station-to-station travel-time table, updated
+  2026-03-02:
+  <https://www.krtc.com.tw/KLRT/time_between_train>
+  - A complete counterclockwise circuit from C3 takes 89 minutes, returning
+    at 18:47. The JSON enumerates all 38 physical intervals and repeats C3 as
+    the destination, for 39 stops in total.
+  - Every Metro and Light Rail station is a passenger stop. Intermediate
+    timestamps reproduce the official station departure tables or are derived
+    from the official directional travel-time matrix.
+
 ## Official rail geometry and station identifiers
 
 - Official station ids, names, coordinates, station order, and line shapes:
@@ -168,6 +221,13 @@ Rebuild the August 8-9 additions idempotently with:
 ```sh
 cd app
 node scripts/add-august-8-9-taiwan-itinerary.mjs
+```
+
+Rebuild the August 10 Kaohsiung additions idempotently with:
+
+```sh
+cd app
+node scripts/add-august-10-kaohsiung-itinerary.mjs
 ```
 
 Rebuild the Airport MRT route after refreshing the Taiwan package with:

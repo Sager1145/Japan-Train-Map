@@ -619,7 +619,82 @@ async function importCanonicalStoreAppendProgressive(json, onProgress) {
 // from the airport-MRT corridor with TDX StationUIDs, so a new Taiwan train
 // never carries Japanese stops into the Taiwan store.
 function createBlankTrain() {
-  return activeCountry === "tw" ? createBlankTrainTw() : createBlankTrainJp();
+  if (activeCountry === "tw") return createBlankTrainTw();
+  if (activeCountry === "hk")
+    return createBlankRegionalTrain({
+      id: "HK-MTR",
+      trainType: "港鐵",
+      company: "香港鐵路有限公司",
+      origin: "香港",
+      destination: "機場",
+      originCode: "AEL-MTR-HOK",
+      destinationCode: "AEL-MTR-AIR",
+      lineName: "機場快綫",
+      color: "#1C7670",
+    });
+  if (activeCountry === "mo")
+    return createBlankRegionalTrain({
+      id: "MO-LRT",
+      trainType: "輕軌",
+      company: "澳門輕軌股份有限公司",
+      origin: "媽閣",
+      destination: "海洋",
+      originCode: "MLM-TAIPA-MLM-BARRA",
+      destinationCode: "MLM-TAIPA-MLM-OCEAN",
+      lineName: "氹仔線",
+      color: "#72BF44",
+    });
+  return createBlankTrainJp();
+}
+
+function createBlankRegionalTrain(config) {
+  return {
+    id: config.id,
+    number: "",
+    train_type: config.trainType,
+    company: config.company,
+    origin: config.origin,
+    destination: config.destination,
+    direction: "down",
+    visible: true,
+    style: { color: config.color },
+    route_policy: {
+      mode: "single_primary_route",
+      jr_only: false,
+      allow_alternatives: false,
+      allow_browser_straight_line_fallback: false,
+      allowed_institution_type_codes: ["4"],
+      preferred_line_names: [config.lineName],
+      preferred_operator_names: [config.company],
+      institution_filter_mode: "hard",
+    },
+    route_sections: [
+      {
+        from_n02_station_code: config.originCode,
+        to_n02_station_code: config.destinationCode,
+        line_names: [config.lineName],
+        operator_names: [config.company],
+      },
+    ],
+    stops: [
+      {
+        name: config.origin,
+        n02_station_code: config.originCode,
+        arrival: null,
+        departure: null,
+        stop_type: "origin",
+        ride_segment: true,
+      },
+      {
+        name: config.destination,
+        n02_station_code: config.destinationCode,
+        arrival: null,
+        departure: null,
+        stop_type: "destination",
+        ride_segment: true,
+      },
+    ],
+  };
 }
 
 function createBlankTrainTw() {

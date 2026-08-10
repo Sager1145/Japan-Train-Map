@@ -57,7 +57,7 @@
   // line, never across the not-yet-expanded fan region, so every record's
   // hit geometry sits on the TRUE TRACK (where the line is actually drawn),
   // narrow width. The open fan's per-lane hit areas live in the separate
-  // fan-scoped source (routePickFanFC below), so this dataset never depends
+  // fan-scoped source (routePickFanBaseFC below), so this dataset never depends
   // on fan state or lane spacing. `idx` maps a picked feature back to the
   // full record in _records (tooltip lane info, click target, group key).
   function routePickRecordsToFC(records, groupInfo) {
@@ -92,36 +92,19 @@
     return { type: "FeatureCollection", features };
   }
 
-  // FAN-ONLY pick geometry: just the open group's (or the transitioning
-  // groups') member records, translated into their per-lane paths — the
-  // dynamic complement of the static routePickRecordsToFC dataset above.
-  // Uploaded into its own small source so opening/closing a fan never
-  // re-tiles the whole static pick dataset. `idx` still indexes _records.
-  function routePickFanFC(records, groupInfo, openGroup, fanDir, fanSpacingDeg, transition) {
-    if (!openGroup && !transition) return EMPTY_FC;
+  // FAN-ONLY pick geometry: true-track records for the active group(s). Each
+  // tid gets its own pooled layer; that layer's constant line-translate moves
+  // the geometry and its native MapLibre hit area together on the GPU.
+  function routePickFanBaseFC(records, groupInfo, groups) {
+    const active = new Set((groups || []).filter(Boolean));
+    if (!active.size) return EMPTY_FC;
     const features = [];
     records.forEach((r, i) => {
-      const transitioning = Boolean(
-        transition &&
-          (r.groupKey === transition.fromGroup ||
-            r.groupKey === transition.toGroup),
-      );
-      if (!transitioning && !(openGroup && r.groupKey === openGroup)) return;
+      if (!active.has(r.groupKey)) return;
       const tid = (r.train && r.train.id) || "";
-      let coords;
-      if (transitioning) {
-        const off = transitionOffsetForTid(transition, tid, fanSpacingDeg, fanDir);
-        coords = r.path.map((p) => [p[0] + off.dx, p[1] + off.dy]);
-      } else if (fanDir && r.laneMult != null && fanSpacingDeg) {
-        const dx = fanDir.sx * r.laneMult * fanSpacingDeg;
-        const dy = fanDir.sy * r.laneMult * fanSpacingDeg;
-        coords = r.path.map((p) => [p[0] + dx, p[1] + dy]);
-      } else {
-        coords = r.pickPath || r.path;
-      }
       features.push({
         type: "Feature",
-        geometry: { type: "LineString", coordinates: coords },
+        geometry: { type: "LineString", coordinates: r.path },
         properties: {
           idx: i,
           tid,
@@ -132,34 +115,13 @@
     });
     if (groupInfo)
       groupInfo.forEach((gi, groupKey) => {
-        const transitioning = Boolean(
-          transition &&
-            (groupKey === transition.fromGroup ||
-              groupKey === transition.toGroup),
-        );
-        if (!transitioning && !(openGroup && groupKey === openGroup)) return;
+        if (!active.has(groupKey)) return;
         (gi.pickBridges || []).forEach((bridge) => {
-          let dx;
-          let dy;
-          if (transitioning) {
-            const off = transitionOffsetForTid(
-              transition,
-              bridge.tid,
-              fanSpacingDeg,
-              fanDir,
-            );
-            dx = off.dx;
-            dy = off.dy;
-          } else {
-            const d = fanDir || gi;
-            dx = d.sx * bridge.laneMult * fanSpacingDeg;
-            dy = d.sy * bridge.laneMult * fanSpacingDeg;
-          }
           features.push({
             type: "Feature",
             geometry: {
               type: "LineString",
-              coordinates: bridge.path.map((p) => [p[0] + dx, p[1] + dy]),
+              coordinates: bridge.path,
             },
             properties: {
               idx: bridge.idx,
@@ -174,14 +136,8 @@
   }
 
   // ── expand-FC template cache ──────────────────────────────────────────
-  // The expand slide / fan-direction ease / group transition all re-emit the
-  // SAME member courses every animation frame with only the (dx, dy) offsets
-  // changed. Allocating a fresh FeatureCollection — thousands of tiny [x, y]
-  // arrays — per frame produced constant GC churn during the hover slide.
-  // Instead, build the feature skeletons (properties + coordinate buffers)
-  // once per (expandRecords, membership) pair and MUTATE the coordinates in
-  // place each frame. Safe because MapLibre's geojson setData serializes the
-  // data when it is handed over; later mutations only ever feed newer frames.
+  // Opening a fan uploads each member's true complete course exactly once.
+  // Animation changes only per-layer line-translate paint values afterwards.
   let _expandTpl = { records: null, key: "", features: null, indices: null };
   function _expandTemplate(expandRecords, memberOf) {
     const indices = [];
@@ -211,90 +167,12 @@
     _expandTpl = { records: expandRecords, key, features, indices };
     return _expandTpl;
   }
-  function _writeOffsets(tpl, expandRecords, offsetFor) {
-    for (let k = 0; k < tpl.features.length; k += 1) {
-      const i = tpl.indices[k];
-      const src = expandRecords[i].path;
-      const dst = tpl.features[k].geometry.coordinates;
-      const off = offsetFor(tpl.features[k].properties.tid);
-      for (let j = 0; j < src.length; j += 1) {
-        dst[j][0] = src[j][0] + off.dx;
-        dst[j][1] = src[j][1] + off.dy;
-      }
-    }
+
+  function routeExpandBaseFC(expandRecords, tids) {
+    const members = new Set((tids || []).filter(Boolean));
+    if (!members.size) return EMPTY_FC;
+    const tpl = _expandTemplate(expandRecords, (tid) => members.has(tid));
     return { type: "FeatureCollection", features: tpl.features };
-  }
-
-  // HOVER-EXPAND geometry for ONE hovered group: every member train's
-  // complete course (all its lines), RIGIDLY translated into its lane by the
-  // group's constant shift vector — corners, radii and lengths untouched
-  // (colorA has the record's alpha baked in). `gi` comes from app.js's
-  // buildDeckRouteRecords groupInfo; spacingDeg is the current lane spacing.
-  function routeExpandFC(expandRecords, gi, spacingDeg, dir) {
-    if (!gi) return EMPTY_FC;
-    const d = dir || gi; // dynamic hover direction, else the static vector
-    const tpl = _expandTemplate(
-      expandRecords,
-      (tid) => gi.mults[tid] !== undefined,
-    );
-    return _writeOffsets(tpl, expandRecords, (tid) => {
-      const mult = gi.mults[tid];
-      return {
-        dx: d.sx * mult * spacingDeg,
-        dy: d.sy * mult * spacingDeg,
-      };
-    });
-  }
-
-  function transitionOffsetForTid(transition, tid, spacingDeg, toDir) {
-    const fromGi = transition.fromGi;
-    const toGi = transition.toGi;
-    const hasFromOffset =
-      transition.fromOffsets &&
-      Object.prototype.hasOwnProperty.call(transition.fromOffsets, tid);
-    const fromMult =
-      !hasFromOffset &&
-      fromGi &&
-      Object.prototype.hasOwnProperty.call(fromGi.mults, tid)
-        ? fromGi.mults[tid]
-        : 0;
-    const toMult =
-      toGi && Object.prototype.hasOwnProperty.call(toGi.mults, tid)
-        ? toGi.mults[tid]
-        : 0;
-    const fromDir = transition.fromDir || fromGi || { sx: 0, sy: 0 };
-    const nextDir = toDir || toGi || { sx: 0, sy: 0 };
-    const t = Math.max(0, Math.min(1, transition.progress || 0));
-    const ox = hasFromOffset
-      ? transition.fromOffsets[tid].x * spacingDeg
-      : fromDir.sx * fromMult * spacingDeg;
-    const oy = hasFromOffset
-      ? transition.fromOffsets[tid].y * spacingDeg
-      : fromDir.sy * fromMult * spacingDeg;
-    const nx = nextDir.sx * toMult * spacingDeg;
-    const ny = nextDir.sy * toMult * spacingDeg;
-    return { dx: ox + (nx - ox) * t, dy: oy + (ny - oy) * t };
-  }
-
-  // Interpolate the UNION of two overlap groups. Shared trains travel directly
-  // from their old lane to the new one; old-only trains glide home while
-  // new-only trains leave the true track. No source swap is visually exposed.
-  function routeExpandTransitionFC(
-    expandRecords,
-    transition,
-    spacingDeg,
-    toDir,
-  ) {
-    if (!transition || !transition.fromGi || !transition.toGi) return EMPTY_FC;
-    const isMember = (tid) =>
-      (transition.fromOffsets &&
-        Object.prototype.hasOwnProperty.call(transition.fromOffsets, tid)) ||
-      Object.prototype.hasOwnProperty.call(transition.fromGi.mults, tid) ||
-      Object.prototype.hasOwnProperty.call(transition.toGi.mults, tid);
-    const tpl = _expandTemplate(expandRecords, isMember);
-    return _writeOffsets(tpl, expandRecords, (tid) =>
-      transitionOffsetForTid(transition, tid, spacingDeg, toDir),
-    );
   }
 
   // Arc-length point sampling on a fitted curve ({pts, cum, totalMeters}).
@@ -329,6 +207,7 @@
   // is more than 70 physical metres away from the hinted neighbourhood.
   function fanPerpAt(curve, lngLat, hintS) {
     const pts = curve.pts;
+    const cum = curve.cum;
     const cs = curve.coslat;
     const px = lngLat.lng * cs;
     const py = lngLat.lat;
@@ -338,7 +217,17 @@
       6500,
       Math.max(1200, (curve.radiusMeters || 800) * 2.4),
     );
-    for (let i = 0; i < pts.length - 1; i += 1) {
+    const lowerBound = (target) => {
+      let lo = 0;
+      let hi = cum.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (cum[mid] < target) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
+    const hitOnSegment = (i) => {
       const ax = pts[i][0] * cs;
       const ay = pts[i][1];
       const vx = pts[i + 1][0] * cs - ax;
@@ -349,20 +238,47 @@
       const dx = px - (ax + vx * t);
       const dy = py - (ay + vy * t);
       const d2 = dx * dx + dy * dy;
-      const s = curve.cum[i] + (curve.cum[i + 1] - curve.cum[i]) * t;
-      const hit = { d2, s, i, t, tx: vx, ty: vy };
-      if (!globalHit || d2 < globalHit.d2) globalHit = hit;
-      if (
-        hintS != null &&
-        Math.abs(s - hintS) <= localRadius &&
-        (!localHit || d2 < localHit.d2)
-      )
-        localHit = hit;
+      const s = cum[i] + (cum[i + 1] - cum[i]) * t;
+      return { d2, s, i, t, tx: vx, ty: vy };
+    };
+    const scan = (start, end, best) => {
+      let hit = best || null;
+      for (let i = start; i <= end; i += 1) {
+        const candidate = hitOnSegment(i);
+        if (!hit || candidate.d2 < hit.d2) hit = candidate;
+      }
+      return hit;
+    };
+    let localStart = 0;
+    let localEnd = -1;
+    if (hintS != null && cum && cum.length === pts.length) {
+      localStart = Math.max(0, lowerBound(hintS - localRadius) - 1);
+      localEnd = Math.min(
+        pts.length - 2,
+        lowerBound(hintS + localRadius) - 1,
+      );
+      localHit = scan(localStart, localEnd, null);
+      // If the hinted branch is within the 70 m branch tolerance, no other
+      // branch can beat it by MORE than 70 m (distance is non-negative), so
+      // the expensive whole-curve scan cannot change the answer.
+      const toleranceDeg = 70 / 111320;
+      if (localHit && localHit.d2 <= toleranceDeg * toleranceDeg)
+        globalHit = localHit;
+    }
+    if (!globalHit) {
+      if (localHit) {
+        globalHit = localHit;
+        globalHit = scan(0, localStart - 1, globalHit);
+        globalHit = scan(localEnd + 1, pts.length - 2, globalHit);
+      } else {
+        globalHit = scan(0, pts.length - 2, null);
+      }
     }
     if (!globalHit) return { x: 0, y: -1, s: 0, distance2: Infinity };
     const toleranceDeg = 70 / 111320;
+    const allowedLocalDistance = Math.sqrt(globalHit.d2) + toleranceDeg;
     const hit =
-      localHit && localHit.d2 <= globalHit.d2 + toleranceDeg * toleranceDeg
+      localHit && localHit.d2 <= allowedLocalDistance * allowedLocalDistance
         ? localHit
         : globalHit;
     const dirs = curve.dirs;
@@ -452,6 +368,8 @@
               curve.actualMaxDeviationMeters || 0,
             ),
             stationJoinCount: curve.stationJoinCount || 0,
+            stationJoinIdMatchedCount:
+              curve.stationJoinIdMatchedCount || 0,
             stationJoinRadiusRelaxed: curve.stationJoinRadiusRelaxed === true,
             acceptedMinRadiusM:
               curve.acceptedMinRadiusMeters == null
@@ -521,6 +439,7 @@
     let maxDeviationRatio = 0;
     let stationContinuousCurves = 0;
     let stationJoinsRounded = 0;
+    let stationJoinsIdMatched = 0;
     let stationJoinRadiusRelaxedCurves = 0;
     const fitTypes = new Set();
     const radiusFlaggedGroups = [];
@@ -541,6 +460,7 @@
       if (curve.stationJoinCount > 0) {
         stationContinuousCurves += 1;
         stationJoinsRounded += curve.stationJoinCount;
+        stationJoinsIdMatched += curve.stationJoinIdMatchedCount || 0;
       }
       if (
         curve.requestedMinRadiusMeters > 0 &&
@@ -741,6 +661,7 @@
       nearParallelSamples: nearParallelSamples.slice(0, 100),
       stationContinuousCurves,
       stationJoinsRounded,
+      stationJoinsIdMatched,
       stationJoinRadiusRelaxedCurves,
       stationJoinFailureCount: stationJoinFailures.length,
       stationJoinFailures: stationJoinFailures.slice(0, 20),
@@ -837,10 +758,8 @@
   global.RailMapGeometry = {
     routeRecordsToFC,
     routePickRecordsToFC,
-    routePickFanFC,
-    routeExpandFC,
-    routeExpandTransitionFC,
-    transitionOffsetForTid,
+    routePickFanBaseFC,
+    routeExpandBaseFC,
     curvePointAt,
     fanPerpAt,
     fitCurvesToFC,

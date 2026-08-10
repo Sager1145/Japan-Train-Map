@@ -15,7 +15,7 @@ const { countrySuffixed } = require("../public/app-core.js");
 
 // Countries the server hosts a train store for (the frontend's
 // SUPPORTED_COUNTRIES mirrors this list in app-config.js).
-const STORE_COUNTRIES = ["jp", "tw"];
+const STORE_COUNTRIES = ["jp", "tw", "hk", "mo"];
 
 const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
 const STATIC_CACHE_CONTROL = {
@@ -100,7 +100,7 @@ function createApp({
       train_store: "/api/train-store",
       train_stores: Object.keys(trainStores).map((name) => `/api/${name}`),
       events: "/api/events",
-      agent_import: "/api/agent/import?country=jp|tw",
+      agent_import: "/api/agent/import?country=jp|tw|hk|mo",
       live_clients: liveEvents.clientCount,
     });
   });

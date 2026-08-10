@@ -34,20 +34,12 @@
       const map = this._map;
       const self = this;
 
-      // While a fan is open, follow the zoom CONTINUOUSLY: re-translate the
-      // expanded lanes each frame at the effective (zoom-rescaled) spacing so
-      // they hold their on-screen positions through the whole gesture instead
-      // of drifting apart and snapping back at zoomend. One push per frame.
+      // The hover-region debug geometry is source-backed and therefore still
+      // follows zoom. Fan lanes themselves use pixel-valued line-translate,
+      // so MapLibre keeps their spacing constant without any zoom-time work.
       map.on("zoom", () => {
         if (self._hoverRegionsVisible && self._hoverDebugState)
           self._pushHoverRegions(self._hoverDebugState);
-        if (!self._expandedGroup && !self._animGroup) return;
-        if (self._zoomExpandRaf) return;
-        self._zoomExpandRaf = requestAnimationFrame(() => {
-          self._zoomExpandRaf = null;
-          const g = self._expandedGroup || self._animGroup;
-          if (g) self._pushExpandFC(g);
-        });
       });
 
       // preferLanes (hover only): while a fan is expanded, the fanned trains'
@@ -75,6 +67,69 @@
       const TOUCH_ROUTE_PAD_PX = 16;
       const TOUCH_MARKER_PAD_PX = 12;
 
+      // queryRenderedFeatures returns the source geometry, so a merged outer
+      // query still needs this cheap screen-space check to preserve the
+      // deliberately smaller 5px sticky route pad. The pick line's own width
+      // expands the box just as MapLibre's rendered-line query does.
+      const segmentIntersectsBox = (a, b, radius) => {
+        let t0 = 0;
+        let t1 = 1;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const clip = (p, q) => {
+          if (Math.abs(p) < 1e-12) return q >= 0;
+          const r = q / p;
+          if (p < 0) {
+            if (r > t1) return false;
+            if (r > t0) t0 = r;
+          } else {
+            if (r < t0) return false;
+            if (r < t1) t1 = r;
+          }
+          return true;
+        };
+        return (
+          clip(-dx, a.x + radius) &&
+          clip(dx, radius - a.x) &&
+          clip(-dy, a.y + radius) &&
+          clip(dy, radius - a.y)
+        );
+      };
+      const routeFeatureWithinPad = (feature, point, pad) => {
+        if (!feature || !feature.geometry || typeof map.project !== "function")
+          return true;
+        const geometry = feature.geometry;
+        const lines =
+          geometry.type === "LineString"
+            ? [geometry.coordinates]
+            : geometry.type === "MultiLineString"
+              ? geometry.coordinates
+              : [];
+        if (!lines.length) return true;
+        const layerId = feature.layer && feature.layer.id;
+        const translate =
+          layerId && typeof map.getPaintProperty === "function"
+            ? map.getPaintProperty(layerId, "line-translate")
+            : null;
+        const tx = Array.isArray(translate) ? Number(translate[0]) || 0 : 0;
+        const ty = Array.isArray(translate) ? Number(translate[1]) || 0 : 0;
+        const halfWidth = Math.max(
+          0,
+          (Number(feature.properties && feature.properties.pickWidth) || 0) / 2,
+        );
+        const radius = pad + halfWidth;
+        for (const line of lines) {
+          for (let i = 0; i < line.length - 1; i += 1) {
+            const pa = map.project(line[i]);
+            const pb = map.project(line[i + 1]);
+            const a = { x: pa.x + tx - point.x, y: pa.y + ty - point.y };
+            const b = { x: pb.x + tx - point.x, y: pb.y + ty - point.y };
+            if (segmentIntersectsBox(a, b, radius)) return true;
+          }
+        }
+        return false;
+      };
+
       function queryAt(point, preferLanes, stickyTids) {
         const sticky = stickyTids && stickyTids.length ? stickyTids : null;
         const markerLayers = [
@@ -88,9 +143,11 @@
         ].filter((id) => map.getLayer(id));
         // Fan lanes first: while a fan is open its per-lane hit paths (small
         // dedicated source) take precedence over the static true-track areas.
-        const pickLayers = [TRAIN_PICK_FAN_LAYER, TRAIN_PICK_LAYER].filter(
-          (id) => map.getLayer(id),
-        );
+        const pickLayers = self
+          ._fanPickLayerIds()
+          .concat(TRAIN_PICK_LAYER)
+          .filter((id) => map.getLayer(id));
+        const fanPickLayers = new Set(self._fanPickLayerIds());
         const markerPad = coarsePointer.matches
           ? TOUCH_MARKER_PAD_PX
           : HOVER_PICK_PAD_PX;
@@ -107,31 +164,30 @@
             : coarsePointer.matches
               ? TOUCH_ROUTE_PAD_PX
               : HOVER_PICK_PAD_PX;
-        const routeBbox =
-          routePad === markerPad
-            ? bbox
-            : [
-                [point.x - routePad, point.y - routePad],
-                [point.x + routePad, point.y + routePad],
-              ];
         // Hover queries used to fan out to 3-4 queryRenderedFeatures per
-        // frame (markers box + exact point + padded route fallback). When the
-        // marker and route boxes coincide — every state except an
-        // engaged-sticky hover, whose route pad is wider — ONE box query
-        // serves both, partitioned by layer; and the exact-point lane
-        // resolution below runs only when that box proved a route is nearby
-        // at all. Idle travel over empty ground now pays one query per frame.
+        // frame (markers box + exact point + padded route fallback). Fine
+        // pointers now query the 8px outer box ONCE, partition by layer, then
+        // screen-filter sticky route candidates back to their intentional 5px
+        // pad. The exact-point lane resolution runs only when that box proved
+        // a route is nearby at all. Idle travel pays one query per frame and
+        // an engaged fan pays at most two without becoming magnetic.
         const isPickFeat = (f) =>
           f.layer &&
-          (f.layer.id === TRAIN_PICK_FAN_LAYER || f.layer.id === TRAIN_PICK_LAYER);
+          (fanPickLayers.has(f.layer.id) || f.layer.id === TRAIN_PICK_LAYER);
         let mk = [];
-        let boxRouteFeats = null; // null = route box not queried yet (pads differ)
-        if (routeBbox === bbox && pickLayers.length) {
+        let boxRouteFeats = null;
+        if (routePad <= markerPad && pickLayers.length) {
           const all = map.queryRenderedFeatures(bbox, {
             layers: markerLayers.concat(pickLayers),
           });
           mk = all.filter((f) => !isPickFeat(f));
           boxRouteFeats = all.filter(isPickFeat);
+          // Equal pads mean the outer box IS the route pad — MapLibre already
+          // applied it. Only the tighter sticky pad needs the screen filter.
+          if (routePad < markerPad)
+            boxRouteFeats = boxRouteFeats.filter((f) =>
+              routeFeatureWithinPad(f, point, routePad),
+            );
         } else if (markerLayers.length) {
           mk = map.queryRenderedFeatures(bbox, { layers: markerLayers });
         }
@@ -195,6 +251,10 @@
             if (!routeHit) routeHit = routeFrom(boxRouteFeats);
           }
         } else {
+          const routeBbox = [
+            [point.x - routePad, point.y - routePad],
+            [point.x + routePad, point.y + routePad],
+          ];
           routeHit = routeFrom(
             map.queryRenderedFeatures(point, { layers: pickLayers }),
           );
@@ -260,9 +320,10 @@
             [e.point.x - TOUCH_ROUTE_PAD_PX, e.point.y - TOUCH_ROUTE_PAD_PX],
             [e.point.x + TOUCH_ROUTE_PAD_PX, e.point.y + TOUCH_ROUTE_PAD_PX],
           ];
-          const layers = [TRAIN_PICK_FAN_LAYER, TRAIN_PICK_LAYER].filter(
-            (id) => map.getLayer(id),
-          );
+          const layers = self
+            ._fanPickLayerIds()
+            .concat(TRAIN_PICK_LAYER)
+            .filter((id) => map.getLayer(id));
           const seenTids = new Set();
           const candidates = [];
           map.queryRenderedFeatures(box, { layers }).forEach((f) => {
@@ -292,7 +353,7 @@
 
       // Coalesce hover work to one pass per animation frame. mousemove can
       // fire at 120+ Hz on high-refresh pointing devices while each pass costs
-      // up to four queryRenderedFeatures + tooltip DOM writes — frame-scale
+      // rendered-feature queries + tooltip DOM writes — frame-scale
       // work. Only the latest pointer position matters, so intermediate events
       // are dropped instead of queued.
       const processHover = () => {

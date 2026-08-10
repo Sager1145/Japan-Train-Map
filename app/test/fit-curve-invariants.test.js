@@ -43,7 +43,8 @@ function loadHooks(settings = {}) {
       validateFittedCurveDeviation,
       rebuildGroupRepresentativeGeometry,
       smoothCorridorCurve,
-      smoothStandaloneCorridorRun
+      smoothStandaloneCorridorRun,
+      runFitCurveJobs
     })`,
     context,
   );
@@ -116,6 +117,53 @@ test("a snapped junction still requires compatible endpoint tangents", () => {
   const branch = { ...base, id: "branch", key: "branch", out: [0, -1] };
   assert.ok(corridorEndpointPair(incoming, straight));
   assert.strictEqual(corridorEndpointPair(incoming, branch), null);
+});
+
+test("station joins prefer a shared snapped-node id over a straighter geometric neighbour", () => {
+  const { runFitCurveJobs } = loadHooks({
+    fitCurvePrecision: 80,
+    fitCurveMinRadius: 800,
+    fitCurveMinDetail: 600,
+    fitCurveMaxDeviation: 1000,
+  });
+  const lat = 35;
+  const lonM = 111320 * Math.cos((lat * Math.PI) / 180);
+  const point = (eastM, northM) => [139 + eastM / lonM, lat + northM / 111320];
+  const line = (fromEast, fromNorth, toEast, toNorth) => {
+    const out = [];
+    for (let i = 0; i <= 12; i += 1) {
+      const t = i / 12;
+      out.push(
+        point(
+          fromEast + (toEast - fromEast) * t,
+          fromNorth + (toNorth - fromNorth) * t,
+        ),
+      );
+    }
+    return out;
+  };
+  const angle = (20 * Math.PI) / 180;
+  const jobs = [
+    { key: "A", line: line(-2400, 0, 0, 0) },
+    {
+      key: "B",
+      line: line(0, 0, 2400 * Math.cos(angle), 2400 * Math.sin(angle)),
+    },
+    { key: "C", line: line(0, 0, 2400, 0) },
+  ];
+  const joinGroups = [
+    { groupKey: "A", trainIds: ["T"], endpointNodeKeys: ["A0", "station"] },
+    { groupKey: "B", trainIds: ["T"], endpointNodeKeys: ["station", "B1"] },
+    { groupKey: "C", trainIds: ["T"], endpointNodeKeys: ["other", "C1"] },
+  ];
+  const result = runFitCurveJobs(jobs, joinGroups);
+  const assignments = new Map(
+    result.assignments.map((entry) => [entry.groupKey, entry.curveId]),
+  );
+  assert.strictEqual(assignments.get("A"), assignments.get("B"));
+  assert.notStrictEqual(assignments.get("A"), assignments.get("C"));
+  const joined = result.curves[assignments.get("A")];
+  assert.equal(joined.stationJoinIdMatchedCount, 1);
 });
 
 test("one endpoint cannot accept two curves in a many-to-one merge", () => {

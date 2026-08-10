@@ -639,6 +639,16 @@ const CURATED_DATASET_BUTTONS = [
     load: () => loadSampleData({ date: null }),
   },
   {
+    buttonId: "load-sample-all-hk",
+    confirmKey: "confirm.loadSampleAll",
+    load: () => loadSampleData({ date: null }),
+  },
+  {
+    buttonId: "load-sample-all-mo",
+    confirmKey: "confirm.loadSampleAll",
+    load: () => loadSampleData({ date: null }),
+  },
+  {
     buttonId: "load-new-year-grand-loop",
     confirmKey: "confirm.loadNewYearGrandLoop",
     load: () => loadNewYearGrandLoopData(),
@@ -962,20 +972,25 @@ function updateDataSourceUi() {
   // Per-country button layouts: each country's toolbar contains only its OWN
   // datasets (index.html keeps one toolbar per country), so a switch swaps the
   // whole row instead of hiding individual foreign buttons.
-  const jpToolbar = document.getElementById("data-source-buttons-jp");
-  const twToolbar = document.getElementById("data-source-buttons-tw");
-  if (jpToolbar) jpToolbar.hidden = activeCountry !== "jp";
-  if (twToolbar) twToolbar.hidden = activeCountry !== "tw";
-  const loadAllBtn = document.getElementById("load-sample-all");
-  const loadAllTwBtn = document.getElementById("load-sample-all-tw");
+  for (const country of SUPPORTED_COUNTRIES) {
+    const toolbar = document.getElementById(`data-source-buttons-${country}`);
+    if (toolbar) toolbar.hidden = activeCountry !== country;
+  }
   const loadNewYearBtn = document.getElementById("load-new-year-grand-loop");
   const loadTokyoLtdExpBtn = document.getElementById(
     "load-tokyo-limited-express-loop",
   );
   const saveMineBtn = document.getElementById("save-as-user-store");
   const restoreBtn = document.getElementById("restore-user-store");
-  if (loadAllBtn) loadAllBtn.disabled = dataSourceMode === "sample-all";
-  if (loadAllTwBtn) loadAllTwBtn.disabled = dataSourceMode === "sample-all";
+  for (const id of [
+    "load-sample-all",
+    "load-sample-all-tw",
+    "load-sample-all-hk",
+    "load-sample-all-mo",
+  ]) {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = dataSourceMode === "sample-all";
+  }
   if (loadNewYearBtn)
     loadNewYearBtn.disabled = dataSourceMode === "sample-new-year-grand-loop";
   if (loadTokyoLtdExpBtn)

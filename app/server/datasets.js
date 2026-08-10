@@ -15,11 +15,17 @@ const DATA_FILES = {
   stations: "stations.json",
   "rail-sections-tw": "rail-sections-tw.json",
   "stations-tw": "stations-tw.json",
+  "rail-sections-hk": "rail-sections-hk.json",
+  "stations-hk": "stations-hk.json",
+  "rail-sections-mo": "rail-sections-mo.json",
+  "stations-mo": "stations-mo.json",
   "default-trains": "default-trains.json",
   "matched-routes": "matched-routes.json",
   "matched-stops": "matched-stops.json",
   "station-readings": "station-readings.json",
   "station-readings-tw": "station-readings-tw.json",
+  "station-readings-hk": "station-readings-hk.json",
+  "station-readings-mo": "station-readings-mo.json",
 };
 
 // Precomputed part datasets: manifest.json + part-NNN.json chunks in
@@ -42,6 +48,20 @@ const PART_DATASETS = [
     notFoundLabel: "Taiwan sample data",
     missingDataError:
       "Precomputed Taiwan sample data is missing; run npm run precompute:tw first.",
+  },
+  {
+    dir: "sample-data-hk",
+    invalidNameError: "Invalid Hong Kong sample data name.",
+    notFoundLabel: "Hong Kong sample data",
+    missingDataError:
+      "Precomputed Hong Kong sample data is missing; run npm run precompute:hk first.",
+  },
+  {
+    dir: "sample-data-mo",
+    invalidNameError: "Invalid Macao sample data name.",
+    notFoundLabel: "Macao sample data",
+    missingDataError:
+      "Precomputed Macao sample data is missing; run npm run precompute:mo first.",
   },
   {
     dir: "new-year-grand-loop-data",

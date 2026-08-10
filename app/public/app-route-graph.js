@@ -215,16 +215,19 @@ function prepareTrainRouteSolve(train) {
   return { done: false, ...context };
 }
 
-// Taiwan's display package and rail-sections dataset are emitted from the same
-// groomed, station-cut interval geometry.  Re-running an adjacent Taiwan
-// interval through Dijkstra can nevertheless change that geometry: a
+// Taiwan, Hong Kong and Macao emit their display package and rail-sections
+// dataset from the same groomed, station-cut interval geometry.  Re-running an
+// adjacent interval through Dijkstra can nevertheless change that geometry: a
 // switchback/reversal contains graph nodes that are intentionally visited more
-// than once, and the shortest-path graph is free to jump between those visits.
-// The dense Alishan throat is the clearest example.  Index the exact official
-// intervals by their line/operator-specific station endpoints so canonical
-// Taiwan route_sections can draw the VERY SAME ordered coordinates as the
-// "all railways" layer.  Imported/non-adjacent/ambiguous sections still fall
-// through to the normal graph solver below.
+// than once, and the shortest-path graph is free to jump between those visits
+// (the dense Alishan throat is the clearest example) — and the graph's
+// coordinate normalization can shift vertices off the drawn line.  Index the
+// exact official intervals by their line/operator-specific station endpoints
+// so canonical route_sections draw the VERY SAME ordered coordinates as the
+// "all railways" layer — ridden lines coincide with the network tracks.
+// Imported/non-adjacent/ambiguous sections still fall through to the normal
+// graph solver below.  Japan stays excluded: N02 sections are not station-cut.
+const OFFICIAL_INTERVAL_COUNTRIES = new Set(["tw", "hk", "mo"]);
 const _taiwanOfficialIntervalIndexes = new WeakMap();
 
 function taiwanOfficialIntervalCoordinateKey(coord) {
@@ -302,7 +305,7 @@ function solveTaiwanRouteSectionOnOfficialInterval(
   allowedCodes,
   continuityAnchor = null,
 ) {
-  if (activeCountry !== "tw") return null;
+  if (!OFFICIAL_INTERVAL_COUNTRIES.has(activeCountry)) return null;
   const index = getTaiwanOfficialIntervalIndex();
   if (!index) return null;
 
@@ -415,7 +418,7 @@ function solveTaiwanRouteSectionOnOfficialInterval(
       is_primary: true,
       route_choice: "official_interval_exact",
       geometry_role: "single_primary_segment",
-      source: "rail-sections-tw interval shared with tw-2025 display package",
+      source: `rail-sections-${activeCountry} interval shared with ${activeCountry}-2025 display package`,
       segment_index: segmentIndex,
       from: section.from || stationName(fromStations[0]),
       to: section.to || stationName(toStations[0]),

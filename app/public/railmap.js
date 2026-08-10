@@ -49,6 +49,7 @@
     probeBasemapOrigin,
     namespaceBasemap,
     opacityPropsForLayer,
+    labelGateFilterForCountry,
     MAP_SURFACE_COLORS,
     BASEMAP_CROSSFADE_MS,
   } = global.RailMapBasemap;
@@ -105,16 +106,21 @@
   const {
     routeRecordsToFC,
     routePickRecordsToFC,
-    routePickFanFC,
-    routeExpandFC,
-    routeExpandTransitionFC,
-    transitionOffsetForTid,
+    routePickFanBaseFC,
+    routeExpandBaseFC,
     fanPerpAt,
     fitCurvesToFC,
     diagnoseFitCurves,
     hoverRegionsToFC,
     markerRecordsToFC,
   } = global.RailMapGeometry;
+
+  const fanVisibleLayerId = (slot) =>
+    slot ? TRAIN_EXPAND_LAYER + "-" + slot : TRAIN_EXPAND_LAYER;
+  const fanHoverLayerId = (slot) =>
+    slot ? TRAIN_EXPAND_HOVER_LAYER + "-" + slot : TRAIN_EXPAND_HOVER_LAYER;
+  const fanPickLayerId = (slot) =>
+    slot ? TRAIN_PICK_FAN_LAYER + "-" + slot : TRAIN_PICK_FAN_LAYER;
 
   // ───────────────────────────── rail package loader ─────────────────────────────
   // Loads the active country's rail package in compact-v1 format (stations and
@@ -160,7 +166,9 @@
     _records: [],
     _expandRecords: [],
     _groupInfo: null, // groupKey → { sx, sy, mults } (rigid lane shifts)
-    _laneSpacingDeg: 0,
+    _laneSpacingPx: 0,
+    _fanLanePool: [],
+    _fanPickEnabled: false,
     _markers: [],
     // Intermediate stops and trip terminals share two physical circle layers,
     // but their role filters remain independently toggleable in the map UI.
@@ -197,6 +205,11 @@
     _basemapMode: "none",
     _theme: "light",
     _basemapInstalledTheme: null,
+    // Country whose basemap labels are shown (null = combined jp+tw gate).
+    // Set by the app at boot and on every country switch; remembered so a
+    // later basemap reinstall (theme fallback / online retry) re-gates the
+    // cached style, whose baked filters are country-neutral.
+    _labelCountry: null,
     _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
     // Cross-day: draw an overnight train's other-day half dashed. The app's
     // "顯示完整跨天行程" toggle flips this to false, which makes that half draw
@@ -235,6 +248,7 @@
         ? Number(map.getPaintProperty(FADE_LAYER, "background-opacity"))
         : 0;
       this._fadeOpacity = Number.isFinite(initialFade) ? initialFade : 0;
+      this._initFanLanePool();
       this._wireInteractions();
       // ALL opacity fades on these layers are driven manually by the rAF dim
       // engine (_applyDimPaint) and the fan slide — MapLibre skips its own
@@ -257,8 +271,9 @@
         [TRAIN_HOVER_LAYER, ["line-opacity"]],
         [TRAIN_SEL_CASING_LAYER, ["line-opacity"]],
         [TRAIN_SEL_LAYER, ["line-opacity"]],
-        [TRAIN_EXPAND_LAYER, ["line-opacity"]],
-        [TRAIN_EXPAND_HOVER_LAYER, ["line-opacity"]],
+        [TRAIN_PICK_FAN_LAYER, ["line-translate"]],
+        [TRAIN_EXPAND_LAYER, ["line-opacity", "line-translate"]],
+        [TRAIN_EXPAND_HOVER_LAYER, ["line-opacity", "line-translate"]],
         [TRAIN_PASS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
         [TRAIN_STOPS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
         [TRAIN_SEL_PASS_LAYER, ["circle-opacity", "circle-stroke-opacity"]],
@@ -288,7 +303,7 @@
 
     // ── data feeds (same contract as the old deck.gl overlay, plus the
     // full-line expand records + per-group rigid shift vectors) ──
-    setData(records, expandRecords, groupInfo, laneSpacingDeg) {
+    setData(records, expandRecords, groupInfo, laneSpacingPx) {
       // A data rebuild replaces group objects, so finish any in-flight
       // cross-group interpolation at its current target before uploading.
       if (this._groupTransitionRaf) {
@@ -299,12 +314,15 @@
       this._records = records || [];
       this._expandRecords = expandRecords || [];
       this._groupInfo = groupInfo || new Map();
-      this._laneSpacingDeg = laneSpacingDeg || 0;
-      // Baseline zoom for the degree-valued spacing: while the map zooms,
-      // _currentLaneSpacingDeg() rescales by 2^(z0 − z) so the fan keeps its
-      // constant ON-SCREEN spacing continuously instead of drifting during
-      // the gesture and snapping at zoomend.
-      this._laneSpacingZoom = this._map ? this._map.getZoom() : null;
+      this._laneSpacingPx = Math.max(0, Number(laneSpacingPx) || 0);
+      // Pre-grow outside the hover path. Cross-group transitions can still
+      // add a rare overflow slot, but ordinary first-open fans do no style
+      // mutation at pointer time.
+      let maxMembers = 0;
+      this._groupInfo.forEach((gi) => {
+        maxMembers = Math.max(maxMembers, Object.keys((gi && gi.mults) || {}).length);
+      });
+      this._ensureFanLanePool(maxMembers);
       this._pushRoutes();
       this._pushFitCurves();
       // The exhaustive pointer-equivalent sweep is intentionally debug-only:
@@ -322,20 +340,19 @@
         this._forceCollapseExpand();
         return;
       }
-      // Zoom/pan (or an in-place rebuild) with a fan open: re-translate the
-      // expanded group's lanes at the fresh spacing and re-sync the member
+      // An in-place rebuild with a fan open: refresh the true geometry once
+      // and re-sync the member
       // tid sets — the group can survive a rebuild with DIFFERENT membership
       // (e.g. off-date trains dropped when a day becomes active), and stale
       // engaged tids would hide lines that no longer have expand twins.
       if (this._expandedGroup) {
-        this._pushExpandFC(this._expandedGroup);
         const gi = this._groupInfo.get(this._expandedGroup);
         const tids = gi ? Object.keys(gi.mults) : [];
         this._expandedTids = tids;
         this._expandFilterTids = tids;
-        const m = this._map;
-        if (m && m.getLayer(TRAIN_EXPAND_LAYER))
-          m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(tids));
+        this._syncFanLaneAssignments(tids);
+        this._uploadFanSources(tids, [this._expandedGroup]);
+        this._applyFanLaneTranslations(this._expandedGroup, this._expandT);
         if (this._engagedTids.length) {
           this._engagedTids = tids.slice();
           this._applyBaseFilters();
@@ -372,38 +389,10 @@
       this._animGroup = null;
       this._setExpandOpacity(0);
       this._pushExpandFC(null, 0);
-      this._pushPickFan();
-      const m = this._map;
-      if (m && m.getLayer(TRAIN_EXPAND_LAYER))
-        m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
+      this._setFanPickEnabled(false);
+      this._syncFanLaneAssignments([]);
+      this._uploadFanSources([], []);
       this._applyBaseFilters();
-    },
-    // Zoom-only lane refresh. When the view zooms, the parallel PICK lanes are
-    // re-translated to keep constant ON-SCREEN spacing, but every train's base
-    // route geometry (`record.path`) is byte-for-byte unchanged. The record
-    // objects are mutated in place by the caller's cache, so `this._records`
-    // already carries the fresh pickPaths — we only need to re-upload the
-    // invisible pick source and skip re-tiling the (identical) visible base
-    // route source. Halves the GPU re-upload on every zoom that has overlaps.
-    updateLaneSpacing(laneSpacingDeg) {
-      this._laneSpacingDeg = laneSpacingDeg || 0;
-      this._laneSpacingZoom = this._map ? this._map.getZoom() : null;
-      // The static pick source sits on the true track (spacing-independent);
-      // only the fan-scoped lanes move with the spacing.
-      this._pushPickFan();
-      if (this._expandedGroup) this._pushExpandFC(this._expandedGroup);
-      return this;
-    },
-    // Effective lane spacing at the CURRENT zoom. The app supplies spacing in
-    // degrees computed for the zoom it was pushed at; degrees-per-pixel halve
-    // with each zoom level, so rescaling by 2^(z0 − z) keeps the fan's pixel
-    // spacing constant throughout the zoom gesture. (The small cos(lat) drift
-    // from panning is corrected by the app's zoomend/moveend re-push.)
-    _currentLaneSpacingDeg() {
-      const base = this._laneSpacingDeg || 0;
-      const m = this._map;
-      if (!m || !base || this._laneSpacingZoom == null) return base;
-      return base * Math.pow(2, this._laneSpacingZoom - m.getZoom());
     },
     setMarkers(records) {
       this._markers = records || [];
@@ -624,6 +613,11 @@
         TRAIN_SEL_CASING_LAYER,
         TRAIN_SEL_LAYER,
       ].forEach((id) => this._setVisibility(id, vis));
+      this._fanLanePool.forEach((slot) => {
+        [slot.pickId, slot.visibleId, slot.hoverId].forEach((id) =>
+          this._setVisibility(id, vis),
+        );
+      });
     },
     setFitCurvesVisible(v) {
       this._fitCurvesVisible = Boolean(v);
@@ -718,10 +712,25 @@
               const sta = m.getSource(STATIONS_SOURCE);
               if (seg) seg.setData(network.segments);
               if (sta) sta.setData(network.stations);
+              // Re-assert the recorded visibility intent: a toggle made while
+              // the style was still loading hit _setVisibility before the
+              // layers existed and was silently dropped, leaving a checked
+              // 全部鐵路線 box with invisible layers.
+              this.setNetworkVisible(this._networkVisibleWanted);
+              this.setNetworkStationsVisible(this._networkStationsVisibleWanted);
               return Boolean(seg && sta);
             };
-            if (!applyNetwork() && typeof m.once === "function")
-              m.once("load", applyNetwork);
+            if (!applyNetwork() && typeof m.once === "function") {
+              // Retry on style progress, not on "load": the load event waits
+              // for every initial tile and may have already fired — or may
+              // stall for a long time in a throttled tab — while the style
+              // (and thus the pre-created sources) is ready much earlier.
+              const retry = () => {
+                if (generation !== this._networkGeneration) return;
+                if (!applyNetwork()) m.once("styledata", retry);
+              };
+              m.once("styledata", retry);
+            }
           }
           return network;
         })
@@ -758,6 +767,8 @@
         if (country) seg.attribution = railAttributionForCountry(country);
       }
       if (sta) sta.setData(EMPTY_FC);
+      // Basemap captions follow the displayed country too.
+      if (country) this.setBasemapLabelCountry(country);
       if (!shouldReload) return Promise.resolve(null);
       return this.ensureNetwork().then((network) => {
         // Country switching does not recreate the layer control. Re-apply its
@@ -767,6 +778,46 @@
         this.setNetworkStationsVisible(this._networkStationsVisibleWanted);
         return network;
       });
+    },
+    // Restrict basemap labels (place / road / water / airport captions) to
+    // the given country: the map should only caption the region it displays,
+    // so a switch to Taiwan drops the Yaeyama labels at the viewport edge and
+    // a switch back drops Taiwan's. Re-filters the live stack in place (the
+    // label layers carry their pre-gate filter in metadata — see
+    // railmap-basemap.js) and is remembered for later installs.
+    setBasemapLabelCountry(country) {
+      this._labelCountry =
+        typeof country === "string" && country ? country : null;
+      const m = this._map;
+      if (!m || typeof m.setFilter !== "function") return;
+      const touchedSources = new Set();
+      this._basemapLayerIds.forEach((id) => {
+        const layer = m.getLayer(id);
+        const gated =
+          layer && labelGateFilterForCountry(layer, this._labelCountry);
+        if (!gated) return;
+        // Unchanged filters are skipped so the boot-time call (the style
+        // already bakes the boot country's gate) never costs a tile reload.
+        const current =
+          typeof m.getFilter === "function" ? m.getFilter(id) : null;
+        if (current && JSON.stringify(current) === JSON.stringify(gated))
+          return;
+        m.setFilter(id, gated);
+        if (layer.source) touchedSources.add(layer.source);
+      });
+      // setFilter alone converges nothing here: the vendored MapLibre build
+      // evaluates filters only while a tile is parsed (same trap as the
+      // stop-dot zoom gate — see railmap-style.js stopMarkerZoomGate), so
+      // already-loaded tiles keep drawing the OLD country's captions and
+      // withhold the new one's until the camera happens to force fresh
+      // tiles (verified live: 与那国町 lingered over a Taiwan view).
+      // Re-parse the affected vector sources explicitly — tiles return from
+      // the HTTP cache, so this re-runs worker layout, not the network.
+      if (touchedSources.size && m.style) {
+        const style = m.style;
+        if (typeof style._reloadSource === "function")
+          touchedSources.forEach((id) => style._reloadSource(id));
+      }
     },
     // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {
@@ -942,6 +993,10 @@
         const bmLayers = staged.layers;
         const addLayer = (sourceLayer, beforeId) => {
           const layer = Object.assign({}, sourceLayer);
+          // The cached style bakes the country-neutral combined label gate;
+          // re-gate to the active country as the stack goes in.
+          const labelGate = labelGateFilterForCountry(layer, this._labelCountry);
+          if (labelGate) layer.filter = labelGate;
           if (!visible) {
             layer.layout = Object.assign({}, layer.layout, { visibility: "none" });
           }
@@ -1092,6 +1147,237 @@
       const m = this._map;
       return m ? m.getSource(id) : null;
     },
+    _initFanLanePool() {
+      this._fanLanePool = [];
+      const m = this._map;
+      if (!m || !m.getLayer(TRAIN_EXPAND_LAYER)) return;
+      this._fanLanePool.push({
+        slot: 0,
+        visibleId: TRAIN_EXPAND_LAYER,
+        hoverId: TRAIN_EXPAND_HOVER_LAYER,
+        pickId: TRAIN_PICK_FAN_LAYER,
+        tid: null,
+        translate: [0, 0],
+      });
+    },
+    _ensureFanLanePool(size) {
+      const m = this._map;
+      if (!m) return;
+      if (!this._fanLanePool.length) this._initFanLanePool();
+      while (this._fanLanePool.length < size) {
+        const slot = this._fanLanePool.length;
+        const visibleId = fanVisibleLayerId(slot);
+        const hoverId = fanHoverLayerId(slot);
+        const pickId = fanPickLayerId(slot);
+        const translatePaint = {
+          "line-translate": [0, 0],
+          "line-translate-anchor": "map",
+        };
+        // Reuse a layer that already exists (a re-attach after hot reload
+        // leaves earlier pool layers on the map) — addLayer throws on a
+        // duplicate id, which would abort the whole data push.
+        const addLayer = (layer, beforeId) => {
+          if (!m.getLayer(layer.id)) m.addLayer(layer, beforeId);
+        };
+        addLayer(
+          {
+            id: pickId,
+            type: "line",
+            source: TRAIN_PICK_FAN_SOURCE,
+            filter: MATCH_NONE,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": "#000",
+              "line-opacity": 0,
+              "line-width": ["get", "pickWidth"],
+              ...translatePaint,
+            },
+          },
+          TRAIN_HOVER_LAYER,
+        );
+        addLayer(
+          {
+            id: visibleId,
+            type: "line",
+            source: TRAIN_EXPAND_SOURCE,
+            filter: MATCH_NONE,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": ["get", "colorA"],
+              "line-opacity": this._expandOpacity || 0,
+              "line-width": zoomScaledWidth([
+                "*",
+                ["get", "width"],
+                RIDDEN_WIDTH_SCALE,
+              ]),
+              ...translatePaint,
+            },
+          },
+          TRAIN_EXPAND_HOVER_LAYER,
+        );
+        addLayer(
+          {
+            id: hoverId,
+            type: "line",
+            source: TRAIN_EXPAND_SOURCE,
+            filter: MATCH_NONE,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": ["get", "colorA"],
+              "line-opacity": 0,
+              "line-width": zoomScaledWidth([
+                "+",
+                ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
+                2,
+              ]),
+              ...translatePaint,
+            },
+          },
+          TRAIN_SEL_PASS_LAYER,
+        );
+        // A reused layer keeps stale filter/translate state from its previous
+        // life; reset both so the fresh slot starts collapsed and unassigned.
+        [pickId, visibleId, hoverId].forEach((id) => {
+          if (m.getLayer(id)) {
+            m.setFilter(id, MATCH_NONE);
+            m.setPaintProperty(id, "line-translate", [0, 0]);
+          }
+        });
+        const vis = this._visible ? "visible" : "none";
+        [pickId, visibleId, hoverId].forEach((id) =>
+          m.setLayoutProperty(id, "visibility", vis),
+        );
+        [pickId, visibleId, hoverId].forEach((id) =>
+          m.setPaintProperty(id, "line-translate-transition", {
+            duration: 0,
+            delay: 0,
+          }),
+        );
+        [visibleId, hoverId].forEach((id) =>
+          m.setPaintProperty(id, "line-opacity-transition", {
+            duration: 0,
+            delay: 0,
+          }),
+        );
+        this._fanLanePool.push({
+          slot,
+          visibleId,
+          hoverId,
+          pickId,
+          tid: null,
+          translate: [0, 0],
+        });
+      }
+    },
+    _setFanSlotFilters(slot) {
+      const m = this._map;
+      if (!m) return;
+      const tidFilter = slot.tid
+        ? ["==", ["get", "tid"], slot.tid]
+        : MATCH_NONE;
+      if (m.getLayer(slot.visibleId)) m.setFilter(slot.visibleId, tidFilter);
+      if (m.getLayer(slot.hoverId)) m.setFilter(slot.hoverId, tidFilter);
+      if (m.getLayer(slot.pickId))
+        m.setFilter(
+          slot.pickId,
+          slot.tid && this._fanPickEnabled
+            ? ["all", tidFilter, ["!=", ["get", "nopick"], 1]]
+            : MATCH_NONE,
+        );
+    },
+    _syncFanLaneAssignments(tids) {
+      const desired = [...new Set((tids || []).filter(Boolean))];
+      this._ensureFanLanePool(desired.length);
+      const wanted = new Set(desired);
+      this._fanLanePool.forEach((slot) => {
+        if (slot.tid && !wanted.has(slot.tid)) slot.tid = null;
+      });
+      const assigned = new Set(
+        this._fanLanePool.map((slot) => slot.tid).filter(Boolean),
+      );
+      desired.forEach((tid) => {
+        if (assigned.has(tid)) return;
+        let slot = this._fanLanePool.find((candidate) => !candidate.tid);
+        if (!slot) {
+          this._ensureFanLanePool(this._fanLanePool.length + 1);
+          slot = this._fanLanePool[this._fanLanePool.length - 1];
+        }
+        slot.tid = tid;
+        slot.translate = [0, 0];
+        assigned.add(tid);
+      });
+      this._fanLanePool.forEach((slot) => this._setFanSlotFilters(slot));
+    },
+    _setFanPickEnabled(enabled) {
+      this._fanPickEnabled = Boolean(enabled);
+      this._fanLanePool.forEach((slot) => this._setFanSlotFilters(slot));
+    },
+    _fanPickLayerIds() {
+      return this._fanLanePool.map((slot) => slot.pickId);
+    },
+    _directionToScreenPx(dir, gi) {
+      if (!dir && !gi) return [0, -1];
+      const d = dir || gi;
+      const cs =
+        (gi && gi.curve && gi.curve.coslat) ||
+        Math.cos(((((gi && gi._latRef) || 0) * Math.PI) / 180)) ||
+        1e-6;
+      const x = (d.sx || 0) * cs;
+      const y = d.sy || 0;
+      const len = Math.hypot(x, y) || 1;
+      return [x / len, -y / len];
+    },
+    _targetLaneOffsetPx(gi, tid, dir) {
+      if (!gi || !Object.prototype.hasOwnProperty.call(gi.mults, tid))
+        return [0, 0];
+      const axis = this._directionToScreenPx(dir, gi);
+      const distance = gi.mults[tid] * (this._laneSpacingPx || 0);
+      return [axis[0] * distance, axis[1] * distance];
+    },
+    _applyFanLaneTranslations(group, factor) {
+      const m = this._map;
+      if (!m) return;
+      const gi = group && this._groupInfo ? this._groupInfo.get(group) : null;
+      const dir = this._fanDirGroup === group ? this._fanDirVec() : null;
+      const transition = this._groupTransition;
+      const f = factor == null ? (this._expandT == null ? 1 : this._expandT) : factor;
+      this._fanLanePool.forEach((slot) => {
+        if (!slot.tid) return;
+        let next;
+        if (transition && group === transition.toGroup) {
+          const from = transition.fromOffsetsPx[slot.tid] || [0, 0];
+          const target = this._targetLaneOffsetPx(transition.toGi, slot.tid, dir);
+          const t = Math.max(0, Math.min(1, transition.progress || 0));
+          next = [
+            from[0] + (target[0] - from[0]) * t,
+            from[1] + (target[1] - from[1]) * t,
+          ];
+        } else {
+          const target = this._targetLaneOffsetPx(gi, slot.tid, dir);
+          next = [target[0] * f, target[1] * f];
+        }
+        slot.translate = next;
+        [slot.visibleId, slot.hoverId, slot.pickId].forEach((id) => {
+          if (m.getLayer(id)) m.setPaintProperty(id, "line-translate", next);
+        });
+      });
+    },
+    _uploadFanSources(tids, groups) {
+      const exp = this._src(TRAIN_EXPAND_SOURCE);
+      if (exp)
+        exp.setData(
+          tids && tids.length
+            ? routeExpandBaseFC(this._expandRecords, tids)
+            : EMPTY_FC,
+        );
+      const pick = this._src(TRAIN_PICK_FAN_SOURCE);
+      if (pick)
+        pick.setData(
+          groups && groups.length
+            ? routePickFanBaseFC(this._records, this._groupInfo, groups)
+            : EMPTY_FC,
+        );
+    },
     _pushRoutes() {
       const shown = this._visible ? this._records : [];
       const src = this._src(TRAIN_ROUTES_SOURCE);
@@ -1132,10 +1418,9 @@
           holdRadiusPx: HOVER_FAN_HOLD_PX,
           switchRadiusPx: HOVER_GROUP_SWITCH_PX,
           zoom: this._map ? +this._map.getZoom().toFixed(2) : null,
-          // Debug approximation on the 256px-tile zoom convention (raw
-          // getZoom()) — intentionally 2× the 512px (z + 1) convention that
-          // app-overlap-lanes.js's overlapOffsetDeg uses for real lane
-          // spacing. Report-only precision; do not "fix" one to the other.
+          // Debug-only physical-radius approximation from the live pointer
+          // latitude and zoom. Fan spacing itself is pixel-valued and does
+          // not use this conversion.
           stickyRadiusApproxMeters:
             this._map && state && state.point
               ? +(
@@ -1190,50 +1475,30 @@
             this._groupInfo,
           ),
         );
-      // The fan source mirrors the current fan state against the NEW records.
-      this._pushPickFan();
     },
-    // Re-upload the FAN pick source: only the open (or transitioning) group's
-    // member records, translated into their per-lane hit paths. Empty while
-    // collapsed. Orders of magnitude smaller than the static source, so the
-    // per-hover re-tile cost no longer scales with the whole dataset.
-    _pickFanEmpty: true,
+    // The fan pick source contains true-track geometry. Pooled tid layers move
+    // their visible and hit-test copies together through line-translate.
     _pushPickFan() {
-      const src = this._src(TRAIN_PICK_FAN_SOURCE);
-      if (!src) return;
       const group = this._expandedGroup;
       const transition = this._groupTransition;
       if (!this._visible || (!group && !transition)) {
-        if (!this._pickFanEmpty) {
-          src.setData(EMPTY_FC);
-          this._pickFanEmpty = true;
-        }
+        this._setFanPickEnabled(false);
+        const src = this._src(TRAIN_PICK_FAN_SOURCE);
+        if (src) src.setData(EMPTY_FC);
         return;
       }
-      const fc = routePickFanFC(
-        this._records,
-        this._groupInfo,
-        group,
-        this._fanDirGroup === group ? this._fanDirVec() : null,
-        this._currentLaneSpacingDeg(),
-        transition,
-      );
-      src.setData(fc);
-      this._pickFanEmpty = fc.features.length === 0;
+      const groups = transition
+        ? [transition.fromGroup, transition.toGroup]
+        : [group];
+      const tids = this._fanLanePool
+        .map((slot) => slot.tid)
+        .filter(Boolean);
+      this._uploadFanSources(tids, groups);
+      this._setFanPickEnabled(true);
     },
-    // The expand source is GROUP-SCOPED: it only ever holds the hovered
-    // group's translated member courses (or nothing when collapsed).
-    // `factor` scales the lane offsets (0 = on the true track, 1 = fully
-    // fanned): _animateExpand pushes intermediate factors every frame so the
-    // lanes SLIDE out/in instead of appearing at their final position.
-    // Defaults to the current animation progress so settled states (open fan
-    // during zoom / data refresh) keep their full offset.
-    // Coalesce animated expand-source uploads to AT MOST ONE per frame. The
-    // slide (_animateExpand), the fan-direction easing (_ensureFanDirAnim)
-    // and a group transition can all run in the same frame; each used to
-    // issue its own setData (a worker re-tile), so a single frame could pay
-    // for two or three. The scheduled push reads the freshest state when it
-    // fires; any synchronous (authoritative) push cancels what's pending.
+    // Coalesce animated paint updates to at most one per frame. GeoJSON is
+    // uploaded only when fan membership changes; slide/rotation frames touch
+    // constant line-translate values and never wake the worker tiler.
     _scheduleExpandPush(group, factor) {
       this._pendingExpandPush = { group, factor };
       if (this._expandPushRaf != null) return;
@@ -1251,33 +1516,7 @@
         this._expandPushRaf = null;
         this._pendingExpandPush = null;
       }
-      const exp = this._src(TRAIN_EXPAND_SOURCE);
-      if (!exp) return;
-      const f =
-        factor == null ? (this._expandT == null ? 1 : this._expandT) : factor;
-      const gi =
-        group && this._visible && this._groupInfo
-          ? this._groupInfo.get(group)
-          : null;
-      const transition = this._groupTransition;
-      const spacing = this._currentLaneSpacingDeg();
-      exp.setData(
-        transition && group === transition.toGroup
-          ? routeExpandTransitionFC(
-              this._expandRecords,
-              transition,
-              spacing,
-              this._fanDirGroup === group ? this._fanDirVec() : null,
-            )
-          : gi
-          ? routeExpandFC(
-              this._expandRecords,
-              gi,
-              spacing * f,
-              this._fanDirGroup === group ? this._fanDirVec() : null,
-            )
-          : EMPTY_FC,
-      );
+      this._applyFanLaneTranslations(group, factor);
     },
 
     // ── dynamic fan direction ────────────────────────────────────────────
@@ -1396,10 +1635,8 @@
           // commits synchronously so the final geometry is exact.
           if (settled) this._pushExpandFC(g);
           else this._scheduleExpandPush(g);
-          // The sticky hit box safely covers the few-pixel angular drift. A
-          // full pick-source upload every animation frame caused needless
-          // main-thread stalls; commit hit geometry once at the settled angle.
-          if (settled) this._pushPickFan();
+          // Visible, hover and pick layers share the same translated slot, so
+          // hit geometry follows every cheap paint update with no source push.
         }
       };
       this._fanDirRaf = requestAnimationFrame(step);
@@ -1485,12 +1722,8 @@
           // cross-day half by drawing it solid on top.
           ["!", this._xDaySelector()],
         ]);
-      if (m.getLayer(TRAIN_EXPAND_HOVER_LAYER))
-        m.setFilter(TRAIN_EXPAND_HOVER_LAYER, [
-          "all",
-          this._expandSelector(this._expandFilterTids),
-          this._expandSelector(focusTids),
-        ]);
+      // Fan hover layers are already one-tid-per-slot; their focus crossfade
+      // is entirely paint-driven and must not overwrite the pool assignment.
     },
 
     // ── hover spotlight: dim every train that is NOT being hovered ──
@@ -1775,12 +2008,12 @@
         set(id, "circle-opacity", selLayerVal);
         set(id, "circle-stroke-opacity", selLayerVal);
       });
-      set(
-        TRAIN_EXPAND_HOVER_LAYER,
-        "line-opacity",
+      const fanFocusOpacity =
         typeof focusLayerVal === "number"
           ? (this._expandOpacity || 0) * focusLayerVal
-          : ["*", this._expandOpacity || 0, focusLayerVal],
+          : ["*", this._expandOpacity || 0, focusLayerVal];
+      this._fanLanePool.forEach((slot) =>
+        set(slot.hoverId, "line-opacity", fanFocusOpacity),
       );
     },
     // Single entry point every dim-state change funnels through.
@@ -1835,30 +2068,14 @@
             cancelAnimationFrame(this._expandAnimId);
             this._expandAnimId = null;
           }
-          const activeTransition = this._groupTransition;
-          let fromOffsets = null;
-          let previousTids = Object.keys(previousGi.mults);
-          if (activeTransition) {
-            previousTids = [
-              ...new Set(
-                Object.keys(activeTransition.fromGi.mults)
-                  .concat(Object.keys(activeTransition.toGi.mults))
-                  .concat(Object.keys(activeTransition.fromOffsets || {})),
-              ),
-            ];
-            fromOffsets = {};
-            const currentDir =
-              this._fanSwitchFromDir || activeTransition.toGi;
-            previousTids.forEach((tid) => {
-              const off = transitionOffsetForTid(
-                activeTransition,
-                tid,
-                1,
-                currentDir,
-              );
-              fromOffsets[tid] = { x: off.dx, y: off.dy };
-            });
-          }
+          const previousTids = this._fanLanePool
+            .map((slot) => slot.tid)
+            .filter(Boolean);
+          const fromOffsetsPx = {};
+          this._fanLanePool.forEach((slot) => {
+            if (slot.tid)
+              fromOffsetsPx[slot.tid] = slot.translate.slice();
+          });
           const unionTids = [...new Set(previousTids.concat(nextTids))];
           this._expandT = 1;
           this._animGroup = next;
@@ -1870,18 +2087,17 @@
             toGroup: next,
             fromGi: previousGi,
             toGi: gi,
-            fromDir: this._fanSwitchFromDir || previousGi,
-            fromOffsets,
+            fromOffsetsPx,
             progress: 0,
           };
           this._fanSwitchFromDir = null;
-          if (m.getLayer(TRAIN_EXPAND_LAYER))
-            m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(unionTids));
+          this._syncFanLaneAssignments(unionTids);
+          this._uploadFanSources(unionTids, [previous, next]);
+          this._setFanPickEnabled(true);
           this._setExpandOpacity(1);
           this._applyBaseFilters();
           this._applyHoverFilter();
           this._pushExpandFC(next, 1);
-          this._pushPickFan();
           this._animateGroupTransition(next, nextTids);
           return;
         }
@@ -1890,14 +2106,14 @@
         // Offsets start at the CURRENT slide progress (0 when fresh — i.e.
         // exactly on the true track) and slide outward from there.
         this._animGroup = next;
+        this._syncFanLaneAssignments(nextTids);
+        this._uploadFanSources(nextTids, [next]);
+        this._setFanPickEnabled(true);
         this._pushExpandFC(next, this._expandT || 0);
         this._expandedTids = nextTids;
         this._expandFilterTids = nextTids;
         // The open group's hit areas move from the true track out to the
         // per-lane paths (they only exist there while the fan is open).
-        this._pushPickFan();
-        if (m.getLayer(TRAIN_EXPAND_LAYER))
-          m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(nextTids));
         this._applyHoverFilter();
         // Twins are pixel-identical to the base lines at their current
         // factor, so the base->twin swap is invisible — engage at once.
@@ -1931,8 +2147,8 @@
           this._expandFilterTids = [];
           this._animGroup = null;
           this._pushExpandFC(null, 0);
-          if (m.getLayer(TRAIN_EXPAND_LAYER))
-            m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector([]));
+          this._syncFanLaneAssignments([]);
+          this._uploadFanSources([], []);
           this._applyHoverFilter();
         });
       }
@@ -1968,13 +2184,16 @@
         this._expandedTids = targetTids.slice();
         this._expandFilterTids = targetTids.slice();
         this._engagedTids = targetTids.slice();
-        const m = this._map;
-        if (m && m.getLayer(TRAIN_EXPAND_LAYER))
-          m.setFilter(TRAIN_EXPAND_LAYER, this._expandSelector(targetTids));
+        this._syncFanLaneAssignments(targetTids);
+        // Re-scope the fan sources to the settled group. Leaving the FROM
+        // group's records in the pick source would keep translated hit
+        // geometry alive along the old corridor for every staying member
+        // (their pooled layers filter by tid alone), stretching the sticky
+        // hold far outside the open fan.
+        this._uploadFanSources(targetTids, [targetGroup]);
         this._applyBaseFilters();
         this._applyHoverFilter();
         this._pushExpandFC(targetGroup, 1);
-        this._pushPickFan();
       };
       this._groupTransitionRaf = requestAnimationFrame(step);
     },
@@ -1982,12 +2201,14 @@
       const m = this._map;
       if (!m) return;
       this._expandOpacity = Math.max(0, Math.min(1, Number(v) || 0));
-      if (m.getLayer(TRAIN_EXPAND_LAYER))
-        m.setPaintProperty(
-          TRAIN_EXPAND_LAYER,
-          "line-opacity",
-          this._expandOpacity,
-        );
+      this._fanLanePool.forEach((slot) => {
+        if (m.getLayer(slot.visibleId))
+          m.setPaintProperty(
+            slot.visibleId,
+            "line-opacity",
+            this._expandOpacity,
+          );
+      });
       // The widened lane has its own hover A -> B crossfade expression; only
       // its fan visibility multiplier changes here.
       this._applyDimPaint();

@@ -305,6 +305,16 @@ function buildMapInfoControl() {
           <p data-i18n="info.twRailBody">結合交通部「TDX 運輸資料流通服務平臺」、內政部國土測繪中心、農業部阿里山林業鐵路及文化資產管理處與臺北市政府捷運工程局的官方資料經加工製作。</p>
           <div class="map-info-links"><a href="https://tdx.transportdata.tw/" target="_blank" rel="noopener noreferrer">TDX</a><a href="https://data.gov.tw/dataset/73220" target="_blank" rel="noopener noreferrer" data-i18n="info.twNlsc">國土測繪中心</a><a href="https://afrch.forest.gov.tw/" target="_blank" rel="noopener noreferrer" data-i18n="info.twAfr">阿里山林鐵</a><a href="https://data.taipei/dataset/detail?id=afccd2ac-75b1-4362-9099-45983e332776" target="_blank" rel="noopener noreferrer" data-i18n="info.twTaipei">臺北捷運 GIS</a><a href="https://data.gov.tw/license" target="_blank" rel="noopener noreferrer" data-i18n="info.twLicense">政府資料開放授權條款</a></div>
         </article>
+        <article class="map-info-source" data-country="hk">
+          <strong data-i18n="info.hkRailTitle">香港鐵路網</strong>
+          <p data-i18n="info.hkRailBody">依香港鐵路有限公司官方行程指南與開放數據加工製作，包含港鐵重鐵及全部 11 條輕鐵路線。</p>
+          <div class="map-info-links"><a href="https://www.mtr.com.hk/en/customer/jp/index.php" target="_blank" rel="noopener noreferrer">MTR Journey Planner</a><a href="https://data.gov.hk/en-data/dataset/mtr-data-routes-fares-barrier-free-facilities" target="_blank" rel="noopener noreferrer">MTR Open Data</a></div>
+        </article>
+        <article class="map-info-source" data-country="mo">
+          <strong data-i18n="info.moRailTitle">澳門輕軌網</strong>
+          <p data-i18n="info.moRailBody">依澳門輕軌股份有限公司官方現行路線與車站資料加工製作。</p>
+          <div class="map-info-links"><a href="https://www.mlm.com.mo/en/route.html" target="_blank" rel="noopener noreferrer">Macao LRT Lines</a></div>
+        </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
           <p data-i18n="info.basemapBody">亮色使用 OpenFreeMap Positron，暗色使用官方 Dark 樣式。</p>
@@ -457,6 +467,10 @@ async function initMap(mapAssetsReady) {
     theme,
     style.__railMapBasemapStacks,
   );
+  // The style already baked the boot country's basemap-label gate
+  // (buildBaseStyle country); hand RailMap the same country so a later
+  // country switch or basemap reinstall re-gates the labels correctly.
+  RailMap.setBasemapLabelCountry(activeCountry);
   // Selected-train width boost lives in the SEL layer's paint expression
   // (records stay selection-independent — picking a train rebuilds nothing).
   RailMap.setFocusBoost(DISPLAY.focusBoost);
@@ -493,15 +507,7 @@ async function initMap(mapAssetsReady) {
   map.on("zoomend", () => {
     if (!cachedOrderedTrains.length) return;
     updateEndpointLabels();
-    // Parallel pick lanes are offset in degrees computed from a PIXEL spacing
-    // at the previous view; refresh them so the lanes keep a constant
-    // on-screen spacing (no-op when the px→degree factor barely moved).
-    maybeRefreshOverlapOffsets();
   });
-
-  // Long north/south pans change the latitude correction even at constant
-  // zoom — refresh the lane offsets when the drift exceeds the threshold.
-  map.on("moveend", maybeRefreshOverlapOffsets);
 
   // Endpoint labels clamp themselves inside the viewport (pixel-space), so a
   // pan that carries a labelled station toward the edge needs a re-layout.

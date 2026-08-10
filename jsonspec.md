@@ -1,8 +1,8 @@
-# Railprint Train JSON Specification (Japan N02 / Taiwan TDX)
+# Railprint Train JSON Specification (Japan N02 / Taiwan TDX / Hong Kong MTR / Macao MLM)
 
 版本：`1.3`
 文件名：`jsonspec.md`
-适用范围：日本 N02 与台湾官方 TDX/PTX 铁路地图、列车 JSON 导入/导出、路线渲染、乘坐区间显示、停靠站/通过站管理。
+适用范围：日本 N02、台湾官方 TDX/PTX、香港官方 MTR 与澳门官方 MLM/DSCC 铁路地图、列车 JSON 导入/导出、路线渲染、乘坐区间显示、停靠站/通过站管理。
 
 > **1.3 台湾兼容扩展**：为不破坏既有日本 store，canonical 字段名
 > `n02_station_code` / `from_n02_station_code` / `to_n02_station_code` 保持不变，
@@ -41,7 +41,7 @@
 
 **第二部分 · 数据源（日本 N02 / 台湾 TDX/PTX / OSM）规范**
 
-2. 数据源说明（含 2.7 台湾官方 TDX/PTX）　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 分国站名对照表**：日本 `station-readings.json` 与台湾 `station-readings-tw.json`）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
+2. 数据源说明（含 2.7 台湾官方 TDX/PTX、2.8 香港官方 MTR、2.9 澳门官方 MLM/DSCC）　3. RailroadSection　4. Station　5. Station 显示点　6. N02_001　7. N02_002　8. N02_003　9. N02_004　10. N02_005　11. N02_005c　12. N02_005g　13. 字段映射（含 **13.4 分国站名对照表**：日本 `station-readings.json`、台湾 `station-readings-tw.json`、香港 `station-readings-hk.json`、澳门 `station-readings-mo.json`）　14. 数据质量与限制　15. 全量 / JR-only 模式　16. OSM 底图　17. 署名　18. 处理流程　19. 错误处理　20. 数据源与 JSON 边界　21. HTML 内嵌元信息　22. 核心要求摘要
 
 ---
 
@@ -155,27 +155,32 @@
 }
 ```
 
-### 2.3 官方站点代码命名空间（日本 / 台湾）
+### 2.3 官方站点代码命名空间（日本 / 台湾 / 香港 / 澳门）
 
 schema 1.3 的持久化键 `n02_station_code` 是历史兼容名称。它与 route section 的
-`from_n02_station_code` / `to_n02_station_code` 共同表示**当前国家官方铁路数据源的站点代码**：
+`from_n02_station_code` / `to_n02_station_code` 共同表示**当前国家/地区官方铁路数据源的站点代码**：
 
-| 国家 | 官方数据源 | canonical 值 | 格式 / 示例 |
+| 国家/地区 | 官方数据源 | canonical 值 | 格式 / 示例 |
 | --- | --- | --- | --- |
 | 日本 | 国土数値情報 N02 | `N02_005c` | 六位数字，例如 `003770` |
 | 台湾 | 交通部 TDX/PTX | `StationUID` | `OperatorID-StationID`，例如 `TYMC-A13`、`TRA-1000` |
+| 香港 | 港铁官方行程指南 + 开放数据 | `{线路别名}-{官方站别名}` | 重铁 `TML-MTR-WKS`（屯马线乌溪沙）、轻铁 `LR-505-LR-10`；线路别名为规范化前的大写别名（`AEL` / `EAL-LOW` / `LR-505` 等），**不随显示线路 id（`hk-mtr-*`）改名** |
+| 澳门 | 澳门轻轨（MLM）官方路线 | `{线路别名}-MLM-{站别名}` | `MLM-TAIPA-MLM-BARRA`（氹仔线妈阁） |
 
 规范要求：
 
 1. 同一 stop 与相邻 route section 端点必须使用同一个官方代码；无码时写 `null` 并保留站名。
-2. 台湾必须使用 TDX/PTX 原始 `StationUID`，不得把 `tw-official-*` 几何分组 ID、站名、OSM id
-   或自行编造的序号写入该字段。
-3. 日本代码匹配 `^\d{6}$`；台湾代码匹配
-   `^[A-Z][A-Z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`。
+2. 台湾必须使用 TDX/PTX 原始 `StationUID`；香港/澳门必须使用打包脚本发布的官方别名代码。
+   任何地区都不得把 `tw-official-*` / `hk-official-*` / `mo-official-*` 几何分组 ID、
+   站名、OSM id 或自行编造的序号写入该字段。
+3. 日本代码匹配 `^\d{6}$`；台湾 / 香港 / 澳门代码匹配
+   `^[A-Z][A-Z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`（首字符大写字母、以连字符分段）。
 4. 国家由当前数据 store / rail package 决定；1.3 不新增顶层 `country`，从而保持既有 store
    严格顶层白名单与日本数据完全向后兼容。
 5. UI、校验器与构建器应把该字段称为「官方站点代码」；仅在已识别为日本代码时显示
-   `N02_005c`，台湾代码显示 `TDX StationUID`。
+   `N02_005c`，其余按 TDX 形态代码统一处理。
+6. 香港/澳门站点代码是**持久化标识**：显示层线路 id 规范化（`hk-mtr-ael` 等）不改变站点
+   代码；打包脚本通过每线 `codePrefix`（规范化前别名）保证二者解耦。
 
 > 兼容说明：本扩展只放宽值域，没有增加 canonical JSON 键，也没有改变每个 stop 的六字段形态。
 
@@ -1686,6 +1691,51 @@ geometrySource.syntheticConnectors = 0
 
 ---
 
+### 2.8 香港官方铁路数据源
+
+| 项目 | 内容 |
+| --- | --- |
+| 主数据服务 | 港铁（MTR）官方行程指南 payload + `mtr_lines_and_stations.csv` / `light_rail_routes_and_stops.csv` 开放数据 |
+| 站点主键 | `{线路别名}-{官方站别名}`（重铁 `TML-MTR-WKS`，轻铁 `LR-505-LR-10`；见 §2.3） |
+| 路线主键 | 显示线路 id `hk-mtr-*`（`hk-mtr-ael` / `hk-mtr-eal-low` / `hk-mtr-lr-505` …）；东铁 / 将军澳按官方支线拆分 |
+| 站名 / 路线名 | 官方繁中 `nameTC` / 简中 `nameSC` / 英文 `name` |
+| 运营者 | `MTR`（canonical company 值；重铁与全部 11 条轻铁路线均为港铁运营） |
+| 几何 | LandsD iB1000 官方制图几何为权威；公开 iB1000 把地下铁路隧道并入通用 `TUR`，这些未分类地下区间由 OSM 路线关系作 ODbL 连续性补充 |
+| 当前打包产物 | `app/public/rail/hk-2025.json`，`country: "HK"`，23 条线路（12 重铁分支 + 11 轻铁路线） |
+| 求解数据集 | `rail-sections-hk.json` / `stations-hk.json`：全网统一 `institution_type_code: "4"`、`railway_class_code: "21"`；统计分类按线名 `輕鐵` 前缀区分重铁 / 轻铁 |
+| 坐标系 | WGS84 |
+| 许可 | DATA.GOV.HK 条款（MTR 开放数据）+ LandsD HKMS 2.0 开放制图 + ODbL（OSM 补充段）；`geometrySource` 保留 providers / license / sourceSha256 |
+
+```text
+geometrySource.officialOnly = 0   （存在 OSM 地下连续性补充段）
+```
+
+`hk-2025.json` 内的 `hk-official-*` 是几何站组 ID（与求解数据集 `n02_group_code`
+同拼写）；canonical train store 必须写 §2.3 的官方站点代码，两者不可混用。
+车站吸附几何为沿线 ≤180 m 短桩（对齐日本 N02 站台线 / 台湾官方短桩），
+禁止把整段邻站区间写入 station feature（会令求解吸附候选漂移数公里）。
+
+### 2.9 澳门官方铁路数据源
+
+| 项目 | 内容 |
+| --- | --- |
+| 主数据服务 | 澳门轻轨股份有限公司（MLM）官方路线页 + 地图绘制暨地籍局（DSCC）Online Map LRT 路线服务 |
+| 站点主键 | `{线路别名}-MLM-{站别名}`（`MLM-TAIPA-MLM-BARRA`；见 §2.3） |
+| 路线主键 | 显示线路 id `mo-mlm-*`（`mo-mlm-taipa` / `mo-mlm-spv` / `mo-mlm-hengqin`） |
+| 站名 / 路线名 | 官方繁中 / 英文；简体按官方用字转换 |
+| 运营者 | `澳門輕軌股份有限公司` |
+| 几何 | DSCC Online Map 官方 LRT 路线折线；EPSG:8433 → WGS84，两米容差简化，按站点投影切段 |
+| 当前打包产物 | `app/public/rail/mo-2025.json`，`country: "MO"`，3 条线路（氹仔线 / 石排湾线 / 横琴线；东线在建不收录） |
+| 求解数据集 | `rail-sections-mo.json` / `stations-mo.json`；代码空间与站桩规则同 §2.8 |
+| 坐标系 | WGS84 |
+| 许可 | DSCC 官方在线地图数据 + 运营方公开路线资料；`geometrySource` 保留 providers / license / sourceSha256 |
+
+```text
+geometrySource.officialOnly = 1
+```
+
+---
+
 ## 3. RailroadSection 数据说明
 
 `RailroadSection` 是铁路区间数据，用于表示铁路线路的线形。
@@ -2350,6 +2400,33 @@ route_sections 只保留 from/to 码：其 from/to 站名与 stops 重复、可�
 ```sh
 python3 scripts/build-taiwan-station-readings.py \
   --source-dir /private/tmp/tw-rail-official
+```
+
+#### 13.4-HK/MO 香港 `station-readings-hk.json` / 澳门 `station-readings-mo.json`（繁中 / 简中 / 日文 / 英文）
+
+香港与澳门各用独立对照表（`GET /api/station-readings-hk` /
+`GET /api/station-readings-mo`），记录形态与台湾表相同
+（`{ name, zh_Hant, zh_Hans, ja, en }`，缺失翻译保持空字符串）：
+
+| 字段 / 索引 | 规则 |
+| --- | --- |
+| `byCode[官方站点代码]` | §2.3 的持久化站点代码（`TML-MTR-WKS` / `MLM-TAIPA-MLM-BARRA`），逐线逐站全量收录 |
+| `byCode["<line.id>:<station-group-id>"]` | 台湾式网络别名（例如 `hk-mtr-tml:hk-official-mtr-wks`），供 compact rail package 的 marker 精确查表 |
+| `name` / `zh_Hant` | 官方繁中站名（港铁 `nameTC` / 澳门轻轨官方名） |
+| `zh_Hans` | 香港优先采用港铁官方简体 `nameSC`（例如 鰂魚涌→鲗鱼涌）；无官方值时按打包脚本字表转换。澳门按字表转换 |
+| `en` | 官方英文站名 |
+| `ja` | 两地运营方均无官方日文译名，固定为空字符串；显示层按查表顺序回退到官方繁中名 |
+| `byName` | 同名无歧义站名兜底，规则与台湾表一致 |
+
+两地均为「本地化站名」模式（与台湾相同）：前端直接把 base station name 切换为当前
+界面语言，不显示日本式假名 / 罗马字副行；四语值不写入 train store。
+
+生成命令（同一脚本一并产出 package / 求解数据集 / readings / 示例 store）：
+
+```sh
+python3 scripts/build-hong-kong-rail-package.py \
+  --mtr-html /tmp/mtr-jp.html --mtr-csv /tmp/mtr_lines_and_stations.csv
+python3 scripts/build-macao-rail-package.py
 ```
 
 ---

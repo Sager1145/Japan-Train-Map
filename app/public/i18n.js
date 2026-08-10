@@ -231,6 +231,9 @@
   // falls back to the service dictionaries for non-station labels.
   let STATION_READINGS = { byCode: {}, byName: {} };
   let STATION_READINGS_COUNTRY = "JP";
+  // Countries whose readings table localizes the base station NAME itself
+  // (rather than annotating a Japanese name with kana/romaji sublines).
+  const LOCALIZED_NAME_COUNTRIES = new Set(["TW", "HK", "MO"]);
   // One station-name key rule for the whole system, owned by AppCore (the
   // station-resolution index and the build scripts use the same function).
   // app-core.js loads before this file — same load-order contract as
@@ -247,8 +250,10 @@
       for (const key of Object.keys(source))
         byName[normReadingKey(key)] = source[key];
       STATION_READINGS = { byCode: data.byCode || {}, byName };
-      STATION_READINGS_COUNTRY =
-        String(data.country || "JP").toUpperCase() === "TW" ? "TW" : "JP";
+      const declared = String(data.country || "JP").toUpperCase();
+      STATION_READINGS_COUNTRY = LOCALIZED_NAME_COUNTRIES.has(declared)
+        ? declared
+        : "JP";
     }
   }
   function stationReading(code, jp) {
@@ -262,14 +267,14 @@
     }
     return null;
   }
-  // Taiwan's table contains localized NAMES, not Japanese pronunciation
+  // The TW/HK/MO tables contain localized NAMES, not Japanese pronunciation
   // annotations. Use the exact official StationUID/network alias first, then a
   // safe unambiguous byName fallback. Missing official English/Japanese values
   // deliberately fall back to the official Traditional Chinese station name;
   // the table itself keeps those translations as empty strings.
   function stationName(name, code) {
     if (!name) return name || "";
-    if (STATION_READINGS_COUNTRY !== "TW") return name;
+    if (!LOCALIZED_NAME_COUNTRIES.has(STATION_READINGS_COUNTRY)) return name;
     const row = stationReading(code, name);
     if (!row) return name;
     if (currentLang === "zh-Hans") return row.zh_Hans || row.zh_Hant || name;
@@ -310,9 +315,9 @@
   // reading type on the same line.
   function nameReadingsTyped(jp, code) {
     if (!jp) return [];
-    // Taiwan localizes the base station name itself into the active one of the
-    // four UI languages. It has no Japanese-style reading subline.
-    if (STATION_READINGS_COUNTRY === "TW") return [];
+    // TW/HK/MO localize the base station name itself into the active one of
+    // the four UI languages. They have no Japanese-style reading subline.
+    if (LOCALIZED_NAME_COUNTRIES.has(STATION_READINGS_COUNTRY)) return [];
     const prefs = activeReadingPrefs();
     const r = stationReading(code, jp);
     const parts = [];
@@ -341,7 +346,8 @@
   }
   function placeName(jp, code) {
     if (!jp) return jp || "";
-    if (STATION_READINGS_COUNTRY === "TW") return stationName(jp, code);
+    if (LOCALIZED_NAME_COUNTRIES.has(STATION_READINGS_COUNTRY))
+      return stationName(jp, code);
     const readings = nameReadings(jp, code);
     if (!readings) return jp;
     // Half-width brackets in the Latin-script locales, full-width in Chinese
@@ -359,7 +365,7 @@
   // the country in via I18N.setCountry (i18n.js loads before app-config.js).
   let uiCountry = "jp";
   function setCountry(country) {
-    uiCountry = country === "tw" ? "tw" : "jp";
+    uiCountry = ["jp", "tw", "hk", "mo"].includes(country) ? country : "jp";
   }
   function countryVariantKey(key) {
     if (uiCountry === "jp") return key;

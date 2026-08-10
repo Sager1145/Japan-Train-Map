@@ -55,7 +55,7 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     })()`,
     context,
   );
-  assert.equal(result.trains.length, 17);
+  assert.equal(result.trains.length, 23);
   context.__legacyTaiwanTrain = {
     ...context.__taiwanStore.trains[0],
     company: "桃園大眾捷運股份有限公司",
@@ -235,6 +235,56 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     ),
     ["嘉義", "新營", "永康", "臺南", "新左營", "高雄"],
   );
+  const kaohsiungToGangshanStation = result.trains.find(
+    (train) =>
+      train.id === "20260810_01_krtc_red_kaohsiung_gangshan_station",
+  );
+  assert.equal(kaohsiungToGangshanStation.stops[0].departure, "14:38");
+  assert.equal(
+    kaohsiungToGangshanStation.stops.at(-1).n02_station_code,
+    "KRTC-RK1",
+  );
+  assert.equal(kaohsiungToGangshanStation.stops.at(-1).arrival, "15:10");
+  assert.equal(kaohsiungToGangshanStation.company, "高雄捷運");
+  assert.equal(kaohsiungToGangshanStation.route_sections.length, 15);
+  const gangshanStationToSiaogang = result.trains.find(
+    (train) =>
+      train.id === "20260810_02_krtc_red_gangshan_station_siaogang",
+  );
+  assert.equal(gangshanStationToSiaogang.stops[0].departure, "15:16");
+  assert.equal(gangshanStationToSiaogang.stops.at(-1).arrival, "16:06");
+  assert.equal(gangshanStationToSiaogang.stops.length, 25);
+  const siaogangToSanduo = result.trains.find(
+    (train) => train.id === "20260810_03_krtc_red_siaogang_sanduo",
+  );
+  assert.equal(siaogangToSanduo.stops[0].departure, "16:12");
+  assert.equal(siaogangToSanduo.stops.at(-1).arrival, "16:24");
+  const sanduoToKaisyuan = result.trains.find(
+    (train) => train.id === "20260810_04_krtc_red_sanduo_kaisyuan",
+  );
+  assert.equal(sanduoToKaisyuan.stops[0].departure, "17:03");
+  assert.equal(sanduoToKaisyuan.stops[1].departure, "17:05");
+  assert.equal(sanduoToKaisyuan.stops.at(-1).arrival, "17:08");
+  const lightRailLoop = result.trains.find(
+    (train) => train.id === "20260810_05_klrt_c3_counterclockwise_loop",
+  );
+  assert.equal(lightRailLoop.stops[0].departure, "17:18");
+  assert.equal(lightRailLoop.stops.at(-1).arrival, "18:47");
+  assert.equal(lightRailLoop.stops.length, 39);
+  assert.equal(lightRailLoop.route_sections.length, 38);
+  assert.equal(lightRailLoop.stops[0].n02_station_code, "KLRT-NETWORK-C3");
+  assert.equal(lightRailLoop.stops[1].n02_station_code, "KLRT-NETWORK-C2");
+  assert.equal(lightRailLoop.stops.at(-1).n02_station_code, "KLRT-NETWORK-C3");
+  assert.equal(
+    lightRailLoop.stops.filter((stop) => stop.stop_type === "passenger_stop")
+      .length,
+    37,
+  );
+  const kaisyuanToKaohsiung = result.trains.find(
+    (train) => train.id === "20260810_06_krtc_red_kaisyuan_kaohsiung",
+  );
+  assert.equal(kaisyuanToKaohsiung.stops[0].departure, "18:54");
+  assert.equal(kaisyuanToKaohsiung.stops.at(-1).arrival, "19:04");
   assert.equal(
     result.trains.every(
       (train) => !/(?:股份有限公司|管理局|管理處)/.test(train.company),

@@ -24,6 +24,8 @@
     // ".tw" suffixed keys are country variants: applyStatic resolves them
     // automatically while Taiwan is the active dataset (see i18n.js).
     "app.title.tw": { zh: "TDX 台灣列車管理", en: "TDX Taiwan Train Manager" },
+    "app.title.hk": { zh: "香港鐵路列車管理", en: "Hong Kong Rail Manager" },
+    "app.title.mo": { zh: "澳門輕軌列車管理", en: "Macao LRT Manager" },
     "app.hint": {
       zh: "在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。",
       en: "View journeys on the map, edit trains and stops, and manage JSON data.",
@@ -61,6 +63,8 @@
     "country.label": { zh: "地區", en: "Region" },
     "country.jp": { zh: "日本", en: "Japan" },
     "country.tw": { zh: "台灣", en: "Taiwan" },
+    "country.hk": { zh: "香港", en: "Hong Kong" },
+    "country.mo": { zh: "澳門", en: "Macao" },
 
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
@@ -142,6 +146,14 @@
     "btn.loadSampleAllTw": {
       zh: "載入台灣示例資料",
       en: "Load Taiwan Sample Data",
+    },
+    "btn.loadSampleAllHk": {
+      zh: "載入香港示例資料",
+      en: "Load Hong Kong Sample Data",
+    },
+    "btn.loadSampleAllMo": {
+      zh: "載入澳門示例資料",
+      en: "Load Macao Sample Data",
     },
     "btn.loadNewYearGrandLoop": {
       zh: "載入跨年大回行程",
@@ -286,6 +298,8 @@
     "sec.stats": { zh: "里程統計", en: "Mileage Stats" },
     "stat.all": { zh: "全國", en: "Nationwide" },
     "stat.all.tw": { zh: "全島", en: "Island-wide" },
+    "stat.all.hk": { zh: "全港", en: "Territory-wide" },
+    "stat.all.mo": { zh: "全澳", en: "Macao-wide" },
     "stat.hsr": { zh: "新幹線", en: "Shinkansen" },
     "stat.conv": { zh: "普通鐵道（在來線）", en: "Conventional rail" },
     "stat.jr": { zh: "JR（含新幹線）", en: "JR (incl. Shinkansen)" },
@@ -302,6 +316,12 @@
     "stat.metro.tw": { zh: "捷運", en: "Metro" },
     "stat.priv.tw": { zh: "阿里山林業鐵路", en: "Alishan Forest Railway" },
     "stat.tram.tw": { zh: "輕軌", en: "Light rail" },
+    // Hong Kong / Macao coverage buckets (see STAT_CATEGORIES_BY_COUNTRY):
+    // MTR heavy rail rides the metro slot, Light Rail rides the tram slot,
+    // and Macao's single LRT system rides the metro slot.
+    "stat.metro.hk": { zh: "港鐵重鐵", en: "MTR heavy rail" },
+    "stat.tram.hk": { zh: "輕鐵", en: "Light Rail" },
+    "stat.metro.mo": { zh: "澳門輕軌", en: "Macao LRT" },
     "stat.allrail": { zh: "全部鐵道", en: "All Railways" },
     "stat.jrconv": { zh: "JR在來線", en: "JR Conventional" },
     "stats.loading": { zh: "正在載入路網資料…", en: "Loading rail network…" },
@@ -350,6 +370,8 @@
     "field.trainType": { zh: "車輛類型", en: "Train Type" },
     "ph.trainType": { zh: "特急／普通／新幹線", en: "Ltd. Exp. / Local / Shinkansen" },
     "ph.trainType.tw": { zh: "自強／區間／高鐵", en: "Tze-Chiang / Local / HSR" },
+    "ph.trainType.hk": { zh: "普通／機場快綫", en: "Local / Airport Express" },
+    "ph.trainType.mo": { zh: "普通", en: "Local" },
     "field.company": { zh: "車輛公司", en: "Company" },
     "ph.company": {
       zh: "JR西日本；直通用／分隔多家公司",
@@ -474,6 +496,14 @@
       zh: "使用 railprint 的 tw-2025 台灣鐵路資料包。",
       en: "Uses railprint's tw-2025 Taiwan rail package.",
     },
+    "info.packageBody.hk": {
+      zh: "使用 hk-2025 香港鐵路資料包。",
+      en: "Uses the hk-2025 Hong Kong rail package.",
+    },
+    "info.packageBody.mo": {
+      zh: "使用 mo-2025 澳門輕軌資料包。",
+      en: "Uses the mo-2025 Macao LRT package.",
+    },
     "info.twRailTitle": { zh: "台灣鐵路網", en: "Taiwan railway network" },
     "info.twRailBody": {
       zh: "結合交通部「TDX 運輸資料流通服務平臺」、內政部國土測繪中心、農業部阿里山林業鐵路及文化資產管理處與臺北市政府捷運工程局的官方資料經加工製作。",
@@ -485,6 +515,16 @@
     "info.twLicense": {
       zh: "政府資料開放授權條款",
       en: "Open Government Data License",
+    },
+    "info.hkRailTitle": { zh: "香港鐵路網", en: "Hong Kong railway network" },
+    "info.hkRailBody": {
+      zh: "依香港鐵路有限公司官方行程指南與開放數據加工製作，包含港鐵重鐵及全部 11 條輕鐵路線。",
+      en: "Derived from MTR Corporation's official journey planner and open data, including heavy rail and all 11 Light Rail routes.",
+    },
+    "info.moRailTitle": { zh: "澳門輕軌網", en: "Macao LRT network" },
+    "info.moRailBody": {
+      zh: "依澳門輕軌股份有限公司官方現行路線與車站資料加工製作。",
+      en: "Derived from the current official lines and stations published by Macao Light Rapid Transit Corporation.",
     },
 
     // map corner control
@@ -765,7 +805,11 @@
     "lang.label": "言語",
     "app.title": "N02 特急列車管理",
     "app.title.tw": "TDX 台湾列車管理",
+    "app.title.hk": "香港鉄道列車管理",
+    "app.title.mo": "マカオ LRT 列車管理",
     "ph.trainType.tw": "自強／區間／高鐵",
+    "ph.trainType.hk": "普通／エアポートエクスプレス",
+    "ph.trainType.mo": "普通",
     "app.hint": "地図上で行程を確認し、列車・停車駅・JSON データを管理します。",
     "nav.label": "ワークスペースナビゲーション",
     "nav.trains": "列車",
@@ -791,6 +835,8 @@
     "country.label": "地域",
     "country.jp": "日本",
     "country.tw": "台湾",
+    "country.hk": "香港",
+    "country.mo": "マカオ",
     "disp.reset": "初期設定に戻す",
     "theme.label": "テーマ",
     "theme.system": "システム",
@@ -840,6 +886,8 @@
       "サンプルデータは閲覧専用で、変更は保存されません。自分のデータはこのブラウザに保存され、編集すると自動保存されます。",
     "btn.loadSampleAll": "サンプルデータを全て読み込む",
     "btn.loadSampleAllTw": "台湾サンプルデータを読み込む",
+    "btn.loadSampleAllHk": "香港サンプルデータを読み込む",
+    "btn.loadSampleAllMo": "マカオサンプルデータを読み込む",
     "btn.loadNewYearGrandLoop": "年越し大回り行程を読み込む",
     "btn.loadTokyoLimitedExpressLoop": "東京特急大回り行程を読み込む",
     "btn.restoreMine": "自分のデータを復元",
@@ -922,6 +970,8 @@
     "fmt.durationM": "{m}分",
     "stat.all": "全国",
     "stat.all.tw": "全島",
+    "stat.all.hk": "香港全域",
+    "stat.all.mo": "マカオ全域",
     "stat.hsr": "新幹線",
     "stat.conv": "普通鉄道（在来線）",
     "stat.jr": "JR（新幹線を含む）",
@@ -935,6 +985,9 @@
     "stat.metro.tw": "MRT（捷運）",
     "stat.priv.tw": "阿里山森林鉄道",
     "stat.tram.tw": "ライトレール",
+    "stat.metro.hk": "MTR（重鉄）",
+    "stat.tram.hk": "ライトレール（軽鉄）",
+    "stat.metro.mo": "マカオLRT",
     "stat.allrail": "全鉄道",
     "stat.jrconv": "JR在来線",
     "stat.rides": "{n} 回",
@@ -1015,12 +1068,18 @@
     "info.packageTitle": "鉄道データパッケージ",
     "info.packageBody": "railprint の日本鉄道データパッケージ jp-2025 を使用しています。",
     "info.packageBody.tw": "railprint の台湾鉄道データパッケージ tw-2025 を使用しています。",
+    "info.packageBody.hk": "香港鉄道データパッケージ hk-2025 を使用しています。",
+    "info.packageBody.mo": "マカオ LRT データパッケージ mo-2025 を使用しています。",
     "info.twRailTitle": "台湾の鉄道網",
     "info.twRailBody": "交通部「TDX 運輸データ流通サービスプラットフォーム」、内政部国土測量製図センター、農業部阿里山林業鉄道及び文化資産管理処、台北市政府捷運工程局の公式データを組み合わせて加工し作成しています。",
     "info.twNlsc": "国土測量製図センター",
     "info.twAfr": "阿里山森林鉄道",
     "info.twTaipei": "台北メトロ GIS",
     "info.twLicense": "政府データオープンライセンス",
+    "info.hkRailTitle": "香港の鉄道網",
+    "info.hkRailBody": "香港鉄路有限公司の公式経路案内とオープンデータを加工し、MTR と全 11 系統のライトレールを収録しています。",
+    "info.moRailTitle": "マカオ LRT 網",
+    "info.moRailBody": "マカオ LRT 株式会社が公開する現行路線・駅の公式情報を加工して作成しています。",
     "map.layers": "地図レイヤー",
     "map.basemap": "背景地図",
     "map.positron": "OpenFreeMap（オンライン）",

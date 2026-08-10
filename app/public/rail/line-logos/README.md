@@ -14,3 +14,12 @@ one asset (for example, R and the Xinbeitou branch).
 
 The route symbols and trademarks remain the property of their respective
 owners. Wikimedia assets retain the licenses stated on their file pages.
+
+# Hong Kong Light Rail route badges
+
+The `mtr-lr-*.svg` badges reproduce the official Light Rail route numbers and
+the route colours published by MTR's journey-planner payload. Heavy-rail lines
+do not receive fabricated route-letter badges: they correctly fall back to the
+official MTR company emblem in `../operator-logos/mtr-badge.png`.
+
+Reference: <https://www.mtr.com.hk/en/customer/jp/index.php>

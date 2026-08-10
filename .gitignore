@@ -13,6 +13,8 @@ app/data/*.json.gz
 # committed. Run it manually for local static-build testing.
 app/data/sample-data/
 app/data/sample-data-tw/
+app/data/sample-data-hk/
+app/data/sample-data-mo/
 
 # Same deal for the special-sample loops: the stores in app/data/special-samples/
 # ARE committed (they are the source, written by scripts/generate-*-loop.mjs),

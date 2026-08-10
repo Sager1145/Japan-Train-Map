@@ -80,3 +80,25 @@ line badge. Metro and light-rail routes with a line identity use the assets in
 | `alsr.svg` | Alishan Forest Railway | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Logo_of_alishan_forest_railway.svg) |
 
 The logos and trademarks remain the property of their respective owners.
+
+## Hong Kong
+
+`mtr-badge.png` is the red railway emblem cropped from the current transparent
+MTR wordmark downloaded from the official MTR journey-planner header at
+<https://www.mtr.com.hk/en/customer/images/logo_5.png>. Only the emblem is
+retained because the popup already renders the `MTR` company name as text. MTR
+does not publish separate badge artwork for its heavy-rail lines on the system
+map, so this emblem is the intentional fallback for those lines.
+
+## Macao
+
+`macao-lrt-badge.png` is the blue-green `M` emblem cropped from the current
+transparent Macao LRT corporate wordmark used in the header of the
+[official Macao LRT website](https://www.mlm.com.mo/), downloaded directly
+from <https://www.mlm.com.mo/images/Logo.png> on 2026-08-10. Only the emblem is
+retained because the popup already renders the `澳門輕軌` company name as text.
+Macao LRT does not publish separate route badges for the Taipa, Seac Pai Van
+and Hengqin lines, so all three intentionally use this verified operator mark.
+
+The logo and trademark remain the property of Macao Light Rapid Transit
+Corporation, Limited.

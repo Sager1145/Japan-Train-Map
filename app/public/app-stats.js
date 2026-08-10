@@ -52,6 +52,14 @@ const STAT_CATEGORIES_BY_COUNTRY = {
     { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
     { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
   ],
+  // Hong Kong's network is one operator (MTR) with two service families:
+  // heavy rail (港鐵重鐵, labelled via stat.metro.hk) and Light Rail
+  // (輕鐵, stat.tram.hk). Macao is a single LRT system.
+  hk: [
+    { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+    { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+  ],
+  mo: [{ mask: STAT_MASK_METRO, i18n: "stat.metro" }],
 };
 // Read as a getter everywhere: the active country can change without a
 // reload, and a snapshot taken at script-evaluation time would keep the old
@@ -137,9 +145,10 @@ function sectionOperatorOf(props) {
 // Which buckets a section belongs to, for the ACTIVE country. The mask bits
 // are shared; how a country's own official codes map onto them is not.
 function classifySectionMask(props) {
-  return activeCountry === "tw"
-    ? classifyTwSectionMask(props)
-    : classifyJpSectionMask(props);
+  if (activeCountry === "tw") return classifyTwSectionMask(props);
+  if (activeCountry === "hk") return classifyHkSectionMask(props);
+  if (activeCountry === "mo") return classifyMoSectionMask(props);
+  return classifyJpSectionMask(props);
 }
 
 // Taiwan, over the same code space the package build assigns
@@ -155,6 +164,20 @@ function classifyTwSectionMask(props) {
   if (cls === "31") return STAT_MASK_PRIV;
   if (code === "3") return STAT_MASK_METRO;
   return STAT_MASK_CONV;
+}
+
+// Hong Kong ships one flat code pair (institution 4 / class 21) across the
+// whole MTR network, so the heavy-rail vs Light Rail split rides on the
+// official line names: every Light Rail route is named 輕鐵NNN綫 by the
+// package build, everything else is a heavy-rail line.
+function classifyHkSectionMask(props) {
+  const lineName = String(sectionLineNameOf(props) || "");
+  return lineName.startsWith("輕鐵") ? STAT_MASK_TRAM : STAT_MASK_METRO;
+}
+
+// Macao's whole network is the one automated LRT system.
+function classifyMoSectionMask() {
+  return STAT_MASK_METRO;
 }
 
 function classifyJpSectionMask(props) {

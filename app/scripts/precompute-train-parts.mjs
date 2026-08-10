@@ -57,10 +57,14 @@ const OUT_DIR = process.env.PRECOMPUTE_OUT_DIR
 // at runtime, and offline it would silently bake wrong-country geometry into
 // the published parts. Japan stays the default so every existing invocation
 // is unchanged.
-const COUNTRY = process.env.PRECOMPUTE_COUNTRY === "tw" ? "tw" : "jp";
-const RAIL_SECTIONS_FILE =
-  COUNTRY === "tw" ? "rail-sections-tw.json" : "rail-sections.json";
-const STATIONS_FILE = COUNTRY === "tw" ? "stations-tw.json" : "stations.json";
+const SUPPORTED_COUNTRIES = new Set(["jp", "tw", "hk", "mo"]);
+const requestedCountry = process.env.PRECOMPUTE_COUNTRY || "jp";
+const COUNTRY = SUPPORTED_COUNTRIES.has(requestedCountry)
+  ? requestedCountry
+  : "jp";
+const suffix = COUNTRY === "jp" ? "" : `-${COUNTRY}`;
+const RAIL_SECTIONS_FILE = `rail-sections${suffix}.json`;
+const STATIONS_FILE = `stations${suffix}.json`;
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 

@@ -14,7 +14,8 @@
 (function (global) {
   "use strict";
 
-  const { MAP_SURFACE_COLORS, namespaceBasemap } = global.RailMapBasemap;
+  const { MAP_SURFACE_COLORS, namespaceBasemap, labelGateFilterForCountry } =
+    global.RailMapBasemap;
 
   // ───────────────────────── design tokens (railprint tokens.ts) ─────────────────────────
   const tokens = {
@@ -44,6 +45,10 @@
       "資料來源：交通部運輸資料流通服務（TDX/PTX）、內政部國土測繪中心、" +
       "農業部阿里山林業鐵路及文化資產管理處、臺北市政府捷運工程局，經加工製作" +
       "（政府資料開放授權條款第1版）",
+    hk:
+      "資料來源：香港鐵路有限公司官方行程指南及開放數據，經加工製作",
+    mo:
+      "資料來源：澳門輕軌股份有限公司官方路線及車站資料，經加工製作",
   };
   function railAttributionForCountry(country) {
     return RAIL_ATTRIBUTIONS[country] || RAIL_ATTRIBUTIONS.jp;
@@ -301,8 +306,16 @@
     });
     // Keep the complete basemap stack below the fade and every railway layer.
     // This guarantees that roads, labels and theme masks can never cover the
-    // ordinary network or any ridden route.
-    const bmLayers = primaryStack ? primaryStack.layers : [];
+    // ordinary network or any ridden route. Label layers are re-gated from the
+    // cached style's combined jp+tw area to the BOOT country, so the other
+    // country's captions never flash before the app hands RailMap the active
+    // country (railmap-basemap.js, per-country label gate).
+    const bmLayers = (primaryStack ? primaryStack.layers : []).map((layer) => {
+      const labelGate = labelGateFilterForCountry(layer, opts.country);
+      return labelGate
+        ? Object.assign({}, layer, { filter: labelGate })
+        : layer;
+    });
     layers.push(...bmLayers);
 
     // Optional map-opacity tint affects only the basemap. Theme switching
@@ -397,10 +410,7 @@
         "line-dasharray": [1.6, 1.4],
       },
     });
-    // Invisible PICK layer: when several trains share the same track, each
-    // train's pick geometry is offset sideways into its own parallel lane
-    // (earliest date = left/top lane), so sliding the pointer across an
-    // overlapped stretch hovers/selects each train in date order. Zero
+    // Invisible true-track PICK layer used while the fan is collapsed. Zero
     // opacity — queryRenderedFeatures still hit-tests against line-width.
     layers.push({
       id: TRAIN_PICK_LAYER,
@@ -417,9 +427,8 @@
       },
     });
     // FAN-SCOPED pick lanes: while a hover fan is open, only the open group's
-    // per-lane hit areas live here. Splitting them out of the (whole-dataset)
-    // static pick source means opening/closing a fan re-uploads a handful of
-    // lane features instead of re-tiling every train's pick geometry.
+    // per-lane hit areas live here. A pooled one-tid layer translates this
+    // true geometry on the GPU together with its visible lane.
     layers.push({
       id: TRAIN_PICK_FAN_LAYER,
       type: "line",
@@ -430,6 +439,8 @@
         "line-color": "#000",
         "line-opacity": 0,
         "line-width": ["get", "pickWidth"],
+        "line-translate": [0, 0],
+        "line-translate-anchor": "map",
       },
     });
     // Whole hovered route lights up (full opacity, a touch wider).  The
@@ -558,6 +569,8 @@
         "line-color": ["get", "colorA"],
         "line-opacity": 0,
         "line-width": zoomScaledWidth(["*", ["get", "width"], RIDDEN_WIDTH_SCALE]),
+        "line-translate": [0, 0],
+        "line-translate-anchor": "map",
       },
     });
     // The hovered train's own lane lights up a touch wider, mirroring the
@@ -576,6 +589,8 @@
           ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
           2,
         ]),
+        "line-translate": [0, 0],
+        "line-translate-anchor": "map",
       },
     });
     // The selected train's own dots above its raised route (same source,
