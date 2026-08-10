@@ -51,3 +51,6 @@ _site*/
 # Pre-edit data snapshots (e.g. train-store.pre-readings.bak.json). Working
 # artifacts kept locally for rollback; never committed.
 *.bak.json
+
+# Local output directory for reports and dumps
+outputs/
