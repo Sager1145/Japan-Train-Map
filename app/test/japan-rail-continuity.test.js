@@ -70,7 +70,7 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   assert.ok(intervalCount > pkg.lines.length * 10);
 });
 
-test("Japan renders one complete LineString per line, never one per station interval", () => {
+test("Japan renders one complete feature per line, never one per station interval", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   const ids = network.segments.features.map(
@@ -79,11 +79,60 @@ test("Japan renders one complete LineString per line, never one per station inte
 
   assert.equal(network.segments.features.length, pkg.lines.length);
   assert.equal(new Set(ids).size, pkg.lines.length);
+  let multiPart = 0;
   for (const feature of network.segments.features) {
-    assert.equal(feature.geometry.type, "LineString");
-    assert.ok(feature.geometry.coordinates.length >= 2);
+    const parts =
+      feature.geometry.type === "MultiLineString"
+        ? feature.geometry.coordinates
+        : [feature.geometry.coordinates];
+    // One feature per line, but a line that carries a branch renders as
+    // several DISJOINT strokes so nothing can draw through the junction.
+    assert.ok(parts.length >= 1);
+    assert.equal(parts.length, feature.properties.partCount);
+    if (parts.length > 1) multiPart += 1;
+    for (const part of parts) assert.ok(part.length >= 2);
+    // Far fewer parts than intervals — the split is topological, not per-hop.
+    assert.ok(parts.length <= Math.max(4, feature.properties.intervalCount / 4));
     assert.ok(feature.properties.intervalCount >= 1);
     assert.equal(feature.properties.segmentId, undefined);
+  }
+  // Only the handful of package lines that carry a branch under one id.
+  assert.ok(multiPart > 0 && multiPart < 100, `multi-part lines: ${multiPart}`);
+});
+
+test("no Japanese display line draws back over track it already laid", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
+
+  const metres = (a, b) => {
+    const lat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+    return Math.hypot(
+      (a[0] - b[0]) * 111320 * Math.cos(lat),
+      (a[1] - b[1]) * 111320,
+    );
+  };
+
+  for (const feature of network.segments.features) {
+    const parts =
+      feature.geometry.type === "MultiLineString"
+        ? feature.geometry.coordinates
+        : [feature.geometry.coordinates];
+    for (const part of parts) {
+      // A retrace shows up as an about-face: two consecutive edges pointing
+      // back along each other. Only kilometre-scale ones are the bug — a real
+      // switchback station (二本木 on the 妙高はねうまライン) is a genuine
+      // hundred-metre stub that the map should keep drawing.
+      for (let index = 1; index < part.length - 1; index += 1) {
+        const back = metres(part[index - 1], part[index]);
+        const forward = metres(part[index], part[index + 1]);
+        if (back < 1000 || forward < 1000) continue;
+        const closing = metres(part[index - 1], part[index + 1]);
+        assert.ok(
+          closing > Math.min(back, forward) * 0.5,
+          `${feature.properties.lineId} doubles back at vertex ${index}`,
+        );
+      }
+    }
   }
 });
 

@@ -157,16 +157,28 @@ function getMatchedRouteFeatures(train) {
       // The solver supplies the route choice and endpoints only. Pixel
       // geometry must come from the active "All Railway Lines" model so every
       // ridden route shares its exact centreline, smoothing and branch join.
-      const displayFeature =
+      const canonical =
         typeof RailMap !== "undefined" &&
         typeof RailMap.canonicalizeRouteFeature === "function"
           ? RailMap.canonicalizeRouteFeature(normalized)
           : normalized;
-      if (!displayFeature) {
+      // No canonical slice means the two endpoints do not sit on one
+      // continuous stroke of any display line — the package stores that hop's
+      // stations in an order that only reaches them via a branch. Drawing it
+      // anyway is precisely the "train swings onto the wrong railway" bug, and
+      // dropping it leaves a hole in the route, so keep the solver's own N02
+      // path for this hop and carry on.
+      const displayFeature = canonical || {
+        ...normalized,
+        properties: {
+          ...(normalized.properties || {}),
+          display_geometry_source: "route-solver-path",
+        },
+      };
+      if (!canonical) {
         console.warn(
-          `Could not map ridden route ${train.id} segment ${index} to the complete railway network.`,
+          `Ridden route ${train.id} segment ${index} has no continuous complete-network slice; drawing the solved path.`,
         );
-        return null;
       }
       const segmentIndex = Number(
         displayFeature.properties?.segment_index ?? index,

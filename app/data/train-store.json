@@ -17593,9 +17593,78 @@
       "route_sections": [
         {
           "from_n02_station_code": "000441",
+          "to_n02_station_code": "000445",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000445",
+          "to_n02_station_code": "000447",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000447",
+          "to_n02_station_code": "000451",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000451",
+          "to_n02_station_code": "000453",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000453",
+          "to_n02_station_code": "000454",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000454",
+          "to_n02_station_code": "000456",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000456",
+          "to_n02_station_code": "000461",
+          "line_names": [
+            "湯の川線"
+          ],
+          "operator_names": [
+            "函館市"
+          ]
+        },
+        {
+          "from_n02_station_code": "000461",
           "to_n02_station_code": "000458",
           "line_names": [
-            "湯の川線",
             "大森線"
           ],
           "operator_names": [
@@ -17610,6 +17679,62 @@
           "arrival": null,
           "departure": "12:06",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "中央病院前",
+          "n02_station_code": "000445",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "千代台",
+          "n02_station_code": "000447",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "堀川町",
+          "n02_station_code": "000451",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "昭和橋",
+          "n02_station_code": "000453",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "千歳町",
+          "n02_station_code": "000454",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "新川町",
+          "n02_station_code": "000456",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "松風町",
+          "n02_station_code": "000461",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "passenger_stop",
           "ride_segment": true
         },
         {

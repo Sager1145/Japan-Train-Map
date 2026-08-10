@@ -18,9 +18,45 @@
     (256 * Math.cos((35 * Math.PI) / 180));
   const STATION_MINZ_CAP = 14;
   const ROMA_SOURCE = { 1: "osm", 2: "wikidata", 3: "official" };
-  const MICRO_KINK_MAX_EDGE_METERS = 30;
-  const MICRO_KINK_MIN_TURN_DEGREES = 55;
-  const MICRO_KINK_MAX_DEVIATION_METERS = 3;
+  // Micro-kink grooming is SCALE-RELATIVE. On a 150 km trunk a 30 m in-and-out
+  // barb with a 3 m bulge is certainly GIS digitising noise; on a street tram
+  // or a people-mover the very same numbers describe a REAL corner (a tram
+  // rounds a city block in tens of metres). Applying the trunk thresholds to
+  // those lines rubs their genuine corners flat. So each line picks its limits
+  // from its own characteristic scale — the median distance between stations.
+  const MICRO_KINK_SCALES = [
+    // Street trams, people movers, funiculars: stops every few hundred metres
+    // and curve radii to match. Only sub-10 m spikes are noise here.
+    { maxSpacingMeters: 700, edge: 8, turn: 75, deviation: 0.8 },
+    // Dense urban metro / short private lines.
+    { maxSpacingMeters: 1600, edge: 16, turn: 65, deviation: 1.5 },
+    // Ordinary regional and trunk railways (the historic thresholds).
+    { maxSpacingMeters: Infinity, edge: 30, turn: 55, deviation: 3 },
+  ];
+  const DEFAULT_MICRO_KINK = MICRO_KINK_SCALES[MICRO_KINK_SCALES.length - 1];
+  // At this deflection the two edges are effectively anti-parallel: the vertex
+  // is a zero-width spike (out and straight back), which is digitising noise at
+  // every scale. The lateral-deviation cap only makes sense for the shallower
+  // range, where it separates a real sharp corner from a bulge.
+  const SPIKE_MIN_TURN_DEGREES = 150;
+
+  // ── branch topology (see displayPartsForLine) ──
+  // A vertex this close to track the same line already drew counts as running
+  // back over it rather than as new railway.
+  const RETRACE_MATCH_METERS = 35;
+  // Ignore the unavoidable few metres of coincidence at a shared station
+  // boundary; only a sustained run of re-used track is a retrace.
+  const RETRACE_MIN_RUN_METERS = 600;
+  // What is left of an interval after its retraced head is trimmed has to be
+  // real railway, not a stub of rounding noise.
+  const RETRACE_MIN_TAIL_METERS = 150;
+  // A branch anchors to a station only if the junction is genuinely nearby.
+  const BRANCH_ANCHOR_MAX_METERS = 1500;
+  // Heading is sampled this far along the branch, past switch-throat wiggle.
+  const BRANCH_HEADING_METERS = 250;
+  // Two intervals meeting at this shallow an angle are not a curve — the line
+  // is reversing onto other track (a branch), so the drawn line must break.
+  const REVERSAL_MAX_DEGREES = 25;
 
   function sameCoordinate(left, right) {
     return Boolean(
@@ -90,12 +126,21 @@
     );
   }
 
-  // Remove only metre-scale GIS digitising barbs. The 3 m deviation cap is
-  // deliberately much tighter than a real railway curve or switchback, so
-  // the centre-line keeps its surveyed shape while tiny in/out reversals no
+  // The grooming limits a line of this median station spacing should use.
+  function microKinkLimitsForSpacing(medianSpacingMeters) {
+    if (!(medianSpacingMeters > 0)) return DEFAULT_MICRO_KINK;
+    for (const scale of MICRO_KINK_SCALES)
+      if (medianSpacingMeters <= scale.maxSpacingMeters) return scale;
+    return DEFAULT_MICRO_KINK;
+  }
+
+  // Remove only GIS digitising barbs at the line's OWN scale. The deviation cap
+  // stays far tighter than a real curve or switchback for that kind of railway,
+  // so the centre-line keeps its surveyed shape while tiny in/out reversals no
   // longer render as sharp thorns. Repeating to stability also cleans a
   // two-vertex barb without applying broad smoothing to the rest of the line.
-  function smoothMicroKinks(coordinates) {
+  function smoothMicroKinks(coordinates, limits) {
+    const { edge, turn, deviation } = limits || DEFAULT_MICRO_KINK;
     let current = [];
     for (const coordinate of coordinates || []) {
       if (!sameCoordinate(current[current.length - 1], coordinate))
@@ -113,12 +158,13 @@
           distanceMeters(previous, corner),
           distanceMeters(corner, following),
         );
+        const deflection = turnDegrees(previous, corner, following);
         const isMicroKink =
-          shortEdge <= MICRO_KINK_MAX_EDGE_METERS &&
-          turnDegrees(previous, corner, following) >=
-            MICRO_KINK_MIN_TURN_DEGREES &&
-          pointSegmentDistanceMeters(corner, previous, following) <=
-            MICRO_KINK_MAX_DEVIATION_METERS;
+          shortEdge <= edge &&
+          deflection >= turn &&
+          (deflection >= SPIKE_MIN_TURN_DEGREES ||
+            pointSegmentDistanceMeters(corner, previous, following) <=
+              deviation);
         if (isMicroKink) changed = true;
         else if (!sameCoordinate(next[next.length - 1], corner)) next.push(corner);
       }
@@ -129,15 +175,139 @@
     return current;
   }
 
+  // ─────────────────────── laid-track index (retrace test) ───────────────────────
+  // A coarse lon/lat bucket grid holding the edges a line has already drawn, so
+  // "is this vertex running back over track we just laid?" is a local lookup
+  // instead of a scan of the whole line.
+  const TRACK_CELL_DEGREES = 0.004; // ~400 m — comfortably above the 35 m test
+
+  function createTrackIndex() {
+    const cells = new Map();
+    const cellKey = (x, y) => `${x}|${y}`;
+    return {
+      add(coordinates) {
+        for (let index = 1; index < coordinates.length; index += 1) {
+          const a = coordinates[index - 1];
+          const b = coordinates[index];
+          const x0 = Math.floor(Math.min(a[0], b[0]) / TRACK_CELL_DEGREES);
+          const x1 = Math.floor(Math.max(a[0], b[0]) / TRACK_CELL_DEGREES);
+          const y0 = Math.floor(Math.min(a[1], b[1]) / TRACK_CELL_DEGREES);
+          const y1 = Math.floor(Math.max(a[1], b[1]) / TRACK_CELL_DEGREES);
+          for (let x = x0; x <= x1; x += 1)
+            for (let y = y0; y <= y1; y += 1) {
+              const key = cellKey(x, y);
+              let rows = cells.get(key);
+              if (!rows) cells.set(key, (rows = []));
+              rows.push([a, b]);
+            }
+        }
+      },
+      isEmpty() {
+        return cells.size === 0;
+      },
+      distanceTo(point) {
+        const gx = Math.floor(point[0] / TRACK_CELL_DEGREES);
+        const gy = Math.floor(point[1] / TRACK_CELL_DEGREES);
+        let best = Infinity;
+        for (let dx = -1; dx <= 1; dx += 1)
+          for (let dy = -1; dy <= 1; dy += 1) {
+            const rows = cells.get(cellKey(gx + dx, gy + dy));
+            if (!rows) continue;
+            for (const [a, b] of rows) {
+              const distance = pointSegmentDistanceMeters(point, a, b);
+              if (distance < best) best = distance;
+            }
+          }
+        return best;
+      },
+    };
+  }
+
+  // How much of this interval's head runs back over track already drawn.
+  // Returns the index of the first vertex that leaves it — the divergence
+  // point where the branch actually parts company with its trunk.
+  function retracedHeadIndex(coordinates, laid) {
+    if (laid.isEmpty()) return 0;
+    let run = 0;
+    let index = 1;
+    for (; index < coordinates.length; index += 1) {
+      if (laid.distanceTo(coordinates[index]) > RETRACE_MATCH_METERS) break;
+      run += distanceMeters(coordinates[index - 1], coordinates[index]);
+    }
+    return run >= RETRACE_MIN_RUN_METERS ? index - 1 : 0;
+  }
+
+  // The user-facing branch rule: a branch joins the trunk at the nearest
+  // station BEHIND it — the station a train would actually have come from —
+  // never at one it would have to swing round a hairpin to reach. So among the
+  // line's own stations, keep only those on the incoming side of the branch's
+  // heading and take the closest of those.
+  function branchAnchorStation(stationPoints, coordinates) {
+    const origin = coordinates[0];
+    let ahead = coordinates[coordinates.length - 1];
+    let travelled = 0;
+    for (let index = 1; index < coordinates.length; index += 1) {
+      travelled += distanceMeters(coordinates[index - 1], coordinates[index]);
+      if (travelled >= BRANCH_HEADING_METERS) {
+        ahead = coordinates[index];
+        break;
+      }
+    }
+    const o = localMetric(origin, origin[1]);
+    const h = localMetric(ahead, origin[1]);
+    const heading = [h[0] - o[0], h[1] - o[1]];
+    const magnitude = Math.hypot(heading[0], heading[1]);
+    if (!magnitude) return null;
+    heading[0] /= magnitude;
+    heading[1] /= magnitude;
+    let best = null;
+    for (const station of stationPoints) {
+      const distance = distanceMeters(station, origin);
+      if (distance > BRANCH_ANCHOR_MAX_METERS) continue;
+      const s = localMetric(station, origin[1]);
+      // Positive means the station lies behind the divergence point along the
+      // branch's direction of travel, i.e. the train came through it.
+      const alongTrack = (o[0] - s[0]) * heading[0] + (o[1] - s[1]) * heading[1];
+      if (alongTrack <= 0) continue;
+      if (!best || distance < best.distance) best = { station, distance };
+    }
+    return best ? best.station : null;
+  }
+
   // The compact package stores station intervals for routing and attribution,
-  // but MapLibre should receive ONE complete feature per display line. Decode
-  // every interval, snap both ends to the authoritative station anchor, weld
-  // the shared boundary once, then groom only metre-scale kinks. A branch is
-  // represented by its own line id and therefore remains a complete feature
-  // whose junction coordinate is shared with its trunk.
-  function continuousCoordinatesForLine(compactLine) {
+  // but MapLibre should receive complete display geometry per line, not one
+  // feature per station interval. Decode every interval, snap both ends to the
+  // authoritative station anchor, weld the shared boundary once, then groom
+  // kinks at the line's own scale.
+  //
+  // A package line is an ORDERED station list, and several real railways store
+  // a trunk AND its branch under one id (室蘭線 carries 東室蘭–室蘭; 東北線
+  // carries the 利府 branch). Concatenating that order blindly makes the drawn
+  // line RETRACE — 室蘭線 ran 138 km back down its own main line to reach 御崎
+  // — and because ridden routes are exact slices of this same geometry, a train
+  // sliced across the retrace visibly turns onto the wrong railway.
+  //
+  // So the line is emitted as PARTS. Wherever an interval doubles back over
+  // track the line already drew, the retraced head is dropped and a new part
+  // starts at the divergence point, re-anchored to the nearest preceding
+  // station. The result still LOOKS continuous — the branch begins at the
+  // station its trunk passes through — while being topologically separate, so
+  // nothing can slice or render straight through the junction.
+  function displayPartsForLine(compactLine) {
     const stationCount = compactLine.stations.length;
-    const joined = [];
+    const stationPoints = compactLine.stations.map((station) => [
+      station[2],
+      station[3],
+    ]);
+    const limits = microKinkLimitsForSpacing(medianSpacingMeters(compactLine));
+    const laid = createTrackIndex();
+    const parts = [];
+    let current = [];
+    const flush = () => {
+      if (current.length >= 2) parts.push(current);
+      current = [];
+    };
+
     let previousLastCoordinate = null;
     compactLine.segments.forEach((row, index) => {
       const decoded = row[1]
@@ -150,12 +320,103 @@
       const endStation = compactLine.stations[nextIndex];
       decoded[0] = [startStation[2], startStation[3]];
       decoded[decoded.length - 1] = [endStation[2], endStation[3]];
-      if (joined.length && sameCoordinate(joined[joined.length - 1], decoded[0]))
-        joined.push(...decoded.slice(1));
-      else joined.push(...decoded);
       previousLastCoordinate = decoded[decoded.length - 1];
+
+      if (current.length) dropStationRepeat(current, decoded);
+
+      let coordinates = decoded;
+      const head = retracedHeadIndex(decoded, laid);
+      if (head > 0) {
+        // This interval reaches its station by running back over the line's own
+        // track. Draw only the part that is new, as its own branch.
+        flush();
+        coordinates = decoded.slice(head);
+        if (pathLength(coordinates) < RETRACE_MIN_TAIL_METERS) {
+          // Nothing new at all — the interval is pure duplicate track. Skip it
+          // entirely; the next interval opens a fresh part at its own station.
+          laid.add(decoded);
+          return;
+        }
+        const anchor = branchAnchorStation(stationPoints, coordinates);
+        if (anchor && !sameCoordinate(anchor, coordinates[0]))
+          coordinates = [anchor].concat(coordinates);
+      } else if (current.length && isReversalJoint(current, coordinates)) {
+        // No shared track, but the line turns back on itself at the joint:
+        // still a branch, and still must not be drawn as one stroke.
+        flush();
+      }
+
+      if (!current.length) current = coordinates.map((c) => [c[0], c[1]]);
+      else if (sameCoordinate(current[current.length - 1], coordinates[0]))
+        current.push(...coordinates.slice(1).map((c) => [c[0], c[1]]));
+      else current.push(...coordinates.map((c) => [c[0], c[1]]));
+      laid.add(decoded);
     });
-    return smoothMicroKinks(joined);
+    flush();
+
+    const groomed = parts
+      .map((coordinates) => smoothMicroKinks(coordinates, limits))
+      .filter((coordinates) => coordinates.length >= 2);
+    return groomed.length ? groomed : [[stationPoints[0], stationPoints[0]]];
+  }
+
+  function medianSpacingMeters(compactLine) {
+    const spacings = compactLine.segments
+      .map((row) => Number(row[0]) * 1000)
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+    if (!spacings.length) return 0;
+    return spacings[Math.floor(spacings.length / 2)];
+  }
+
+  // Station-boundary vertex repeat.
+  //
+  // Where a station sits partway along a surveyed edge, the package ends the
+  // arriving interval at the station anchor and starts the next one by
+  // re-emitting the SAME neighbouring track vertex. Concatenated that reads
+  // X, A, S, A, Y — the line runs to the platform, back out to A, then on. It
+  // is only tens of metres, but it is a true 180° reversal, so it renders as a
+  // thorn at (nearly) every station, it makes a ridden-route slice measure the
+  // station twice, and it looks like a branch to any topology test.
+  //
+  // Only one of the two A's belongs. Keep whichever ordering is shorter —
+  // that is by definition the one that does not double back. Detected
+  // structurally (the identical vertex either side of the station), never by
+  // distance, so a genuine stub track is left alone.
+  function dropStationRepeat(current, next) {
+    if (current.length < 3 || next.length < 3) return;
+    const before = current[current.length - 3];
+    const repeated = current[current.length - 2];
+    const station = current[current.length - 1];
+    const after = next[2];
+    if (!sameCoordinate(repeated, next[1])) return;
+    const keepFirst =
+      distanceMeters(before, repeated) +
+      distanceMeters(repeated, station) +
+      distanceMeters(station, after);
+    const keepSecond =
+      distanceMeters(before, station) +
+      distanceMeters(station, repeated) +
+      distanceMeters(repeated, after);
+    if (keepFirst <= keepSecond) next.splice(1, 1);
+    else current.splice(current.length - 2, 1);
+  }
+
+  function isReversalJoint(current, next) {
+    const joint = current[current.length - 1];
+    if (!sameCoordinate(joint, next[0])) return false;
+    const before = current[current.length - 2];
+    const after = next[1];
+    if (!before || !after) return false;
+    // turnDegrees reports the deflection from straight-on; 180° is a full
+    // about-face, so a reversal is a LARGE deflection.
+    return turnDegrees(before, joint, after) >= 180 - REVERSAL_MAX_DEGREES;
+  }
+
+  // Retained for callers that want the historic single-stroke geometry.
+  function continuousCoordinatesForLine(compactLine) {
+    const parts = displayPartsForLine(compactLine);
+    return parts.length === 1 ? parts[0] : parts.flat();
   }
 
   function routeHintValues(properties, arrayFields, objectFields) {
@@ -181,30 +442,36 @@
     rows.push(value);
   }
 
-  function lineMetric(line) {
-    if (line._displayMetric) return line._displayMetric;
-    const coordinates = line.geometry?.coordinates || [];
-    const cumulative = [0];
-    for (let index = 1; index < coordinates.length; index += 1) {
-      cumulative.push(
-        cumulative[index - 1] +
-          distanceMeters(coordinates[index - 1], coordinates[index]),
-      );
-    }
-    const metric = { coordinates, cumulative, length: cumulative.at(-1) || 0 };
-    Object.defineProperty(line, "_displayMetric", {
-      configurable: true,
-      value: metric,
+  // One metric per display PART. Parts are deliberately disjoint strokes (a
+  // trunk and its branches), so measures never run across a junction and a
+  // ridden-route slice can never leak from one railway onto another.
+  function lineMetrics(line) {
+    if (line._displayMetrics) return line._displayMetrics;
+    const parts = line.parts || [line.geometry?.coordinates || []];
+    const metrics = parts.map((coordinates) => {
+      const cumulative = [0];
+      for (let index = 1; index < coordinates.length; index += 1) {
+        cumulative.push(
+          cumulative[index - 1] +
+            distanceMeters(coordinates[index - 1], coordinates[index]),
+        );
+      }
+      return { coordinates, cumulative, length: cumulative.at(-1) || 0 };
     });
-    return metric;
+    Object.defineProperty(line, "_displayMetrics", {
+      configurable: true,
+      value: metrics,
+    });
+    return metrics;
   }
 
-  function projectPointToLine(line, point, projectionCache) {
+  function projectPointToPart(line, partIndex, point, projectionCache) {
     if (!point || point.length < 2) return null;
-    const cacheKey = `${line.lineId}|${Number(point[0]).toFixed(7)},${Number(point[1]).toFixed(7)}`;
+    const cacheKey = `${line.lineId}#${partIndex}|${Number(point[0]).toFixed(7)},${Number(point[1]).toFixed(7)}`;
     const cached = projectionCache?.get(cacheKey);
     if (cached) return cached;
-    const metric = lineMetric(line);
+    const metric = lineMetrics(line)[partIndex];
+    if (!metric) return null;
     let best = null;
     for (let index = 0; index < metric.coordinates.length - 1; index += 1) {
       const start = metric.coordinates[index];
@@ -239,11 +506,28 @@
           distance,
           index,
           ratio,
+          partIndex,
           measure: metric.cumulative[index] + segmentLength * ratio,
         };
       }
     }
     if (best && projectionCache) projectionCache.set(cacheKey, best);
+    return best;
+  }
+
+  function projectPointToLine(line, point, projectionCache) {
+    let best = null;
+    const metrics = lineMetrics(line);
+    for (let partIndex = 0; partIndex < metrics.length; partIndex += 1) {
+      const candidate = projectPointToPart(
+        line,
+        partIndex,
+        point,
+        projectionCache,
+      );
+      if (candidate && (!best || candidate.distance < best.distance))
+        best = candidate;
+    }
     return best;
   }
 
@@ -282,8 +566,11 @@
   }
 
   function canonicalLineSlice(line, start, end, rawCoordinates) {
-    const metric = lineMetric(line);
-    if (!line.isLoop) {
+    const metric = lineMetrics(line)[start.partIndex];
+    if (!metric) return [];
+    // A loop only wraps when the whole line is ONE closed part; a split line's
+    // parts are open strokes even if the package marks the line as a loop.
+    if (!line.isLoop || lineMetrics(line).length > 1) {
       if (start.measure <= end.measure)
         return sliceForward(metric, start, end, false);
       return sliceForward(metric, end, start, false).reverse();
@@ -357,19 +644,28 @@
       const rawEnd = rawCoordinates[rawCoordinates.length - 1];
       let best = null;
       for (const line of candidates) {
-        const start = projectPointToLine(
-          line,
-          rawStart,
-          network.routeProjectionCache,
-        );
-        const end = projectPointToLine(
-          line,
-          rawEnd,
-          network.routeProjectionCache,
-        );
-        if (!start || !end) continue;
-        const score = start.distance + end.distance;
-        if (!best || score < best.score) best = { line, start, end, score };
+        // Both endpoints must land on the SAME part. Parts are separate
+        // railways (a trunk and its branch), so allowing one endpoint on each
+        // is exactly the "train turns onto the wrong line" bug: the slice
+        // would run from a branch, through the junction, onto other track.
+        const partCount = lineMetrics(line).length;
+        for (let partIndex = 0; partIndex < partCount; partIndex += 1) {
+          const start = projectPointToPart(
+            line,
+            partIndex,
+            rawStart,
+            network.routeProjectionCache,
+          );
+          const end = projectPointToPart(
+            line,
+            partIndex,
+            rawEnd,
+            network.routeProjectionCache,
+          );
+          if (!start || !end) continue;
+          const score = start.distance + end.distance;
+          if (!best || score < best.score) best = { line, start, end, score };
+        }
       }
       // Endpoint display coordinates may deliberately bridge a station marker
       // to its surveyed track. The characterized packages stay below 500 m;
@@ -497,11 +793,14 @@
         minZoom: lineMinZoom,
       });
 
-      const lineCoordinates = continuousCoordinatesForLine(compactLine);
-      const lineGeometry = {
-        type: "LineString",
-        coordinates: lineCoordinates,
-      };
+      // A line that carries branches renders as several disjoint strokes: they
+      // meet at a station so the map still reads continuous, but nothing can
+      // draw or slice straight through the junction (see displayPartsForLine).
+      const lineParts = displayPartsForLine(compactLine);
+      const lineGeometry =
+        lineParts.length === 1
+          ? { type: "LineString", coordinates: lineParts[0] }
+          : { type: "MultiLineString", coordinates: lineParts };
       lineFeatures.push({
         type: "Feature",
         geometry: lineGeometry,
@@ -514,10 +813,12 @@
           isHSR: compactLine.isHSR ? 1 : 0,
           isLoop: compactLine.isLoop ? 1 : 0,
           intervalCount: compactLine.segments.length,
+          partCount: lineParts.length,
           visibilityKm,
         },
       });
       lineById.get(lineId).geometry = lineGeometry;
+      lineById.get(lineId).parts = lineParts;
       addIndexValue(linesByName, compactLine.name, lineById.get(lineId));
       addIndexValue(
         linesByOperator,
@@ -609,6 +910,7 @@
     minZoomForRank,
     minZoomForLength,
     continuousCoordinatesForLine,
+    displayPartsForLine,
     canonicalizeRouteFeature,
     smoothMicroKinks,
     stationMinZoomForLine,

@@ -358,6 +358,97 @@ function buildMapInfoControl() {
   });
 }
 
+// ───────────────────────── errored-tile recovery ─────────────────────────
+// MapLibre never retries a tile whose request failed: `_loadTile` sets
+// `tile.state = "errored"` and `reload()` deliberately skips errored tiles, so
+// one transient network blip on tiles.openfreemap.org leaves that map square
+// permanently blank — the map even reports `areTilesLoaded()` as done. That is
+// the "a few squares never load, or only load once you zoom right in" symptom:
+// zooming far enough asks for DIFFERENT tile ids, which succeed.
+//
+// `map.refreshTiles(sourceId, ids)` is the one public API that re-requests an
+// errored tile, so retry each failure a few times with a widening backoff.
+// Country-independent by construction: it keys off whatever source failed, so
+// jp / tw / hk / mo all recover the same way.
+const TILE_RETRY_DELAYS_MS = [900, 2600, 6500];
+const tileRetryState = new Map();
+
+function tileRetryKey(sourceId, canonical) {
+  return `${sourceId} ${canonical.z}/${canonical.x}/${canonical.y}`;
+}
+
+function retryErroredTile(map, event) {
+  const tile = event && event.tile;
+  const sourceId = event && event.sourceId;
+  if (!tile || !sourceId || !tile.tileID || typeof map.refreshTiles !== "function")
+    return;
+  // 404 means the tile genuinely does not exist (past the source's coverage);
+  // MapLibre already handles that by overzooming a parent. Only transport
+  // failures and 5xx are worth re-requesting.
+  const status = event.error && event.error.status;
+  if (status === 404 || status === 403) return;
+  const canonical = tile.tileID.canonical;
+  const key = tileRetryKey(sourceId, canonical);
+  const attempt = tileRetryState.get(key) || 0;
+  if (attempt >= TILE_RETRY_DELAYS_MS.length) return;
+  tileRetryState.set(key, attempt + 1);
+  setTimeout(() => {
+    // refreshTiles only touches tiles the source still holds in view, so a
+    // tile the user has since panned away from is a no-op rather than waste.
+    try {
+      map.refreshTiles(sourceId, [
+        { z: canonical.z, x: canonical.x, y: canonical.y },
+      ]);
+    } catch (error) {
+      // Source removed (country switch / style reinstall) — nothing to retry.
+    }
+  }, TILE_RETRY_DELAYS_MS[attempt]);
+}
+
+// The per-tile backoff above covers a blip while the user sits still. The
+// other case is a spell of no connectivity: every visible tile burns its three
+// attempts, and the squares stay blank even after the network returns. So on a
+// genuine environment change — network back, or the tab shown again after a
+// sleep that killed its in-flight requests — clear the counters and re-request
+// whatever is still errored. Rate-limited so a flapping connection can't turn
+// this into a request loop.
+const TILE_SWEEP_COOLDOWN_MS = 5000;
+let lastTileSweepAt = 0;
+
+function installTileRetryRecovery(map) {
+  const sweep = () => {
+    if (typeof map.refreshTiles !== "function") return;
+    const now = Date.now();
+    if (now - lastTileSweepAt < TILE_SWEEP_COOLDOWN_MS) return;
+    lastTileSweepAt = now;
+    const managers = map.style && map.style.tileManagers;
+    if (!managers) return;
+    tileRetryState.clear();
+    for (const sourceId of Object.keys(managers)) {
+      const manager = managers[sourceId];
+      if (!manager || typeof manager.getIds !== "function") continue;
+      const stale = [];
+      for (const id of manager.getIds()) {
+        const tile = manager.getTileByID(id);
+        if (tile && tile.state === "errored") {
+          const c = tile.tileID.canonical;
+          stale.push({ z: c.z, x: c.x, y: c.y });
+        }
+      }
+      if (!stale.length) continue;
+      try {
+        map.refreshTiles(sourceId, stale);
+      } catch (error) {
+        // Source disappeared between the scan and the refresh — ignore.
+      }
+    }
+  };
+  window.addEventListener("online", sweep);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) sweep();
+  });
+}
+
 async function initMap(mapAssetsReady) {
   // The theme-selected OpenFreeMap style + active complete-line package load in
   // parallel (pre-started at boot, before the /api datasets); either may be
@@ -484,11 +575,13 @@ async function initMap(mapAssetsReady) {
 
   // Online basemap tile failures degrade to the plain background — never fatal.
   map.on("error", (e) => {
+    retryErroredTile(map, e);
     const msg = (e && e.error && e.error.message) || "";
     const url = (e && e.error && e.error.url) || "";
     if (url.includes("openfreemap") || msg.includes("openfreemap")) return;
     console.warn("[map]", msg || e);
   });
+  installTileRetryRecovery(map);
 
   // The OpenFreeMap Dark style's landcover_wood layer uses a "wood-pattern"
   // fill image that its sprite doesn't ship, so MapLibre logged a "could not be
