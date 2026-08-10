@@ -31,12 +31,12 @@ function loadPopup() {
 const TAIWAN_OPERATORS = [
   ["國營臺灣鐵路股份有限公司", "台鐵", "tra.svg"],
   ["台灣高速鐵路股份有限公司", "台灣高鐵", "thsr.svg"],
-  ["臺北大眾捷運股份有限公司", "台北捷運", "trtc.svg"],
+  ["臺北大眾捷運股份有限公司", "台北捷運", "trtc-badge.png"],
   ["新北大眾捷運股份有限公司", "新北捷運", "ntmetro.svg"],
   ["桃園大眾捷運股份有限公司", "桃園捷運", "tym.png"],
   ["臺中捷運股份有限公司", "台中捷運", "tcmrt.svg"],
-  ["高雄捷運股份有限公司", "高雄捷運", "krtc.svg"],
-  ["阿里山林業鐵路及文化資產管理處", "阿里山林鐵", "alsr.svg"],
+  ["高雄捷運股份有限公司", "高雄捷運", "krtc-badge.png"],
+  ["阿里山林業鐵路及文化資產管理處", "阿里山林鐵", "alsr-badge.png"],
 ];
 
 test("Taiwan hover popup uses short operator names and company-logo fallbacks", () => {
@@ -85,6 +85,32 @@ test("Taiwan hover popup uses short operator names and company-logo fallbacks", 
   assert.match(html, />台鐵<\/span>/);
   assert.match(html, />台灣高鐵<\/span>/);
   assert.match(html, />台北捷運<\/span>/);
+});
+
+test("every Taiwan operator fallback is an emblem-only asset", () => {
+  const { branding } = loadPopup();
+  const expectedDimensions = new Map([
+    ["trtc-badge.png", [243, 128]],
+    ["krtc-badge.png", [131, 87]],
+    ["alsr-badge.png", [149, 128]],
+  ]);
+
+  for (const [operator, , asset] of TAIWAN_OPERATORS) {
+    assert.equal(branding.operatorLogo(operator), `/rail/operator-logos/${asset}`);
+    const content = fs.readFileSync(path.join(PUBLIC_DIR, "rail", "operator-logos", asset));
+    if (asset.endsWith(".svg")) {
+      assert.doesNotMatch(content.toString("utf8"), /<text\b/i, `${asset} has embedded text`);
+      continue;
+    }
+    assert.deepEqual([...content.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    if (expectedDimensions.has(asset)) {
+      assert.deepEqual(
+        [content.readUInt32BE(16), content.readUInt32BE(20)],
+        expectedDimensions.get(asset),
+        `${asset} badge crop dimensions`,
+      );
+    }
+  }
 });
 
 const TAIWAN_LINE_LOGOS = [

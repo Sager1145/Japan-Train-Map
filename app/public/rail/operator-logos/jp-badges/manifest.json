@@ -1,0 +1,959 @@
+[
+  {
+    "operator": "IRいしかわ鉄道",
+    "sourceAsset": "/rail/logos/jp-IRいしかわ鉄道-IRいしかわ鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-IRいしかわ鉄道-IRいしかわ鉄道線.png"
+  },
+  {
+    "operator": "JR東海交通事業",
+    "sourceAsset": "/rail/operator-logos/jp/q7862679.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q7862679.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "WILLER　TRAINS",
+    "sourceAsset": "/rail/operator-logos/jp/q19727758.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q19727758.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "アイジーアールいわて銀河鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q5371026.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q5371026.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "あいの風とやま鉄道",
+    "sourceAsset": "/rail/logos/jp-あいの風とやま鉄道-あいの風とやま鉄道線.png",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/logos/jp-あいの風とやま鉄道-あいの風とやま鉄道線.png",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "アルピコ交通",
+    "sourceAsset": "/rail/operator-logos/jp/q4735443.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-001.png",
+    "crop": [
+      0,
+      0,
+      0.22,
+      1
+    ]
+  },
+  {
+    "operator": "いすみ鉄道",
+    "sourceAsset": "/rail/logos/jp-いすみ鉄道-いすみ線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-いすみ鉄道-いすみ線.png"
+  },
+  {
+    "operator": "えちごトキめき鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11260966.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-002.png",
+    "crop": [
+      0,
+      0,
+      0.5,
+      1
+    ]
+  },
+  {
+    "operator": "えちぜん鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q1007890.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-003.png",
+    "crop": [
+      0,
+      0,
+      0.23,
+      1
+    ]
+  },
+  {
+    "operator": "くま川鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q8194074.jpg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-004.png",
+    "crop": [
+      0,
+      0,
+      0.2,
+      1
+    ]
+  },
+  {
+    "operator": "こうべ未来都市機構",
+    "sourceAsset": "/rail/operator-logos/jp/q11237259.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-005.png",
+    "crop": [
+      0,
+      0,
+      0.16,
+      0.72
+    ]
+  },
+  {
+    "operator": "しなの鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11254401.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-006.png",
+    "crop": [
+      0,
+      0,
+      1,
+      0.7
+    ]
+  },
+  {
+    "operator": "とさでん交通",
+    "sourceAsset": "/rail/operator-logos/jp/q3537118.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-007.png",
+    "crop": [
+      0,
+      0,
+      0.22,
+      1
+    ]
+  },
+  {
+    "operator": "のと鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q7063103.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q7063103.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "ハピラインふくい",
+    "sourceAsset": "/rail/logos/jp-ハピラインふくい-ハピラインふくい線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-ハピラインふくい-ハピラインふくい線.png"
+  },
+  {
+    "operator": "ひたちなか海浜鉄道",
+    "sourceAsset": "/rail/logos/jp-ひたちなか海浜鉄道-湊線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-ひたちなか海浜鉄道-湊線.png"
+  },
+  {
+    "operator": "ラクテンチ",
+    "sourceAsset": "/rail/operator-logos/jp/q11346676.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-008.png",
+    "crop": [
+      0,
+      0.25,
+      0.24,
+      1
+    ]
+  },
+  {
+    "operator": "わたらせ渓谷鐵道",
+    "sourceAsset": "/rail/logos/jp-わたらせ渓谷鐵道-わたらせ渓谷線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-わたらせ渓谷鐵道-わたらせ渓谷線.png"
+  },
+  {
+    "operator": "阿佐海岸鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11657221.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11657221.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "阿武隈急行",
+    "sourceAsset": "/rail/operator-logos/jp/q4670567.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q4670567.svg"
+  },
+  {
+    "operator": "愛知環状鉄道",
+    "sourceAsset": "/rail/logos/jp-愛知環状鉄道-愛知環状鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-愛知環状鉄道-愛知環状鉄道線.png"
+  },
+  {
+    "operator": "伊賀鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/iga-railway.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-009.png",
+    "crop": [
+      0,
+      0,
+      0.16,
+      1
+    ]
+  },
+  {
+    "operator": "伊勢鉄道",
+    "sourceAsset": "/rail/logos/jp-伊勢鉄道-伊勢線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-伊勢鉄道-伊勢線.png"
+  },
+  {
+    "operator": "伊予鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q3138970.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q3138970.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "井原鉄道",
+    "sourceAsset": "/rail/logos/jp-井原鉄道-井原線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-井原鉄道-井原線.png"
+  },
+  {
+    "operator": "一畑電車",
+    "sourceAsset": "/rail/operator-logos/jp/q128426.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-010.png",
+    "crop": [
+      0,
+      0,
+      0.25,
+      1
+    ]
+  },
+  {
+    "operator": "一般財団法人青函トンネル記念館",
+    "sourceAsset": "/rail/operator-logos/jp/seikan-tunnel-museum.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-011.png",
+    "crop": [
+      0.86,
+      0,
+      1,
+      1
+    ]
+  },
+  {
+    "operator": "一般社団法人札幌市交通事業振興公社",
+    "sourceAsset": "https://www.city.sapporo.jp/shared/site_st/images/header/hlogo.gif",
+    "sourcePage": "https://www.city.sapporo.jp/st/",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-012.png",
+    "crop": [
+      0,
+      0,
+      0.2593,
+      1
+    ],
+    "reason": "札幌市電 uses the passenger-facing Sapporo Transport Bureau ST mark rather than the operating corporation's corporate mark"
+  },
+  {
+    "operator": "遠州鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q9286431.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q9286431.svg"
+  },
+  {
+    "operator": "岡山電気軌道",
+    "sourceAsset": "/rail/operator-logos/jp/q860466.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q860466.svg"
+  },
+  {
+    "operator": "沖縄都市モノレール",
+    "sourceAsset": "/rail/logos/jp-沖縄都市モノレール-沖縄都市モノレール線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-沖縄都市モノレール-沖縄都市モノレール線.png"
+  },
+  {
+    "operator": "会津鉄道",
+    "sourceAsset": "/rail/logos/jp-会津鉄道-会津線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-会津鉄道-会津線.png"
+  },
+  {
+    "operator": "岳南電車",
+    "sourceAsset": "/rail/logos/jp-岳南電車-岳南鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-岳南電車-岳南鉄道線.png"
+  },
+  {
+    "operator": "甘木鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11574278.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-013.png",
+    "crop": [
+      0,
+      0,
+      1,
+      0.72
+    ]
+  },
+  {
+    "operator": "関東鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q845943.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-014.png",
+    "crop": [
+      0,
+      0,
+      0.25,
+      1
+    ]
+  },
+  {
+    "operator": "紀州鉄道",
+    "sourceAsset": "/rail/logos/jp-紀州鉄道-紀州鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-紀州鉄道-紀州鉄道線.png"
+  },
+  {
+    "operator": "京阪電気鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q1188274.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-015.png",
+    "crop": [
+      0,
+      0,
+      0.13,
+      1
+    ]
+  },
+  {
+    "operator": "京都市",
+    "sourceAsset": "/rail/operator-logos/jp/q5359594.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q5359594.svg"
+  },
+  {
+    "operator": "京福電気鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q3537126.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q3537126.svg"
+  },
+  {
+    "operator": "錦川鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11650435.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-016.png",
+    "crop": [
+      0,
+      0,
+      0.14,
+      1
+    ]
+  },
+  {
+    "operator": "近江鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q3276327.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-017.png",
+    "crop": [
+      0,
+      0,
+      0.14,
+      1
+    ]
+  },
+  {
+    "operator": "九州旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q498366.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q498366.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "熊本市",
+    "sourceAsset": "/rail/operator-logos/jp/q900963.jpg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q900963.jpg"
+  },
+  {
+    "operator": "熊本電気鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q5357168.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q5357168.svg"
+  },
+  {
+    "operator": "御岳登山鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q6880754.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q6880754.svg"
+  },
+  {
+    "operator": "広島電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q1196530.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q1196530.svg"
+  },
+  {
+    "operator": "高松琴平電気鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q566998.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-018.png",
+    "crop": [
+      0,
+      0.25,
+      0.18,
+      1
+    ]
+  },
+  {
+    "operator": "高尾登山電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q7677245.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q7677245.svg"
+  },
+  {
+    "operator": "黒部峡谷鉄道",
+    "sourceAsset": "/rail/logos/jp-黒部峡谷鉄道-本線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-黒部峡谷鉄道-本線.png"
+  },
+  {
+    "operator": "嵯峨野観光鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q50187147.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q50187147.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "皿倉登山鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11480880.png",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11480880.png",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "三岐鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q7418001.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q7418001.svg"
+  },
+  {
+    "operator": "三陸鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q7418928.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q7418928.png"
+  },
+  {
+    "operator": "山形鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11045417.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11045417.svg"
+  },
+  {
+    "operator": "山万",
+    "sourceAsset": "/rail/operator-logos/jp/q11465832.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11465832.png"
+  },
+  {
+    "operator": "四国ケーブル",
+    "sourceAsset": "/rail/operator-logos/jp/q7496602.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q7496602.png"
+  },
+  {
+    "operator": "四国旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q496531.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q496531.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "四日市あすなろう鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q17211160.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-019.png",
+    "crop": [
+      0,
+      0,
+      0.17,
+      1
+    ]
+  },
+  {
+    "operator": "鹿児島市",
+    "sourceAsset": "/rail/operator-logos/jp/q3537114.gif",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-020.png",
+    "crop": [
+      0,
+      0,
+      0.17,
+      1
+    ]
+  },
+  {
+    "operator": "若桜鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11616555.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-021.png",
+    "crop": [
+      0,
+      0,
+      0.25,
+      1
+    ]
+  },
+  {
+    "operator": "秋田内陸縦貫鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11595259.png",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11595259.png",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "十国峠",
+    "sourceAsset": "/rail/operator-logos/jp/q11380603.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11380603.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "小湊鐵道",
+    "sourceAsset": "/rail/logos/jp-小湊鐵道-小湊鐵道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-小湊鐵道-小湊鐵道線.png"
+  },
+  {
+    "operator": "松浦鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q6788223.jpg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q6788223.jpg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "湘南モノレール",
+    "sourceAsset": "/rail/logos/jp-湘南モノレール-江の島線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-湘南モノレール-江の島線.png"
+  },
+  {
+    "operator": "上信電鉄",
+    "sourceAsset": "/rail/logos/jp-上信電鉄-上信線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-上信電鉄-上信線.png"
+  },
+  {
+    "operator": "上田電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q11263296.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11263296.svg"
+  },
+  {
+    "operator": "上毛電気鉄道",
+    "sourceAsset": "/rail/logos/jp-上毛電気鉄道-上毛線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-上毛電気鉄道-上毛線.png"
+  },
+  {
+    "operator": "信楽高原鐵道",
+    "sourceAsset": "/rail/operator-logos/jp/q7496306.jpg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q7496306.jpg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "真岡鐵道",
+    "sourceAsset": "/rail/logos/jp-真岡鐵道-真岡線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-真岡鐵道-真岡線.png"
+  },
+  {
+    "operator": "神戸新交通",
+    "sourceAsset": "/rail/operator-logos/jp/q5366038.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q5366038.svg"
+  },
+  {
+    "operator": "神戸六甲鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q130517459.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-022.png",
+    "crop": [
+      0.42,
+      0,
+      1,
+      0.62
+    ]
+  },
+  {
+    "operator": "水間鉄道",
+    "sourceAsset": "/rail/logos/jp-水間鉄道-水間線.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-023.png",
+    "crop": [
+      0,
+      0,
+      1,
+      0.7
+    ]
+  },
+  {
+    "operator": "水島臨海鉄道",
+    "sourceAsset": "/rail/logos/jp-水島臨海鉄道-水島本線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-水島臨海鉄道-水島本線.png"
+  },
+  {
+    "operator": "西日本鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q869251.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q869251.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "西日本旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q502125.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q502125.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "青い森鉄道",
+    "sourceAsset": "/rail/logos/jp-青い森鉄道-青い森鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-青い森鉄道-青い森鉄道線.png"
+  },
+  {
+    "operator": "静岡鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q5362040.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-024.png",
+    "crop": [
+      0,
+      0,
+      0.28,
+      0.72
+    ]
+  },
+  {
+    "operator": "仙台空港鉄道",
+    "sourceAsset": "/rail/logos/jp-仙台空港鉄道-仙台空港線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-仙台空港鉄道-仙台空港線.png"
+  },
+  {
+    "operator": "仙台市",
+    "sourceAsset": "/rail/logos/jp-仙台市-南北線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-仙台市-南北線.png"
+  },
+  {
+    "operator": "多摩都市モノレール",
+    "sourceAsset": "/rail/logos/jp-多摩都市モノレール-多摩都市モノレール線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-多摩都市モノレール-多摩都市モノレール線.png"
+  },
+  {
+    "operator": "大井川鐵道",
+    "sourceAsset": "/rail/operator-logos/jp/q842075.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q842075.svg"
+  },
+  {
+    "operator": "大阪モノレール",
+    "sourceAsset": "/rail/operator-logos/jp/q1903962.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q1903962.svg"
+  },
+  {
+    "operator": "大山観光電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q11434695.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11434695.png"
+  },
+  {
+    "operator": "丹後海陸交通",
+    "sourceAsset": "/rail/operator-logos/jp/q11368524.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11368524.png"
+  },
+  {
+    "operator": "智頭急行",
+    "sourceAsset": "/rail/operator-logos/jp/q4133832.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q4133832.svg"
+  },
+  {
+    "operator": "筑波観光鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/tsukuba-kanko.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-025.png",
+    "crop": [
+      0,
+      0,
+      0.14,
+      1
+    ]
+  },
+  {
+    "operator": "筑豊電気鉄道",
+    "sourceAsset": "/rail/logos/jp-筑豊電気鉄道-筑豊電気鉄道線.png",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/logos/jp-筑豊電気鉄道-筑豊電気鉄道線.png",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "秩父鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q843780.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q843780.svg"
+  },
+  {
+    "operator": "長崎電気軌道",
+    "sourceAsset": "/rail/operator-logos/jp/q901485.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q901485.png"
+  },
+  {
+    "operator": "長野電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q6958437.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-026.png",
+    "crop": [
+      0,
+      0,
+      0.18,
+      1
+    ]
+  },
+  {
+    "operator": "長良川鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11653637.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11653637.svg"
+  },
+  {
+    "operator": "津軽鉄道",
+    "sourceAsset": "/rail/logos/jp-津軽鉄道-津軽鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-津軽鉄道-津軽鉄道線.png"
+  },
+  {
+    "operator": "天竜浜名湖鉄道",
+    "sourceAsset": "/rail/logos/jp-天竜浜名湖鉄道-天竜浜名湖線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-天竜浜名湖鉄道-天竜浜名湖線.png"
+  },
+  {
+    "operator": "土佐くろしお鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q7827542.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q7827542.png"
+  },
+  {
+    "operator": "島原鉄道",
+    "sourceAsset": "/rail/logos/jp-島原鉄道-島原鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-島原鉄道-島原鉄道線.png"
+  },
+  {
+    "operator": "東海旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q513679.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q513679.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "東京メトロ",
+    "sourceAsset": "/rail/operator-logos/jp/q682894.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-027.png",
+    "crop": [
+      0,
+      0,
+      0.5,
+      1
+    ]
+  },
+  {
+    "operator": "東日本旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q499071.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q499071.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "道南いさりび鉄道",
+    "sourceAsset": "/rail/logos/jp-道南いさりび鉄道-道南いさりび鉄道線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-道南いさりび鉄道-道南いさりび鉄道線.png"
+  },
+  {
+    "operator": "南阿蘇鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11408721.jpg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11408721.jpg"
+  },
+  {
+    "operator": "函館市",
+    "sourceAsset": "/rail/operator-logos/jp/q3082613.png",
+    "sourcePage": "https://www.city.hakodate.hokkaido.jp/tram/",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-028.png",
+    "crop": [
+      0,
+      0,
+      0.22,
+      1
+    ]
+  },
+  {
+    "operator": "比叡山鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11547404.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11547404.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "肥薩おれんじ鉄道",
+    "sourceAsset": "/rail/logos/jp-肥薩おれんじ鉄道-肥薩おれんじ鉄道線.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-029.png",
+    "crop": [
+      0,
+      0,
+      1,
+      0.75
+    ]
+  },
+  {
+    "operator": "富山地方鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q1131125.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q1131125.svg"
+  },
+  {
+    "operator": "富士山麓電気鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q116872861.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-030.png",
+    "crop": [
+      0,
+      0,
+      0.1,
+      1
+    ]
+  },
+  {
+    "operator": "福井鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q5507652.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-031.png",
+    "crop": [
+      0,
+      0,
+      0.18,
+      1
+    ]
+  },
+  {
+    "operator": "福島交通",
+    "sourceAsset": "/rail/operator-logos/jp/q5507741.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q5507741.svg"
+  },
+  {
+    "operator": "平成筑豊鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q3943894.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q3943894.svg"
+  },
+  {
+    "operator": "豊橋鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q3081081.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q3081081.svg"
+  },
+  {
+    "operator": "北海道旅客鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q498930.svg",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q498930.svg",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "北九州高速鉄道",
+    "sourceAsset": "/rail/logos/jp-北九州高速鉄道-小倉線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-北九州高速鉄道-小倉線.png"
+  },
+  {
+    "operator": "北条鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11402201.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11402201.png"
+  },
+  {
+    "operator": "北大阪急行電鉄",
+    "sourceAsset": "/rail/operator-logos/jp/q2323022.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q2323022.svg"
+  },
+  {
+    "operator": "北陸鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q5878320.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q5878320.svg"
+  },
+  {
+    "operator": "明知鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q8193797.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q8193797.svg"
+  },
+  {
+    "operator": "野岩鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q8046688.svg",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-032.png",
+    "crop": [
+      0,
+      0,
+      0.18,
+      0.72
+    ]
+  },
+  {
+    "operator": "由利高原鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/q11577568.png",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/q11577568.png",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "養老鉄道",
+    "sourceAsset": "/rail/operator-logos/jp/yoro-railway.webp",
+    "mode": "original-wordmark",
+    "runtimeAsset": "/rail/operator-logos/jp/yoro-railway.webp",
+    "reason": "no independent emblem; original verified logo retained instead of a color swatch"
+  },
+  {
+    "operator": "立山黒部貫光",
+    "sourceAsset": "/rail/operator-logos/jp/q11597848.png",
+    "mode": "cropped-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp-badges/badge-033.png",
+    "crop": [
+      0,
+      0,
+      0.15,
+      1
+    ]
+  },
+  {
+    "operator": "流鉄",
+    "sourceAsset": "/rail/logos/jp-流鉄-流山線.png",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/logos/jp-流鉄-流山線.png"
+  },
+  {
+    "operator": "和歌山電鐵",
+    "sourceAsset": "/rail/operator-logos/jp/q11417705.svg",
+    "mode": "original-emblem",
+    "runtimeAsset": "/rail/operator-logos/jp/q11417705.svg"
+  }
+]

@@ -7,16 +7,19 @@ scope is verified against the corresponding line. The old package flag merely
 meant that an image existed: 65 of its 349 images were actually company marks,
 generic Shinkansen marks, regional JR codes applied beyond their official
 scope, historical predecessor marks, or a parent-company mark. The audited
-runtime therefore treats 284 images as line badges; three further routes carry
+runtime therefore treats 284 images as line badges; four further routes carry
 an official line symbol through the branding override table (北勢線 uses the
 三岐鉄道 route letter H from [Commons File:SG number-H.svg](https://commons.wikimedia.org/wiki/File:SG_number-H.svg),
 CC BY-SA 4.0 by 渡海千明, stored as `../line-logos/sangi-hokusei.svg`; the
 丸ノ内線分岐線 reuses the package's Marunouchi M badge; 京都市営地下鉄東西線
 uses its official vermillion T from [Commons File:Subway KyotoTozai.svg](https://commons.wikimedia.org/wiki/File:Subway_KyotoTozai.svg),
-CC0, stored as `../line-logos/kyoto-tozai.svg`). 仙台市's two subway lines
+CC0, stored as `../line-logos/kyoto-tozai.svg`; 北海道新幹線 uses the
+[JR Hokkaido Shinkansen pictogram](https://commons.wikimedia.org/wiki/File:Shinkansen_jrh.svg),
+CC BY-SA 4.0 by KANAO22, supplied as `Shinkansen_jrh.svg` and stored unchanged
+as `../line-logos/hokkaido-shinkansen.svg`). 仙台市's two subway lines
 publish official N/T symbols, but no Commons or official-site asset exists to
 source them from, so they deliberately keep the bureau mark. The remaining routes
-go through the exact operator fallback. In total, 591 of 594 Japanese routes
+go through the exact operator fallback. In total, 597 of 600 Japanese routes
 resolve to a verified line or operator mark; the three deliberate exceptions
 are the two 万葉線 routes and 鞍馬寺, whose operators publish no distinct mark
 in the checked sources.
@@ -55,11 +58,28 @@ fallback instead of using a fabricated or unrelated mark.
 
 The complete mapping was re-audited against those live sources on 2026-08-10,
 including a visual pass over all 407 displayed assets. Automated popup tests
-verify the 284 accepted line badges, the three line-symbol overrides, all
+verify the 284 accepted line badges, the four line-symbol overrides, all
 fallback decisions, the 89 downloaded operator assets, their image signatures,
-and the exact operator-to-manifest assignment. Four official marks are designed for dark website headers (青函
-トンネル記念館, 四国ケーブル, 錦川鉄道, 阿佐海岸鉄道); the popup gives
-only those original assets a dark matte so they remain legible in light mode.
+and the exact operator-to-manifest assignment.
+
+Japanese operator fallbacks follow the same emblem-first presentation as the
+other regions. The 122 runtime decisions are recorded in
+[`jp-badges/manifest.json`](jp-badges/manifest.json): 33 combination marks use
+a crop containing only their independent emblem, 65 source files are already
+emblem-like and remain unchanged, and 24 wordmarks remain unchanged because
+their verified source provides no independently usable emblem. In the last
+case the original logo is deliberately retained instead of replacing it with a
+color swatch. Original source files remain in `jp/`; derived emblem crops are
+stored in `jp-badges/`. The light-on-dark marks for 青函トンネル記念館,
+四国ケーブル, and 阿佐海岸鉄道 receive a dark matte so they remain legible
+in light mode.
+
+Municipal tram fallbacks use their passenger-facing transit identity. 札幌市電
+uses the emblem-only ST mark cropped from the current
+[札幌市交通局 official header](https://www.city.sapporo.jp/st/), rather than
+the separate corporate mark of the company contracted to operate the service.
+函館市電 uses the blue emblem cropped from the current
+[函館市企業局交通部 official header](https://www.city.hakodate.hokkaido.jp/tram/).
 
 ## Taiwan
 
@@ -72,12 +92,16 @@ line badge. Metro and light-rail routes with a line identity use the assets in
 | --- | --- | --- |
 | `tra.svg` | Taiwan Railway | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:ROC_Taiwan_Railways_Administration_Logo.svg) |
 | `thsr.svg` | Taiwan High Speed Rail | transparent flying-flags mark from [CompaniesLogo](https://companieslogo.com/taiwan-high-speed-rail/logo/), visually checked against the [official corporate identity page](https://www.thsrc.com.tw/ArticleContent/605d1cb2-2d98-4d73-9586-7e8363ee44e3) |
-| `trtc.svg` | Taipei Metro | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Taipei_mrt_logo.svg) |
+| `trtc-badge.png` | Taipei Metro | green-blue rail emblem cropped from the [Wikimedia Commons combination mark](https://commons.wikimedia.org/wiki/File:Taipei_mrt_logo.svg) |
 | `ntmetro.svg` | New Taipei Metro | [Wikipedia file page](https://zh.wikipedia.org/wiki/File:New_Taipei_Metro_logo.svg) |
 | `tym.png` | Taoyuan Metro | [official corporate identity page](https://www.tymetro.com.tw/tymetro-new/en/_pages/about/cis.html) |
 | `tcmrt.svg` | Taichung Metro | [Wikipedia file page](https://zh.wikipedia.org/wiki/File:Taichung_Metro_logo.svg) |
-| `krtc.svg` | Kaohsiung Metro | [Wikipedia file page](https://zh.wikipedia.org/wiki/File:Kaohsiung_Metro.svg); [official identity reference](https://corp.krtc.com.tw/eng/About/page?id=9c81a5246b014c06bcc1bcd55b025610) |
-| `alsr.svg` | Alishan Forest Railway | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Logo_of_alishan_forest_railway.svg) |
+| `krtc-badge.png` | Kaohsiung Metro | blue `K` emblem cropped from the [Wikipedia combination mark](https://zh.wikipedia.org/wiki/File:Kaohsiung_Metro.svg); checked against the [official identity reference](https://corp.krtc.com.tw/eng/About/page?id=9c81a5246b014c06bcc1bcd55b025610) |
+| `alsr-badge.png` | Alishan Forest Railway | red mountain/rail emblem cropped from the [Wikimedia Commons combination mark](https://commons.wikimedia.org/wiki/File:Logo_of_alishan_forest_railway.svg) |
+
+Every runtime Taiwan operator asset is the emblem only; company-name lettering
+is rendered separately by the popup. The three cropped PNGs retain the source
+artwork's original shape, color and transparency without redrawing it.
 
 The logos and trademarks remain the property of their respective owners.
 

@@ -15,6 +15,12 @@ one asset (for example, R and the Xinbeitou branch).
 The route symbols and trademarks remain the property of their respective
 owners. Wikimedia assets retain the licenses stated on their file pages.
 
+# Japan line badges
+
+| Asset | Line | Reference |
+| --- | --- | --- |
+| `tokyo-metro-marunouchi-branch.svg` | Tokyo Metro Marunouchi branch line (`Mb`) | [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Logo_of_Tokyo_Metro_Marunouchi_branch_Line.svg) |
+
 # Hong Kong Light Rail route badges
 
 The `mtr-lr-*.svg` badges reproduce the official Light Rail route numbers and

@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -10,6 +11,12 @@ const PUBLIC_DIR = path.join(__dirname, "..", "public");
 const JAPAN_NETWORK = require(path.join(PUBLIC_DIR, "rail", "jp-2025.json"));
 const JAPAN_MANIFEST = require(
   path.join(PUBLIC_DIR, "rail", "operator-logos", "jp", "manifest.json"),
+);
+const JAPAN_BADGE_AUDIT = require(
+  path.join(PUBLIC_DIR, "rail", "operator-logos", "jp-badges", "manifest.json"),
+);
+const JAPAN_BADGE_BY_OPERATOR = new Map(
+  JAPAN_BADGE_AUDIT.map((entry) => [entry.operator, entry]),
 );
 
 function loadPopup() {
@@ -63,15 +70,20 @@ test("rejected or missing package art may use a verified official line symbol", 
   const { branding } = loadPopup();
   // 北勢線: package art was the pre-1944 北勢鉄道 predecessor mark; the line's
   // official 三岐鉄道 route letter is H. 丸ノ内線分岐線: no package art; the
-  // branch shares the trunk's Marunouchi M badge. 京都市東西線: no package
-  // art; the line publishes its official vermillion T symbol.
+  // branch publishes its own Marunouchi Mb badge. 京都市東西線: no package
+  // art; the line publishes its official vermillion T symbol. 北海道新幹線:
+  // use the supplied JR Hokkaido Shinkansen pictogram.
   const overrides = new Map([
     ["jp-三岐鉄道-北勢線", "/rail/line-logos/sangi-hokusei.svg"],
     [
       "jp-東京地下鉄-4号線丸ノ内線分岐線",
-      "/rail/logos/jp-東京地下鉄-4号線丸ノ内線.png",
+      "/rail/line-logos/tokyo-metro-marunouchi-branch.svg",
     ],
     ["jp-京都市-東西線", "/rail/line-logos/kyoto-tozai.svg"],
+    [
+      "jp-北海道旅客鉄道-北海道新幹線",
+      "/rail/line-logos/hokkaido-shinkansen.svg",
+    ],
   ]);
   for (const [lineId, expected] of overrides) {
     const line = JAPAN_NETWORK.lines.find((entry) => entry.id === lineId);
@@ -88,6 +100,14 @@ test("rejected or missing package art may use a verified official line symbol", 
       `${lineId} override asset exists`,
     );
   }
+  const hokkaidoPictogram = fs.readFileSync(
+    path.join(PUBLIC_DIR, "rail", "line-logos", "hokkaido-shinkansen.svg"),
+  );
+  assert.equal(
+    crypto.createHash("sha256").update(hokkaidoPictogram).digest("hex"),
+    "5a633494bdb618d5591f06fc13905f9cc6782acb6c4fbadb1199f4599f7dd52c",
+    "the supplied Shinkansen_jrh.svg stays byte-for-byte unchanged",
+  );
 });
 
 test("every non-line image falls back to the exact operator, never a parent or predecessor", () => {
@@ -101,24 +121,29 @@ test("every non-line image falls back to the exact operator, never a parent or p
     });
   });
   const unresolvedOperators = new Set(["万葉線", "鞍馬寺"]);
-  // These two resolve to official line symbols ahead of the operator mark;
+  // These resolve to official line symbols ahead of the operator mark;
   // the dedicated override test covers them.
   const lineSymbolOverrides = new Set([
     "jp-三岐鉄道-北勢線",
     "jp-東京地下鉄-4号線丸ノ内線分岐線",
     "jp-京都市-東西線",
+    "jp-北海道旅客鉄道-北海道新幹線",
   ]);
   const coveredLines = missingBadgeLines.filter(
     (line) =>
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  assert.equal(missingBadgeLines.length, 310);
+  assert.equal(missingBadgeLines.length, 316);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 304);
+  assert.equal(coveredLines.length, 309);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
-    assert.match(logo, /^\/rail\/(?:operator-logos\/jp|logos)\//, line.operator);
+    assert.match(
+      logo,
+      /^\/rail\/(?:operator-logos\/(?:jp|jp-badges)|logos)\//,
+      line.operator,
+    );
     assert.equal(
       fs.existsSync(path.join(PUBLIC_DIR, logo.replace(/^\//, ""))),
       true,
@@ -141,13 +166,13 @@ test("every non-line image falls back to the exact operator, never a parent or p
   const replacedWrongAssets = new Map([
     [
       "jp-四日市あすなろう鉄道-内部線",
-      "/rail/operator-logos/jp/q17211160.svg",
+      "/rail/operator-logos/jp-badges/badge-019.png",
     ],
     ["jp-養老鉄道-養老線", "/rail/operator-logos/jp/yoro-railway.webp"],
-    ["jp-伊賀鉄道-伊賀線", "/rail/operator-logos/jp/iga-railway.png"],
+    ["jp-伊賀鉄道-伊賀線", "/rail/operator-logos/jp-badges/badge-009.png"],
     [
       "jp-筑波観光鉄道-筑波山鋼索鉄道線",
-      "/rail/operator-logos/jp/tsukuba-kanko.png",
+      "/rail/operator-logos/jp-badges/badge-025.png",
     ],
   ]);
   for (const [lineId, expected] of replacedWrongAssets) {
@@ -200,18 +225,24 @@ test("Japanese operator logo sources are auditable and render in hover popup", (
   );
   for (const entry of downloaded) {
     assert.match(entry.sourcePage, /^https?:\/\//, `${entry.operator} source`);
-    const expectedAsset = `/rail/operator-logos/jp/${entry.asset}`;
-    const assetPath = path.join(
+    const sourcePath = path.join(
       PUBLIC_DIR,
       "rail",
       "operator-logos",
       "jp",
       entry.asset,
     );
-    assert.equal(branding.operatorLogo(entry.operator), expectedAsset);
-    assert.equal(fs.existsSync(assetPath), true, `${entry.asset} exists`);
+    const runtimeAsset = JAPAN_BADGE_BY_OPERATOR.get(entry.operator)?.runtimeAsset;
+    assert.ok(runtimeAsset, `${entry.operator} has a runtime audit decision`);
+    assert.equal(branding.operatorLogo(entry.operator), runtimeAsset);
+    assert.equal(fs.existsSync(sourcePath), true, `${entry.asset} source exists`);
+    assert.equal(
+      fs.existsSync(path.join(PUBLIC_DIR, runtimeAsset.replace(/^\//, ""))),
+      true,
+      `${entry.operator} runtime asset exists`,
+    );
 
-    const bytes = fs.readFileSync(assetPath);
+    const bytes = fs.readFileSync(sourcePath);
     const signature = bytes.subarray(0, 8).toString("hex");
     const validSignature =
       (entry.asset.endsWith(".svg") &&
@@ -251,19 +282,83 @@ test("Japanese operator logo sources are auditable and render in hover popup", (
   assert.match(popup.stationPopupHtml(model), /class="rp-line-logo"/);
 });
 
+test("Japanese operator fallbacks prefer badge-only crops and retain unavoidable wordmarks", () => {
+  const { branding } = loadPopup();
+  assert.equal(JAPAN_BADGE_AUDIT.length, 122);
+  assert.equal(
+    JAPAN_BADGE_AUDIT.filter((entry) => entry.mode === "cropped-emblem").length,
+    33,
+  );
+  assert.equal(
+    JAPAN_BADGE_AUDIT.filter((entry) => entry.mode === "original-emblem").length,
+    65,
+  );
+  assert.equal(
+    JAPAN_BADGE_AUDIT.filter((entry) => entry.mode === "original-wordmark").length,
+    24,
+  );
+
+  for (const entry of JAPAN_BADGE_AUDIT) {
+    assert.equal(branding.operatorLogo(entry.operator), entry.runtimeAsset, entry.operator);
+    const runtimePath = path.join(PUBLIC_DIR, entry.runtimeAsset.replace(/^\//, ""));
+    assert.equal(fs.existsSync(runtimePath), true, `${entry.operator} runtime asset exists`);
+    if (entry.mode === "original-wordmark") {
+      assert.equal(entry.runtimeAsset, entry.sourceAsset, `${entry.operator} keeps original`);
+      assert.match(entry.reason, /retained instead of a color swatch/);
+    }
+    if (entry.mode === "cropped-emblem") {
+      assert.notEqual(entry.runtimeAsset, entry.sourceAsset, `${entry.operator} uses crop`);
+      const png = fs.readFileSync(runtimePath);
+      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      assert.ok(png.readUInt32BE(16) <= 256, `${entry.operator} crop width`);
+      assert.ok(png.readUInt32BE(20) <= 128, `${entry.operator} crop height`);
+    }
+  }
+});
+
+test("Sapporo and Hakodate trams use their passenger-facing municipal transit marks", () => {
+  const { branding } = loadPopup();
+  const sapporoOperator = "一般社団法人札幌市交通事業振興公社";
+  const hakodateOperator = "函館市";
+  assert.equal(branding.companyLabel(sapporoOperator), "札幌市電");
+  assert.equal(branding.companyLabel(hakodateOperator), "函館市電");
+  assert.equal(
+    branding.operatorLogo(sapporoOperator),
+    "/rail/operator-logos/jp-badges/badge-012.png",
+  );
+  assert.equal(
+    branding.operatorLogo(hakodateOperator),
+    "/rail/operator-logos/jp-badges/badge-028.png",
+  );
+
+  const sapporoAudit = JAPAN_BADGE_BY_OPERATOR.get(sapporoOperator);
+  const hakodateAudit = JAPAN_BADGE_BY_OPERATOR.get(hakodateOperator);
+  assert.equal(sapporoAudit.sourcePage, "https://www.city.sapporo.jp/st/");
+  assert.match(sapporoAudit.reason, /ST mark rather than.*corporate mark/);
+  assert.equal(
+    hakodateAudit.sourcePage,
+    "https://www.city.hakodate.hokkaido.jp/tram/",
+  );
+
+  const sapporoBadge = fs.readFileSync(
+    path.join(PUBLIC_DIR, "rail", "operator-logos", "jp-badges", "badge-012.png"),
+  );
+  assert.equal(sapporoBadge.readUInt32BE(16), 56);
+  assert.equal(sapporoBadge.readUInt32BE(20), 47);
+});
+
 test("official light-on-dark Japanese marks receive a readable popup matte", () => {
   const { popup, branding } = loadPopup();
   const lightMarks = [
-    "seikan-tunnel-museum.png",
-    "q7496602.png",
-    "q11650435.png",
-    "q11657221.svg",
+    "/rail/operator-logos/jp-badges/badge-011.png",
+    "/rail/operator-logos/jp/q7496602.png",
+    "/rail/operator-logos/jp/q11657221.svg",
   ];
-  for (const asset of lightMarks) {
+  for (const logo of lightMarks) {
     assert.equal(
-      branding.logoNeedsDarkMatte(`/rail/operator-logos/jp/${asset}`),
+      branding.logoNeedsDarkMatte(logo),
       true,
-      asset,
+      logo,
     );
   }
   assert.equal(

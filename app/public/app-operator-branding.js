@@ -99,6 +99,49 @@ const RailOperatorBranding = (() => {
     "Macao LRT": "澳門輕軌",
   });
 
+  // Badge-only crops from the verified Japanese operator artwork. These are
+  // used only where the source publishes an independently usable emblem next
+  // to its company-name lettering. Operators with no separable emblem retain
+  // their original verified logo instead of falling back to a color swatch.
+  const JAPAN_OPERATOR_BADGE_OVERRIDES = Object.freeze({
+    アルピコ交通: "/rail/operator-logos/jp-badges/badge-001.png",
+    えちごトキめき鉄道: "/rail/operator-logos/jp-badges/badge-002.png",
+    えちぜん鉄道: "/rail/operator-logos/jp-badges/badge-003.png",
+    くま川鉄道: "/rail/operator-logos/jp-badges/badge-004.png",
+    こうべ未来都市機構: "/rail/operator-logos/jp-badges/badge-005.png",
+    しなの鉄道: "/rail/operator-logos/jp-badges/badge-006.png",
+    とさでん交通: "/rail/operator-logos/jp-badges/badge-007.png",
+    ラクテンチ: "/rail/operator-logos/jp-badges/badge-008.png",
+    伊賀鉄道: "/rail/operator-logos/jp-badges/badge-009.png",
+    一畑電車: "/rail/operator-logos/jp-badges/badge-010.png",
+    一般財団法人青函トンネル記念館:
+      "/rail/operator-logos/jp-badges/badge-011.png",
+    一般社団法人札幌市交通事業振興公社:
+      "/rail/operator-logos/jp-badges/badge-012.png",
+    甘木鉄道: "/rail/operator-logos/jp-badges/badge-013.png",
+    関東鉄道: "/rail/operator-logos/jp-badges/badge-014.png",
+    京阪電気鉄道: "/rail/operator-logos/jp-badges/badge-015.png",
+    錦川鉄道: "/rail/operator-logos/jp-badges/badge-016.png",
+    近江鉄道: "/rail/operator-logos/jp-badges/badge-017.png",
+    高松琴平電気鉄道: "/rail/operator-logos/jp-badges/badge-018.png",
+    四日市あすなろう鉄道:
+      "/rail/operator-logos/jp-badges/badge-019.png",
+    鹿児島市: "/rail/operator-logos/jp-badges/badge-020.png",
+    若桜鉄道: "/rail/operator-logos/jp-badges/badge-021.png",
+    神戸六甲鉄道: "/rail/operator-logos/jp-badges/badge-022.png",
+    水間鉄道: "/rail/operator-logos/jp-badges/badge-023.png",
+    静岡鉄道: "/rail/operator-logos/jp-badges/badge-024.png",
+    筑波観光鉄道: "/rail/operator-logos/jp-badges/badge-025.png",
+    長野電鉄: "/rail/operator-logos/jp-badges/badge-026.png",
+    東京メトロ: "/rail/operator-logos/jp-badges/badge-027.png",
+    函館市: "/rail/operator-logos/jp-badges/badge-028.png",
+    肥薩おれんじ鉄道: "/rail/operator-logos/jp-badges/badge-029.png",
+    富士山麓電気鉄道: "/rail/operator-logos/jp-badges/badge-030.png",
+    福井鉄道: "/rail/operator-logos/jp-badges/badge-031.png",
+    野岩鉄道: "/rail/operator-logos/jp-badges/badge-032.png",
+    立山黒部貫光: "/rail/operator-logos/jp-badges/badge-033.png",
+  });
+
   // Company-level fallbacks for Japanese routes without a verified line
   // badge. Some older package assets are company marks (or worse, historical
   // predecessor/parent-company marks), so logoForLine() only treats package
@@ -324,9 +367,8 @@ const RailOperatorBranding = (() => {
   // header. Give only these assets a dark matte in the hover popup so the
   // original artwork stays legible in both app themes.
   const LOGOS_REQUIRING_DARK_MATTE = new Set([
-    "/rail/operator-logos/jp/seikan-tunnel-museum.png",
+    "/rail/operator-logos/jp-badges/badge-011.png",
     "/rail/operator-logos/jp/q7496602.png",
-    "/rail/operator-logos/jp/q11650435.png",
     "/rail/operator-logos/jp/q11657221.svg",
   ]);
 
@@ -335,25 +377,28 @@ const RailOperatorBranding = (() => {
     澳門輕軌: "/rail/operator-logos/macao-lrt-badge.png",
     台鐵: "/rail/operator-logos/tra.svg",
     台灣高鐵: "/rail/operator-logos/thsr.svg",
-    台北捷運: "/rail/operator-logos/trtc.svg",
+    台北捷運: "/rail/operator-logos/trtc-badge.png",
     新北捷運: "/rail/operator-logos/ntmetro.svg",
     桃園捷運: "/rail/operator-logos/tym.png",
     台中捷運: "/rail/operator-logos/tcmrt.svg",
-    高雄捷運: "/rail/operator-logos/krtc.svg",
-    阿里山林鐵: "/rail/operator-logos/alsr.svg",
+    高雄捷運: "/rail/operator-logos/krtc-badge.png",
+    阿里山林鐵: "/rail/operator-logos/alsr-badge.png",
   });
 
   const LINE_LOGOS = Object.freeze({
     // Japanese lines whose package art was rejected (or missing) but which
     // publish an official line symbol of their own. Verified 2026-08-10:
     // 北勢線 carries the official 三岐鉄道 route letter H (the package art was
-    // the pre-1944 北勢鉄道 predecessor mark); the 丸ノ内線 branch shares the
-    // Marunouchi M identity that the package already provides for the trunk;
-    // 京都市営地下鉄東西線 uses its official vermillion T symbol.
+    // the pre-1944 北勢鉄道 predecessor mark); the 丸ノ内線 branch uses its
+    // dedicated Mb identity rather than the trunk line's M symbol;
+    // 京都市営地下鉄東西線 uses its official vermillion T symbol; 北海道
+    // 新幹線 uses the JR Hokkaido Shinkansen pictogram supplied for this line.
     "jp-三岐鉄道-北勢線": "/rail/line-logos/sangi-hokusei.svg",
     "jp-東京地下鉄-4号線丸ノ内線分岐線":
-      "/rail/logos/jp-東京地下鉄-4号線丸ノ内線.png",
+      "/rail/line-logos/tokyo-metro-marunouchi-branch.svg",
     "jp-京都市-東西線": "/rail/line-logos/kyoto-tozai.svg",
+    "jp-北海道旅客鉄道-北海道新幹線":
+      "/rail/line-logos/hokkaido-shinkansen.svg",
     "tw-trtc-bl": "/rail/line-logos/trtc-bl.svg",
     "tw-trtc-r": "/rail/line-logos/trtc-r.svg",
     "tw-trtc-r-xinbeitou": "/rail/line-logos/trtc-r.svg",
@@ -426,6 +471,7 @@ const RailOperatorBranding = (() => {
   function operatorLogo(operator) {
     const rawOperator = String(operator || "").trim();
     return (
+      JAPAN_OPERATOR_BADGE_OVERRIDES[rawOperator] ||
       JAPAN_OPERATOR_LOGOS[rawOperator] ||
       JAPAN_PACKAGE_OPERATOR_LOGOS[rawOperator] ||
       OPERATOR_LOGOS[MACAO_COMPANY_LABELS[rawOperator]] ||
