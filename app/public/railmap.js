@@ -158,7 +158,7 @@
 
     _map: null,
     _network: null,
-    _networkPromise: null, // dedups concurrent ensureNetwork() lazy loads
+    _networkPromise: null, // dedups concurrent network loads/retries
     _networkGeneration: 0, // invalidates a load started for the prior country
     _networkVisibleWanted: false,
     _networkStationsVisibleWanted: false,
@@ -218,6 +218,23 @@
     _basemapGeneration: 0,
     _basemapTransitionDuration: BASEMAP_CROSSFADE_MS,
     _fadeOpacity: 0,
+
+    // Every ridden route is rendered from an exact slice of the same complete
+    // line geometry used by the hidden-by-default national-network overlay.
+    // Keeping this adapter here makes the active country's network the single
+    // display-geometry authority for every route consumer.
+    canonicalizeRouteFeature(feature) {
+      if (
+        !this._network ||
+        !global.RailNetwork ||
+        typeof global.RailNetwork.canonicalizeRouteFeature !== "function"
+      )
+        return null;
+      return global.RailNetwork.canonicalizeRouteFeature(
+        this._network,
+        feature,
+      );
+    },
 
     attach(
       map,
@@ -682,11 +699,9 @@
         this._networkStationsVisibleWanted ? "visible" : "none",
       );
     },
-    // Lazily fetch + build + upload the active country's network package the
-    // FIRST time it is actually needed (user opts into 全部鐵路線). The map is
-    // built with EMPTY_FC network sources at boot (buildBaseStyle degrades that
-    // way), so this just setData's the real collections into the two existing,
-    // still-hidden sources. Deduped so concurrent toggles parse once.
+    // Fetch + build + upload the active country's network package when it was
+    // not supplied at attach time, or retry after a failed boot/country load.
+    // Deduped so concurrent recovery/toggle requests parse once.
     ensureNetwork() {
       if (this._network) return Promise.resolve(this._network);
       if (this._networkPromise) return this._networkPromise;

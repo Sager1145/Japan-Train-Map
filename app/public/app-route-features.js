@@ -154,13 +154,27 @@ function getMatchedRouteFeatures(train) {
     .map((feature, index) => {
       const normalized = normalizeSingleRouteGeometry(feature);
       if (!normalized) return null;
+      // The solver supplies the route choice and endpoints only. Pixel
+      // geometry must come from the active "All Railway Lines" model so every
+      // ridden route shares its exact centreline, smoothing and branch join.
+      const displayFeature =
+        typeof RailMap !== "undefined" &&
+        typeof RailMap.canonicalizeRouteFeature === "function"
+          ? RailMap.canonicalizeRouteFeature(normalized)
+          : normalized;
+      if (!displayFeature) {
+        console.warn(
+          `Could not map ridden route ${train.id} segment ${index} to the complete railway network.`,
+        );
+        return null;
+      }
       const segmentIndex = Number(
-        normalized.properties?.segment_index ?? index,
+        displayFeature.properties?.segment_index ?? index,
       );
       return {
-        ...normalized,
+        ...displayFeature,
         properties: {
-          ...(normalized.properties || {}),
+          ...(displayFeature.properties || {}),
           ride_segment: isRideSegment(train, segmentIndex),
         },
       };
@@ -263,4 +277,3 @@ function getStopFeature(stop, train) {
     },
   };
 }
-

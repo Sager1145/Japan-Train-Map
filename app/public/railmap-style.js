@@ -75,6 +75,27 @@
     ];
   }
 
+  // MapLibre permits the camera expression ["zoom"] only as the input of a
+  // top-level step/interpolate expression. Each step then applies the line's
+  // data-driven minz property at paint time, avoiding tile-parse filters while
+  // keeping the entire line/station group on one integer zoom threshold.
+  function lineLengthVisibilityOpacity(visibleOpacity) {
+    const gate = (zoom) => [
+      "case",
+      ["<=", ["coalesce", ["get", "minz"], 0], zoom],
+      visibleOpacity,
+      0,
+    ];
+    const expression = ["step", ["zoom"], gate(0)];
+    // Complete lines top out at z7, while dense intermediate stations can be
+    // deferred as far as z14. Keep evaluating the per-feature threshold all
+    // the way through that range; an unconditional z7 value would make every
+    // dense station appear at once and defeat station decluttering.
+    for (let zoom = 1; zoom <= 14; zoom += 1)
+      expression.push(zoom, gate(zoom));
+    return expression;
+  }
+
   // ───────────────────────────── source / layer ids ─────────────────────────────
   const SEGMENTS_SOURCE = "rn-segments";
   const STATIONS_SOURCE = "rn-stations";
@@ -246,27 +267,22 @@
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
       attribution: railAttributionForCountry(opts.country),
-      // Generalize the network per zoom. MapLibre's default (0.375) works out
-      // to ~0.02 px of Douglas-Peucker at any zoom — effectively none — so
-      // mountain alignments drew every vertex of curves whose real radius is
-      // 3-12 m (阿里山線, 祝山線, 神木線 …). Below ~z13 those curves are far
-      // narrower than one pixel, and a sub-pixel curve does not read as a
-      // curve: it reads as a barb. tolerance is expressed against a 4096-unit
-      // tile drawn 512 px wide, so 4 ≈ half a pixel at EVERY zoom — detail
-      // finer than the screen can show is dropped, and high zoom, where the
-      // curve is worth pixels, still gets the full geometry. 2 ≈ a quarter of
-      // a CSS pixel — half a device pixel even at DPR 2, so nothing a screen
-      // could resolve is lost, while the 3-12 m radius curve noise that caused
-      // the barbs (an order of magnitude below one pixel down there) goes. A
-      // real feature stays: the 97 m 之字形 reversals above 屏遮那 are about a
-      // pixel wide at z10.5 and still draw as switchbacks.
-      tolerance: 2,
+      // Never let source tiling simplify a railway as the map zooms out.
+      // Scale hierarchy comes only from hiding complete shorter lines; every
+      // line that remains visible keeps all of its canonical coordinates.
+      tolerance: 0,
     };
     sources[STATIONS_SOURCE] = {
       type: "geojson",
       data: network ? network.stations : EMPTY_FC,
     };
-    sources[TRAIN_ROUTES_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    // Ridden routes use exact slices of the same complete network lines and
+    // therefore keep the same unsimplified coordinates at every zoom.
+    sources[TRAIN_ROUTES_SOURCE] = {
+      type: "geojson",
+      data: EMPTY_FC,
+      tolerance: 0,
+    };
     sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_PICK_FAN_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_EXPAND_SOURCE] = { type: "geojson", data: EMPTY_FC };
@@ -336,11 +352,14 @@
       id: SEGMENTS_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE,
-      filter: [">=", ["zoom"], ["get", "minz"]],
       layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
       paint: {
         "line-color": ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
-        "line-opacity": UNRIDDEN_OPACITY,
+        // Do not put this zoom gate in a layer FILTER. GeoJSON filters are
+        // evaluated while individual source tiles are parsed, so neighbouring
+        // tiles can temporarily use different zoom levels and hide only part
+        // of one line. Paint expressions are evaluated uniformly every frame.
+        "line-opacity": lineLengthVisibilityOpacity(UNRIDDEN_OPACITY),
         "line-width": [
           "interpolate",
           ["linear"],
@@ -358,13 +377,14 @@
       id: STATIONS_LAYER,
       type: "circle",
       source: STATIONS_SOURCE,
-      filter: [">=", ["zoom"], ["get", "minz"]],
       layout: { visibility: "none" },
       paint: {
         // Theme-dependent: _applyThemePaint rewrites both colors on switch.
         "circle-color": MAP_SURFACE_COLORS.light.stationDot,
+        "circle-opacity": lineLengthVisibilityOpacity(1),
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.4, 12, 3],
         "circle-stroke-color": MAP_SURFACE_COLORS.light.stationRing,
+        "circle-stroke-opacity": lineLengthVisibilityOpacity(1),
         "circle-stroke-width": 1,
       },
     });

@@ -25,23 +25,12 @@ const M_PER_DEG_LON = 111320;
 const M_PER_DEG_LAT = 110540;
 
 // --- Route geometry simplification (pre-render decimation) -----------------
-// The N02 source geometry is survey-grade: ~50 m median vertex spacing (down
-// to <1 m at segment joins / curves), so a stitched route carries thousands
-// of points that are visually redundant. We run Douglas-Peucker ONCE per
-// route feature (cached), before the geometry is handed to the renderer, to
-// drop the redundant vertices while preserving shape. On the real routes,
-// an 8 m tolerance removes ~83% of points with <=8 m deviation (sub-pixel at
-// country zoom, ~1 px at city zoom). Tunable via ?simplify=<meters> in the
-// URL; ?simplify=0 disables it for an A/B comparison.
-const ROUTE_SIMPLIFY_METERS = (function () {
-  try {
-    const m = /[?&]simplify=(\d+(?:\.\d+)?)/.exec(location.search);
-    if (m) return Number(m[1]);
-  } catch (e) {
-    /* no location — use default */
-  }
-  return 8;
-})();
+// Ridden routes are exact slices of the complete display network. Preserve
+// every canonical vertex: zoom hierarchy is achieved by removing complete
+// shorter lines, never by lowering a visible line's geometric precision.
+// The simplifier remains in the pipeline because its source-index mapping is
+// also used by overlap/lane splitting; epsilon 0 makes it retain all indices.
+const ROUTE_SIMPLIFY_METERS = 0;
 
 // Short single-train slivers inside an otherwise identical overlap membership
 // are closed before records are split.  This handles an extra/missing graph

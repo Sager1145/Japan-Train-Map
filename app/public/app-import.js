@@ -922,6 +922,15 @@ async function switchActiveCountry(next) {
       // against the old country's station index.
       reloadSolverDatasetsForCountrySwitch(),
     ]);
+    // Progressive store loading can finish while the new country's complete
+    // network is still being decoded. Drop any interim empty route cache and
+    // issue one authoritative render now that every ridden segment can be
+    // sliced from that network.
+    cachedRouteItems = null;
+    cachedRouteSignature = "";
+    if (typeof invalidateDeckRouteCaches === "function")
+      invalidateDeckRouteCaches();
+    renderAll();
     // A failed restore just entered read-only recovery mode with its own
     // error message — don't paper over it with a success status.
     if (!storeRecoveryMode) {

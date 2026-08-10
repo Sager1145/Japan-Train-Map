@@ -296,7 +296,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
       segments: network.segments.features.length,
       groups: network.groupMembers.size,
     },
-    EXPECTED_COUNTS,
+    { ...EXPECTED_COUNTS, segments: EXPECTED_COUNTS.lines },
   );
 });
 

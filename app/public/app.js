@@ -538,7 +538,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   else if (typeof THEME_MEDIA.addListener === "function")
     THEME_MEDIA.addListener(followSystemTheme);
   applyPendingFitCurveSettings();
-  // Start the map's own downloads (vendored basemap style + the 9.2 MB rail
+  // Start the map's own downloads (vendored basemap style + the active rail
   // network package) IMMEDIATELY, in parallel with the /api datasets below.
   // Previously initMap() kicked these off only after loadAppData() had fully
   // downloaded AND parsed stations/default-trains/matched-* — serializing the
@@ -549,12 +549,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const mapAssetsReady = {
     primary: Promise.all([
       RailMap.loadBasemap(initialMapTheme),
-      // The 9.2 MB national-network package is HIDDEN by default (opt-in via
-      // the 全部鐵路線 layer toggle). Deferred out of boot: RailMap
-      // .ensureNetwork() fetches + builds + setData's it lazily the first
-      // time the user enables that toggle, so its parse/build/upload never
-      // blocks first map paint.
-      Promise.resolve(null),
+      // The national-network LAYER remains hidden by default, but its complete
+      // centreline model is also the geometry authority for every ridden
+      // route. Load it before the first route render so no solver geometry can
+      // briefly paint and then jump onto the display network.
+      RailMap.loadNetwork(),
     ]),
     // The alternate theme is fetched ONLY to warm loadBasemap's cache for an
     // instant first theme switch. It used to sit inside the Promise.all that

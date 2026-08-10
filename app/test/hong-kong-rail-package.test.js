@@ -50,7 +50,8 @@ function assertCompactPackage(country, expectedLineCount) {
   assert.ok(Object.keys(pkg.geometrySource.sourceSha256).length >= 1);
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   assert.equal(network.lineById.size, expectedLineCount);
-  assert.equal(network.segments.features.length, pkg.lines.reduce((n, line) => n + line.segments.length, 0));
+  assert.equal(network.segments.features.length, pkg.lines.length);
+  assert.ok(network.segments.features.every((feature) => feature.geometry.type === "LineString"));
   return pkg;
 }
 

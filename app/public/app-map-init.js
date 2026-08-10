@@ -130,19 +130,18 @@ function buildMapLayersControl(hasBasemap) {
     });
   }
 
-  // Latest desired state of the 全部鐵路線 overlay. ensureNetwork() lazily loads
-  // the 9.2 MB package on first opt-in (~1 s); if the user toggles back OFF
-  // during that load, this guards the deferred .then() from re-showing the
-  // layers against the user's newer intent (toggle-off-during-load race).
+  // Latest desired state of the 全部鐵路線 overlay. Its geometry model is
+  // already loaded because ridden routes use it too; ensureNetwork() still
+  // covers recovery after a failed request and country-switch races.
   let networkOverlayWanted = false;
   const toggles = [
     ["map.routes", (v) => RailMap.setVisible(v), true],
     ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
     ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), true],
     ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
-    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default. The network package
-    // is deferred out of boot (RailMap.ensureNetwork), so first opt-in loads it
-    // lazily, THEN reveals the now-populated hidden layers.
+    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default. The complete-line
+    // model is shared with ridden routes, while this switch controls only the
+    // background network and station layers.
     [
       "map.allRailways",
       (v) => {
@@ -360,7 +359,7 @@ function buildMapInfoControl() {
 }
 
 async function initMap(mapAssetsReady) {
-  // The theme-selected OpenFreeMap style + railprint's jp-2025 package load in
+  // The theme-selected OpenFreeMap style + active complete-line package load in
   // parallel (pre-started at boot, before the /api datasets); either may be
   // null (source unavailable) — the style builder degrades the same way railprint does
   // (plain background / no network overlay). The alternate theme is loaded
@@ -374,7 +373,7 @@ async function initMap(mapAssetsReady) {
   // alternate warm rides in parallel and is awaited solely in the fallback
   // below when the initial theme failed.
   const assets = mapAssetsReady || {
-    primary: Promise.all([RailMap.loadBasemap(theme), Promise.resolve(null)]),
+    primary: Promise.all([RailMap.loadBasemap(theme), RailMap.loadNetwork()]),
     alternate: RailMap.loadBasemap(alternateTheme).catch(() => null),
   };
   const [basemap, network] = await assets.primary;
