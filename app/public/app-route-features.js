@@ -21,6 +21,14 @@
 // feature geometry. Empty results are not cached (cheap, and Point-without-
 // coordinates is already screened out above).
 const _geometryLinesCache = new WeakMap();
+// Where a drawn hop finishes, so the next hop can be asked to continue from
+// the same rail rather than re-choosing a display part at the junction.
+function lastGeometryCoordinate(geometry) {
+  const lines = iterateGeometryLines(geometry);
+  const last = lines[lines.length - 1];
+  return last && last.length ? last[last.length - 1] : null;
+}
+
 function iterateGeometryLines(geometry) {
   if (!geometry || !geometry.coordinates) return [];
   const memo = _geometryLinesCache.get(geometry);
@@ -149,6 +157,11 @@ function getMatchedRouteFeatures(train) {
   }
 
   const routeId = candidates[0].properties?.route_id || "";
+  // A junction station lies on both a trunk and its branch, so a hop that ends
+  // there matches either equally well. Carry the previous hop's drawn endpoint
+  // forward as a tie-break, or consecutive hops pick different display parts
+  // and the route breaks open at the junction.
+  let previousEnd = null;
   return candidates
     .filter((feature) => (feature.properties?.route_id || "") === routeId)
     .map((feature, index) => {
@@ -160,7 +173,9 @@ function getMatchedRouteFeatures(train) {
       const canonical =
         typeof RailMap !== "undefined" &&
         typeof RailMap.canonicalizeRouteFeature === "function"
-          ? RailMap.canonicalizeRouteFeature(normalized)
+          ? RailMap.canonicalizeRouteFeature(normalized, {
+              continueFrom: previousEnd,
+            })
           : normalized;
       // No canonical slice means the two endpoints do not sit on one
       // continuous stroke of any display line — the package stores that hop's
@@ -183,6 +198,7 @@ function getMatchedRouteFeatures(train) {
       const segmentIndex = Number(
         displayFeature.properties?.segment_index ?? index,
       );
+      previousEnd = lastGeometryCoordinate(displayFeature.geometry);
       return {
         ...displayFeature,
         properties: {

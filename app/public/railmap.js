@@ -223,7 +223,7 @@
     // line geometry used by the hidden-by-default national-network overlay.
     // Keeping this adapter here makes the active country's network the single
     // display-geometry authority for every route consumer.
-    canonicalizeRouteFeature(feature) {
+    canonicalizeRouteFeature(feature, options) {
       if (
         !this._network ||
         !global.RailNetwork ||
@@ -233,6 +233,7 @@
       return global.RailNetwork.canonicalizeRouteFeature(
         this._network,
         feature,
+        options,
       );
     },
 

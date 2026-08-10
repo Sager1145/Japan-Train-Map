@@ -100,6 +100,45 @@ test("Japan renders one complete feature per line, never one per station interva
   assert.ok(multiPart > 0 && multiPart < 100, `multi-part lines: ${multiPart}`);
 });
 
+test("every display part begins and ends on one of its line's stations", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
+
+  const metres = (a, b) => {
+    const lat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
+    return Math.hypot(
+      (a[0] - b[0]) * 111320 * Math.cos(lat),
+      (a[1] - b[1]) * 111320,
+    );
+  };
+
+  for (const line of pkg.lines) {
+    const stations = line.stations.map((station) => [station[2], station[3]]);
+    const feature = network.segments.features.find(
+      (item) => item.properties.lineId === line.id,
+    );
+    const parts =
+      feature.geometry.type === "MultiLineString"
+        ? feature.geometry.coordinates
+        : [feature.geometry.coordinates];
+    for (const part of parts) {
+      // A branch only truly merges at a STATION — it is led in over the
+      // trunk's own coordinates from the platform to the switch — and a line
+      // that ends at a terminus stops on that terminus. So no part may begin
+      // or end loose on open track.
+      for (const endpoint of [part[0], part[part.length - 1]]) {
+        const nearest = Math.min(
+          ...stations.map((station) => metres(station, endpoint)),
+        );
+        assert.ok(
+          nearest <= 1,
+          `${line.id} has a part endpoint ${Math.round(nearest)} m from any station`,
+        );
+      }
+    }
+  }
+});
+
 test("no Japanese display line draws back over track it already laid", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);

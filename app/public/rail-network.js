@@ -50,10 +50,10 @@
   // What is left of an interval after its retraced head is trimmed has to be
   // real railway, not a stub of rounding noise.
   const RETRACE_MIN_TAIL_METERS = 150;
-  // A branch anchors to a station only if the junction is genuinely nearby.
-  const BRANCH_ANCHOR_MAX_METERS = 1500;
-  // Heading is sampled this far along the branch, past switch-throat wiggle.
-  const BRANCH_HEADING_METERS = 250;
+  // A station anchor can sit this far off the surveyed centre-line (measured
+  // max ≈130 m on jp-2025), so this is how close a track vertex has to be to
+  // count as "the line passes this station".
+  const STATION_TOUCH_METERS = 150;
   // Two intervals meeting at this shallow an angle are not a curve — the line
   // is reversing onto other track (a branch), so the drawn line must break.
   const REVERSAL_MAX_DEGREES = 25;
@@ -237,41 +237,46 @@
     return run >= RETRACE_MIN_RUN_METERS ? index - 1 : 0;
   }
 
-  // The user-facing branch rule: a branch joins the trunk at the nearest
-  // station BEHIND it — the station a train would actually have come from —
-  // never at one it would have to swing round a hairpin to reach. So among the
-  // line's own stations, keep only those on the incoming side of the branch's
-  // heading and take the closest of those.
-  function branchAnchorStation(stationPoints, coordinates) {
-    const origin = coordinates[0];
-    let ahead = coordinates[coordinates.length - 1];
-    let travelled = 0;
-    for (let index = 1; index < coordinates.length; index += 1) {
-      travelled += distanceMeters(coordinates[index - 1], coordinates[index]);
-      if (travelled >= BRANCH_HEADING_METERS) {
-        ahead = coordinates[index];
-        break;
+  function nearestVertexIndex(coordinates, point) {
+    let bestIndex = -1;
+    let best = Infinity;
+    for (let index = 0; index < coordinates.length; index += 1) {
+      const distance = distanceMeters(coordinates[index], point);
+      if (distance < best) {
+        best = distance;
+        bestIndex = index;
       }
     }
-    const o = localMetric(origin, origin[1]);
-    const h = localMetric(ahead, origin[1]);
-    const heading = [h[0] - o[0], h[1] - o[1]];
-    const magnitude = Math.hypot(heading[0], heading[1]);
-    if (!magnitude) return null;
-    heading[0] /= magnitude;
-    heading[1] /= magnitude;
-    let best = null;
-    for (const station of stationPoints) {
-      const distance = distanceMeters(station, origin);
-      if (distance > BRANCH_ANCHOR_MAX_METERS) continue;
-      const s = localMetric(station, origin[1]);
-      // Positive means the station lies behind the divergence point along the
-      // branch's direction of travel, i.e. the train came through it.
-      const alongTrack = (o[0] - s[0]) * heading[0] + (o[1] - s[1]) * heading[1];
-      if (alongTrack <= 0) continue;
-      if (!best || distance < best.distance) best = { station, distance };
+    return { index: bestIndex, distance: best };
+  }
+
+  function stationAt(stationPoints, point) {
+    for (const station of stationPoints)
+      if (distanceMeters(station, point) <= STATION_TOUCH_METERS) return station;
+    return null;
+  }
+
+  // A branch only truly joins its trunk AT A STATION. The rail between the
+  // station and the physical switch is shared, so the branch must be DRAWN over
+  // it — but as its own coordinates, because the two are separate strokes and
+  // must not be mathematically one connected line.
+  //
+  // So walk BACK along the track the branch leaves, from the divergence point
+  // to the first station it passes: that slice, station-first, is the branch's
+  // lead-in. Walking back is what makes it the "previous" station in the
+  // branch's own direction of travel — never one reached by a hairpin.
+  function branchLeadIn(sourceCoordinates, divergenceIndex, stationPoints) {
+    for (let index = divergenceIndex; index >= 0; index -= 1) {
+      const station = stationAt(stationPoints, sourceCoordinates[index]);
+      if (!station) continue;
+      const leadIn = sourceCoordinates
+        .slice(index, divergenceIndex + 1)
+        .map((c) => [c[0], c[1]]);
+      // Start exactly on the platform anchor, not on the nearby track vertex.
+      leadIn[0] = [station[0], station[1]];
+      return leadIn;
     }
-    return best ? best.station : null;
+    return null;
   }
 
   // The compact package stores station intervals for routing and attribution,
@@ -287,12 +292,25 @@
   // — and because ridden routes are exact slices of this same geometry, a train
   // sliced across the retrace visibly turns onto the wrong railway.
   //
-  // So the line is emitted as PARTS. Wherever an interval doubles back over
-  // track the line already drew, the retraced head is dropped and a new part
-  // starts at the divergence point, re-anchored to the nearest preceding
-  // station. The result still LOOKS continuous — the branch begins at the
-  // station its trunk passes through — while being topologically separate, so
-  // nothing can slice or render straight through the junction.
+  // So the line is emitted as PARTS, cut wherever an interval doubles back over
+  // track the line already drew. Two shapes of doubling-back, handled apart:
+  //
+  //   * the retrace comes straight back down the interval we are BUILDING —
+  //     the station order took an excursion out to a branch tip and returned.
+  //     Cut the current part at the divergence point: the excursion becomes a
+  //     branch, and the trunk carries on along whatever this interval adds.
+  //     (室蘭線: 本輪西 → 輪西 → 東室蘭 becomes trunk 本輪西 → 東室蘭 plus
+  //     branch 東室蘭 → 輪西; 函館線 restores its 東森 → 森 main line.)
+  //
+  //   * the retrace lands on a part we already CLOSED — the order jumped back
+  //     across the line. Just start a new part where the new track begins.
+  //     (室蘭線's 岩見沢 → 御崎, 138 km back down its own main line.)
+  //
+  // Either way the branch is extended BACK to the station it leaves from, over
+  // the trunk's own coordinates, because a branch only truly joins at a
+  // station: the rail between platform and switch is shared and must be drawn
+  // twice rather than turned into one connected line. The map reads continuous;
+  // the topology stays separate, so nothing can slice through a junction.
   function displayPartsForLine(compactLine) {
     const stationCount = compactLine.stations.length;
     const stationPoints = compactLine.stations.map((station) => [
@@ -327,19 +345,50 @@
       let coordinates = decoded;
       const head = retracedHeadIndex(decoded, laid);
       if (head > 0) {
-        // This interval reaches its station by running back over the line's own
-        // track. Draw only the part that is new, as its own branch.
-        flush();
-        coordinates = decoded.slice(head);
-        if (pathLength(coordinates) < RETRACE_MIN_TAIL_METERS) {
+        const tail = decoded.slice(head);
+        if (pathLength(tail) < RETRACE_MIN_TAIL_METERS) {
           // Nothing new at all — the interval is pure duplicate track. Skip it
           // entirely; the next interval opens a fresh part at its own station.
+          flush();
           laid.add(decoded);
           return;
         }
-        const anchor = branchAnchorStation(stationPoints, coordinates);
-        if (anchor && !sameCoordinate(anchor, coordinates[0]))
-          coordinates = [anchor].concat(coordinates);
+        const divergence = decoded[head];
+        const inCurrent = current.length
+          ? nearestVertexIndex(current, divergence)
+          : { index: -1, distance: Infinity };
+        if (inCurrent.distance <= RETRACE_MATCH_METERS) {
+          // The excursion we just drew hangs off THIS part at `divergence`.
+          // Split there: the far side is the branch, the trunk resumes along
+          // the fresh tail, and the branch is re-served from the station this
+          // interval's tail runs to (its own lead-in, reversed).
+          const excursion = current.slice(inCurrent.index);
+          current = current.slice(0, inCurrent.index + 1);
+          const leadIn = branchLeadIn(
+            tail.slice().reverse(),
+            tail.length - 1,
+            stationPoints,
+          );
+          if (excursion.length >= 2) {
+            const branch = leadIn
+              ? leadIn.concat(excursion.slice(1))
+              : excursion;
+            if (branch.length >= 2) parts.push(branch);
+          }
+          // The cut vertex and the tail's first vertex are the same switch to
+          // within the match radius; make them literally equal so the trunk
+          // welds instead of jogging.
+          current[current.length - 1] = [tail[0][0], tail[0][1]];
+          coordinates = tail;
+        } else {
+          // The retrace lands on track from an already-closed part. Open a new
+          // one at the divergence point — and lead it in along the retraced
+          // head itself, which IS the trunk this branch leaves and is
+          // guaranteed to reach a station (it starts at one).
+          flush();
+          const leadIn = branchLeadIn(decoded, head, stationPoints);
+          coordinates = leadIn ? leadIn.concat(tail.slice(1)) : tail;
+        }
       } else if (current.length && isReversalJoint(current, coordinates)) {
         // No shared track, but the line turns back on itself at the joint:
         // still a branch, and still must not be drawn as one stroke.
@@ -595,6 +644,16 @@
       : backward;
   }
 
+  // Distance from a platform anchor to its track that is still just the
+  // station's own approach; beyond it, the projection is telling us something
+  // is wrong with the data and should not be hidden.
+  const ENDPOINT_SNAP_METERS = 260;
+
+  function snapEndpoint(coordinates, index, rawPoint, projectedDistance) {
+    if (!rawPoint || projectedDistance > ENDPOINT_SNAP_METERS) return;
+    coordinates[index] = [rawPoint[0], rawPoint[1]];
+  }
+
   function routeGeometryLines(geometry) {
     if (geometry?.type === "LineString") return [geometry.coordinates || []];
     if (geometry?.type === "MultiLineString") return geometry.coordinates || [];
@@ -606,7 +665,14 @@
   // complete display line and returns an exact slice of that same LineString.
   // Consequently ridden and "all railway" layers cannot drift, disagree at a
   // station, or apply different micro-kink grooming.
-  function canonicalizeRouteFeature(network, feature) {
+  function canonicalizeRouteFeature(network, feature, options) {
+    // A junction station sits on TWO display parts (a trunk and its branch),
+    // both a perfect match for a hop that starts or ends there. Picking by
+    // proximity alone can hand consecutive hops of one train different parts,
+    // and the route then visibly breaks at the junction. `continueFrom` — the
+    // previous hop's drawn endpoint — breaks that tie in favour of staying on
+    // the rail the train is already on.
+    const continueFrom = options && options.continueFrom;
     const rawLines = routeGeometryLines(feature?.geometry).filter(
       (coordinates) => coordinates.length >= 2,
     );
@@ -663,8 +729,12 @@
             network.routeProjectionCache,
           );
           if (!start || !end) continue;
-          const score = start.distance + end.distance;
-          if (!best || score < best.score) best = { line, start, end, score };
+          const fit = start.distance + end.distance;
+          const seam = continueFrom
+            ? distanceMeters(continueFrom, start.coordinate)
+            : 0;
+          const candidate = { line, start, end, fit, seam, score: fit + seam };
+          if (!best || candidate.score < best.score) best = candidate;
         }
       }
       // Endpoint display coordinates may deliberately bridge a station marker
@@ -680,6 +750,18 @@
         rawCoordinates,
       );
       if (canonical.length < 2) return null;
+      // Finish ON the platform, not on the projection of it.
+      //
+      // A junction station belongs to two display parts, and the projection of
+      // the same station onto each lands metres apart, so consecutive hops
+      // routed over different parts left the drawn route visibly split open at
+      // the junction. The solver's own endpoints ARE the station nodes and are
+      // shared by both hops, so pinning the slice ends to them closes the seam
+      // exactly. Only over the short bridge from platform to track — a distant
+      // projection is a data problem and must stay visible, not be papered over
+      // with a long straight chord.
+      snapEndpoint(canonical, 0, rawStart, best.start.distance);
+      snapEndpoint(canonical, canonical.length - 1, rawEnd, best.end.distance);
       canonicalLines.push(canonical);
       usedLineIds.push(best.line.lineId);
     }
