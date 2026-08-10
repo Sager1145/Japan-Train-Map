@@ -39,7 +39,7 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   );
 
   assert.equal(packageImages.length, 349);
-  assert.equal(linesWithBadges.length, 285);
+  assert.equal(linesWithBadges.length, 284);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -56,7 +56,38 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
     );
   }
 
-  assert.equal(packageImages.length - linesWithBadges.length, 64);
+  assert.equal(packageImages.length - linesWithBadges.length, 65);
+});
+
+test("rejected or missing package art may use a verified official line symbol", () => {
+  const { branding } = loadPopup();
+  // 北勢線: package art was the pre-1944 北勢鉄道 predecessor mark; the line's
+  // official 三岐鉄道 route letter is H. 丸ノ内線分岐線: no package art; the
+  // branch shares the trunk's Marunouchi M badge. 京都市東西線: no package
+  // art; the line publishes its official vermillion T symbol.
+  const overrides = new Map([
+    ["jp-三岐鉄道-北勢線", "/rail/line-logos/sangi-hokusei.svg"],
+    [
+      "jp-東京地下鉄-4号線丸ノ内線分岐線",
+      "/rail/logos/jp-東京地下鉄-4号線丸ノ内線.png",
+    ],
+    ["jp-京都市-東西線", "/rail/line-logos/kyoto-tozai.svg"],
+  ]);
+  for (const [lineId, expected] of overrides) {
+    const line = JAPAN_NETWORK.lines.find((entry) => entry.id === lineId);
+    assert.ok(line, lineId);
+    const packageLogo = line.logo ? `/rail/logos/${lineId}.png` : null;
+    assert.equal(
+      branding.logoForLine({ ...line, lineId, logo: packageLogo }),
+      expected,
+      lineId,
+    );
+    assert.equal(
+      fs.existsSync(path.join(PUBLIC_DIR, expected.replace(/^\//, ""))),
+      true,
+      `${lineId} override asset exists`,
+    );
+  }
 });
 
 test("every non-line image falls back to the exact operator, never a parent or predecessor", () => {
@@ -70,13 +101,21 @@ test("every non-line image falls back to the exact operator, never a parent or p
     });
   });
   const unresolvedOperators = new Set(["万葉線", "鞍馬寺"]);
+  // These two resolve to official line symbols ahead of the operator mark;
+  // the dedicated override test covers them.
+  const lineSymbolOverrides = new Set([
+    "jp-三岐鉄道-北勢線",
+    "jp-東京地下鉄-4号線丸ノ内線分岐線",
+    "jp-京都市-東西線",
+  ]);
   const coveredLines = missingBadgeLines.filter(
-    (line) => !unresolvedOperators.has(line.operator),
+    (line) =>
+      !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  assert.equal(missingBadgeLines.length, 309);
+  assert.equal(missingBadgeLines.length, 310);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 306);
+  assert.equal(coveredLines.length, 304);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(logo, /^\/rail\/(?:operator-logos\/jp|logos)\//, line.operator);
@@ -129,6 +168,7 @@ test("every non-line image falls back to the exact operator, never a parent or p
     "jp-西日本旅客鉄道-山陽線",
     "jp-西日本旅客鉄道-関西線",
     "jp-九州旅客鉄道-鹿児島線",
+    "jp-九州旅客鉄道-山陽線",
   ]) {
     const line = JAPAN_NETWORK.lines.find((entry) => entry.id === lineId);
     assert.equal(
@@ -151,7 +191,7 @@ test("every non-line image falls back to the exact operator, never a parent or p
 test("Japanese operator logo sources are auditable and render in hover popup", () => {
   const { popup, branding } = loadPopup();
   const downloaded = JAPAN_MANIFEST.filter((entry) => entry.status === "downloaded");
-  assert.equal(downloaded.length, 88);
+  assert.equal(downloaded.length, 89);
   assert.deepEqual(
     JAPAN_MANIFEST.filter((entry) => entry.status !== "downloaded").map(
       (entry) => entry.operator,

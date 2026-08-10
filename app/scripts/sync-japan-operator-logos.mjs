@@ -28,6 +28,9 @@ const FORCED_OPERATOR_FALLBACKS = Object.freeze([
   "伊賀鉄道",
   "筑波観光鉄道",
   "養老鉄道",
+  // 北勢線's package art is the pre-1944 北勢鉄道 predecessor mark, so the
+  // company needs a verified current mark even though its lines have badges.
+  "三岐鉄道",
 ]);
 
 const PAGE_ALIASES = Object.freeze({
@@ -86,6 +89,7 @@ const COMMONS_SEARCH_ALIASES = Object.freeze({
 // the operator article or current official site before being added here.
 const COMMONS_LOGO_FILES = Object.freeze({
   アルピコ交通: "ALPICO GROUP logo.svg",
+  三岐鉄道: "Sangi Railway Logo.svg",
   上田電鉄: "Ueda-dentetsu-mark-train.svg",
   北陸鉄道: "Hokutetsu logomark.svg",
   南阿蘇鉄道: "Minamiaso Rail logo.jpg",

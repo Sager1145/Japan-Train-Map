@@ -104,6 +104,7 @@ const RailOperatorBranding = (() => {
     一般社団法人札幌市交通事業振興公社: "/rail/operator-logos/jp/q11521202.svg",
     一般財団法人青函トンネル記念館:
       "/rail/operator-logos/jp/seikan-tunnel-museum.png",
+    三岐鉄道: "/rail/operator-logos/jp/q7418001.svg",
     三陸鉄道: "/rail/operator-logos/jp/q7418928.png",
     上田電鉄: "/rail/operator-logos/jp/q11263296.svg",
     丹後海陸交通: "/rail/operator-logos/jp/q11368524.png",
@@ -195,7 +196,6 @@ const RailOperatorBranding = (() => {
     岳南電車: "/rail/logos/jp-岳南電車-岳南鉄道線.png",
     紀州鉄道: "/rail/logos/jp-紀州鉄道-紀州鉄道線.png",
     黒部峡谷鉄道: "/rail/logos/jp-黒部峡谷鉄道-本線.png",
-    三岐鉄道: "/rail/logos/jp-三岐鉄道-北勢線.png",
     小湊鐵道: "/rail/logos/jp-小湊鐵道-小湊鐵道線.png",
     湘南モノレール: "/rail/logos/jp-湘南モノレール-江の島線.png",
     上信電鉄: "/rail/logos/jp-上信電鉄-上信線.png",
@@ -249,6 +249,7 @@ const RailOperatorBranding = (() => {
     "jp-四日市あすなろう鉄道-内部線",
     "jp-九州旅客鉄道-九州新幹線",
     "jp-九州旅客鉄道-鹿児島線",
+    "jp-九州旅客鉄道-山陽線",
     "jp-九州旅客鉄道-日豊線",
     "jp-黒部峡谷鉄道-本線",
     "jp-三岐鉄道-北勢線",
@@ -325,6 +326,16 @@ const RailOperatorBranding = (() => {
   });
 
   const LINE_LOGOS = Object.freeze({
+    // Japanese lines whose package art was rejected (or missing) but which
+    // publish an official line symbol of their own. Verified 2026-08-10:
+    // 北勢線 carries the official 三岐鉄道 route letter H (the package art was
+    // the pre-1944 北勢鉄道 predecessor mark); the 丸ノ内線 branch shares the
+    // Marunouchi M identity that the package already provides for the trunk;
+    // 京都市営地下鉄東西線 uses its official vermillion T symbol.
+    "jp-三岐鉄道-北勢線": "/rail/line-logos/sangi-hokusei.svg",
+    "jp-東京地下鉄-4号線丸ノ内線分岐線":
+      "/rail/logos/jp-東京地下鉄-4号線丸ノ内線.png",
+    "jp-京都市-東西線": "/rail/line-logos/kyoto-tozai.svg",
     "tw-trtc-bl": "/rail/line-logos/trtc-bl.svg",
     "tw-trtc-r": "/rail/line-logos/trtc-r.svg",
     "tw-trtc-r-xinbeitou": "/rail/line-logos/trtc-r.svg",

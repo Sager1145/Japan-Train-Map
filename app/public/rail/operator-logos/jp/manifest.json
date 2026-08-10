@@ -202,6 +202,19 @@
     "status": "logo-not-found"
   },
   {
+    "operator": "三岐鉄道",
+    "linesWithoutBadge": 0,
+    "articleTitle": "三岐鉄道",
+    "entityId": "Q7418001",
+    "logoFile": "Sangi Railway Logo.svg",
+    "asset": "q7418001.svg",
+    "sourceType": "wikimedia-commons",
+    "sourcePage": "https://commons.wikimedia.org/wiki/File:Sangi_Railway_Logo.svg",
+    "license": "Public domain",
+    "licenseUrl": "",
+    "status": "downloaded"
+  },
+  {
     "operator": "三陸鉄道",
     "linesWithoutBadge": 3,
     "articleTitle": "三陸鉄道",
