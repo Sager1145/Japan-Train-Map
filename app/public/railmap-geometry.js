@@ -48,6 +48,10 @@
           // total ride, then earlier date — assigned per train by
           // buildDeckRouteRecords.
           sortKey: r.sortKey || 0,
+          // The parallel lane of the RAILWAY this stretch was ridden on, in
+          // the same units the network strokes use, so the ride and its rail
+          // take the identical screen offset and can never draw apart.
+          lane: r.lane || 0,
         },
       })),
     };
@@ -69,6 +73,9 @@
         tid: (r.train && r.train.id) || "",
         pickWidth: Math.max(r.width + 10, 16),
         nopick: r.nopick ? 1 : 0,
+        // Hit-testing follows the line the reader can actually see, so the
+        // pick target takes its record's lane too.
+        lane: r.lane || 0,
       },
     }));
     // Source-feature seams have no visible geometry between their endpoints,

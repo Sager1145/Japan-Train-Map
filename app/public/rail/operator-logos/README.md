@@ -38,7 +38,7 @@ number of affected routes are recorded in [`jp/manifest.json`](jp/manifest.json)
 The sources are the operator article's current [Wikidata logo (P154)](https://www.wikidata.org/wiki/Property:P154),
 the [Wikimedia Commons Japanese rail-operator SVG category](https://commons.wikimedia.org/wiki/Category:SVG_logos_of_rail_transport_companies_of_Japan),
 or the operator's current official website. Run
-`node scripts/sync-japan-operator-logos.mjs` from `app/` to reproduce the
+`node scripts/railway/sync-japan-operator-logos.mjs` from `app/` to reproduce the
 download without overwriting existing assets; pass `--overwrite` to refresh
 them intentionally.
 

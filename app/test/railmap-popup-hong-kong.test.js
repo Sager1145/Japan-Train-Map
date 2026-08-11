@@ -46,14 +46,36 @@ test("Hong Kong lines use Light Rail route badges and the official MTR fallback"
     true,
   );
 
-  for (const line of HONG_KONG_NETWORK.lines) {
-    assert.equal(line.operator, "MTR", `${line.id} company label`);
+  for (const line of HONG_KONG_NETWORK.lines.filter((l) => l.operator === "MTR")) {
     const logo = branding.logoForLine({ ...line, lineId: line.id });
     const expected = LIGHT_RAIL_BADGES[line.id]
       ? `/rail/line-logos/${LIGHT_RAIL_BADGES[line.id]}`
       : "/rail/operator-logos/mtr-badge.png";
     assert.equal(logo, expected, `${line.id} logo`);
     assert.equal(fs.existsSync(path.join(PUBLIC_DIR, logo)), true, `${line.id} asset exists`);
+  }
+});
+
+// Hong Kong Tramways is a second operator in the same package. It has no
+// usable emblem to ship, and a fabricated one would be worse than none — so
+// its tracks fall back to the popup's line-colour swatch beside a company
+// label, and must never be branded as MTR.
+test("the tramway carries its own company label and no fabricated emblem", () => {
+  const { branding } = loadBrandingAndPopup();
+  for (const alias of [
+    "香港電車",
+    "香港电车",
+    "香港電車有限公司",
+    "Hongkong Tramways Limited",
+    "Hong Kong Tramways",
+  ])
+    assert.equal(branding.companyLabel(alias), "香港電車", alias);
+
+  const tram = HONG_KONG_NETWORK.lines.filter((line) => line.operator === "香港電車");
+  assert.equal(tram.length, 4);
+  for (const line of tram) {
+    assert.equal(branding.logoForLine({ ...line, lineId: line.id }), null, `${line.id} logo`);
+    assert.equal(branding.companyFor(line.operator, line.name), "香港電車", line.id);
   }
 });
 

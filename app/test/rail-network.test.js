@@ -13,22 +13,35 @@ const PACKAGE_PATH = path.join(
   __dirname,
   "../public/rail/jp-2025.json",
 );
-// 602 lines, not 600: the 砂原支線 and the 辰野支線 each ship as their own
-// `-2` entry (scripts/split-interleaved-branches.mjs). Their junction stations
-// are second copies sharing the existing station groups, so `groups` is
-// unchanged while `stations` grows by four.
+// 606 lines, not 600: six branches that the package had spliced into their
+// trunk's station order each ship as their own `-2` entry
+// (scripts/railway/split-interleaved-branches.mjs) — 砂原支線, 辰野支線, 南武支線,
+// 常陸太田支線, the 総武本線 御茶ノ水 支線 and the 予讃線 新線. Their junction
+// stations are second copies sharing the existing station groups, so `groups`
+// is unchanged while `stations` grows by one per junction.
+//
+// 862 drawn features for those 606 lines: where two INDEPENDENT railways share
+// a corridor each takes its own lane, and a lane — plus the quarter-steps that
+// ease the line into and out of it — is a feature of its own so it can carry
+// its own screen-space offset (rail-network.js splitPartByLanes, table from
+// scripts/railway/build-parallel-corridors.mjs). Every feature still carries its
+// line's own id.
 const EXPECTED_COUNTS = Object.freeze({
-  segments: 602,
-  stations: 10155,
-  lines: 602,
+  // Not 606 (one feature per line): a line that takes a parallel lane ships
+  // one feature per lane VALUE, and the ramp in and out of a lane is two more.
+  // 横浜市 1号線 and 3号線 are two line numbers of ONE railway (ブルーライン,
+  // through-operated across 関内) and so share a stroke rather than a corridor.
+  segments: 889,
+  stations: 10160,
+  lines: 606,
   groups: 9046,
 });
 test("compact rail package produces the characterized render model", async () => {
-  // Snapshot + expected hash are shared with scripts/test-rail-loader-parity.mjs
+  // Snapshot + expected hash are shared with test/rail-loader-parity.test.mjs
   // (one hash update per package regeneration). The shared module is ESM and
   // this file is CJS, hence the dynamic import.
   const { EXPECTED_RENDER_HASH, renderRelevantSnapshot } = await import(
-    "../scripts/lib/render-snapshot.mjs"
+    "../scripts/railway/lib/render-snapshot.mjs"
   );
   const compactPackage = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
   const network =
@@ -159,7 +172,6 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
       },
     },
     namespaceBasemap: (value) => value,
-    labelGateFilterForCountry: () => null,
   };
   vm.runInContext(
     fs.readFileSync(path.join(__dirname, "../public/railmap-style.js"), "utf8"),
@@ -175,8 +187,20 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
   const lines = byId.get(win.RailMapStyle.SEGMENTS_LAYER);
   const stations = byId.get(win.RailMapStyle.STATIONS_LAYER);
 
+  // The LOD gate is the point: it may never be a FILTER, because geojson
+  // filters are evaluated per tile-parse and neighbouring tiles can disagree
+  // about the zoom. A filter on a static per-feature property is fine — the
+  // stations layer uses one to hand laned platforms to the stub layers that
+  // can follow their railway into its lane.
+  const mentionsZoom = (value) =>
+    JSON.stringify(value ?? null).includes('["zoom"]');
   assert.equal(lines.filter, undefined);
-  assert.equal(stations.filter, undefined);
+  assert.ok(!mentionsZoom(stations.filter));
+  assert.deepEqual(JSON.parse(JSON.stringify(stations.filter)), [
+    "==",
+    ["coalesce", ["get", "lane"], 0],
+    0,
+  ]);
   assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0.5);
   assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0.5);
   assert.equal(lines.paint["line-opacity"][0], "step");
@@ -297,5 +321,13 @@ test("ridden geometry is an exact slice of the complete display line", () => {
     "all-railways-complete-line",
   );
   assert.deepEqual(route.properties.display_line_ids, ["fixture-line"]);
-  assert.deepEqual(route.geometry.coordinates, displayLine.slice(1));
+  // From B to the end, and B is wherever the drawn line passes it — not a
+  // fixed vertex index. The station approach may add samples ahead of a
+  // platform, and pinning the slice to index 1 would be asserting the vertex
+  // COUNT of an approach rather than the property this test is about.
+  const stationIndex = displayLine.findIndex(
+    (coordinate) => coordinate[0] === 0.001 && coordinate[1] === 0,
+  );
+  assert.ok(stationIndex > 0, "B must be a vertex of the drawn line");
+  assert.deepEqual(route.geometry.coordinates, displayLine.slice(stationIndex));
 });

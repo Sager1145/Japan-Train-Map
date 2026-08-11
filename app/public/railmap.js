@@ -49,7 +49,6 @@
     probeBasemapOrigin,
     namespaceBasemap,
     opacityPropsForLayer,
-    labelGateFilterForCountry,
     MAP_SURFACE_COLORS,
     BASEMAP_CROSSFADE_MS,
   } = global.RailMapBasemap;
@@ -57,8 +56,11 @@
     buildBaseStyle,
     railAttributionForCountry,
     stopMarkerZoomGate,
-    zoomScaledWidth,
-    RIDDEN_WIDTH_SCALE,
+    networkLineColor,
+    riddenLineWidth,
+    riddenHoverLineWidth,
+    riddenFocusLineWidth,
+    railwayScreenPaintEntries,
     markerRadiusExpr,
     selectedStopRadiusExpr,
     EMPTY_FC,
@@ -72,8 +74,14 @@
     SELECT_DIM,
     SEGMENTS_SOURCE,
     STATIONS_SOURCE,
+    STATION_LANES_SOURCE,
     SEGMENTS_LAYER,
     STATIONS_LAYER,
+    STATION_LANES_LAYER,
+    STATION_ICON_BASE_PX,
+    RAILWAY_STYLE,
+    stationIconId,
+    stationIconImage,
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
@@ -102,6 +110,8 @@
     FIT_CURVES_LAYER,
     HOVER_REGIONS_FILL_LAYER,
     HOVER_REGIONS_LINE_LAYER,
+    stationFill,
+    stationStroke,
   } = global.RailMapStyle;
   const {
     routeRecordsToFC,
@@ -125,7 +135,7 @@
   // ───────────────────────────── rail package loader ─────────────────────────────
   // Loads the active country's rail package in compact-v1 format (stations and
   // segments nested per line, derivable fields omitted — see
-  // scripts/railpkg.py for the format spec) and builds the two GeoJSON
+  // scripts/railway/lib/railpkg.py for the format spec) and builds the two GeoJSON
   // collections + the geo index the hover popup needs (buildSegmentCollection /
   // buildStationCollection / geo-index, ported).
   //   station row: [stationGroupId, name, lon, lat, (nameRoma, romaSourceCode)]
@@ -205,11 +215,6 @@
     _basemapMode: "none",
     _theme: "light",
     _basemapInstalledTheme: null,
-    // Country whose basemap labels are shown (null = combined jp+tw gate).
-    // Set by the app at boot and on every country switch; remembered so a
-    // later basemap reinstall (theme fallback / online retry) re-gates the
-    // cached style, whose baked filters are country-neutral.
-    _labelCountry: null,
     _basemapRetryInflight: null, // dedups concurrent retryBasemap() calls
     // Cross-day: draw an overnight train's other-day half dashed. The app's
     // "顯示完整跨天行程" toggle flips this to false, which makes that half draw
@@ -268,6 +273,8 @@
       this._fadeOpacity = Number.isFinite(initialFade) ? initialFade : 0;
       this._initFanLanePool();
       this._wireInteractions();
+      // Anchors the app may already have computed before the overlay existed.
+      this._repaintRailwayScreenWeights();
       // ALL opacity fades on these layers are driven manually by the rAF dim
       // engine (_applyDimPaint) and the fan slide — MapLibre skips its own
       // transitions for data-driven paint values anyway, and its implicit
@@ -275,11 +282,14 @@
       // frames. Pin every animated opacity prop to zero so the rAF loop is
       // the single source of animation truth.
       this._ensureXDayIcon();
+      this._ensureStationIcons();
       // A basemap/theme swap installs a fresh style, which drops runtime
       // images; MapLibre asks for the missing one instead of silently drawing
       // nothing, so re-rasterize on demand.
       map.on("styleimagemissing", (e) => {
-        if (e && e.id === XDAY_ICON_ID) this._ensureXDayIcon();
+        if (!e) return;
+        if (e.id === XDAY_ICON_ID) this._ensureXDayIcon();
+        else if (String(e.id).startsWith("rn-station-")) this._ensureStationIcons();
       });
       const ZERO_T = { duration: 0, delay: 0 };
       [
@@ -315,6 +325,9 @@
         const gated = stopMarkerZoomGate(map.getZoom()) != null;
         if (gated !== this._stopMarkersGated)
           this._applyMarkerSelectionFilters();
+        // An open fan needs nothing here: its lane offsets are pixel constants
+        // along a direction that does not depend on zoom either, so a zoom
+        // leaves every line-translate exactly where it was.
       });
       return this;
     },
@@ -538,6 +551,98 @@
         // A concurrent styleimagemissing can add it first; that is fine.
       }
     },
+    // The four platform markers a laned station can be drawn with: solid and
+    // open, in each theme. Rasterized rather than drawn as a circle layer
+    // because only an ICON can be pushed into a parallel lane per feature
+    // (railmap-style.js STATION_LANES_LAYER) — and rasterized from the very
+    // constants the circle layer paints with, so an ordinary platform and a
+    // laned one are the same mark drawn twice, never two marks that resemble
+    // each other.
+    //
+    // All four exist at once so a theme switch is a layout swap rather than a
+    // rasterize, which keeps the switch off the critical path.
+    _ensureStationIcons() {
+      const m = this._map;
+      if (!m || typeof m.addImage !== "function") return;
+      const base = STATION_ICON_BASE_PX;
+      const ring =
+        (base * RAILWAY_STYLE.stationRingPx) / RAILWAY_STYLE.stationDiameterPx;
+      const ratio = 2;
+      // The bitmap is the dot PLUS its ring, and icon-size scales the dot part
+      // to stationDiameterPx — so the image is drawn oversized by exactly the
+      // ring, on both sides.
+      const span = base + 2 * ring;
+      const size = Math.round(span * ratio);
+      for (const theme of ["light", "dark"])
+        for (const interchange of [false, true]) {
+          const id = stationIconId(theme, interchange);
+          if (m.hasImage && m.hasImage(id)) continue;
+          const canvas =
+            typeof document !== "undefined"
+              ? document.createElement("canvas")
+              : null;
+          if (!canvas) return;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+          const colors = MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
+          // Exactly stationFill/stationStroke, read as colours rather than as
+          // the expressions the circle layer takes them as.
+          const fill = interchange ? colors.stationRing : colors.stationDot;
+          const stroke = interchange ? colors.casing : colors.stationRing;
+          const centre = size / 2;
+          const ringPx = ring * ratio;
+          // Stroke straddles the path, so the path runs half a ring outside
+          // the dot: that puts the ring wholly outside it, where circle-stroke
+          // draws it too.
+          const radius = (base * ratio) / 2;
+          ctx.beginPath();
+          ctx.arc(centre, centre, radius + ringPx / 2, 0, Math.PI * 2);
+          ctx.lineWidth = ringPx;
+          ctx.strokeStyle = stroke;
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(centre, centre, radius, 0, Math.PI * 2);
+          ctx.fillStyle = fill;
+          ctx.fill();
+          try {
+            m.addImage(id, ctx.getImageData(0, 0, size, size), {
+              pixelRatio: ratio,
+            });
+          } catch (e) {
+            // A concurrent styleimagemissing can add it first; that is fine.
+          }
+        }
+    },
+    // Re-assert every railway weight and lane offset from the ONE table in
+    // railmap-style.js. There is nothing to re-anchor: the scale ramp those
+    // values ride is a pure function of zoom (see the screen-space weight
+    // contract at the top of railmap-style.js), so the built style already
+    // carries it. This exists for the paths that add or replace layers behind
+    // the style's back — attach() over a live map, and the pooled fan lanes
+    // below, which are not in the table because they come and go.
+    _repaintRailwayScreenWeights() {
+      const m = this._map;
+      if (!m) return;
+      for (const entry of railwayScreenPaintEntries()) {
+        if (!m.getLayer(entry.layer)) continue;
+        if (entry.kind === "layout")
+          m.setLayoutProperty(entry.layer, entry.property, entry.value);
+        else m.setPaintProperty(entry.layer, entry.property, entry.value);
+      }
+      // The fan's lanes are pooled layers added on demand, so they are not in
+      // the table — they are the same two weights under per-slot ids.
+      this._fanLanePool.forEach((slot) => {
+        if (m.getLayer(slot.visibleId))
+          m.setPaintProperty(slot.visibleId, "line-width", riddenLineWidth());
+        if (m.getLayer(slot.hoverId))
+          m.setPaintProperty(slot.hoverId, "line-width", riddenHoverLineWidth());
+      });
+      // The selected route's width carries its focus boost, and the table just
+      // overwrote it with the plain one.
+      this.setFocusBoost(this._focusBoost);
+    },
     // Focus emphasis for the selected train: instead of baking the boost into
     // every record (which would force a full pipeline rebuild on each pick),
     // the SEL line and role-aware marker paint expressions add it at draw time.
@@ -549,11 +654,7 @@
         m.setPaintProperty(
           TRAIN_SEL_LAYER,
           "line-width",
-          zoomScaledWidth([
-            "*",
-            ["+", ["get", "width"], this._focusBoost],
-            RIDDEN_WIDTH_SCALE,
-          ]),
+          riddenFocusLineWidth(this._focusBoost),
         );
       if (m.getLayer(TRAIN_SEL_STOPS_LAYER))
         m.setPaintProperty(
@@ -695,10 +796,12 @@
     },
     setNetworkStationsVisible(v) {
       this._networkStationsVisibleWanted = Boolean(v);
-      this._setVisibility(
-        STATIONS_LAYER,
-        this._networkStationsVisibleWanted ? "visible" : "none",
-      );
+      const visibility = this._networkStationsVisibleWanted ? "visible" : "none";
+      // Two layers, one switch: an ordinary platform is a circle, a platform
+      // on a laned stretch is an icon that can follow its railway into the
+      // lane (railmap-style.js STATION_LANES_LAYER).
+      for (const layer of [STATIONS_LAYER, STATION_LANES_LAYER])
+        this._setVisibility(layer, visibility);
     },
     // Fetch + build + upload the active country's network package when it was
     // not supplied at attach time, or retry after a failed boot/country load.
@@ -726,8 +829,10 @@
               if (generation !== this._networkGeneration) return false;
               const seg = m.getSource(SEGMENTS_SOURCE);
               const sta = m.getSource(STATIONS_SOURCE);
+              const lanes = m.getSource(STATION_LANES_SOURCE);
               if (seg) seg.setData(network.segments);
               if (sta) sta.setData(network.stations);
+              if (lanes) lanes.setData(network.stationLanes || EMPTY_FC);
               // Re-assert the recorded visibility intent: a toggle made while
               // the style was still loading hit _setVisibility before the
               // layers existed and was silently dropped, leaving a checked
@@ -778,13 +883,13 @@
       if (this._stationPopup) this._stationPopup.remove();
       const seg = this._src(SEGMENTS_SOURCE);
       const sta = this._src(STATIONS_SOURCE);
+      const staLanes = this._src(STATION_LANES_SOURCE);
       if (seg) {
         seg.setData(EMPTY_FC);
         if (country) seg.attribution = railAttributionForCountry(country);
       }
       if (sta) sta.setData(EMPTY_FC);
-      // Basemap captions follow the displayed country too.
-      if (country) this.setBasemapLabelCountry(country);
+      if (staLanes) staLanes.setData(EMPTY_FC);
       if (!shouldReload) return Promise.resolve(null);
       return this.ensureNetwork().then((network) => {
         // Country switching does not recreate the layer control. Re-apply its
@@ -794,46 +899,6 @@
         this.setNetworkStationsVisible(this._networkStationsVisibleWanted);
         return network;
       });
-    },
-    // Restrict basemap labels (place / road / water / airport captions) to
-    // the given country: the map should only caption the region it displays,
-    // so a switch to Taiwan drops the Yaeyama labels at the viewport edge and
-    // a switch back drops Taiwan's. Re-filters the live stack in place (the
-    // label layers carry their pre-gate filter in metadata — see
-    // railmap-basemap.js) and is remembered for later installs.
-    setBasemapLabelCountry(country) {
-      this._labelCountry =
-        typeof country === "string" && country ? country : null;
-      const m = this._map;
-      if (!m || typeof m.setFilter !== "function") return;
-      const touchedSources = new Set();
-      this._basemapLayerIds.forEach((id) => {
-        const layer = m.getLayer(id);
-        const gated =
-          layer && labelGateFilterForCountry(layer, this._labelCountry);
-        if (!gated) return;
-        // Unchanged filters are skipped so the boot-time call (the style
-        // already bakes the boot country's gate) never costs a tile reload.
-        const current =
-          typeof m.getFilter === "function" ? m.getFilter(id) : null;
-        if (current && JSON.stringify(current) === JSON.stringify(gated))
-          return;
-        m.setFilter(id, gated);
-        if (layer.source) touchedSources.add(layer.source);
-      });
-      // setFilter alone converges nothing here: the vendored MapLibre build
-      // evaluates filters only while a tile is parsed (same trap as the
-      // stop-dot zoom gate — see railmap-style.js stopMarkerZoomGate), so
-      // already-loaded tiles keep drawing the OLD country's captions and
-      // withhold the new one's until the camera happens to force fresh
-      // tiles (verified live: 与那国町 lingered over a Taiwan view).
-      // Re-parse the affected vector sources explicitly — tiles return from
-      // the HTTP cache, so this re-runs worker layout, not the network.
-      if (touchedSources.size && m.style) {
-        const style = m.style;
-        if (typeof style._reloadSource === "function")
-          touchedSources.forEach((id) => style._reloadSource(id));
-      }
     },
     // Basemap mode: 'positron' (online vector) | 'none'.
     setBasemapMode(mode) {
@@ -912,13 +977,21 @@
       }
       if (m.getLayer(TRAIN_SEL_CASING_LAYER))
         m.setPaintProperty(TRAIN_SEL_CASING_LAYER, "line-color", colors.casing);
+      // The network's colours are composited against the surface they sit on,
+      // so a surface change is a colour change (see networkLineColor).
+      if (m.getLayer(SEGMENTS_LAYER)) {
+        m.setPaintProperty(SEGMENTS_LAYER, "line-color-transition", transition);
+        m.setPaintProperty(SEGMENTS_LAYER, "line-color", networkLineColor(theme));
+      }
       if (m.getLayer(STATIONS_LAYER)) {
         m.setPaintProperty(
           STATIONS_LAYER,
           "circle-color-transition",
           transition,
         );
-        m.setPaintProperty(STATIONS_LAYER, "circle-color", colors.stationDot);
+        // Expressions, not flat colours: solid where one railway calls, open
+        // where two meet, and that has to survive a theme switch.
+        m.setPaintProperty(STATIONS_LAYER, "circle-color", stationFill(theme));
         m.setPaintProperty(
           STATIONS_LAYER,
           "circle-stroke-color-transition",
@@ -927,9 +1000,21 @@
         m.setPaintProperty(
           STATIONS_LAYER,
           "circle-stroke-color",
-          colors.stationRing,
+          stationStroke(theme),
         );
       }
+      // The laned platforms are the same two rules, rasterized. An icon
+      // carries its own colours, so the switch is a change of BITMAP rather
+      // than of paint — which also means it lands at once instead of easing
+      // across with the surfaces around it. At a 7 px dot on the platforms of
+      // one shared corridor that is not a thing the eye follows.
+      this._ensureStationIcons();
+      if (m.getLayer(STATION_LANES_LAYER))
+        m.setLayoutProperty(
+          STATION_LANES_LAYER,
+          "icon-image",
+          stationIconImage(theme),
+        );
     },
     _applyEffectiveFade(duration) {
       const m = this._map;
@@ -1009,10 +1094,6 @@
         const bmLayers = staged.layers;
         const addLayer = (sourceLayer, beforeId) => {
           const layer = Object.assign({}, sourceLayer);
-          // The cached style bakes the country-neutral combined label gate;
-          // re-gate to the active country as the stack goes in.
-          const labelGate = labelGateFilterForCountry(layer, this._labelCountry);
-          if (labelGate) layer.filter = labelGate;
           if (!visible) {
             layer.layout = Object.assign({}, layer.layout, { visibility: "none" });
           }
@@ -1221,11 +1302,7 @@
             paint: {
               "line-color": ["get", "colorA"],
               "line-opacity": this._expandOpacity || 0,
-              "line-width": zoomScaledWidth([
-                "*",
-                ["get", "width"],
-                RIDDEN_WIDTH_SCALE,
-              ]),
+              "line-width": riddenLineWidth(),
               ...translatePaint,
             },
           },
@@ -1241,11 +1318,7 @@
             paint: {
               "line-color": ["get", "colorA"],
               "line-opacity": 0,
-              "line-width": zoomScaledWidth([
-                "+",
-                ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
-                2,
-              ]),
+              "line-width": riddenHoverLineWidth(),
               ...translatePaint,
             },
           },
@@ -1343,11 +1416,24 @@
       const len = Math.hypot(x, y) || 1;
       return [x / len, -y / len];
     },
+    // The fan's lane spacing is a screen-space constant, and one of the two
+    // things on the map that deliberately does NOT ride the railway's scale
+    // ramp (the hit targets are the other — see the weight contract at the top
+    // of railmap-style.js). line-translate is pixel-valued, and the pixel
+    // number is the one app-overlap-lanes.js sized for the POINTER rather than
+    // for the eye: ~12 px per lane, so sliding between two fanned trains takes
+    // a comfortable movement (currentOverlapSpacingPx). A fan that narrowed as
+    // the map pulled back would close up exactly where the trains it separates
+    // are hardest to tell apart, and would do it to the one gesture the fan
+    // exists to serve.
+    _fanSpacingPx() {
+      return this._laneSpacingPx || 0;
+    },
     _targetLaneOffsetPx(gi, tid, dir) {
       if (!gi || !Object.prototype.hasOwnProperty.call(gi.mults, tid))
         return [0, 0];
       const axis = this._directionToScreenPx(dir, gi);
-      const distance = gi.mults[tid] * (this._laneSpacingPx || 0);
+      const distance = gi.mults[tid] * this._fanSpacingPx();
       return [axis[0] * distance, axis[1] * distance];
     },
     _applyFanLaneTranslations(group, factor) {

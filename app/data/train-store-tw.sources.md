@@ -206,33 +206,33 @@ Rebuild the August 5-6 additions idempotently with:
 
 ```sh
 cd app
-node scripts/add-august-5-6-taiwan-itinerary.mjs
+node scripts/migrations/add-august-5-6-taiwan-itinerary.mjs
 ```
 
 Rebuild the August 2 Taipei Metro additions idempotently with:
 
 ```sh
 cd app
-node scripts/add-august-2-taipei-metro-itinerary.mjs
+node scripts/migrations/add-august-2-taipei-metro-itinerary.mjs
 ```
 
 Rebuild the August 8-9 additions idempotently with:
 
 ```sh
 cd app
-node scripts/add-august-8-9-taiwan-itinerary.mjs
+node scripts/migrations/add-august-8-9-taiwan-itinerary.mjs
 ```
 
 Rebuild the August 10 Kaohsiung additions idempotently with:
 
 ```sh
 cd app
-node scripts/add-august-10-kaohsiung-itinerary.mjs
+node scripts/migrations/add-august-10-kaohsiung-itinerary.mjs
 ```
 
 Rebuild the Airport MRT route after refreshing the Taiwan package with:
 
 ```sh
 cd app
-python3 scripts/rebuild-taiwan-sample-route.py
+python3 scripts/railway/rebuild-taiwan-sample-route.py
 ```

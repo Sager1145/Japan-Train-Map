@@ -26,8 +26,8 @@ function decodedIntervals(line) {
 
 test("every Japanese package line is seam-free before it reaches the renderer", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
-  assert.equal(pkg.version, "2025.3.2");
-  assert.equal(pkg.lines.length, 602);
+  assert.equal(pkg.version, "2025.3.3");
+  assert.equal(pkg.lines.length, 606);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {
@@ -77,9 +77,47 @@ test("Japan renders one complete feature per line, never one per station interva
     (feature) => feature.properties.lineId,
   );
 
-  assert.equal(network.segments.features.length, pkg.lines.length);
+  // Every line is drawn, and nothing is drawn that is not a line. A line that
+  // shares a corridor with an INDEPENDENT railway carries one extra feature
+  // per lane it takes (rail-network.js splitPartByLanes) — still its own
+  // lineId, still one railway — so the count is per line PLUS the lane table,
+  // never per station interval.
   assert.equal(new Set(ids).size, pkg.lines.length);
-  let multiPart = 0;
+  assert.ok(network.segments.features.length >= pkg.lines.length);
+  // One feature per (line, lane VALUE). A line that takes one lane adds four:
+  // the lane itself and the three quarter-steps that ease it in and out. Two
+  // stretches at the same lane share all four.
+  const lanedPairs = new Set(
+    (pkg.lanes || []).map((row) => `${row[0]}\u0000${row[4]}`),
+  );
+  assert.ok(
+    network.segments.features.length <= pkg.lines.length + 4 * lanedPairs.size,
+    `${network.segments.features.length} features for ${pkg.lines.length} lines and ${lanedPairs.size} laned pairs`,
+  );
+  for (const line of pkg.lines) {
+    const values = new Set(
+      network.segments.features
+        .filter((feature) => feature.properties.lineId === line.id)
+        .map((feature) => feature.properties.lane),
+    );
+    assert.equal(
+      values.size,
+      network.segments.features.filter(
+        (feature) => feature.properties.lineId === line.id,
+      ).length,
+      `${line.id} emits two features for one lane`,
+    );
+  }
+  const laneValues = new Set(
+    network.segments.features.map((feature) => feature.properties.lane),
+  );
+  assert.ok(laneValues.has(0), "the un-offset alignment must still be drawn");
+  for (const lane of laneValues) assert.equal(typeof lane, "number");
+  // Lines that carry a branch under one id — a TOPOLOGY property, so it is
+  // counted from the strokes, not from the lane-split render features.
+  const multiPart = [...network.lineById.values()].filter(
+    (line) => line.parts.length > 1,
+  ).length;
   for (const feature of network.segments.features) {
     const parts =
       feature.geometry.type === "MultiLineString"
@@ -89,15 +127,41 @@ test("Japan renders one complete feature per line, never one per station interva
     // several DISJOINT strokes so nothing can draw through the junction.
     assert.ok(parts.length >= 1);
     assert.equal(parts.length, feature.properties.partCount);
-    if (parts.length > 1) multiPart += 1;
+
     for (const part of parts) assert.ok(part.length >= 2);
-    // Far fewer parts than intervals — the split is topological, not per-hop.
-    assert.ok(parts.length <= Math.max(4, feature.properties.intervalCount / 4));
+    assert.ok(feature.properties.strokeCount >= 1);
     assert.ok(feature.properties.intervalCount >= 1);
     assert.equal(feature.properties.segmentId, undefined);
   }
   // Only the handful of package lines that carry a branch under one id.
   assert.ok(multiPart > 0 && multiPart < 100, `multi-part lines: ${multiPart}`);
+
+  // The split is TOPOLOGICAL and per-corridor, never per-hop. A stroke with k
+  // lane stretches yields at most k×8 + 1 pieces: each stretch is a gap, three
+  // quarter-steps easing in, the full lane, three easing out
+  // (rail-network.js RAMP_STEPS), and a final gap closes the stroke. Anything
+  // above that means the renderer started cutting the line for some other
+  // reason.
+  const laneRowsPerLine = new Map();
+  for (const row of pkg.lanes || [])
+    laneRowsPerLine.set(row[0], (laneRowsPerLine.get(row[0]) || 0) + 1);
+  const piecesPerLine = new Map();
+  for (const feature of network.segments.features) {
+    const parts =
+      feature.geometry.type === "MultiLineString"
+        ? feature.geometry.coordinates
+        : [feature.geometry.coordinates];
+    const id = feature.properties.lineId;
+    piecesPerLine.set(id, (piecesPerLine.get(id) || 0) + parts.length);
+  }
+  for (const line of pkg.lines) {
+    const strokes = network.lineById.get(line.id).parts.length;
+    const ceiling = strokes + 8 * (laneRowsPerLine.get(line.id) || 0);
+    assert.ok(
+      piecesPerLine.get(line.id) <= ceiling,
+      `${line.id}: ${piecesPerLine.get(line.id)} drawn pieces for ${strokes} strokes and ${laneRowsPerLine.get(line.id) || 0} lanes`,
+    );
+  }
 });
 
 test("every display part begins and ends on one of its line's stations", () => {
@@ -114,13 +178,11 @@ test("every display part begins and ends on one of its line's stations", () => {
 
   for (const line of pkg.lines) {
     const stations = line.stations.map((station) => [station[2], station[3]]);
-    const feature = network.segments.features.find(
-      (item) => item.properties.lineId === line.id,
-    );
-    const parts =
-      feature.geometry.type === "MultiLineString"
-        ? feature.geometry.coordinates
-        : [feature.geometry.coordinates];
+    // TOPOLOGY parts, not the render features. Lane splitting cuts the drawn
+    // geometry at corridor boundaries, which is exactly the render/topology
+    // separation: what a route is sliced from, and what has to start and end
+    // on a platform, is this list.
+    const parts = network.lineById.get(line.id).parts;
     for (const part of parts) {
       // A branch only truly merges at a STATION — it is led in over the
       // trunk's own coordinates from the platform to the switch — and a line

@@ -181,6 +181,12 @@ function applyJapanMapConstraints() {
   const minZoom = Math.max(2, cam.zoom - 0.25);
   map.setMinZoom(minZoom);
   if (map.getZoom() < minZoom) map.setZoom(minZoom);
+  // Nothing about the railway's WEIGHT is anchored here any more. Its widths,
+  // its lane offsets, its station stubs and its recorded-call dots all ride
+  // one ramp keyed to the map's SCALE — how much ground a pixel is worth —
+  // which is a pure function of zoom, so it needs no re-anchoring when the
+  // territory or the viewport moves this limit (see the screen-space weight
+  // contract at the top of railmap-style.js).
   // Envelope centred on the territory, sized to the min-zoom viewport × 1.5 (≈50%
   // pan room each way), never smaller than the territory itself. Longitude is
   // linear in web-mercator; latitude uses the scale at the territory's centre.

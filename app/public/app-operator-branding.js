@@ -88,6 +88,13 @@ const RailOperatorBranding = (() => {
     香港鐵路有限公司: "MTR",
     "香港鐵路有限公司 MTR Corporation": "MTR",
     "MTR Corporation Limited": "MTR",
+    // Hong Kong Tramways is its own operator, not an MTR service; like the
+    // Macao LRT it has no logo asset and shows as a company-name label.
+    香港電車: "香港電車",
+    香港电车: "香港電車",
+    香港電車有限公司: "香港電車",
+    "Hongkong Tramways Limited": "香港電車",
+    "Hong Kong Tramways": "香港電車",
   });
 
   const MACAO_COMPANY_LABELS = Object.freeze({

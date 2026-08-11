@@ -50,8 +50,14 @@ function assertCompactPackage(country, expectedLineCount) {
   assert.ok(Object.keys(pkg.geometrySource.sourceSha256).length >= 1);
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   assert.equal(network.lineById.size, expectedLineCount);
-  assert.equal(network.segments.features.length, pkg.lines.length);
-  assert.ok(network.segments.features.every((feature) => feature.geometry.type === "LineString"));
+  // One feature per line, plus one per lane where independent railways share
+  // a corridor — the Light Rail routes and the two 東鐵綫 branches all run the
+  // same tracks, so most of the network is laned.
+  assert.equal(
+    new Set(network.segments.features.map((feature) => feature.properties.lineId)).size,
+    pkg.lines.length,
+  );
+  assert.ok(network.segments.features.length >= pkg.lines.length);
   return pkg;
 }
 
@@ -71,7 +77,7 @@ function maximumChordDeviationMetres(geometry) {
 }
 
 test("Hong Kong package contains the complete MTR and Light Rail display network", () => {
-  const pkg = assertCompactPackage("hk", 23);
+  const pkg = assertCompactPackage("hk", 27);
   const ids = new Set(pkg.lines.map((line) => line.id));
   for (const id of [
     "hk-mtr-ael", "hk-mtr-drl", "hk-mtr-eal-low", "hk-mtr-eal-lmc",
@@ -81,6 +87,8 @@ test("Hong Kong package contains the complete MTR and Light Rail display network
     assert.ok(ids.has(id), `missing ${id}`);
   for (const route of ["505", "507", "610", "614", "614p", "615", "615p", "705", "706", "751", "761p"])
     assert.ok(ids.has(`hk-mtr-lr-${route}`), `missing Light Rail ${route}`);
+  for (const id of ["hk-tram-east", "hk-tram-west", "hk-tram-hv", "hk-tram-np"])
+    assert.ok(ids.has(id), `missing tramway track ${id}`);
 
   const loWu = pkg.lines.find((line) => line.id === "hk-mtr-eal-low");
   const lokMaChau = pkg.lines.find((line) => line.id === "hk-mtr-eal-lmc");
@@ -209,23 +217,61 @@ test("Hong Kong line geometry is continuous and free of micro-kinks", () => {
 });
 
 // Mirrors classifyHkSectionMask in app-stats.js: the HK datasets ship one
-// flat code pair (institution 4 / class 21), so the heavy-rail vs Light Rail
-// statistics split rides on the official 輕鐵NNN綫 line names. If the naming
-// convention or the classifier changes, this pins that both coverage buckets
-// stay reachable.
-test("Hong Kong sections split into MTR heavy rail and Light Rail stat buckets", () => {
+// flat code pair (institution 4 / class 21), so the three statistics buckets
+// ride on the operator (香港電車 vs MTR) and, within MTR, on the official
+// 輕鐵NNN綫 line names. If either convention or the classifier changes, this
+// pins that all three coverage buckets stay reachable.
+test("Hong Kong sections split into MTR heavy rail, Light Rail and tramway stat buckets", () => {
   const sections = read("data/rail-sections-hk.json");
   let heavy = 0;
   let lightRail = 0;
+  let tram = 0;
   for (const feature of sections.features) {
     const props = feature.properties;
     assert.equal(props.institution_type_code, "4");
     assert.equal(props.railway_class_code, "21");
-    assert.equal(props.operator, "MTR");
-    if (String(props.line_name).startsWith("輕鐵")) lightRail += 1;
+    assert.ok(["MTR", "香港電車"].includes(props.operator), props.operator);
+    if (props.operator === "香港電車") tram += 1;
+    else if (String(props.line_name).startsWith("輕鐵")) lightRail += 1;
     else heavy += 1;
   }
   assert.ok(heavy > 0, "no heavy-rail sections classified");
   assert.ok(lightRail > 0, "no Light Rail sections classified");
-  assert.equal(heavy + lightRail, sections.features.length);
+  assert.ok(tram > 0, "no tramway sections classified");
+  assert.equal(heavy + lightRail + tram, sections.features.length);
+});
+
+// The tramway is carried as its PHYSICAL tracks, not as the six numbered
+// services that all share them. That is the whole reason its mileage is
+// meaningful, so pin the network total near the operator's own ~30 km of
+// track: a regression to per-service lines would multiply it several times.
+test("the Hong Kong tramway is one physical network, not six overlapping services", () => {
+  const pkg = read("public/rail/hk-2025.json");
+  const tram = pkg.lines.filter((line) => line.operator === "香港電車");
+  assert.equal(tram.length, 4);
+  const km = tram.reduce(
+    (sum, line) => sum + line.segments.reduce((total, row) => total + row[0], 0),
+    0,
+  );
+  assert.ok(km > 28 && km < 34, `tramway network is ${km.toFixed(1)} km of track`);
+
+  // Every branch repeats the through-line stop it leaves from and the one it
+  // rejoins at, sharing their station GROUP ids, so no branch is an island in
+  // the network graph.
+  const groupsOf = (id) =>
+    new Set(pkg.lines.find((line) => line.id === id).stations.map((row) => row[0]));
+  const through = new Set([...groupsOf("hk-tram-east"), ...groupsOf("hk-tram-west")]);
+  for (const branch of ["hk-tram-hv", "hk-tram-np"]) {
+    const shared = [...groupsOf(branch)].filter((group) => through.has(group));
+    assert.equal(shared.length, 2, `${branch} shares ${shared.length} junction stops`);
+  }
+
+  // Station codes stay per-line and stable; the shared junctions differ from
+  // the through line's codes for the same stop, exactly as MTR interchanges do.
+  const readings = read("data/station-readings-hk.json");
+  assert.equal(readings.byCode["TRAM-E-KTT"].zh_Hant, "堅尼地城總站");
+  assert.equal(readings.byCode["TRAM-E-KTT"].en, "Kennedy Town Terminus");
+  assert.equal(readings.byCode["TRAM-W-104W"].zh_Hans, "爹核士街");
+  assert.equal(readings.byCode["TRAM-HV-HVT"].zh_Hant, "跑馬地總站");
+  assert.equal(readings.byCode["hk-tram-np:hk-official-tram-67e"].en, "Chun Yeung Street");
 });

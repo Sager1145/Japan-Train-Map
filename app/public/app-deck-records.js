@@ -409,7 +409,18 @@ function buildDeckOverlapMap(items) {
 // Merge the simplified vertex subset with the exact run-boundary vertices
 // (both ascending original indices), so lane transitions bend precisely where
 // the overlap membership changes — never displaced by the simplification.
-function mergeDrawnIndices(keepIdx, runs, nSeg) {
+// Every vertex at which the lane value changes. These are the ride's own
+// ramp steps: dropping one to simplification would move the sideways step off
+// the metre its railway takes it on.
+function laneChangeIndices(vertexLanes) {
+  if (!vertexLanes) return null;
+  const out = [];
+  for (let i = 1; i < vertexLanes.length; i += 1)
+    if (vertexLanes[i] !== vertexLanes[i - 1]) out.push(i);
+  return out.length ? out : null;
+}
+
+function mergeDrawnIndices(keepIdx, runs, nSeg, extraIdx) {
   if (!keepIdx) {
     const all = new Array(nSeg + 1);
     for (let i = 0; i <= nSeg; i += 1) all[i] = i;
@@ -420,6 +431,7 @@ function mergeDrawnIndices(keepIdx, runs, nSeg) {
     boundarySet.add(r.a);
     boundarySet.add(r.b);
   });
+  if (extraIdx) extraIdx.forEach((i) => boundarySet.add(i));
   const extras = [...boundarySet].sort((x, y) => x - y);
   const out = [];
   let i = 0;
@@ -522,9 +534,18 @@ function buildDeckRouteRecords(items) {
     const noPick = scopeFlags.dimmed === true;
     const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
     const color = [rgb[0], rgb[1], rgb[2], alpha];
-    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
+    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }, lineIdx) => {
       if (!orig || orig.length < 2) return;
       const nSeg = orig.length - 1;
+      // The lane this ride sits in, vertex by vertex — stamped on the feature
+      // by canonicalizeRouteFeature from the very profile its railway is drawn
+      // with. Absent (the overwhelmingly common case) the ride is on the
+      // centre-line and nothing below changes.
+      const vertexLanes =
+        (feature.properties &&
+          feature.properties.display_lanes &&
+          feature.properties.display_lanes[lineIdx]) ||
+        null;
       // Per ORIGINAL segment: sharing-train set, this train's lane slot and
       // the signed lane multiplier (slots centered around the true track).
       const segIds = new Array(nSeg);
@@ -599,8 +620,16 @@ function buildDeckRouteRecords(items) {
         }
       }
       runs.push({ a, b: nSeg }); // each run spans original vertices [a .. b]
-      // Drawn vertices: the simplified subset + the exact run boundaries.
-      const drawnIdx = mergeDrawnIndices(keepIdx, runs, nSeg);
+      // Drawn vertices: the simplified subset + the exact run boundaries + the
+      // vertices where the lane changes, so a ride eases into its lane on the
+      // same vertices its railway does instead of on whichever ones survived
+      // simplification.
+      const drawnIdx = mergeDrawnIndices(
+        keepIdx,
+        runs,
+        nSeg,
+        laneChangeIndices(vertexLanes),
+      );
       const drawn = new Array(drawnIdx.length);
       const posOf = new Map(); // original index -> position in drawn
       for (let k = 0; k < drawnIdx.length; k += 1) {
@@ -732,8 +761,17 @@ function buildDeckRouteRecords(items) {
             if (!duplicate) gi._lines.push(runLine);
           }
         }
-        records.push({
-          path: runLine,
+        // The run is cut once more, where the railway under it changes lane.
+        //
+        // Deliberately NOT a run boundary: `runs` are keyed on overlap
+        // MEMBERSHIP and every train sharing a corridor has to derive the
+        // identical set of them, or two members of one fan end up with
+        // different groupKeys and the fan splits in two. Lanes belong to the
+        // RAILWAY, not to the sharing set, so two trains on two different
+        // parallel lines change lane at different places — which is exactly
+        // why this cut happens here, after groupKey and the shift axis are
+        // settled, and touches nothing but the drawn and picked geometry.
+        const base = {
           shiftX: gi ? gi.sx : 0,
           shiftY: gi ? gi.sy : 0,
           laneMult: mult,
@@ -749,6 +787,30 @@ function buildDeckRouteRecords(items) {
           tdate: getTrainDate(train),
           edate,
           dspan: daySpan.key,
+        };
+        if (!vertexLanes) {
+          records.push({ ...base, path: runLine, lane: 0 });
+          return;
+        }
+        // Consecutive pieces SHARE their boundary vertex, so the round caps
+        // overlap and the eased step never opens a hairline in the ride.
+        let pieceStart = 0;
+        let pieceLane = vertexLanes[drawnIdx[ka]] || 0;
+        for (let k = 1; k < runLine.length; k += 1) {
+          const lane = vertexLanes[drawnIdx[ka + k]] || 0;
+          if (lane === pieceLane) continue;
+          records.push({
+            ...base,
+            path: runLine.slice(pieceStart, k + 1),
+            lane: pieceLane,
+          });
+          pieceStart = k;
+          pieceLane = lane;
+        }
+        records.push({
+          ...base,
+          path: runLine.slice(pieceStart),
+          lane: pieceLane,
         });
       });
 

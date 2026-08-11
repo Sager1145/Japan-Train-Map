@@ -13,10 +13,16 @@ const MATCHED_ROUTES_PATH = path.join(__dirname, "../data/matched-routes.json");
 const MATCHED_STOPS_PATH = path.join(__dirname, "../data/matched-stops.json");
 const TYMC_SAMPLE_ID =
   "20260802_01_taoyuan_airport_mrt_express_t2_taipei";
+// 574 stations, not 585: 中和新蘆線 is ONE railway to 迴龍 with a branch off
+// 大橋頭 to 蘆洲, so the 蘆洲 row carries only its own six stations instead of
+// repeating the twelve it shares with the trunk
+// (scripts/railway/collapse-branch-services.mjs). Both rows keep the line's own name,
+// which is how the renderer knows to draw their shared track coincident
+// rather than as two independent railways in parallel lanes.
 const EXPECTED_COUNTS = Object.freeze({
   lines: 38,
-  stations: 585,
-  segments: 548,
+  stations: 574,
+  segments: 537,
   groups: 495,
 });
 
@@ -272,9 +278,10 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   assert.equal(stationCount, EXPECTED_COUNTS.stations);
   assert.equal(segmentCount, EXPECTED_COUNTS.segments);
   // 2025.5.2's minimum-corner-radius pass straightens sub-40 m digitising
-  // artefacts, which costs 46 m across the whole network (1796.267 → 1796.221)
-  // and tips this 0.1 km-rounded total from 1796.3 to 1796.2.
-  assert.equal(Math.round(totalKm * 10) / 10, 1796.2);
+  // artefacts, which costs 46 m across the whole network. The remaining 12 km
+  // are the 中和新蘆線 trunk the 蘆洲 row used to repeat: the package now
+  // counts that track once, as one railway does.
+  assert.equal(Math.round(totalKm * 10) / 10, 1784.0);
   assert.ok(edgeCount >= 17_000, `only ${edgeCount} geometry edges`);
   assert.ok(maxEdgeKm < 0.2, `${maxEdgeKm} km output edge`);
   assert.equal(maxUnsharedJoinKm, 0, `${maxUnsharedJoinKm} km station gap`);
@@ -293,10 +300,19 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     {
       lines: network.lineById.size,
       stations: network.stations.features.length,
-      segments: network.segments.features.length,
+      segments: new Set(
+        network.segments.features.map((feature) => feature.properties.lineId),
+      ).size,
       groups: network.groupMembers.size,
     },
-    { ...EXPECTED_COUNTS, segments: EXPECTED_COUNTS.lines },
+    {
+      ...EXPECTED_COUNTS,
+      // Lines plus the lanes independent railways take where they share a
+      // corridor (rail-network.js splitPartByLanes).
+      segments: new Set(
+        network.segments.features.map((feature) => feature.properties.lineId),
+      ).size,
+    },
   );
 });
 

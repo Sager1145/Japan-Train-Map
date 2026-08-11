@@ -61,7 +61,7 @@ function buildMapLayersControl(hasBasemap) {
   options.forEach(([value, labelKey]) => {
     const o = document.createElement("option");
     o.value = value;
-    o.textContent = I18N.t(labelKey);
+    o.textContent = I18N.tc(labelKey);
     select.appendChild(o);
     optionNodes.set(value, { node: o, labelKey });
   });
@@ -79,7 +79,7 @@ function buildMapLayersControl(hasBasemap) {
     selectLabelText.textContent = I18N.t("map.basemap");
     select.setAttribute("aria-label", I18N.t("map.basemap"));
     optionNodes.forEach(({ node, labelKey }, value) => {
-      node.textContent = I18N.t(labelKey);
+      node.textContent = I18N.tc(labelKey);
       if (value === "positron" && positronState)
         node.textContent += ` — ${I18N.t("map." + positronState)}`;
     });
@@ -173,7 +173,7 @@ function buildMapLayersControl(hasBasemap) {
     cb.checked = on;
     cb.addEventListener("change", () => apply(cb.checked));
     const labelText = document.createElement("span");
-    labelText.textContent = I18N.t(labelKey);
+    labelText.textContent = I18N.tc(labelKey);
     item.appendChild(cb);
     item.appendChild(labelText);
     toggleLabels.push({ labelText, labelKey });
@@ -185,7 +185,7 @@ function buildMapLayersControl(hasBasemap) {
   const riddenHead = document.createElement("div");
   riddenHead.className = "map-layers-subhead";
   const riddenHeadText = document.createElement("span");
-  riddenHeadText.textContent = I18N.t("map.riddenGroup");
+  riddenHeadText.textContent = I18N.tc("map.riddenGroup");
   riddenHead.appendChild(riddenHeadText);
   toggleLabels.push({ labelText: riddenHeadText, labelKey: "map.riddenGroup" });
   body.appendChild(riddenHead);
@@ -201,7 +201,7 @@ function buildMapLayersControl(hasBasemap) {
     cb.checked = RIDDEN_CATEGORY_FILTER[cat] !== false;
     cb.addEventListener("change", () => setRiddenCategoryFilter(cat, cb.checked));
     const labelText = document.createElement("span");
-    labelText.textContent = I18N.t(labelKey);
+    labelText.textContent = I18N.tc(labelKey);
     item.appendChild(cb);
     item.appendChild(labelText);
     toggleLabels.push({ labelText, labelKey });
@@ -210,7 +210,7 @@ function buildMapLayersControl(hasBasemap) {
   const translateAll = () => {
     updateControlTranslations();
     toggleLabels.forEach(({ labelText, labelKey }) => {
-      labelText.textContent = I18N.t(labelKey);
+      labelText.textContent = I18N.tc(labelKey);
     });
   };
   I18N.onChange(translateAll);
@@ -374,7 +374,7 @@ const TILE_RETRY_DELAYS_MS = [900, 2600, 6500];
 const tileRetryState = new Map();
 
 function tileRetryKey(sourceId, canonical) {
-  return `${sourceId} ${canonical.z}/${canonical.x}/${canonical.y}`;
+  return `${sourceId}\u0000${canonical.z}/${canonical.x}/${canonical.y}`;
 }
 
 function retryErroredTile(map, event) {
@@ -557,10 +557,6 @@ async function initMap(mapAssetsReady) {
     theme,
     style.__railMapBasemapStacks,
   );
-  // The style already baked the boot country's basemap-label gate
-  // (buildBaseStyle country); hand RailMap the same country so a later
-  // country switch or basemap reinstall re-gates the labels correctly.
-  RailMap.setBasemapLabelCountry(activeCountry);
   // Selected-train width boost lives in the SEL layer's paint expression
   // (records stay selection-independent — picking a train rebuilds nothing).
   RailMap.setFocusBoost(DISPLAY.focusBoost);

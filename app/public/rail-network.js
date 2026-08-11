@@ -139,7 +139,30 @@
   // so the centre-line keeps its surveyed shape while tiny in/out reversals no
   // longer render as sharp thorns. Repeating to stability also cleans a
   // two-vertex barb without applying broad smoothing to the rest of the line.
-  function smoothMicroKinks(coordinates, limits) {
+  // Shared track has to be groomed ONCE, not once per stroke that draws it.
+  // A branch's lead-in is a literal copy of the trunk's vertices, so if the
+  // groomer drops a kink from one copy and keeps it in the other, the two
+  // strokes stop being coincident and the shared metres render as a pair of
+  // lines a few metres apart. Any vertex that appears in more than one stroke
+  // of the same line is therefore protected from grooming: whatever survives,
+  // survives in both.
+  function coordinateKey(coordinate) {
+    return `${coordinate[0]},${coordinate[1]}`;
+  }
+
+  function sharedVertexKeys(parts) {
+    const seen = new Map();
+    for (const coordinates of parts) {
+      const own = new Set();
+      for (const coordinate of coordinates) own.add(coordinateKey(coordinate));
+      for (const key of own) seen.set(key, (seen.get(key) || 0) + 1);
+    }
+    const shared = new Set();
+    for (const [key, count] of seen) if (count > 1) shared.add(key);
+    return shared;
+  }
+
+  function smoothMicroKinks(coordinates, limits, protectedKeys) {
     const { edge, turn, deviation } = limits || DEFAULT_MICRO_KINK;
     let current = [];
     for (const coordinate of coordinates || []) {
@@ -160,6 +183,7 @@
         );
         const deflection = turnDegrees(previous, corner, following);
         const isMicroKink =
+          !protectedKeys?.has(coordinateKey(corner)) &&
           shortEdge <= edge &&
           deflection >= turn &&
           (deflection >= SPIKE_MIN_TURN_DEGREES ||
@@ -237,15 +261,37 @@
     return run >= RETRACE_MIN_RUN_METERS ? index - 1 : 0;
   }
 
+  // Where `point` sits on an already-drawn stroke.
+  //
+  // This has to measure to the TRACK, not to its vertices. N02 digitises long
+  // easements with vertices hundreds of metres apart, so a switch that lies
+  // exactly on the drawn centre-line can still be 90 m from the nearest
+  // vertex. Testing vertices made those junctions look like they belonged to
+  // some other stroke, and the trunk was cut in two at the junction (阪和線
+  // split at 鳳, 東北線 at 日暮里) instead of carrying straight on.
   function nearestVertexIndex(coordinates, point) {
     let bestIndex = -1;
     let best = Infinity;
-    for (let index = 0; index < coordinates.length; index += 1) {
-      const distance = distanceMeters(coordinates[index], point);
-      if (distance < best) {
-        best = distance;
-        bestIndex = index;
-      }
+    for (let index = 0; index < coordinates.length - 1; index += 1) {
+      const distance = pointSegmentDistanceMeters(
+        point,
+        coordinates[index],
+        coordinates[index + 1],
+      );
+      if (distance >= best) continue;
+      best = distance;
+      // Cut at whichever end of the matched edge the point is nearer, so the
+      // trunk keeps every vertex up to the switch and the branch keeps the
+      // rest.
+      bestIndex =
+        distanceMeters(point, coordinates[index]) <=
+        distanceMeters(point, coordinates[index + 1])
+          ? index
+          : index + 1;
+    }
+    if (coordinates.length === 1) {
+      best = distanceMeters(coordinates[0], point);
+      bestIndex = 0;
     }
     return { index: bestIndex, distance: best };
   }
@@ -279,11 +325,389 @@
     return null;
   }
 
+  // ─────────────────── station approach (render anchoring) ──────────────────
+  //
+  // A drawn railway must run THROUGH the centre of every station circle it
+  // calls at, and a terminal stroke must END on that centre — with no elbow in
+  // the last few hundred metres, no lateral connector, and no hairpin.
+  //
+  // The package cannot deliver that on its own, and the reason is worth
+  // stating because it looks like a renderer bug and is not. A package station
+  // anchor is the OFFICIAL station point — an N02 polygon centroid, an OSM
+  // station node — and the package builders make every interval begin and end
+  // on it by OVERWRITING the track vertex nearest the platform with it
+  // (rebuild-japan-package-geometry.py weld_line_intervals). Wherever that
+  // official point sits off the surveyed centre-line — routinely tens of
+  // metres, a few hundred at a large terminal — the overwrite IS the artefact:
+  // the interval's last edge abandons the alignment and stabs sideways at the
+  // anchor, so the line reaches its dot around a corner no railway has.
+  //
+  // Replacing one vertex can only ever produce that corner, so this pass
+  // rebuilds the approach from the track the overwrite hid:
+  //
+  //   1. lift the anchor out and read the surveyed alignment straight through
+  //      the platform — the tail of the arriving interval joined to the head of
+  //      the departing one, which between them still hold every vertex the
+  //      overwrite did not touch;
+  //   2. find where that alignment actually passes the platform (the nearest
+  //      point on it) and CUT it there, so the two intervals meet at the
+  //      station's true chainage rather than wherever the package split them;
+  //   3. slide the two ends of the cut sideways onto the anchor, by a
+  //      displacement that fades in across an approach window.
+  //
+  // Reading BOTH sides is what makes step 2 trustworthy, and it is the whole
+  // difference between a fix and a new defect. From one side the deleted vertex
+  // can only be guessed by extrapolating a heading, and on a curve that guess
+  // is metres out — which would invent a displacement, and a correction, at the
+  // ~95% of platforms that are already exactly on their track (every station in
+  // Macao and Hong Kong, all but a handful in Taiwan). With the neighbour on
+  // each side the nearest point is measured, not guessed, so those platforms
+  // measure zero and this pass leaves their geometry untouched to the vertex.
+  //
+  // The fade is a smoothstep, whose slope is ZERO at both ends, and that is
+  // what makes a real correction invisible. It begins without a corner where it
+  // meets untouched track, and it arrives at the anchor along the alignment's
+  // OWN heading — so a station the line passes through keeps the tangent it had
+  // (both sides blend independently and still agree there), and a terminal ends
+  // pointing the way it was going. The steepest point of the blend is 1.5·d/L,
+  // a few degrees for any displacement with room for its window.
+  //
+  // What is NOT touched: the package, the station coordinate, the routing
+  // graph, the marker position. The topology anchor and the render anchor are
+  // the same point BECAUSE the drawn line is brought to it, never the reverse.
+  //
+  // Even at zero displacement step 2 earns its place. The package cuts the two
+  // intervals at the vertex it overwrote, which is not where the platform is,
+  // so vertices belonging ahead of the station arrive behind it and the drawn
+  // line doubles back over itself to reach the dot. Cutting at the measured
+  // chainage puts every vertex on the side it belongs to, and that alone
+  // straightens a large share of the corners.
+  const ANCHOR_ON_TRACK_METERS = 1;
+  // Past this the platform is not off its track, the DATA is wrong — the wrong
+  // line matched, the wrong endpoint, a station that belongs to a neighbouring
+  // group. Bending a railway that far would hide the fault under a graceful
+  // curve, so the approach is left exactly as the package drew it and
+  // scripts/validation/validate-station-render-anchoring.mjs reports it for correction.
+  // The characterised packages peak at 159 m (東海道線/大阪), so nothing today
+  // reaches this; it exists so a future bad row cannot silently bend a trunk.
+  const ANCHOR_MAX_DISPLACEMENT_METERS = 250;
+  // Metres of approach per metre of sideways correction.
+  const ANCHOR_WINDOW_RATIO = 12;
+  const ANCHOR_MIN_WINDOW_METERS = 180;
+  const ANCHOR_MAX_WINDOW_METERS = 2400;
+  // Neither the search for the platform nor one end's blend may spend more
+  // than this share of an interval, so nothing here can ever reach past a
+  // NEIGHBOURING station and rewrite its approach instead.
+  const ANCHOR_MAX_INTERVAL_SHARE = 0.45;
+  // The blend has to be carried by a RUN of vertices. N02 can leave a single
+  // kilometre-long edge across the whole window, and a displacement applied to
+  // its two ends alone is the very corner this pass exists to remove.
+  const ANCHOR_STEP_METERS = 20;
+  // How far either side of the package's own cut the platform is looked for.
+  const ANCHOR_REACH_METERS = 700;
+  // An edge this short is a seam, not a shape. The cut can land within a metre
+  // of a surveyed vertex, and keeping both leaves a stub edge whose direction
+  // is meaningless — invisible at any zoom, but it is still a corner, and the
+  // audit that has to trust the corner count should not have to explain it.
+  const ANCHOR_SEAM_METERS = 3;
+
+  function smoothstep(ratio) {
+    const t = ratio <= 0 ? 0 : ratio >= 1 ? 1 : ratio;
+    return t * t * (3 - 2 * t);
+  }
+
+  // The vertices within `reachMeters` of one end of an interval — the only
+  // part of it a station approach may read or rewrite.
+  function reachIndexFromEnd(coordinates, atEnd, reachMeters) {
+    let travelled = 0;
+    if (atEnd) {
+      for (let index = coordinates.length - 1; index > 0; index -= 1) {
+        travelled += distanceMeters(coordinates[index], coordinates[index - 1]);
+        if (travelled >= reachMeters) return index - 1;
+      }
+      return 0;
+    }
+    for (let index = 0; index < coordinates.length - 1; index += 1) {
+      travelled += distanceMeters(coordinates[index], coordinates[index + 1]);
+      if (travelled >= reachMeters) return index + 1;
+    }
+    return coordinates.length - 1;
+  }
+
+  // The point on `path` nearest the platform, as a cut: which edge it lands on
+  // and where along it.
+  function nearestCutOnPath(path, anchor) {
+    const latitude = anchor[1];
+    const target = localMetric(anchor, latitude);
+    let best = null;
+    for (let index = 0; index < path.length - 1; index += 1) {
+      const a = localMetric(path[index], latitude);
+      const b = localMetric(path[index + 1], latitude);
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const lengthSquared = dx * dx + dy * dy;
+      const ratio = lengthSquared
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              ((target[0] - a[0]) * dx + (target[1] - a[1]) * dy) /
+                lengthSquared,
+            ),
+          )
+        : 0;
+      const point = [
+        path[index][0] + (path[index + 1][0] - path[index][0]) * ratio,
+        path[index][1] + (path[index + 1][1] - path[index][1]) * ratio,
+      ];
+      const distance = distanceMeters(anchor, point);
+      if (!best || distance < best.distance)
+        best = { index, ratio, point, distance };
+    }
+    return best;
+  }
+
+  function pathBeforeCut(path, cut) {
+    const kept = path.slice(0, cut.index + 1);
+    if (!sameCoordinate(kept[kept.length - 1], cut.point)) kept.push(cut.point);
+    return kept;
+  }
+
+  function pathAfterCut(path, cut) {
+    const kept = path.slice(cut.index + 1);
+    if (!sameCoordinate(kept[0], cut.point)) kept.unshift(cut.point);
+    return kept;
+  }
+
+  // Slide the last `windowMeters` of the alignment onto the anchor.
+  function warpTipToAnchor(coordinates, anchor, windowMeters) {
+    const tip = coordinates[coordinates.length - 1];
+    const shift = [anchor[0] - tip[0], anchor[1] - tip[1]];
+    const cumulative = [0];
+    for (let index = 1; index < coordinates.length; index += 1)
+      cumulative.push(
+        cumulative[index - 1] +
+          distanceMeters(coordinates[index - 1], coordinates[index]),
+      );
+    const total = cumulative[cumulative.length - 1];
+    const window = Math.min(windowMeters, total);
+    if (!(window > 0)) {
+      const pinned = coordinates.slice(0, -1);
+      pinned.push([anchor[0], anchor[1]]);
+      return pinned;
+    }
+    const start = total - window;
+    const output = [];
+    const push = (point) => {
+      if (!sameCoordinate(output[output.length - 1], point)) output.push(point);
+    };
+    const measures = [];
+    for (let index = 0; index < coordinates.length; index += 1) {
+      if (cumulative[index] < start) push(coordinates[index]);
+      else measures.push(cumulative[index]);
+    }
+    measures.push(start);
+    const steps = Math.max(1, Math.ceil(window / ANCHOR_STEP_METERS));
+    for (let step = 1; step < steps; step += 1)
+      measures.push(start + (window * step) / steps);
+    measures.sort((left, right) => left - right);
+    for (const measure of measures) {
+      const point = interpolateAt(coordinates, cumulative, measure).point;
+      const weight = smoothstep((measure - start) / window);
+      push([point[0] + shift[0] * weight, point[1] + shift[1] * weight]);
+    }
+    // Exactly, not nearly: the anchor has to be the very coordinate the marker
+    // is drawn at, so the two can be compared by identity downstream.
+    output[output.length - 1] = [anchor[0], anchor[1]];
+    return output.length >= 2 ? output : coordinates;
+  }
+
+  function anchorWindowMeters(displacement, budgetMeters) {
+    return Math.min(
+      Math.max(displacement * ANCHOR_WINDOW_RATIO, ANCHOR_MIN_WINDOW_METERS),
+      ANCHOR_MAX_WINDOW_METERS,
+      Math.max(budgetMeters, ANCHOR_STEP_METERS),
+    );
+  }
+
+  // Bring the approach on one side of a platform onto the anchor. `approach`
+  // runs towards the station and ends on the cut; the returned run ends on the
+  // anchor itself.
+  function anchorApproach(approach, anchor, displacement, budgetMeters) {
+    if (approach.length < 2) return null;
+    const built =
+      displacement <= ANCHOR_ON_TRACK_METERS
+        ? // The alignment already passes through the platform: seat the anchor
+          // at the cut and reshape nothing.
+          approach.slice(0, -1)
+        : warpTipToAnchor(
+            approach,
+            anchor,
+            anchorWindowMeters(displacement, budgetMeters),
+          ).slice(0, -1);
+    while (
+      built.length > 1 &&
+      distanceMeters(built[built.length - 1], anchor) <= ANCHOR_SEAM_METERS
+    )
+      built.pop();
+    built.push([anchor[0], anchor[1]]);
+    return built.length >= 2 ? built : null;
+  }
+
+  // Rebuild the drawn approach on both sides of ONE platform.
+  //
+  // `incoming` arrives at the station and `outgoing` leaves it; either is null
+  // at the two ends of an open line, where the platform is a terminal and the
+  // stroke simply stops on it.
+  function anchorStationApproach(incoming, outgoing, anchor, budgets) {
+    const head = incoming ? incoming.slice(0, -1) : [];
+    // Where the departing interval's own vertices begin. The package re-emits
+    // the vertex next to a platform on BOTH sides of it; read once, or the
+    // alignment appears to double back across the station.
+    let tailStart = outgoing ? 1 : 0;
+    if (
+      outgoing &&
+      head.length &&
+      outgoing.length > 1 &&
+      sameCoordinate(head[head.length - 1], outgoing[1])
+    )
+      tailStart = 2;
+    const tail = outgoing ? outgoing.slice(tailStart) : [];
+    const headFrom = head.length
+      ? reachIndexFromEnd(head, true, budgets.incomingReach)
+      : 0;
+    const tailTo = tail.length
+      ? reachIndexFromEnd(tail, false, budgets.outgoingReach)
+      : -1;
+    const path = head.slice(headFrom).concat(tail.slice(0, tailTo + 1));
+    if (path.length < 2) return null;
+
+    const cut = nearestCutOnPath(path, anchor);
+    if (!cut) return null;
+    // A cut AT the far end of what we can read means the platform lies beyond
+    // the last surveyed vertex the line has — which only a terminal can do,
+    // and which leaves nothing to measure it against. The package's own final
+    // edge is then the only evidence of where the track runs, and it is
+    // better evidence than an extrapolated heading: the two are the same on
+    // straight track, and where they differ it is because the alignment is on
+    // a curve, which is exactly where extrapolating is wrong. So the approach
+    // is left as drawn, and only a platform the track OVERSHOOTS — the drive
+    // past the buffer and back that ends 90 Japanese strokes — is rebuilt.
+    if (!outgoing && cut.index === path.length - 2 && cut.ratio >= 1) return null;
+    if (!incoming && cut.index === 0 && cut.ratio <= 0) return null;
+
+    if (cut.distance > ANCHOR_MAX_DISPLACEMENT_METERS) return null;
+
+    const result = { displacement: cut.distance };
+    if (incoming) {
+      const approach = anchorApproach(
+        pathBeforeCut(path, cut),
+        anchor,
+        cut.distance,
+        budgets.incomingWindow,
+      );
+      if (!approach) return null;
+      result.incoming = incoming.slice(0, headFrom).concat(approach);
+    }
+    if (outgoing) {
+      const departure = anchorApproach(
+        pathAfterCut(path, cut).reverse(),
+        anchor,
+        cut.distance,
+        budgets.outgoingWindow,
+      );
+      if (!departure) return null;
+      result.outgoing = departure
+        .reverse()
+        .concat(outgoing.slice(tailStart + tailTo + 1));
+    }
+    return result;
+  }
+
+  // Every interval runs platform to platform, so every station is an approach
+  // from one or both sides. Reach and window are capped at a share of each
+  // interval, so one station's rebuild can never run into its neighbour's.
+  function anchorIntervalsToStations(intervals, compactLine) {
+    const stationCount = compactLine.stations.length;
+    if (!intervals.length) return intervals;
+    const shares = intervals.map(
+      (coordinates) => pathLength(coordinates) * ANCHOR_MAX_INTERVAL_SHARE,
+    );
+    // A closed line has one interval per station, so its first platform is
+    // approached from the last interval rather than from nothing.
+    const closed = intervals.length >= stationCount;
+    for (let station = 0; station < stationCount; station += 1) {
+      const incomingIndex =
+        station > 0 ? station - 1 : closed ? intervals.length - 1 : -1;
+      const outgoingIndex = station < intervals.length ? station : -1;
+      const incoming = incomingIndex >= 0 ? intervals[incomingIndex] : null;
+      const outgoing = outgoingIndex >= 0 ? intervals[outgoingIndex] : null;
+      if (!incoming && !outgoing) continue;
+      if ((incoming && incoming.length < 2) || (outgoing && outgoing.length < 2))
+        continue;
+      const row = compactLine.stations[station];
+      const rebuilt = anchorStationApproach(
+        incoming,
+        outgoing,
+        [row[2], row[3]],
+        {
+          incomingReach: Math.min(
+            ANCHOR_REACH_METERS,
+            incomingIndex >= 0 ? shares[incomingIndex] : 0,
+          ),
+          outgoingReach: Math.min(
+            ANCHOR_REACH_METERS,
+            outgoingIndex >= 0 ? shares[outgoingIndex] : 0,
+          ),
+          incomingWindow: incomingIndex >= 0 ? shares[incomingIndex] : 0,
+          outgoingWindow: outgoingIndex >= 0 ? shares[outgoingIndex] : 0,
+        },
+      );
+      if (!rebuilt) continue;
+      if (rebuilt.incoming && rebuilt.incoming.length >= 2)
+        intervals[incomingIndex] = rebuilt.incoming;
+      if (rebuilt.outgoing && rebuilt.outgoing.length >= 2)
+        intervals[outgoingIndex] = rebuilt.outgoing;
+    }
+    return intervals;
+  }
+
+  function stationAnchorKeys(compactLine) {
+    const keys = new Set();
+    for (const row of compactLine.stations)
+      keys.add(coordinateKey([row[2], row[3]]));
+    return keys;
+  }
+
+  // Decode every interval and weld both of its ends to the authoritative
+  // station anchor. The weld is what anchorIntervalsToStations then turns into
+  // a real approach; on its own it is only a promise that the interval chain
+  // is seam-free.
+  function decodeIntervals(compactLine) {
+    const stationCount = compactLine.stations.length;
+    const intervals = [];
+    let previousLastCoordinate = null;
+    compactLine.segments.forEach((row, index) => {
+      const decoded = row[1]
+        ? [previousLastCoordinate].concat(
+            row[2].map((coordinate) => [coordinate[0], coordinate[1]]),
+          )
+        : row[2].map((coordinate) => [coordinate[0], coordinate[1]]);
+      const startStation = compactLine.stations[index];
+      const endStation = compactLine.stations[(index + 1) % stationCount];
+      decoded[0] = [startStation[2], startStation[3]];
+      decoded[decoded.length - 1] = [endStation[2], endStation[3]];
+      previousLastCoordinate = decoded[decoded.length - 1];
+      intervals.push(decoded);
+    });
+    return intervals;
+  }
+
   // The compact package stores station intervals for routing and attribution,
   // but MapLibre should receive complete display geometry per line, not one
-  // feature per station interval. Decode every interval, snap both ends to the
-  // authoritative station anchor, weld the shared boundary once, then groom
-  // kinks at the line's own scale.
+  // feature per station interval. Decode every interval, bring both ends onto
+  // the authoritative station anchor, weld the shared boundary once, then
+  // groom kinks at the line's own scale.
   //
   // A package line is an ORDERED station list, and several real railways store
   // a trunk AND its branch under one id (室蘭線 carries 東室蘭–室蘭; 東北線
@@ -318,6 +742,7 @@
       station[3],
     ]);
     const limits = microKinkLimitsForSpacing(medianSpacingMeters(compactLine));
+    const anchorKeys = stationAnchorKeys(compactLine);
     const laid = createTrackIndex();
     const parts = [];
     let current = [];
@@ -326,20 +751,16 @@
       current = [];
     };
 
-    let previousLastCoordinate = null;
-    compactLine.segments.forEach((row, index) => {
-      const decoded = row[1]
-        ? [previousLastCoordinate].concat(
-            row[2].map((coordinate) => [coordinate[0], coordinate[1]]),
-          )
-        : row[2].map((coordinate) => [coordinate[0], coordinate[1]]);
-      const nextIndex = (index + 1) % stationCount;
-      const startStation = compactLine.stations[index];
-      const endStation = compactLine.stations[nextIndex];
-      decoded[0] = [startStation[2], startStation[3]];
-      decoded[decoded.length - 1] = [endStation[2], endStation[3]];
-      previousLastCoordinate = decoded[decoded.length - 1];
+    // Station approaches are rebuilt on the interval chain, BEFORE any of the
+    // branch machinery below runs, so a branch lead-in copied off a trunk
+    // copies the finished geometry and the two strokes stay coincident to the
+    // vertex over the metres they share.
+    const intervals = anchorIntervalsToStations(
+      decodeIntervals(compactLine),
+      compactLine,
+    );
 
+    intervals.forEach((decoded) => {
       if (current.length) dropStationRepeat(current, decoded);
 
       let coordinates = decoded;
@@ -378,7 +799,21 @@
           // The cut vertex and the tail's first vertex are the same switch to
           // within the match radius; make them literally equal so the trunk
           // welds instead of jogging.
-          current[current.length - 1] = [tail[0][0], tail[0][1]];
+          //
+          // Unless the cut vertex is a PLATFORM ANCHOR, which happens whenever
+          // the branch leaves from a station rather than from open track — the
+          // whole open part being the anchor alone is only its commonest shape
+          // (阪和線 opens a part at 鳳 to reach 東羽衣). Overwriting an anchor
+          // would cut the trunk loose ~40 m short of the station AND take the
+          // station off the line it calls at. Append instead, so the
+          // continuation still reads station → switch → onward.
+          if (
+            current.length >= 2 &&
+            !anchorKeys.has(coordinateKey(current[current.length - 1]))
+          )
+            current[current.length - 1] = [tail[0][0], tail[0][1]];
+          else if (!sameCoordinate(current[current.length - 1], tail[0]))
+            current.push([tail[0][0], tail[0][1]]);
           coordinates = tail;
         } else {
           // The retrace lands on track from an already-closed part. Open a new
@@ -403,8 +838,26 @@
     });
     flush();
 
-    const groomed = parts
-      .map((coordinates) => smoothMicroKinks(coordinates, limits))
+    // Trim on both sides of grooming. Before, because a fold hides real
+    // corners from the groomer; after, because dropping a barb can expose a
+    // smaller fold that was not one while the extra vertices were there.
+    //
+    // Neither pass may touch a platform anchor. Grooming a station out of the
+    // line, or trimming a stroke back past one, puts the marker off the rail
+    // it calls at — which is the very defect the approach pass exists to
+    // remove, reintroduced two steps later.
+    const trimmed = parts.map((coordinates) =>
+      trimFoldedEnds(coordinates, anchorKeys),
+    );
+    const protectedKeys = sharedVertexKeys(trimmed);
+    for (const key of anchorKeys) protectedKeys.add(key);
+    const groomed = trimmed
+      .map((coordinates) =>
+        trimFoldedEnds(
+          smoothMicroKinks(coordinates, limits, protectedKeys),
+          anchorKeys,
+        ),
+      )
       .filter((coordinates) => coordinates.length >= 2);
     return groomed.length ? groomed : [[stationPoints[0], stationPoints[0]]];
   }
@@ -449,6 +902,61 @@
       distanceMeters(repeated, after);
     if (keepFirst <= keepSecond) next.splice(1, 1);
     else current.splice(current.length - 2, 1);
+  }
+
+  // ── stroke-end fold ──
+  // A stroke must never OPEN by running out and folding straight back over
+  // itself. Two things produce that spur, and both are artefacts:
+  //
+  //   * the station-boundary vertex repeat, when the repeat falls on the first
+  //     interval of a new part. dropStationRepeat only sees it mid-part, so a
+  //     part that opens at such a station starts with a 180° thorn
+  //     (五能線 at 東八森, 常磐新線 at 青井 — 50–90 m out and straight back).
+  //   * a lead-in that walked back PAST its connection station before the
+  //     branch turned round, leaving a spur beyond the platform that the line
+  //     immediately retraces (阪和線 north of 鳳, ~180 m out and back).
+  //
+  // Both read the same way: a short excursion whose end is still at the
+  // station but which cost several times its own chord to walk. Re-open the
+  // stroke at the far end of that excursion. The anchor vertex itself is kept,
+  // so a part still begins exactly on its platform.
+  const FOLD_MAX_METERS = 1200;
+  const FOLD_RETURN_METERS = 160;
+  const FOLD_RATIO = 2.5;
+  // Never eat a real balloon loop or a line short enough that the "excursion"
+  // is most of it.
+  const FOLD_MAX_SHARE = 0.2;
+
+  function foldedHeadIndex(coordinates, totalMeters, anchorKeys) {
+    const budget = Math.min(FOLD_MAX_METERS, totalMeters * FOLD_MAX_SHARE);
+    let travelled = 0;
+    let folded = 0;
+    for (let index = 1; index < coordinates.length; index += 1) {
+      // A platform anchor ends the search: whatever lies beyond it is another
+      // station's track and may not be trimmed away with the spur.
+      if (anchorKeys?.has(coordinateKey(coordinates[index]))) break;
+      travelled += distanceMeters(coordinates[index - 1], coordinates[index]);
+      if (travelled > budget) break;
+      const chord = distanceMeters(coordinates[0], coordinates[index]);
+      if (chord <= FOLD_RETURN_METERS && travelled >= FOLD_RATIO * Math.max(chord, 1))
+        folded = index;
+    }
+    return folded;
+  }
+
+  function trimFoldedEnds(coordinates, anchorKeys) {
+    const total = pathLength(coordinates);
+    let output = coordinates;
+    const head = foldedHeadIndex(output, total, anchorKeys);
+    if (head > 0) output = [output[0]].concat(output.slice(head));
+    const reversed = output.slice().reverse();
+    const tail = foldedHeadIndex(reversed, total, anchorKeys);
+    if (tail > 0)
+      output = reversed
+        .slice(tail)
+        .reverse()
+        .concat([reversed[0]]);
+    return output.length >= 2 ? output : coordinates;
   }
 
   function isReversalJoint(current, next) {
@@ -614,15 +1122,29 @@
     return total;
   }
 
+  // The slice, plus WHICH WAY it runs along the stroke.
+  //
+  // The direction is reported rather than re-derived by whoever needs it. It
+  // cannot be read back off the finished coordinates: on a closed line a ride
+  // through the seam starts at measure 0 and continues at the far end of the
+  // stroke, where the vertex "behind" the start and the vertex "ahead" of it
+  // are the same place and no geometric test can separate them. Only the
+  // branch that built the slice knows, so only it may say.
   function canonicalLineSlice(line, start, end, rawCoordinates) {
     const metric = lineMetrics(line)[start.partIndex];
-    if (!metric) return [];
+    if (!metric) return { coordinates: [], backward: false };
     // A loop only wraps when the whole line is ONE closed part; a split line's
     // parts are open strokes even if the package marks the line as a loop.
     if (!line.isLoop || lineMetrics(line).length > 1) {
       if (start.measure <= end.measure)
-        return sliceForward(metric, start, end, false);
-      return sliceForward(metric, end, start, false).reverse();
+        return {
+          coordinates: sliceForward(metric, start, end, false),
+          backward: false,
+        };
+      return {
+        coordinates: sliceForward(metric, end, start, false).reverse(),
+        backward: true,
+      };
     }
 
     const forward = sliceForward(
@@ -640,8 +1162,8 @@
     const rawLength = pathLength(rawCoordinates || []);
     return Math.abs(pathLength(forward) - rawLength) <=
       Math.abs(pathLength(backward) - rawLength)
-      ? forward
-      : backward;
+      ? { coordinates: forward, backward: false }
+      : { coordinates: backward, backward: true };
   }
 
   // Distance from a platform anchor to its track that is still just the
@@ -704,6 +1226,7 @@
     if (!candidates.length) candidates = [...network.lineById.values()];
 
     const canonicalLines = [];
+    const canonicalLanes = [];
     const usedLineIds = [];
     for (const rawCoordinates of rawLines) {
       const rawStart = rawCoordinates[0];
@@ -743,13 +1266,28 @@
       // refusing an unrelated same-named railway elsewhere in the country.
       if (!best || Math.max(best.start.distance, best.end.distance) > 1500)
         return null;
-      const canonical = canonicalLineSlice(
+      const sliced = canonicalLineSlice(
         best.line,
         best.start,
         best.end,
         rawCoordinates,
       );
+      const canonical = sliced.coordinates;
       if (canonical.length < 2) return null;
+      // Where this stroke runs in a parallel lane, the ride runs in it too —
+      // read at the same measures, off the same profile, and signed by the
+      // direction the slice itself reports. Taken BEFORE the endpoints are
+      // snapped below, so a platform bridge cannot shift the measures.
+      canonicalLanes.push(
+        routeLanesForSlice(
+          network.laneProfiles?.get(
+            `${best.line.lineId}#${best.start.partIndex}`,
+          ),
+          canonical,
+          best.start.measure,
+          sliced.backward,
+        ),
+      );
       // Finish ON the platform, not on the projection of it.
       //
       // A junction station belongs to two display parts, and the projection of
@@ -772,6 +1310,12 @@
         ...properties,
         display_geometry_source: "all-railways-complete-line",
         display_line_ids: [...new Set(usedLineIds)],
+        // One lane value per drawn vertex, per geometry line — null for a
+        // route that never leaves the centre-line, which is nearly all of
+        // them. buildDeckRouteRecords cuts the drawn record on it.
+        ...(canonicalLanes.some(Boolean)
+          ? { display_lanes: canonicalLanes }
+          : null),
       },
       geometry:
         feature.geometry.type === "MultiLineString"
@@ -812,6 +1356,348 @@
     );
   }
 
+  // ───────────────────── independent parallel corridors ─────────────────────
+  //
+  // Where a trunk and its own branch share track, the branch is drawn over the
+  // trunk's OWN coordinates and the two are exactly coincident — one railway,
+  // seen twice (displayPartsForLine). Where two DIFFERENT railways happen to
+  // run the same corridor, coincidence would be a lie: the map would show one
+  // line where the country has two, and no amount of zooming would reveal the
+  // second.
+  //
+  // So the two cases are told apart by IDENTITY, never by geometry:
+  //
+  //   same line id                 SINGLE                 one stroke
+  //   same operator + name group   MAIN_BRANCH_SHARED     exactly coincident
+  //   anything else in a corridor  INDEPENDENT_PARALLEL   its own lane
+  //
+  // The lane table is computed offline (scripts/railway/build-parallel-corridors.mjs —
+  // the sweep is far too heavy for boot) and shipped in the package as rows of
+  // `[lineId, partIndex, fromMeters, toMeters, laneOffset]`. `laneOffset` is a
+  // SIGNED MULTIPLE of the lane spacing, symmetric about the shared alignment
+  // (±0.5 for two railways, −1/0/+1 for three), so the station markers on that
+  // alignment stay in the middle of the bundle and the whole corridor keeps
+  // one left-to-right order from end to end.
+  //
+  // Only the RENDER geometry is split. `line.parts` — what ridden routes are
+  // sliced from, what the route solver's output is matched against — is
+  // untouched, so no lane can move a train off its track.
+  function laneRowsByPart(pkg) {
+    const byPart = new Map();
+    if (!Array.isArray(pkg.lanes)) return byPart;
+    for (const row of pkg.lanes) {
+      const key = `${row[0]}#${row[1]}`;
+      let rows = byPart.get(key);
+      if (!rows) byPart.set(key, (rows = []));
+      rows.push({ from: Number(row[2]), to: Number(row[3]), lane: Number(row[4]) });
+    }
+    for (const rows of byPart.values()) rows.sort((a, b) => a.from - b.from);
+    return byPart;
+  }
+
+  function interpolateAt(coordinates, cumulative, target) {
+    if (target <= 0) return { point: coordinates[0], index: 0 };
+    const last = cumulative.length - 1;
+    if (target >= cumulative[last]) return { point: coordinates[last], index: last };
+    let index = 1;
+    while (index < last && cumulative[index] < target) index += 1;
+    const span = cumulative[index] - cumulative[index - 1];
+    const ratio = span > 0 ? (target - cumulative[index - 1]) / span : 0;
+    const a = coordinates[index - 1];
+    const b = coordinates[index];
+    return {
+      point: [a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio],
+      index,
+    };
+  }
+
+  // A lane may not simply switch on. Stepping a whole line sideways at one
+  // point puts a corner in it that no railway has, so every lane fades in and
+  // out over a short run of track: the first RAMP_METERS of the stretch are
+  // drawn at a quarter, a half and three quarters of the offset before the
+  // full lane begins, and the last RAMP_METERS come back the same way. Each
+  // step is a quarter of a lane — well under a pixel — and consecutive pieces
+  // share their boundary vertex, so the line reads as one continuous stroke
+  // easing across rather than as two strokes with a jog between them.
+  //
+  // The ramp costs almost nothing: pieces are grouped by lane VALUE per line,
+  // so a line with several stretches at the same lane shares one feature per
+  // quarter-step no matter how many boundaries it has.
+  const RAMP_METERS = 220;
+  const RAMP_STEPS = 4;
+
+  function rampedRow(row, previousEnd, nextStart) {
+    const span = row.to - row.from;
+    // Never let the two ramps meet, and never eat into a neighbour.
+    const room = Math.min(
+      RAMP_METERS,
+      span / 3,
+      Math.max(0, row.from - previousEnd),
+      Math.max(0, nextStart - row.to),
+    );
+    if (!(room > 1)) return [{ from: row.from, to: row.to, lane: row.lane }];
+    const out = [];
+    // Ease IN over the track BEFORE the stretch, so the stretch itself is at
+    // full offset for its whole length.
+    for (let step = 1; step < RAMP_STEPS; step += 1)
+      out.push({
+        from: row.from - room + ((step - 1) * room) / (RAMP_STEPS - 1),
+        to: row.from - room + (step * room) / (RAMP_STEPS - 1),
+        lane: (row.lane * step) / RAMP_STEPS,
+      });
+    out.push({ from: row.from, to: row.to, lane: row.lane });
+    for (let step = RAMP_STEPS - 1; step >= 1; step -= 1)
+      out.push({
+        from: row.to + ((RAMP_STEPS - 1 - step) * room) / (RAMP_STEPS - 1),
+        to: row.to + ((RAMP_STEPS - step) * room) / (RAMP_STEPS - 1),
+        lane: (row.lane * step) / RAMP_STEPS,
+      });
+    return out;
+  }
+
+  // Every lane stretch of one stroke, expanded into its ramp-in / full /
+  // ramp-out pieces and laid out in measure order.
+  //
+  // THE single source of the lane profile. The stroke is cut by it
+  // (splitPartByLanes) and every ridden route drawn over that stroke is
+  // offset by it (laneAtMeasure, routeLanesForSlice): one function, so a
+  // train can never ease into its lane a few metres before or after the
+  // railway underneath it does.
+  function rampedRows(rows, total) {
+    const ramped = [];
+    rows.forEach((row, index) => {
+      const previousEnd = index > 0 ? rows[index - 1].to : 0;
+      const nextStart = index < rows.length - 1 ? rows[index + 1].from : total;
+      ramped.push(...rampedRow(row, previousEnd, nextStart));
+    });
+    return ramped;
+  }
+
+  // The lane at one point along a stroke. Outside every stretch — and in the
+  // gaps the ramps do not reach — the railway is on its own alignment, 0.
+  function laneAtMeasure(ramped, measure) {
+    if (!ramped) return 0;
+    for (const row of ramped)
+      if (measure >= row.from && measure <= row.to) return row.lane;
+    return 0;
+  }
+
+  // The lane each vertex of a ridden route's canonical slice belongs in.
+  //
+  // A ridden route is an exact slice of the drawn stroke (canonicalLineSlice),
+  // so its lane is never a fresh judgement: it is the SAME profile, read at
+  // the same measures. That is the whole point — a train has to sit on the
+  // railway it rode, and a corridor where the railway steps into a lane and
+  // the train stays on the centre-line would draw the ride beside its own
+  // track.
+  //
+  // The sign does need care. line-offset is measured against the feature's
+  // OWN direction of travel, while the profile is stated in the stroke's, so
+  // a train running the stroke backwards must take the opposite sign or it
+  // would be pushed out to the far side of the railway it is riding.
+  function routeLanesForSlice(profile, coordinates, startMeasure, reversed) {
+    if (!profile || !profile.ramped.length || coordinates.length < 2) return null;
+    const sign = reversed ? -1 : 1;
+    const total = profile.total;
+    const lanes = new Array(coordinates.length);
+    let travelled = 0;
+    let laned = false;
+    for (let index = 0; index < coordinates.length; index += 1) {
+      if (index > 0)
+        travelled += distanceMeters(coordinates[index - 1], coordinates[index]);
+      let measure = startMeasure + sign * travelled;
+      // A closed line's slice may run off the end of the stroke and resume at
+      // 0; an open one cannot, so there a measure outside the stroke is float
+      // drift at an endpoint and belongs at the end it drifted off.
+      if (profile.isLoop && total > 0)
+        measure = ((measure % total) + total) % total;
+      else measure = Math.max(0, Math.min(total, measure));
+      lanes[index] = laneAtMeasure(profile.ramped, measure) * sign;
+      if (lanes[index]) laned = true;
+    }
+    // A route that never leaves the centre-line carries no lane data at all,
+    // so nothing downstream can tell this pass ran.
+    return laned ? lanes : null;
+  }
+
+  // Cut one stroke into `{ lane, coordinates }` pieces. Gaps between lane rows
+  // are lane 0 — the railway on its own surveyed alignment.
+  function splitPartByLanes(coordinates, rows) {
+    const cumulative = [0];
+    for (let index = 1; index < coordinates.length; index += 1)
+      cumulative.push(
+        cumulative[index - 1] +
+          distanceMeters(coordinates[index - 1], coordinates[index]),
+      );
+    const total = cumulative[cumulative.length - 1];
+    if (!rows || !rows.length || !(total > 0)) return [{ lane: 0, coordinates }];
+
+    const slice = (from, to, lane) => {
+      const start = interpolateAt(coordinates, cumulative, from);
+      const end = interpolateAt(coordinates, cumulative, to);
+      const piece = [start.point];
+      for (let index = start.index; index < end.index; index += 1)
+        if (!sameCoordinate(piece[piece.length - 1], coordinates[index]))
+          piece.push(coordinates[index]);
+      if (!sameCoordinate(piece[piece.length - 1], end.point)) piece.push(end.point);
+      return piece.length >= 2 ? { lane, coordinates: piece } : null;
+    };
+
+    // Expand each stretch into its ramp-in / full / ramp-out pieces first, so
+    // the walk below only has to lay them end to end.
+    const ramped = rampedRows(rows, total);
+
+    const pieces = [];
+    let cursor = 0;
+    for (const row of ramped) {
+      const from = Math.max(cursor, Math.min(row.from, total));
+      const to = Math.max(from, Math.min(row.to, total));
+      if (from > cursor) {
+        const gap = slice(cursor, from, 0);
+        if (gap) pieces.push(gap);
+      }
+      // Consecutive pieces share their boundary vertex exactly, so the two
+      // round-capped ends overlap and the eased step never opens a hairline.
+      const lanePiece = slice(from, to, row.lane);
+      if (lanePiece) pieces.push(lanePiece);
+      cursor = to;
+    }
+    if (cursor < total) {
+      const tail = slice(cursor, total, 0);
+      if (tail) pieces.push(tail);
+    }
+    return pieces.length ? pieces : [{ lane: 0, coordinates }];
+  }
+
+  // Which lane a point on this stroke is in, and which way the track runs
+  // there. A station belonging to a line that is in a lane has to move into
+  // that lane with it — otherwise the dot stays on the shared centre-line and
+  // says "both these railways stop here" when only one of them does.
+  //
+  // MapLibre has no per-feature circle offset, so the marker cannot be a
+  // circle layer. It ships instead as a POINT carrying the bearing of the
+  // track under it, and the style draws it as an icon rotated to that bearing
+  // and pushed sideways by icon-offset — which, because the offset rotates
+  // with the icon, lands in exactly the place line-offset would put it.
+  //
+  // The bearing is the whole reason this is computed here: it is a fact about
+  // the railway's geometry, not about how wide a lane is drawn. The distance
+  // stays in the style with every other screen weight, where it also picks up
+  // the scale ramp those weights ride.
+  // The platform is a VERTEX of the stroke it belongs to (the approach pass
+  // guarantees it), so when this stroke holds it, read the direction there and
+  // nowhere else. Measuring to the nearest track instead can answer from a
+  // stretch of the SAME line running the other way — a branch beside its own
+  // trunk — and a bearing 180° out puts the dot a full lane on the wrong side
+  // of its railway. Three Tōhoku Line platforms did exactly that.
+  function laneAtPoint(coordinates, rows, point) {
+    if (!rows || !rows.length) return null;
+    let measure = 0;
+    let best = Infinity;
+    let at = 0;
+    let direction = null;
+    let exact = false;
+    for (let index = 1; index < coordinates.length; index += 1) {
+      const a = coordinates[index - 1];
+      const b = coordinates[index];
+      if (!exact && sameCoordinate(point, a) && index === 1) {
+        // The stroke OPENS on this platform; its first edge leaves it.
+        exact = true;
+        best = 0;
+        at = 0;
+        direction = [b[0] - a[0], b[1] - a[1]];
+      } else if (!exact && sameCoordinate(point, b)) {
+        exact = true;
+        best = 0;
+        at = measure + distanceMeters(a, b);
+        direction = [b[0] - a[0], b[1] - a[1]];
+      } else if (!exact) {
+        const distance = pointSegmentDistanceMeters(point, a, b);
+        if (distance < best) {
+          best = distance;
+          at = measure;
+          direction = [b[0] - a[0], b[1] - a[1]];
+        }
+      }
+      measure += distanceMeters(a, b);
+    }
+    if (best > STATION_TOUCH_METERS || !direction) return null;
+    const row = rows.find((item) => at >= item.from && at <= item.to);
+    if (!row || !row.lane) return null;
+    return { lane: row.lane, direction, exact };
+  }
+
+  // Compass bearing of the track under a platform: degrees clockwise from
+  // north, in the line's own direction of travel. The style rotates the
+  // marker by it, so the marker's own +x axis is "right of travel" — the very
+  // side line-offset calls positive, which is what keeps a platform and the
+  // railway it belongs to in the same lane by construction.
+  function stationLaneBearing(direction, latitude) {
+    const east = direction[0] * (Math.cos((latitude * Math.PI) / 180) || 1);
+    const north = direction[1];
+    if (!east && !north) return null;
+    const degrees = (Math.atan2(east, north) * 180) / Math.PI;
+    return ((degrees % 360) + 360) % 360;
+  }
+
+  // ───────────────────────── railway identity ──────────────────────────────
+  //
+  // WHICH RAILWAY a drawn line is, as distinct from WHICH SERVICE runs on it.
+  //
+  // A package line is a drawn stroke, and a package names its strokes after
+  // whatever the operator publishes — which for some networks is a ROUTE
+  // NUMBER rather than a railway. 香港輕鐵 publishes eleven of them (505, 507,
+  // 610, 614, 614P, 615, 615P, 705, 706, 751, 761P) over ONE shared track
+  // network: On Ting is served by 505, 507, 614, 614P and 751 over the same
+  // rails, Ping Shan by 610, 614, 615 and 761P. Eleven services, one railway.
+  // Given a lane each, that railway would be drawn as eleven railways side by
+  // side — a network the New Territories does not have.
+  //
+  // The distinction decides parallel rendering, and nothing else:
+  //
+  //   same railway, several services    one stroke, exactly coincident
+  //   different railways in a corridor  separate lanes
+  //
+  // A line absent from this table keeps operator+name as its identity, so
+  // every line that is its own railway — which is nearly all of them — decides
+  // exactly as it did before.
+  //
+  // Entries are FACTS ABOUT RAILWAYS, verified against the operator before
+  // being added. Never infer one from a shared name stem, a route number, a
+  // stop pattern or a pair of endpoints: 東海道新幹線 and 東海道線 share an
+  // operator, a name stem and a corridor and are two entirely separate
+  // railways, while 1号線 and 3号線 share neither name nor number and are one.
+  const RAILWAY_IDENTITY = Object.freeze({
+    // 香港輕鐵 — route numbers of one light rail system, one track network.
+    // https://en.wikipedia.org/wiki/On_Ting_stop (505/507/614/614P/751)
+    "hk-mtr-lr-505": "hk-mtr-light-rail",
+    "hk-mtr-lr-507": "hk-mtr-light-rail",
+    "hk-mtr-lr-610": "hk-mtr-light-rail",
+    "hk-mtr-lr-614": "hk-mtr-light-rail",
+    "hk-mtr-lr-614p": "hk-mtr-light-rail",
+    "hk-mtr-lr-615": "hk-mtr-light-rail",
+    "hk-mtr-lr-615p": "hk-mtr-light-rail",
+    "hk-mtr-lr-705": "hk-mtr-light-rail",
+    "hk-mtr-lr-706": "hk-mtr-light-rail",
+    "hk-mtr-lr-751": "hk-mtr-light-rail",
+    "hk-mtr-lr-761p": "hk-mtr-light-rail",
+    // 横浜市営地下鉄ブルーライン — 湘南台〜関内 is legally 1号線 and 関内〜
+    // あざみ野 is 3号線, but they are one through-operated railway: no train
+    // begins or ends at 関内. Two line numbers, one railway.
+    // https://ja.wikipedia.org/wiki/横浜市営地下鉄ブルーライン
+    "jp-横浜市-1号線": "jp-横浜市-ブルーライン",
+    "jp-横浜市-3号線": "jp-横浜市-ブルーライン",
+  });
+
+  // NOT in the table, and deliberately so: 香港電車's 電車東行綫 and 電車西行綫
+  // are the two tracks of a double-track tramway, not two services on one
+  // track (hktramways.com), so they are two railways to draw and do take
+  // neighbouring lanes.
+
+  function railwayIdentityFor(lineId, compactLine) {
+    return RAILWAY_IDENTITY[lineId] || visibilityGroupKey(compactLine);
+  }
+
   function visibilityGroupKey(compactLine) {
     // Some physical lines are stored as several disconnected/administrative
     // entries. Group those pieces only when BOTH operator and display name
@@ -831,6 +1717,11 @@
     const linesByOperator = new Map();
     const lineFeatures = [];
     const stationFeatures = [];
+    const stationLaneFeatures = [];
+    const laneRows = laneRowsByPart(pkg);
+    // "lineId#partIndex" → the expanded lane profile of that stroke, for the
+    // ridden routes canonicalizeRouteFeature slices out of it.
+    const laneProfiles = new Map();
 
     // The threshold uses the sum of every piece in the same physical display
     // line. All pieces therefore receive one identical minz and disappear as
@@ -861,6 +1752,12 @@
 
       lineById.set(lineId, {
         lineId,
+        // Which RAILWAY this stroke is. Equal to operator+name unless the
+        // package publishes one railway under several service names, and read
+        // only where the question is "how many railways are here?" — never
+        // for naming, colouring, popups or hit-testing, which are all still
+        // the service's own.
+        railwayId: railwayIdentityFor(lineId, compactLine),
         name: compactLine.name,
         operator: compactLine.operator,
         nameRoma: compactLine.nameRoma,
@@ -883,22 +1780,60 @@
         lineParts.length === 1
           ? { type: "LineString", coordinates: lineParts[0] }
           : { type: "MultiLineString", coordinates: lineParts };
-      lineFeatures.push({
-        type: "Feature",
-        geometry: lineGeometry,
-        properties: {
-          lineId,
-          name: compactLine.name,
-          operator: compactLine.operator,
-          color: featureColor,
-          minz: lineMinZoom,
-          isHSR: compactLine.isHSR ? 1 : 0,
-          isLoop: compactLine.isLoop ? 1 : 0,
-          intervalCount: compactLine.segments.length,
-          partCount: lineParts.length,
-          visibilityKm,
-        },
+      // Render geometry, grouped by lane. A line outside every parallel
+      // corridor keeps exactly one feature, unchanged; a line that shares a
+      // corridor gets one extra feature per lane it takes, each still carrying
+      // its own lineId so hit-testing, popups and colours are unaffected.
+      const byLane = new Map();
+      lineParts.forEach((coordinates, partIndex) => {
+        const rows = laneRows.get(`${lineId}#${partIndex}`);
+        // Keep the expanded profile: the ridden routes sliced out of this very
+        // stroke are offset by it, so both read one set of ramps.
+        if (rows && rows.length) {
+          const total = pathLength(coordinates);
+          laneProfiles.set(`${lineId}#${partIndex}`, {
+            ramped: rampedRows(rows, total),
+            total,
+            isLoop: Boolean(compactLine.isLoop) && lineParts.length === 1,
+          });
+        }
+        for (const piece of splitPartByLanes(coordinates, rows)) {
+          let group = byLane.get(piece.lane);
+          if (!group) byLane.set(piece.lane, (group = []));
+          group.push(piece.coordinates);
+        }
       });
+      // A line in no corridor at all keeps the very geometry object the line
+      // record holds, so nothing downstream can tell the lane pass ran.
+      const untouched = byLane.size === 1 && byLane.has(0);
+      for (const [lane, groupParts] of [...byLane.entries()].sort(
+        (a, b) => a[0] - b[0],
+      )) {
+        lineFeatures.push({
+          type: "Feature",
+          geometry: untouched
+            ? lineGeometry
+            : groupParts.length === 1
+              ? { type: "LineString", coordinates: groupParts[0] }
+              : { type: "MultiLineString", coordinates: groupParts },
+          properties: {
+            lineId,
+            name: compactLine.name,
+            operator: compactLine.operator,
+            color: featureColor,
+            minz: lineMinZoom,
+            isHSR: compactLine.isHSR ? 1 : 0,
+            isLoop: compactLine.isLoop ? 1 : 0,
+            intervalCount: compactLine.segments.length,
+            partCount: untouched ? lineParts.length : groupParts.length,
+            strokeCount: lineParts.length,
+            // Signed multiple of the lane spacing; 0 = the line's own
+            // surveyed alignment. The style turns it into screen pixels.
+            lane,
+            visibilityKm,
+          },
+        });
+      }
       lineById.get(lineId).geometry = lineGeometry;
       lineById.get(lineId).parts = lineParts;
       addIndexValue(linesByName, compactLine.name, lineById.get(lineId));
@@ -907,6 +1842,20 @@
         compactLine.operator,
         lineById.get(lineId),
       );
+
+      // Which vertices each stroke of this line holds — built once, and only
+      // for a line that takes a lane somewhere, since it exists solely to
+      // decide which stroke a platform belongs to.
+      const lanedPartKeys = lineParts.some((unused, partIndex) =>
+        laneRows.has(`${lineId}#${partIndex}`),
+      )
+        ? lineParts.map((coordinates) => {
+            const keys = new Set();
+            for (const coordinate of coordinates)
+              keys.add(coordinateKey(coordinate));
+            return keys;
+          })
+        : null;
 
       const stationMinZoom = stationMinZoomForLine(
         lineMinZoom,
@@ -942,6 +1891,33 @@
         }
         members.push(station);
 
+        // Does this platform sit on a stretch where its line runs in a lane?
+        //
+        // Only the stroke that HOLDS the platform may answer. A line drawn as
+        // several strokes can lay a branch back alongside its own trunk, and
+        // asking "which laned stretch is nearest?" then lets the branch answer
+        // for a trunk station — which both puts the dot in a lane its railway
+        // does not take there and, because the branch runs the other way,
+        // reads the bearing backwards and pushes it out the far side.
+        let stationLane = null;
+        if (lanedPartKeys) {
+          const anchorKey = coordinateKey([station.lon, station.lat]);
+          const holder = lanedPartKeys.findIndex((keys) => keys.has(anchorKey));
+          const scan = holder >= 0 ? [holder] : lanedPartKeys.map((k, i) => i);
+          for (const partIndex of scan) {
+            const rows = laneRows.get(`${lineId}#${partIndex}`);
+            if (!rows) continue;
+            const found = laneAtPoint(lineParts[partIndex], rows, [
+              station.lon,
+              station.lat,
+            ]);
+            if (found) {
+              stationLane = found;
+              break;
+            }
+          }
+        }
+        const laneValue = stationLane ? stationLane.lane : 0;
         stationFeatures.push({
           type: "Feature",
           geometry: {
@@ -954,6 +1930,10 @@
             name: station.name,
             nameRoma: station.nameRoma || "",
             stationGroupId: station.stationGroupId || "",
+            // Set by the interchange pass below, which needs every line read
+            // before it can answer how many railways call here.
+            interchange: 0,
+            lane: laneValue,
             lineMinz: lineMinZoom,
             // A non-loop line's two endpoints are structural and follow the
             // complete line exactly. Intermediate stations retain the denser
@@ -962,7 +1942,91 @@
             minz: isTerminal ? lineMinZoom : stationMinZoom,
           },
         });
+        if (!stationLane) return;
+        const bearing = stationLaneBearing(
+          stationLane.direction,
+          station.lat,
+        );
+        if (bearing == null) return;
+        stationLaneFeatures.push({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [station.lon, station.lat],
+          },
+          properties: {
+            stationId: station.stationId,
+            lineId,
+            stationGroupId: station.stationGroupId || "",
+            interchange: 0,
+            lane: laneValue,
+            // Which way the track runs here; the style turns it into the side
+            // of the alignment this platform's railway is drawn on.
+            bearing,
+            minz: isTerminal ? lineMinZoom : stationMinZoom,
+          },
+        });
       });
+    }
+
+    // Which platforms are interchanges.
+    //
+    // An interchange is where a passenger can change RAILWAY — so it is
+    // counted in railway identities, never in lines and never in services.
+    // 輕鐵 505, 610 and 615 all calling at one stop is one railway calling
+    // once, and drawing that stop as an interchange would promise a change
+    // of train that nobody makes.
+    //
+    // Drawn hollow: a station on one railway is a solid dot, a station where
+    // two railways meet is an open circle, which is the convention every
+    // transit map uses to say 'you can change here'.
+    const railwaysAtGroup = new Map();
+    for (const [groupKey, members] of groupMembers) {
+      const railways = new Set();
+      for (const member of members) {
+        const line = lineById.get(member.lineId);
+        if (line) railways.add(line.railwayId);
+      }
+      railwaysAtGroup.set(groupKey, railways.size);
+    }
+    for (const feature of [...stationFeatures, ...stationLaneFeatures]) {
+      const groupKey =
+        feature.properties.stationGroupId ||
+        `solo:${feature.properties.stationId}`;
+      feature.properties.interchange =
+        (railwaysAtGroup.get(groupKey) || 1) > 1 ? 1 : 0;
+    }
+    // One platform, one marker.
+    //
+    // A station that only ONE member of a corridor calls at moves into that
+    // member's lane, so the dot names the railway that stops there instead of
+    // floating between two. But a station they BOTH call at is one station: it
+    // keeps a single marker on the shared centre-line, which is where the
+    // lanes converge anyway (they sit half a lane either side of it, inside
+    // the circle). Splitting it in two would invent a second station.
+    const groupKeyFor = (feature) =>
+      feature.properties.stationGroupId ||
+      `solo:${feature.geometry.coordinates ? feature.geometry.coordinates.join(",") : feature.properties.stationId}`;
+    const lanedLinesByGroup = new Map();
+    for (const feature of stationFeatures) {
+      if (!feature.properties.lane) continue;
+      const key = groupKeyFor(feature);
+      let ids = lanedLinesByGroup.get(key);
+      if (!ids) lanedLinesByGroup.set(key, (ids = new Set()));
+      ids.add(feature.properties.lineId);
+    }
+    const sharedByLanedLines = new Set(
+      [...lanedLinesByGroup.entries()]
+        .filter(([, ids]) => ids.size > 1)
+        .map(([key]) => key),
+    );
+    if (sharedByLanedLines.size) {
+      for (const feature of stationFeatures)
+        if (feature.properties.lane && sharedByLanedLines.has(groupKeyFor(feature)))
+          feature.properties.lane = 0;
+      for (let index = stationLaneFeatures.length - 1; index >= 0; index -= 1)
+        if (sharedByLanedLines.has(groupKeyFor(stationLaneFeatures[index])))
+          stationLaneFeatures.splice(index, 1);
     }
 
     return {
@@ -977,11 +2041,22 @@
         type: "FeatureCollection",
         features: stationFeatures,
       },
+      // Platforms whose line runs in a lane, each carrying the bearing of the
+      // track under it. The circle layer filters them out and the style draws
+      // these instead — rotated to that bearing and offset into the lane — so
+      // every dot sits on the railway that actually calls there.
+      stationLanes: {
+        type: "FeatureCollection",
+        features: stationLaneFeatures,
+      },
       lineById,
       stationById,
       groupMembers,
       linesByName,
       linesByOperator,
+      // Read by canonicalizeRouteFeature so a ridden route takes the very lane
+      // its railway is drawn in.
+      laneProfiles,
       routeProjectionCache: new Map(),
     };
   }

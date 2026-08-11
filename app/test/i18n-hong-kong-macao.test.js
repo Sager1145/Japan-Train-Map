@@ -30,8 +30,9 @@ function loadI18n() {
   window.globalThis = window;
   const context = vm.createContext(window);
   for (const filename of ["app-core.js", "i18n-strings.js", "i18n.js"]) {
+    const sourceDir = filename === "app-core.js" ? "../shared" : "../public";
     vm.runInContext(
-      fs.readFileSync(path.join(__dirname, "../public", filename), "utf8"),
+      fs.readFileSync(path.join(__dirname, sourceDir, filename), "utf8"),
       context,
       { filename },
     );
