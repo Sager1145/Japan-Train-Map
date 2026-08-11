@@ -357,6 +357,16 @@
         },
         {
           "from_n02_station_code": "007188",
+          "to_n02_station_code": "007159",
+          "line_names": [
+            "大阪環状線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007159",
           "to_n02_station_code": "007091",
           "line_names": [
             "大阪環状線"
@@ -654,6 +664,14 @@
         {
           "name": "西九条",
           "n02_station_code": "007188",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "野田",
+          "n02_station_code": "007159",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -4427,6 +4445,16 @@
         },
         {
           "from_n02_station_code": "000631",
+          "to_n02_station_code": "000639",
+          "line_names": [
+            "奥羽線"
+          ],
+          "operator_names": [
+            "東日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000639",
           "to_n02_station_code": "000644",
           "line_names": [
             "奥羽線"
@@ -4776,6 +4804,14 @@
         {
           "name": "碇ヶ関",
           "n02_station_code": "000631",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "津軽湯の沢",
+          "n02_station_code": "000639",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -15940,123 +15976,603 @@
       "route_sections": [
         {
           "from_n02_station_code": "000227",
-          "to_n02_station_code": "000196"
+          "to_n02_station_code": "000226",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000226",
+          "to_n02_station_code": "000256",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000256",
+          "to_n02_station_code": "000269",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000269",
+          "to_n02_station_code": "000245",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000245",
+          "to_n02_station_code": "000222",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000222",
+          "to_n02_station_code": "000206",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000206",
+          "to_n02_station_code": "000202",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000202",
+          "to_n02_station_code": "000196",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000196",
-          "to_n02_station_code": "000154"
+          "to_n02_station_code": "000181",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000181",
+          "to_n02_station_code": "000178",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000178",
+          "to_n02_station_code": "000165",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000165",
+          "to_n02_station_code": "000154",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000154",
-          "to_n02_station_code": "000146"
+          "to_n02_station_code": "000146",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000146",
-          "to_n02_station_code": "000139"
+          "to_n02_station_code": "000143",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000143",
+          "to_n02_station_code": "000139",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000139",
-          "to_n02_station_code": "000131"
+          "to_n02_station_code": "000135",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000135",
+          "to_n02_station_code": "000131",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000131",
-          "to_n02_station_code": "000124"
+          "to_n02_station_code": "000128",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000128",
+          "to_n02_station_code": "000124",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000124",
-          "to_n02_station_code": "000118"
+          "to_n02_station_code": "000118",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000118",
-          "to_n02_station_code": "000111"
+          "to_n02_station_code": "000111",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000111",
-          "to_n02_station_code": "000102"
+          "to_n02_station_code": "000107",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000107",
+          "to_n02_station_code": "000102",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000102",
-          "to_n02_station_code": "000100"
+          "to_n02_station_code": "000100",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000100",
-          "to_n02_station_code": "000096"
+          "to_n02_station_code": "000085",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000085",
+          "to_n02_station_code": "000096",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000096",
-          "to_n02_station_code": "000061"
+          "to_n02_station_code": "000094",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000094",
+          "to_n02_station_code": "000090",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000090",
+          "to_n02_station_code": "000077",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000077",
+          "to_n02_station_code": "000074",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000074",
+          "to_n02_station_code": "000061",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000061",
-          "to_n02_station_code": "000033"
+          "to_n02_station_code": "000048",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000048",
+          "to_n02_station_code": "000042",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000042",
+          "to_n02_station_code": "000033",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000033",
-          "to_n02_station_code": "000031"
+          "to_n02_station_code": "000031",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000031",
-          "to_n02_station_code": "000030"
+          "to_n02_station_code": "000030",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000030",
-          "to_n02_station_code": "000028"
+          "to_n02_station_code": "000029",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000029",
+          "to_n02_station_code": "000028",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000028",
-          "to_n02_station_code": "000025"
+          "to_n02_station_code": "000027",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000027",
+          "to_n02_station_code": "000026",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000026",
+          "to_n02_station_code": "000025",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000025",
-          "to_n02_station_code": "000023"
+          "to_n02_station_code": "000024",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000024",
+          "to_n02_station_code": "000023",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000023",
-          "to_n02_station_code": "000021"
+          "to_n02_station_code": "000022",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000022",
+          "to_n02_station_code": "000021",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000021",
-          "to_n02_station_code": "000018"
+          "to_n02_station_code": "000018",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000018",
-          "to_n02_station_code": "000016"
+          "to_n02_station_code": "000017",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000017",
+          "to_n02_station_code": "000016",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000016",
-          "to_n02_station_code": "000015"
+          "to_n02_station_code": "000015",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000015",
-          "to_n02_station_code": "000013"
+          "to_n02_station_code": "000014",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000014",
+          "to_n02_station_code": "000013",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000013",
-          "to_n02_station_code": "000010"
+          "to_n02_station_code": "000011",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000011",
+          "to_n02_station_code": "000010",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000010",
-          "to_n02_station_code": "000008"
+          "to_n02_station_code": "000008",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000008",
-          "to_n02_station_code": "000007"
+          "to_n02_station_code": "000007",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000007",
-          "to_n02_station_code": "000006"
+          "to_n02_station_code": "000006",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000006",
-          "to_n02_station_code": "000004"
+          "to_n02_station_code": "000005",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000005",
+          "to_n02_station_code": "000004",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000004",
-          "to_n02_station_code": "000002"
+          "to_n02_station_code": "000002",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000002",
-          "to_n02_station_code": "000001"
+          "to_n02_station_code": "000001",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         }
       ],
       "stops": [
@@ -16069,8 +16585,88 @@
           "ride_segment": true
         },
         {
+          "name": "苗穂",
+          "n02_station_code": "000226",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "白石",
+          "n02_station_code": "000256",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "厚別",
+          "n02_station_code": "000269",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "森林公園",
+          "n02_station_code": "000245",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大麻",
+          "n02_station_code": "000222",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "野幌",
+          "n02_station_code": "000206",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "高砂",
+          "n02_station_code": "000202",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "江別",
           "n02_station_code": "000196",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豊幌",
+          "n02_station_code": "000181",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "幌向",
+          "n02_station_code": "000178",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "上幌向",
+          "n02_station_code": "000165",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16093,6 +16689,14 @@
           "ride_segment": true
         },
         {
+          "name": "光珠内",
+          "n02_station_code": "000143",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "美唄",
           "n02_station_code": "000139",
           "arrival": null,
@@ -16101,8 +16705,24 @@
           "ride_segment": true
         },
         {
+          "name": "茶志内",
+          "n02_station_code": "000135",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "奈井江",
           "n02_station_code": "000131",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豊沼",
+          "n02_station_code": "000128",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16133,6 +16753,14 @@
           "ride_segment": true
         },
         {
+          "name": "妹背牛",
+          "n02_station_code": "000107",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "深川",
           "n02_station_code": "000102",
           "arrival": null,
@@ -16149,6 +16777,14 @@
           "ride_segment": true
         },
         {
+          "name": "近文",
+          "n02_station_code": "000085",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "旭川",
           "n02_station_code": "000096",
           "arrival": "08:58",
@@ -16157,8 +16793,56 @@
           "ride_segment": true
         },
         {
+          "name": "旭川四条",
+          "n02_station_code": "000094",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新旭川",
+          "n02_station_code": "000090",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "永山",
+          "n02_station_code": "000077",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北永山",
+          "n02_station_code": "000074",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "比布",
           "n02_station_code": "000061",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "蘭留",
+          "n02_station_code": "000048",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "塩狩",
+          "n02_station_code": "000042",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16189,8 +16873,32 @@
           "ride_segment": true
         },
         {
+          "name": "多寄",
+          "n02_station_code": "000029",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "瑞穂",
           "n02_station_code": "000028",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "風連",
+          "n02_station_code": "000027",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "名寄高校",
+          "n02_station_code": "000026",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16205,8 +16913,24 @@
           "ride_segment": true
         },
         {
+          "name": "日進",
+          "n02_station_code": "000024",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "智恵文",
           "n02_station_code": "000023",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "智北",
+          "n02_station_code": "000022",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16229,6 +16953,14 @@
           "ride_segment": true
         },
         {
+          "name": "咲来",
+          "n02_station_code": "000017",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "音威子府",
           "n02_station_code": "000016",
           "arrival": null,
@@ -16245,11 +16977,27 @@
           "ride_segment": true
         },
         {
+          "name": "佐久",
+          "n02_station_code": "000014",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "天塩中川",
           "n02_station_code": "000013",
           "arrival": null,
           "departure": "11:13",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "問寒別",
+          "n02_station_code": "000011",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -16282,6 +17030,14 @@
           "arrival": null,
           "departure": "12:00",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "兜沼",
+          "n02_station_code": "000005",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -16341,115 +17097,603 @@
       "route_sections": [
         {
           "from_n02_station_code": "000001",
-          "to_n02_station_code": "000002"
+          "to_n02_station_code": "000002",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000002",
-          "to_n02_station_code": "000004"
+          "to_n02_station_code": "000004",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000004",
-          "to_n02_station_code": "000006"
+          "to_n02_station_code": "000005",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000005",
+          "to_n02_station_code": "000006",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000006",
-          "to_n02_station_code": "000007"
+          "to_n02_station_code": "000007",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000007",
-          "to_n02_station_code": "000008"
+          "to_n02_station_code": "000008",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000008",
-          "to_n02_station_code": "000010"
+          "to_n02_station_code": "000010",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000010",
-          "to_n02_station_code": "000013"
+          "to_n02_station_code": "000011",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000011",
+          "to_n02_station_code": "000013",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000013",
-          "to_n02_station_code": "000015"
+          "to_n02_station_code": "000014",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000014",
+          "to_n02_station_code": "000015",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000015",
-          "to_n02_station_code": "000016"
+          "to_n02_station_code": "000016",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000016",
-          "to_n02_station_code": "000018"
+          "to_n02_station_code": "000017",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000017",
+          "to_n02_station_code": "000018",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000018",
-          "to_n02_station_code": "000021"
+          "to_n02_station_code": "000021",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000021",
-          "to_n02_station_code": "000023"
+          "to_n02_station_code": "000022",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000022",
+          "to_n02_station_code": "000023",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000023",
-          "to_n02_station_code": "000025"
+          "to_n02_station_code": "000024",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000024",
+          "to_n02_station_code": "000025",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000025",
-          "to_n02_station_code": "000028"
+          "to_n02_station_code": "000026",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000026",
+          "to_n02_station_code": "000027",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000027",
+          "to_n02_station_code": "000028",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000028",
-          "to_n02_station_code": "000030"
+          "to_n02_station_code": "000029",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000029",
+          "to_n02_station_code": "000030",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000030",
-          "to_n02_station_code": "000031"
+          "to_n02_station_code": "000031",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000031",
-          "to_n02_station_code": "000033"
+          "to_n02_station_code": "000033",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000033",
-          "to_n02_station_code": "000061"
+          "to_n02_station_code": "000042",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000042",
+          "to_n02_station_code": "000048",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000048",
+          "to_n02_station_code": "000061",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000061",
-          "to_n02_station_code": "000095"
+          "to_n02_station_code": "000074",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000074",
+          "to_n02_station_code": "000077",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000077",
+          "to_n02_station_code": "000090",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000090",
+          "to_n02_station_code": "000094",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000094",
+          "to_n02_station_code": "000095",
+          "line_names": [
+            "宗谷線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000095",
-          "to_n02_station_code": "000100"
+          "to_n02_station_code": "000085",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000085",
+          "to_n02_station_code": "000100",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000100",
-          "to_n02_station_code": "000102"
+          "to_n02_station_code": "000102",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000102",
-          "to_n02_station_code": "000111"
+          "to_n02_station_code": "000107",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000107",
+          "to_n02_station_code": "000111",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000111",
-          "to_n02_station_code": "000118"
+          "to_n02_station_code": "000118",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000118",
-          "to_n02_station_code": "000124"
+          "to_n02_station_code": "000124",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000124",
-          "to_n02_station_code": "000139"
+          "to_n02_station_code": "000128",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000128",
+          "to_n02_station_code": "000131",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000131",
+          "to_n02_station_code": "000135",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000135",
+          "to_n02_station_code": "000139",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000139",
-          "to_n02_station_code": "000154"
+          "to_n02_station_code": "000143",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000143",
+          "to_n02_station_code": "000146",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000146",
+          "to_n02_station_code": "000154",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000154",
-          "to_n02_station_code": "000196"
+          "to_n02_station_code": "000165",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000165",
+          "to_n02_station_code": "000178",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000178",
+          "to_n02_station_code": "000181",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000181",
+          "to_n02_station_code": "000196",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         },
         {
           "from_n02_station_code": "000196",
-          "to_n02_station_code": "000227"
+          "to_n02_station_code": "000202",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000202",
+          "to_n02_station_code": "000206",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000206",
+          "to_n02_station_code": "000222",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000222",
+          "to_n02_station_code": "000245",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000245",
+          "to_n02_station_code": "000269",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000269",
+          "to_n02_station_code": "000256",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000256",
+          "to_n02_station_code": "000226",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000226",
+          "to_n02_station_code": "000227",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
         }
       ],
       "stops": [
@@ -16472,6 +17716,14 @@
         {
           "name": "勇知",
           "n02_station_code": "000004",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "兜沼",
+          "n02_station_code": "000005",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16510,11 +17762,27 @@
           "ride_segment": true
         },
         {
+          "name": "問寒別",
+          "n02_station_code": "000011",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "天塩中川",
           "n02_station_code": "000013",
           "arrival": null,
           "departure": "19:13",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "佐久",
+          "n02_station_code": "000014",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -16534,6 +17802,14 @@
           "ride_segment": true
         },
         {
+          "name": "咲来",
+          "n02_station_code": "000017",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "天塩川温泉",
           "n02_station_code": "000018",
           "arrival": null,
@@ -16550,8 +17826,24 @@
           "ride_segment": true
         },
         {
+          "name": "智北",
+          "n02_station_code": "000022",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "智恵文",
           "n02_station_code": "000023",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "日進",
+          "n02_station_code": "000024",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16566,8 +17858,32 @@
           "ride_segment": true
         },
         {
+          "name": "名寄高校",
+          "n02_station_code": "000026",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "風連",
+          "n02_station_code": "000027",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "瑞穂",
           "n02_station_code": "000028",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "多寄",
+          "n02_station_code": "000029",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16598,8 +17914,56 @@
           "ride_segment": true
         },
         {
+          "name": "塩狩",
+          "n02_station_code": "000042",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "蘭留",
+          "n02_station_code": "000048",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "比布",
           "n02_station_code": "000061",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北永山",
+          "n02_station_code": "000074",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "永山",
+          "n02_station_code": "000077",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新旭川",
+          "n02_station_code": "000090",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "旭川四条",
+          "n02_station_code": "000094",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16611,6 +17975,14 @@
           "arrival": "21:26",
           "departure": "21:30",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "近文",
+          "n02_station_code": "000085",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -16627,6 +17999,14 @@
           "arrival": null,
           "departure": "21:50",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "妹背牛",
+          "n02_station_code": "000107",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -16654,8 +18034,48 @@
           "ride_segment": true
         },
         {
+          "name": "豊沼",
+          "n02_station_code": "000128",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "奈井江",
+          "n02_station_code": "000131",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "茶志内",
+          "n02_station_code": "000135",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "美唄",
           "n02_station_code": "000139",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "光珠内",
+          "n02_station_code": "000143",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "峰延",
+          "n02_station_code": "000146",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -16670,8 +18090,88 @@
           "ride_segment": true
         },
         {
+          "name": "上幌向",
+          "n02_station_code": "000165",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "幌向",
+          "n02_station_code": "000178",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豊幌",
+          "n02_station_code": "000181",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "江別",
           "n02_station_code": "000196",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "高砂",
+          "n02_station_code": "000202",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "野幌",
+          "n02_station_code": "000206",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大麻",
+          "n02_station_code": "000222",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "森林公園",
+          "n02_station_code": "000245",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "厚別",
+          "n02_station_code": "000269",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "白石",
+          "n02_station_code": "000256",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "苗穂",
+          "n02_station_code": "000226",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -17226,6 +18726,16 @@
       "route_sections": [
         {
           "from_n02_station_code": "000227",
+          "to_n02_station_code": "000226",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000226",
           "to_n02_station_code": "000255",
           "line_names": [
             "函館線"
@@ -17236,6 +18746,16 @@
         },
         {
           "from_n02_station_code": "000255",
+          "to_n02_station_code": "000266",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000266",
           "to_n02_station_code": "000278",
           "line_names": [
             "千歳線"
@@ -17246,6 +18766,86 @@
         },
         {
           "from_n02_station_code": "000278",
+          "to_n02_station_code": "000302",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000302",
+          "to_n02_station_code": "000317",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000317",
+          "to_n02_station_code": "000328",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000328",
+          "to_n02_station_code": "000337",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000337",
+          "to_n02_station_code": "000340",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000340",
+          "to_n02_station_code": "000343",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000343",
+          "to_n02_station_code": "000345",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000345",
+          "to_n02_station_code": "000347",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000347",
           "to_n02_station_code": "000354",
           "line_names": [
             "千歳線"
@@ -17256,6 +18856,16 @@
         },
         {
           "from_n02_station_code": "000354",
+          "to_n02_station_code": "000362",
+          "line_names": [
+            "千歳線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000362",
           "to_n02_station_code": "000365",
           "line_names": [
             "千歳線"
@@ -17276,6 +18886,46 @@
         },
         {
           "from_n02_station_code": "000367",
+          "to_n02_station_code": "000370",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000370",
+          "to_n02_station_code": "000371",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000371",
+          "to_n02_station_code": "000373",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000373",
+          "to_n02_station_code": "000380",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000380",
           "to_n02_station_code": "000383",
           "line_names": [
             "室蘭線"
@@ -17286,6 +18936,46 @@
         },
         {
           "from_n02_station_code": "000383",
+          "to_n02_station_code": "000385",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000385",
+          "to_n02_station_code": "000389",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000389",
+          "to_n02_station_code": "000390",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000390",
+          "to_n02_station_code": "000394",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000394",
           "to_n02_station_code": "000395",
           "line_names": [
             "室蘭線"
@@ -17296,6 +18986,36 @@
         },
         {
           "from_n02_station_code": "000395",
+          "to_n02_station_code": "000397",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000397",
+          "to_n02_station_code": "000400",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000400",
+          "to_n02_station_code": "000404",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000404",
           "to_n02_station_code": "000406",
           "line_names": [
             "室蘭線"
@@ -17306,6 +19026,56 @@
         },
         {
           "from_n02_station_code": "000406",
+          "to_n02_station_code": "000405",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000405",
+          "to_n02_station_code": "000402",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000402",
+          "to_n02_station_code": "000401",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000401",
+          "to_n02_station_code": "000399",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000399",
+          "to_n02_station_code": "000396",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000396",
           "to_n02_station_code": "000393",
           "line_names": [
             "室蘭線"
@@ -17316,6 +19086,26 @@
         },
         {
           "from_n02_station_code": "000393",
+          "to_n02_station_code": "000391",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000391",
+          "to_n02_station_code": "000386",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000386",
           "to_n02_station_code": "000384",
           "line_names": [
             "室蘭線"
@@ -17326,6 +19116,56 @@
         },
         {
           "from_n02_station_code": "000384",
+          "to_n02_station_code": "000379",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000379",
+          "to_n02_station_code": "000376",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000376",
+          "to_n02_station_code": "000378",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000378",
+          "to_n02_station_code": "000375",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000375",
+          "to_n02_station_code": "000377",
+          "line_names": [
+            "室蘭線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000377",
           "to_n02_station_code": "000387",
           "line_names": [
             "室蘭線"
@@ -17336,6 +19176,36 @@
         },
         {
           "from_n02_station_code": "000387",
+          "to_n02_station_code": "000398",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000398",
+          "to_n02_station_code": "000403",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000403",
+          "to_n02_station_code": "000411",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000411",
           "to_n02_station_code": "000412",
           "line_names": [
             "函館線"
@@ -17346,6 +19216,46 @@
         },
         {
           "from_n02_station_code": "000412",
+          "to_n02_station_code": "000413",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000413",
+          "to_n02_station_code": "000414",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000414",
+          "to_n02_station_code": "000415",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000415",
+          "to_n02_station_code": "000416",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000416",
           "to_n02_station_code": "000420",
           "line_names": [
             "函館線"
@@ -17356,6 +19266,26 @@
         },
         {
           "from_n02_station_code": "000420",
+          "to_n02_station_code": "000424",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000424",
+          "to_n02_station_code": "000425",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000425",
           "to_n02_station_code": "000426",
           "line_names": [
             "函館線"
@@ -17366,6 +19296,26 @@
         },
         {
           "from_n02_station_code": "000426",
+          "to_n02_station_code": "000427",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000427",
+          "to_n02_station_code": "000428",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000428",
           "to_n02_station_code": "000429",
           "line_names": [
             "函館線"
@@ -17376,6 +19326,36 @@
         },
         {
           "from_n02_station_code": "000429",
+          "to_n02_station_code": "000431",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000431",
+          "to_n02_station_code": "000432",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000432",
+          "to_n02_station_code": "000433",
+          "line_names": [
+            "函館線"
+          ],
+          "operator_names": [
+            "北海道旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "000433",
           "to_n02_station_code": "000439",
           "line_names": [
             "函館線"
@@ -17405,8 +19385,24 @@
           "ride_segment": true
         },
         {
+          "name": "苗穂",
+          "n02_station_code": "000226",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "白石",
           "n02_station_code": "000255",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "平和",
+          "n02_station_code": "000266",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -17421,11 +19417,83 @@
           "ride_segment": true
         },
         {
+          "name": "上野幌",
+          "n02_station_code": "000302",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北広島",
+          "n02_station_code": "000317",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "島松",
+          "n02_station_code": "000328",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "恵み野",
+          "n02_station_code": "000337",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "恵庭",
+          "n02_station_code": "000340",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "サッポロビール庭園",
+          "n02_station_code": "000343",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "長都",
+          "n02_station_code": "000345",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "千歳",
+          "n02_station_code": "000347",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "南千歳",
           "n02_station_code": "000354",
           "arrival": null,
           "departure": "17:26",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "植苗",
+          "n02_station_code": "000362",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -17445,11 +19513,75 @@
           "ride_segment": true
         },
         {
+          "name": "青葉",
+          "n02_station_code": "000370",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "糸井",
+          "n02_station_code": "000371",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "錦岡",
+          "n02_station_code": "000373",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "社台",
+          "n02_station_code": "000380",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "白老",
           "n02_station_code": "000383",
           "arrival": null,
           "departure": "17:56",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "萩野",
+          "n02_station_code": "000385",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北吉原",
+          "n02_station_code": "000389",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "竹浦",
+          "n02_station_code": "000390",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "虎杖浜",
+          "n02_station_code": "000394",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -17461,11 +19593,75 @@
           "ride_segment": true
         },
         {
+          "name": "富浦",
+          "n02_station_code": "000397",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "幌別",
+          "n02_station_code": "000400",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "鷲別",
+          "n02_station_code": "000404",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "東室蘭",
           "n02_station_code": "000406",
           "arrival": "18:20",
           "departure": "18:21",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "本輪西",
+          "n02_station_code": "000405",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "崎守",
+          "n02_station_code": "000402",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "黄金",
+          "n02_station_code": "000401",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "稀府",
+          "n02_station_code": "000399",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "北舟岡",
+          "n02_station_code": "000396",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -17477,11 +19673,67 @@
           "ride_segment": true
         },
         {
+          "name": "長和",
+          "n02_station_code": "000391",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "有珠",
+          "n02_station_code": "000386",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "洞爺",
           "n02_station_code": "000384",
           "arrival": null,
           "departure": "18:48",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "豊浦",
+          "n02_station_code": "000379",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大岸",
+          "n02_station_code": "000376",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "礼文",
+          "n02_station_code": "000378",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "小幌",
+          "n02_station_code": "000375",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "静狩",
+          "n02_station_code": "000377",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -17493,11 +19745,67 @@
           "ride_segment": true
         },
         {
+          "name": "国縫",
+          "n02_station_code": "000398",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "黒岩",
+          "n02_station_code": "000403",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "山崎",
+          "n02_station_code": "000411",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "八雲",
           "n02_station_code": "000412",
           "arrival": null,
           "departure": "19:35",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "山越",
+          "n02_station_code": "000413",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "野田生",
+          "n02_station_code": "000414",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "落部",
+          "n02_station_code": "000415",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "石倉",
+          "n02_station_code": "000416",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -17509,8 +19817,40 @@
           "ride_segment": true
         },
         {
+          "name": "駒ヶ岳",
+          "n02_station_code": "000424",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "赤井川",
+          "n02_station_code": "000425",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "大沼公園",
           "n02_station_code": "000426",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大沼",
+          "n02_station_code": "000427",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "仁山",
+          "n02_station_code": "000428",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
@@ -17522,6 +19862,30 @@
           "arrival": null,
           "departure": "20:24",
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "七飯",
+          "n02_station_code": "000431",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大中山",
+          "n02_station_code": "000432",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "桔梗",
+          "n02_station_code": "000433",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -31525,6 +33889,76 @@
       "route_sections": [
         {
           "from_n02_station_code": "008164",
+          "to_n02_station_code": "008178",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008178",
+          "to_n02_station_code": "008218",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008218",
+          "to_n02_station_code": "008255",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008255",
+          "to_n02_station_code": "008263",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008263",
+          "to_n02_station_code": "008273",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008273",
+          "to_n02_station_code": "008251",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008251",
+          "to_n02_station_code": "008241",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008241",
           "to_n02_station_code": "008240",
           "line_names": [
             "予讃線"
@@ -31551,6 +33985,62 @@
           "arrival": null,
           "departure": "11:50",
           "stop_type": "origin",
+          "ride_segment": true
+        },
+        {
+          "name": "香西",
+          "n02_station_code": "008178",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "鬼無",
+          "n02_station_code": "008218",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "端岡",
+          "n02_station_code": "008255",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "国分",
+          "n02_station_code": "008263",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "讃岐府中",
+          "n02_station_code": "008273",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "鴨川",
+          "n02_station_code": "008251",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "八十場",
+          "n02_station_code": "008241",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -31614,6 +34104,16 @@
         },
         {
           "from_n02_station_code": "008271",
+          "to_n02_station_code": "008278",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008278",
           "to_n02_station_code": "008300",
           "line_names": [
             "予讃線"
@@ -31624,6 +34124,16 @@
         },
         {
           "from_n02_station_code": "008300",
+          "to_n02_station_code": "008342",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008342",
           "to_n02_station_code": "008371",
           "line_names": [
             "土讃線"
@@ -31644,6 +34154,66 @@
         },
         {
           "from_n02_station_code": "008408",
+          "to_n02_station_code": "008440",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008440",
+          "to_n02_station_code": "008456",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008456",
+          "to_n02_station_code": "008463",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008463",
+          "to_n02_station_code": "008522",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008522",
+          "to_n02_station_code": "008541",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008541",
+          "to_n02_station_code": "008552",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008552",
           "to_n02_station_code": "008561",
           "line_names": [
             "土讃線"
@@ -31671,11 +34241,27 @@
           "ride_segment": true
         },
         {
+          "name": "讃岐塩屋",
+          "n02_station_code": "008278",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "多度津",
           "n02_station_code": "008300",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "金蔵寺",
+          "n02_station_code": "008342",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -31692,6 +34278,54 @@
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "塩入",
+          "n02_station_code": "008440",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "黒川",
+          "n02_station_code": "008456",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "讃岐財田",
+          "n02_station_code": "008463",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "坪尻",
+          "n02_station_code": "008522",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "箸蔵",
+          "n02_station_code": "008541",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "佃",
+          "n02_station_code": "008552",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -31747,6 +34381,16 @@
         },
         {
           "from_n02_station_code": "008553",
+          "to_n02_station_code": "008559",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008559",
           "to_n02_station_code": "008545",
           "line_names": [
             "徳島線"
@@ -31757,6 +34401,36 @@
         },
         {
           "from_n02_station_code": "008545",
+          "to_n02_station_code": "008548",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008548",
+          "to_n02_station_code": "008544",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008544",
+          "to_n02_station_code": "008540",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008540",
           "to_n02_station_code": "008542",
           "line_names": [
             "徳島線"
@@ -31767,6 +34441,16 @@
         },
         {
           "from_n02_station_code": "008542",
+          "to_n02_station_code": "008531",
+          "line_names": [
+            "徳島線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008531",
           "to_n02_station_code": "008518",
           "line_names": [
             "徳島線"
@@ -31794,6 +34478,14 @@
           "ride_segment": true
         },
         {
+          "name": "辻",
+          "n02_station_code": "008559",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "阿波加茂",
           "n02_station_code": "008545",
           "arrival": null,
@@ -31802,11 +34494,43 @@
           "ride_segment": true
         },
         {
+          "name": "三加茂",
+          "n02_station_code": "008548",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "江口",
+          "n02_station_code": "008544",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波半田",
+          "n02_station_code": "008540",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "貞光",
           "n02_station_code": "008542",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "小島",
+          "n02_station_code": "008531",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -31965,6 +34689,46 @@
       "route_sections": [
         {
           "from_n02_station_code": "008561",
+          "to_n02_station_code": "008578",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008578",
+          "to_n02_station_code": "008600",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008600",
+          "to_n02_station_code": "008614",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008614",
+          "to_n02_station_code": "008650",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008650",
           "to_n02_station_code": "008691",
           "line_names": [
             "土讃線"
@@ -31975,6 +34739,96 @@
         },
         {
           "from_n02_station_code": "008691",
+          "to_n02_station_code": "008790",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008790",
+          "to_n02_station_code": "008819",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008819",
+          "to_n02_station_code": "008829",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008829",
+          "to_n02_station_code": "008835",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008835",
+          "to_n02_station_code": "008850",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008850",
+          "to_n02_station_code": "008884",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008884",
+          "to_n02_station_code": "008897",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008897",
+          "to_n02_station_code": "008912",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008912",
+          "to_n02_station_code": "008946",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008946",
           "to_n02_station_code": "009004",
           "line_names": [
             "土讃線"
@@ -31985,6 +34839,26 @@
         },
         {
           "from_n02_station_code": "009004",
+          "to_n02_station_code": "009009",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009009",
+          "to_n02_station_code": "009024",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009024",
           "to_n02_station_code": "009057",
           "line_names": [
             "土讃線"
@@ -31995,6 +34869,46 @@
         },
         {
           "from_n02_station_code": "009057",
+          "to_n02_station_code": "009066",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009066",
+          "to_n02_station_code": "009071",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009071",
+          "to_n02_station_code": "009059",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009059",
+          "to_n02_station_code": "009061",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009061",
           "to_n02_station_code": "009095",
           "line_names": [
             "土讃線"
@@ -32014,11 +34928,115 @@
           "ride_segment": true
         },
         {
+          "name": "三縄",
+          "n02_station_code": "008578",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "祖谷口",
+          "n02_station_code": "008600",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波川口",
+          "n02_station_code": "008614",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "小歩危",
+          "n02_station_code": "008650",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "大歩危",
           "n02_station_code": "008691",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐岩原",
+          "n02_station_code": "008790",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豊永",
+          "n02_station_code": "008819",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大田口",
+          "n02_station_code": "008829",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐穴内",
+          "n02_station_code": "008835",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大杉",
+          "n02_station_code": "008850",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐北川",
+          "n02_station_code": "008884",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "角茂谷",
+          "n02_station_code": "008897",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "繁藤",
+          "n02_station_code": "008912",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "新改",
+          "n02_station_code": "008946",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -32030,11 +35048,59 @@
           "ride_segment": true
         },
         {
+          "name": "山田西町",
+          "n02_station_code": "009009",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐長岡",
+          "n02_station_code": "009024",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "後免",
           "n02_station_code": "009057",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐大津",
+          "n02_station_code": "009066",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "布師田",
+          "n02_station_code": "009071",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐一宮",
+          "n02_station_code": "009059",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "薊野",
+          "n02_station_code": "009061",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -32083,6 +35149,46 @@
       "route_sections": [
         {
           "from_n02_station_code": "009095",
+          "to_n02_station_code": "009061",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009061",
+          "to_n02_station_code": "009059",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009059",
+          "to_n02_station_code": "009071",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009071",
+          "to_n02_station_code": "009066",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009066",
           "to_n02_station_code": "009057",
           "line_names": [
             "土讃線"
@@ -32093,6 +35199,26 @@
         },
         {
           "from_n02_station_code": "009057",
+          "to_n02_station_code": "009024",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009024",
+          "to_n02_station_code": "009009",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "009009",
           "to_n02_station_code": "009004",
           "line_names": [
             "土讃線"
@@ -32103,6 +35229,96 @@
         },
         {
           "from_n02_station_code": "009004",
+          "to_n02_station_code": "008946",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008946",
+          "to_n02_station_code": "008912",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008912",
+          "to_n02_station_code": "008897",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008897",
+          "to_n02_station_code": "008884",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008884",
+          "to_n02_station_code": "008850",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008850",
+          "to_n02_station_code": "008835",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008835",
+          "to_n02_station_code": "008829",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008829",
+          "to_n02_station_code": "008819",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008819",
+          "to_n02_station_code": "008790",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008790",
           "to_n02_station_code": "008691",
           "line_names": [
             "土讃線"
@@ -32113,6 +35329,46 @@
         },
         {
           "from_n02_station_code": "008691",
+          "to_n02_station_code": "008650",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008650",
+          "to_n02_station_code": "008614",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008614",
+          "to_n02_station_code": "008600",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008600",
+          "to_n02_station_code": "008578",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008578",
           "to_n02_station_code": "008561",
           "line_names": [
             "土讃線"
@@ -32123,6 +35379,66 @@
         },
         {
           "from_n02_station_code": "008561",
+          "to_n02_station_code": "008552",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008552",
+          "to_n02_station_code": "008541",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008541",
+          "to_n02_station_code": "008522",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008522",
+          "to_n02_station_code": "008463",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008463",
+          "to_n02_station_code": "008456",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008456",
+          "to_n02_station_code": "008440",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008440",
           "to_n02_station_code": "008408",
           "line_names": [
             "土讃線"
@@ -32143,6 +35459,16 @@
         },
         {
           "from_n02_station_code": "008371",
+          "to_n02_station_code": "008342",
+          "line_names": [
+            "土讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008342",
           "to_n02_station_code": "008300",
           "line_names": [
             "土讃線"
@@ -32153,6 +35479,16 @@
         },
         {
           "from_n02_station_code": "008300",
+          "to_n02_station_code": "008278",
+          "line_names": [
+            "予讃線"
+          ],
+          "operator_names": [
+            "四国旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "008278",
           "to_n02_station_code": "008271",
           "line_names": [
             "予讃線"
@@ -32183,6 +35519,36 @@
         },
         {
           "from_n02_station_code": "007919",
+          "to_n02_station_code": "007859",
+          "line_names": [
+            "本四備讃線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007859",
+          "to_n02_station_code": "007780",
+          "line_names": [
+            "本四備讃線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007780",
+          "to_n02_station_code": "007732",
+          "line_names": [
+            "本四備讃線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007732",
           "to_n02_station_code": "007663",
           "line_names": [
             "本四備讃線"
@@ -32193,6 +35559,66 @@
         },
         {
           "from_n02_station_code": "007663",
+          "to_n02_station_code": "007625",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007625",
+          "to_n02_station_code": "007596",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007596",
+          "to_n02_station_code": "007591",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007591",
+          "to_n02_station_code": "007584",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007584",
+          "to_n02_station_code": "007503",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007503",
+          "to_n02_station_code": "007440",
+          "line_names": [
+            "宇野線"
+          ],
+          "operator_names": [
+            "西日本旅客鉄道"
+          ]
+        },
+        {
+          "from_n02_station_code": "007440",
           "to_n02_station_code": "007310",
           "line_names": [
             "宇野線"
@@ -32212,11 +35638,59 @@
           "ride_segment": true
         },
         {
+          "name": "薊野",
+          "n02_station_code": "009061",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐一宮",
+          "n02_station_code": "009059",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "布師田",
+          "n02_station_code": "009071",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐大津",
+          "n02_station_code": "009066",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "後免",
           "n02_station_code": "009057",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐長岡",
+          "n02_station_code": "009024",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "山田西町",
+          "n02_station_code": "009009",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -32228,6 +35702,78 @@
           "ride_segment": true
         },
         {
+          "name": "新改",
+          "n02_station_code": "008946",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "繁藤",
+          "n02_station_code": "008912",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "角茂谷",
+          "n02_station_code": "008897",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐北川",
+          "n02_station_code": "008884",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大杉",
+          "n02_station_code": "008850",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐穴内",
+          "n02_station_code": "008835",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大田口",
+          "n02_station_code": "008829",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "豊永",
+          "n02_station_code": "008819",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "土佐岩原",
+          "n02_station_code": "008790",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "大歩危",
           "n02_station_code": "008691",
           "arrival": null,
@@ -32236,11 +35782,91 @@
           "ride_segment": true
         },
         {
+          "name": "小歩危",
+          "n02_station_code": "008650",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "阿波川口",
+          "n02_station_code": "008614",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "祖谷口",
+          "n02_station_code": "008600",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "三縄",
+          "n02_station_code": "008578",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "阿波池田",
           "n02_station_code": "008561",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "佃",
+          "n02_station_code": "008552",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "箸蔵",
+          "n02_station_code": "008541",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "坪尻",
+          "n02_station_code": "008522",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "讃岐財田",
+          "n02_station_code": "008463",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "黒川",
+          "n02_station_code": "008456",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "塩入",
+          "n02_station_code": "008440",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -32260,11 +35886,27 @@
           "ride_segment": true
         },
         {
+          "name": "金蔵寺",
+          "n02_station_code": "008342",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "多度津",
           "n02_station_code": "008300",
           "arrival": null,
           "departure": null,
           "stop_type": "passenger_stop",
+          "ride_segment": true
+        },
+        {
+          "name": "讃岐塩屋",
+          "n02_station_code": "008278",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
           "ride_segment": true
         },
         {
@@ -32292,8 +35934,80 @@
           "ride_segment": true
         },
         {
+          "name": "上の町",
+          "n02_station_code": "007859",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "木見",
+          "n02_station_code": "007780",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "植松",
+          "n02_station_code": "007732",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
           "name": "茶屋町",
           "n02_station_code": "007663",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "久々原",
+          "n02_station_code": "007625",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "早島",
+          "n02_station_code": "007596",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "備中箕島",
+          "n02_station_code": "007591",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "妹尾",
+          "n02_station_code": "007584",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "備前西市",
+          "n02_station_code": "007503",
+          "arrival": null,
+          "departure": null,
+          "stop_type": "pass_through",
+          "ride_segment": true
+        },
+        {
+          "name": "大元",
+          "n02_station_code": "007440",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",
