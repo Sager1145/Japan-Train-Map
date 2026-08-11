@@ -3,7 +3,7 @@
 //
 //  The frontend is a family of plain classic scripts (no ES modules, no
 //  bundler) that share ONE global lexical scope — the architecture the
-//  precompute exporter (scripts/precompute-train-parts.mjs) relies on to
+//  precompute exporter (scripts/build/precompute-train-parts.mjs) relies on to
 //  reach top-level bindings inside its Node vm sandbox. index.html loads
 //  the family in this exact order (§N = section of the old monolith):
 //
@@ -31,7 +31,10 @@
 //                                   parsing, blank-train factory
 //   app-map-init.js          §21    MapLibre map initialization
 //   app-events.js            §22    sidebar / editor / map event binding
-//   app-stats.js             §23a   mileage statistics (N02 coverage)
+//   app-stats.js             §23a   mileage statistics: section
+//                                   classification, aggregation, scheduling
+//   app-stats-render.js      §23a   the 統計 panel's DOM/HTML (consumes the
+//                                   view app-stats.js builds)
 //   app-render.js            §23b   render orchestration, date bar,
 //                                   train list
 //   app-editor.js            §24    editor panel & stops table
@@ -51,7 +54,7 @@
 //   app-validation.js        §33    validation (store / trains / JSON)
 //   app-ui-utils.js          §34–35 popups & tooltips + misc utilities
 //
-//  DEPLOY CONTRACT (scripts/build-static-site.mjs): the static build
+//  DEPLOY CONTRACT (scripts/build/build-static-site.mjs): the static build
 //  rewrites `const HAS_BACKEND = true;` in THIS file (and fails the build
 //  if it goes missing), and appends `.json` to the ${API_BASE} fetch
 //  templates in every app*.js file it stages.
@@ -589,6 +592,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   restoreUiDateState();
   await initMap(mapAssetsReady);
   applyMapOpacity();
+  // The route graph reports solve progress; the editor's status line is this
+  // layer's business, not the solver's (app-route-graph.js §27).
+  setRouteSolveReporter((messageKey, params, level) =>
+    setStatus(els.fieldStatus, I18N.t(messageKey, params), level),
+  );
   bindEvents();
   fitActiveCountryOverview();
   renderAll();

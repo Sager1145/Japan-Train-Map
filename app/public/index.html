@@ -91,6 +91,7 @@
                   <option value="tw" data-i18n="country.tw">台灣</option>
                   <option value="hk" data-i18n="country.hk">香港</option>
                   <option value="mo" data-i18n="country.mo">澳門</option>
+                  <option value="kr" data-i18n="country.kr">韓國</option>
                 </select>
               </div>
               <div class="lang-switch">
@@ -252,6 +253,9 @@
               <div class="toolbar" id="data-source-buttons-mo" hidden>
                 <button id="load-sample-all-mo" data-i18n="btn.loadSampleAllMo">載入澳門示例資料</button>
               </div>
+              <div class="toolbar" id="data-source-buttons-kr" hidden>
+                <button id="load-sample-all-kr" data-i18n="btn.loadSampleAllKr">載入韓國示例資料</button>
+              </div>
               <div class="toolbar">
                 <button id="restore-user-store" data-i18n="btn.restoreMine" hidden>恢復我的資料</button>
                 <button class="primary" id="save-as-user-store" data-i18n="btn.saveAsMine" hidden>保存為我的資料</button>
@@ -398,7 +402,7 @@
          lexical scope (split of the old single-file app.js — the module map
          lives in app.js's header). ORDER MATTERS: top-level initializers may
          reference bindings from earlier files, and the precompute exporter
-         (scripts/precompute-train-parts.mjs) replays this exact list minus
+         (scripts/build/precompute-train-parts.mjs) replays this exact list minus
          the stubbed modules inside its Node vm sandbox. -->
     <script src="app-config.js?v=20260808-jpcontinuity1"></script>
     <script src="app-modal.js?v=20260804-mobile1"></script>
@@ -406,20 +410,21 @@
     <script src="app-display-features.js?v=20260725-uistyle1"></script>
     <script src="app-route-simplify.js?v=20260810-line-lod3"></script>
     <script src="app-dates.js?v=20260720-routecache2"></script>
-    <script src="app.js?v=20260810-ridden-network1"></script>
+    <script src="app.js?v=20260811-statssplit1"></script>
     <script src="app-stations.js?v=20260720-routecache2"></script>
     <script src="app-persistence.js?v=20260720-routecache2"></script>
     <script src="app-import.js?v=20260810-ridden-network1"></script>
     <script src="app-store-ops.js?v=20260807-twlogos2"></script>
     <script src="app-map-init.js?v=20260810-ridden-network1"></script>
     <script src="app-events.js?v=20260804-mobile1"></script>
-    <script src="app-stats.js?v=20260807-region1"></script>
+    <script src="app-stats.js?v=20260811-statssplit1"></script>
+    <script src="app-stats-render.js?v=20260811-statssplit1"></script>
     <script src="app-render.js?v=20260804-mobile1"></script>
     <script src="app-editor.js?v=20260807-twlogos2"></script>
     <script src="app-route-render.js?v=20260720-routecache2"></script>
     <script src="app-overlap-lanes.js?v=20260720-routecache2"></script>
     <script src="app-deck-records.js?v=20260720-routecache2"></script>
-    <script src="app-route-graph.js?v=20260808-jpcontinuity1"></script>
+    <script src="app-route-graph.js?v=20260811-statssplit1"></script>
     <script src="app-route-solver.js?v=20260720-routecache2"></script>
     <script src="app-route-features.js?v=20260810-ridden-network1"></script>
     <script src="app-style.js?v=20260720-routecache2"></script>

@@ -6,6 +6,30 @@
 //  order defined by index.html (the module map lives in app.js's header).
 // =========================================================================
 
+// -------------------------------------------------------------------------
+// Solve-progress reporting seam.
+//
+// Route solving is domain work: it must not reach into the editor's status
+// element. The UI installs a sink at boot (app.js §9) and this module only
+// announces what happened. With no sink installed — the precompute exporter's
+// Node vm, and any test that replays the family — reporting is a silent
+// no-op instead of a write to a stubbed DOM node.
+//
+// The importInProgress suppression lives here because it is the same rule at
+// every call site: boot-time progressive solves are not editor feedback, and
+// 159 flashed messages would leave the last one stranded on the status line.
+// -------------------------------------------------------------------------
+let routeSolveReporter = null;
+
+function setRouteSolveReporter(sink) {
+  routeSolveReporter = typeof sink === "function" ? sink : null;
+}
+
+function reportRouteSolve(messageKey, params, level = "warn") {
+  if (importInProgress || !routeSolveReporter) return;
+  routeSolveReporter(messageKey, params, level);
+}
+
 // =========================================================================
 //  §27.  Route matching, template keys, feature generation & full graph construction
 // =========================================================================
@@ -206,12 +230,9 @@ function prepareTrainRouteSolve(train) {
   // During a progressive load this fires once per cold-solved train; writing
   // it to the editor's status line would flash 159 messages and leave the last
   // one stranded there. Only user-triggered (post-boot) solves show status.
-  if (!importInProgress)
-    setStatus(
-      els.fieldStatus,
-      I18N.t("status.routeGenerating", { train: train.number || train.id }),
-      "warn",
-    );
+  reportRouteSolve("status.routeGenerating", {
+    train: train.number || train.id,
+  });
   return { done: false, ...context };
 }
 
@@ -530,15 +551,10 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
     // The console.warn above keeps the full detail; the status line is
     // user-facing feedback and stays quiet during a progressive load (the
     // editor isn't showing this train, and the last message would go stale).
-    if (!importInProgress)
-      setStatus(
-        els.fieldStatus,
-        I18N.t("status.routeGenerateFailed", {
-          train: train.number || train.id,
-          failed: warnings.length,
-        }),
-        "warn",
-      );
+    reportRouteSolve("status.routeGenerateFailed", {
+      train: train.number || train.id,
+      failed: warnings.length,
+    });
     // Remember the failure so re-renders / prewarms / live refreshes in this
     // session (and future sessions, via IndexedDB) don't re-run the same doomed
     // graph build + Dijkstra. Cleared implicitly when the train's data changes
@@ -581,20 +597,17 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
   // Same suppression as prepareTrainRouteSolve: boot-time solves are not
   // editor feedback. Post-boot solves (user edited/rebuilt a route) still
   // report, localized.
-  if (!importInProgress)
-    setStatus(
-      els.fieldStatus,
-      warnings.length
-        ? I18N.t("status.routeGeneratedSkipped", {
-            train: train.number || train.id,
-            count: concrete.length,
-            skipped: warnings.length,
-          })
-        : I18N.t("status.routeGenerated", {
-            train: train.number || train.id,
-            count: concrete.length,
-          }),
-      warnings.length ? "warn" : "ok",
+  if (warnings.length)
+    reportRouteSolve("status.routeGeneratedSkipped", {
+      train: train.number || train.id,
+      count: concrete.length,
+      skipped: warnings.length,
+    });
+  else
+    reportRouteSolve(
+      "status.routeGenerated",
+      { train: train.number || train.id, count: concrete.length },
+      "ok",
     );
   return concrete;
 }
