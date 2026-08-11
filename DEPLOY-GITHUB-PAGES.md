@@ -35,7 +35,7 @@
 
 ## 工作流做了什么
 
-- **离线预解算示例数据**（`node app/scripts/precompute-train-parts.mjs`）：在 CI 里把
+- **离线预解算示例数据**（`node app/scripts/build/precompute-train-parts.mjs`）：在 CI 里把
   `train-store.json`（示例数据的来源）中每趟列车的路线几何用 app.js 自己的
   解算器提前算好，导出成 `api/sample-data/`：manifest（含**按日期分组**的索引）
   + 每趟一个 `part-NNN.json` 小文件。静态站开机时**一次加载并显示一趟**，
@@ -100,9 +100,9 @@ push 后 CI 会自动重新生成按日期拆分的 `api/sample-data/`。
 **内存受限环境下手动预解算**（一般用不到；CI 会自动跑）：
 
 ```
-PRECOMPUTE_RANGE=0:20  node app/scripts/precompute-train-parts.mjs   # 分段解算
-PRECOMPUTE_RANGE=20:40 node app/scripts/precompute-train-parts.mjs   # …直到跑完
-PRECOMPUTE_FINALIZE=1  node app/scripts/precompute-train-parts.mjs   # 生成 manifest
+PRECOMPUTE_RANGE=0:20  node app/scripts/build/precompute-train-parts.mjs   # 分段解算
+PRECOMPUTE_RANGE=20:40 node app/scripts/build/precompute-train-parts.mjs   # …直到跑完
+PRECOMPUTE_FINALIZE=1  node app/scripts/build/precompute-train-parts.mjs   # 生成 manifest
 ```
 
 **用自定义域名**

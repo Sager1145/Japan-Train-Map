@@ -2,7 +2,7 @@
 
 // Single owner of the datasets the API serves and the static build publishes
 // under api/. server/create-app.js registers one route per entry;
-// scripts/build-static-site.mjs (via createRequire) copies the same entries
+// scripts/build/build-static-site.mjs (via createRequire) copies the same entries
 // into the Pages bundle — so a new dataset is added here exactly once.
 
 // Whole-file datasets: route name -> file name under app/data.
@@ -19,6 +19,8 @@ const DATA_FILES = {
   "stations-hk": "stations-hk.json",
   "rail-sections-mo": "rail-sections-mo.json",
   "stations-mo": "stations-mo.json",
+  "rail-sections-kr": "rail-sections-kr.json",
+  "stations-kr": "stations-kr.json",
   "default-trains": "default-trains.json",
   "matched-routes": "matched-routes.json",
   "matched-stops": "matched-stops.json",
@@ -26,6 +28,7 @@ const DATA_FILES = {
   "station-readings-tw": "station-readings-tw.json",
   "station-readings-hk": "station-readings-hk.json",
   "station-readings-mo": "station-readings-mo.json",
+  "station-readings-kr": "station-readings-kr.json",
 };
 
 // Precomputed part datasets: manifest.json + part-NNN.json chunks in
@@ -38,7 +41,7 @@ const PART_DATASETS = [
     invalidNameError: "Invalid sample data name.",
     notFoundLabel: "Sample data",
     missingDataError:
-      "Precomputed sample data is missing; run scripts/precompute-train-parts.mjs first.",
+      "Precomputed sample data is missing; run scripts/build/precompute-train-parts.mjs first.",
   },
   {
     // Taiwan keeps a FULLY SEPARATE sample dataset (each country's 資料 card
@@ -62,6 +65,13 @@ const PART_DATASETS = [
     notFoundLabel: "Macao sample data",
     missingDataError:
       "Precomputed Macao sample data is missing; run npm run precompute:mo first.",
+  },
+  {
+    dir: "sample-data-kr",
+    invalidNameError: "Invalid South Korea sample data name.",
+    notFoundLabel: "South Korea sample data",
+    missingDataError:
+      "Precomputed South Korea sample data is missing; run npm run precompute:kr first.",
   },
   {
     dir: "new-year-grand-loop-data",

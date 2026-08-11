@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Codec for the rail packages (public/rail/jp-2025.json, tw-2025.json),
+"compact-v1" format.
+
+The on-disk format is compact-v1: stations and segments are nested inside
+their line, and everything derivable is omitted. Compared to the legacy flat
+RailGeoPackage it removes, losslessly:
+
+  * the `lineId` prefix repeated in every stationId / segmentId /
+    fromStationId / toStationId / stationOrder entry (~60k repetitions)
+  * `lines[].geometry`      — always the concatenation of the line's segments
+  * `lines[].stationOrder`  — always the line's stations sorted by `seq`
+  * `stations[].stationId`  — always `{lineId}:{stationGroupId}`
+  * `stations[].seq`        — the array index
+  * `segments[].segmentId/fromStationId/toStationId/fromSeq/toSeq` —
+    segment i always joins station i to station i+1 (mod n for loop lines)
+  * `segments[].isHSR`      — always equal to the line's isHSR
+  * `lines[].country`       — always the package-level country
+  * `lines[].logo`          — always `/rail/logos/{lineId}.png` when present
+  * each segment's first coordinate when it equals the previous segment's
+    last (the `shared` flag)
+
+On-disk shapes:
+
+  station row: [stationGroupId, name, lon, lat, (nameRoma, romaSourceCode)]
+  segment row: [km, shared, coordinates, (arcDirection)]
+  romaSource:  1 = "osm", 2 = "wikidata", 3 = "official" (TDX StationName.En)
+
+Any other top-level package key (e.g. tw-2025's `geometrySource` provenance
+block) passes through compress/expand untouched.
+
+`load()` returns the EXPANDED legacy structure so existing tooling keeps
+working; `save()` always writes compact-v1 (minified) plus a reproducible
+(mtime=0) .gz sidecar. Round-tripping expand(compress(pkg)) == pkg is
+guaranteed and asserted by scripts/railway/convert-rail-package.py before it
+overwrites anything.
+"""
+
+import gzip
+import json
+import os
+from collections import defaultdict
+
+FORMAT = "compact-v1"
+# Single owner of the romaSource code space — build-taiwan-rail-package.py
+# stamps its official TDX romanizations with ROMA_SOURCES["official"].
+ROMA_SOURCES = {"osm": 1, "wikidata": 2, "official": 3}
+_RS_ENC = ROMA_SOURCES
+_RS_DEC = {v: k for k, v in _RS_ENC.items()}
+# Structural keys owned by the codec; everything else is package metadata
+# that passes through both directions unchanged.
+_STRUCTURAL_KEYS = ("format", "lines", "segments", "stations")
+
+
+def compress(pkg):
+    """Legacy flat RailGeoPackage -> compact-v1 dict."""
+    segs_by = defaultdict(list)
+    sts_by = defaultdict(list)
+    for s in pkg["segments"]:
+        segs_by[s["lineId"]].append(s)
+    for s in pkg["stations"]:
+        sts_by[s["lineId"]].append(s)
+
+    out = {"format": FORMAT}
+    for k, v in pkg.items():
+        if k not in _STRUCTURAL_KEYS:
+            out[k] = v
+    out["lines"] = []
+    for l in pkg["lines"]:
+        cl = {
+            "id": l["lineId"],
+            "name": l["name"],
+            "operator": l["operator"],
+            "rank": l["rank"],
+            "color": l["color"],
+        }
+        if "nameRoma" in l:
+            cl["nameRoma"] = l["nameRoma"]
+        if l["isHSR"]:
+            cl["isHSR"] = 1
+        if l["isLoop"]:
+            cl["isLoop"] = 1
+        if "logo" in l:
+            expected = "/rail/logos/%s.png" % l["lineId"]
+            assert l["logo"] == expected, (l["lineId"], l["logo"])
+            cl["logo"] = 1
+        assert l.get("country", out.get("country")) == out.get("country")
+
+        stations = sorted(sts_by[l["lineId"]], key=lambda x: x["seq"])
+        assert [s["seq"] for s in stations] == list(range(len(stations)))
+        rows = []
+        for i, s in enumerate(stations):
+            assert s["stationId"] == "%s:%s" % (l["lineId"], s["stationGroupId"])
+            row = [s["stationGroupId"], s["name"], s["lon"], s["lat"]]
+            if "nameRoma" in s:
+                row += [s["nameRoma"], _RS_ENC[s["romaSource"]]]
+            rows.append(row)
+        cl["stations"] = rows
+
+        segs = sorted(segs_by[l["lineId"]], key=lambda x: x["fromSeq"])
+        n = len(stations)
+        seg_rows = []
+        prev_last = None
+        for i, s in enumerate(segs):
+            f, t = i, (i + 1) % n
+            assert s["fromSeq"] == f and s["toSeq"] == t, s["segmentId"]
+            assert s["fromStationId"] == "%s:%s" % (l["lineId"], rows[f][0])
+            assert s["toStationId"] == "%s:%s" % (l["lineId"], rows[t][0])
+            assert s["isHSR"] == l["isHSR"], s["segmentId"]
+            c = s["geometry"]["coordinates"]
+            shared = 1 if (prev_last is not None and c[0] == prev_last) else 0
+            row = [s["km"], shared, c[1:] if shared else c]
+            if "arcDirection" in s:
+                row.append(s["arcDirection"])
+            seg_rows.append(row)
+            prev_last = c[-1]
+        # a non-loop line has n-1 segments, a loop line n
+        assert len(seg_rows) == (n if cl.get("isLoop") else max(n - 1, 0))
+        cl["segments"] = seg_rows
+        out["lines"].append(cl)
+    return out
+
+
+def expand(compact):
+    """compact-v1 dict -> legacy flat RailGeoPackage."""
+    assert compact.get("format") == FORMAT, compact.get("format")
+    lines, segments, stations = [], [], []
+    country = compact.get("country")
+    for cl in compact["lines"]:
+        lid = cl["id"]
+        n = len(cl["stations"])
+        st_ids = ["%s:%s" % (lid, row[0]) for row in cl["stations"]]
+        for i, row in enumerate(cl["stations"]):
+            st = {
+                "stationId": st_ids[i],
+                "name": row[1],
+                "lineId": lid,
+                "seq": i,
+                "lon": row[2],
+                "lat": row[3],
+                "stationGroupId": row[0],
+            }
+            if len(row) > 4:
+                st["nameRoma"] = row[4]
+                st["romaSource"] = _RS_DEC[row[5]]
+            stations.append(st)
+
+        line_coords = []
+        prev_last = None
+        for i, row in enumerate(cl["segments"]):
+            km, shared, c = row[0], row[1], row[2]
+            coords = ([prev_last] + c) if shared else c
+            f, t = i, (i + 1) % n
+            seg = {
+                "segmentId": "%s:%s-%s" % (lid, cl["stations"][f][0], cl["stations"][t][0]),
+                "lineId": lid,
+                "fromStationId": st_ids[f],
+                "toStationId": st_ids[t],
+                "fromSeq": f,
+                "toSeq": t,
+                "km": km,
+                "isHSR": bool(cl.get("isHSR")),
+                "geometry": {"type": "LineString", "coordinates": coords},
+            }
+            if len(row) > 3:
+                seg["arcDirection"] = row[3]
+            segments.append(seg)
+            if line_coords and line_coords[-1] == coords[0]:
+                line_coords.extend(coords[1:])
+            else:
+                line_coords.extend(coords)
+            prev_last = coords[-1]
+
+        line = {
+            "lineId": lid,
+            "name": cl["name"],
+            "country": country,
+            "operator": cl["operator"],
+            "isHSR": bool(cl.get("isHSR")),
+            "isLoop": bool(cl.get("isLoop")),
+            "stationOrder": st_ids,
+            "geometry": {"type": "LineString", "coordinates": line_coords},
+            "rank": cl["rank"],
+            "color": cl["color"],
+        }
+        if cl.get("logo"):
+            line["logo"] = "/rail/logos/%s.png" % lid
+        if "nameRoma" in cl:
+            line["nameRoma"] = cl["nameRoma"]
+        lines.append(line)
+
+    pkg = {k: v for k, v in compact.items() if k not in _STRUCTURAL_KEYS}
+    pkg.update(lines=lines, segments=segments, stations=stations)
+    return pkg
+
+
+def line_segments(cl):
+    """Decode one compact line's segment rows -> per-segment coordinate lists.
+
+    Re-applies the shared-first-coordinate join and deep-copies every row, so
+    callers may mutate (reverse, slice, weld) the result without corrupting
+    the package dict they decoded it from.
+    """
+    out = []
+    prev_last = None
+    for row in cl["segments"]:
+        coords = [prev_last, *row[2]] if row[1] else [list(c) for c in row[2]]
+        if len(coords) < 2:
+            raise RuntimeError("%s: invalid compact segment" % cl.get("id"))
+        out.append([list(c) for c in coords])
+        prev_last = coords[-1]
+    return out
+
+
+def load(path):
+    """Read a rail package (compact-v1 or legacy) -> expanded legacy dict."""
+    with open(path) as f:
+        data = json.load(f)
+    return expand(data) if data.get("format") == FORMAT else data
+
+
+def json_bytes(value):
+    """Minified UTF-8 JSON — the byte format every shipped dataset uses."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
+
+
+def write_json(path, value):
+    """Atomically write `value` as minified JSON."""
+    path = os.fspath(path)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(json_bytes(value))
+    os.replace(tmp, path)
+
+
+def write_json_and_gzip(path, value):
+    """write_json plus a byte-reproducible .gz sidecar (mtime=0, no name)."""
+    write_json(path, value)
+    path = os.fspath(path)
+    with open(path + ".gz", "wb") as raw:
+        with gzip.GzipFile(
+            filename="", mode="wb", fileobj=raw, compresslevel=9, mtime=0
+        ) as stream:
+            stream.write(json_bytes(value))
+
+
+def save(path, pkg):
+    """Write `pkg` (expanded legacy dict) as compact-v1 + refresh .gz sidecar."""
+    compact = pkg if pkg.get("format") == FORMAT else compress(pkg)
+    write_json_and_gzip(path, compact)

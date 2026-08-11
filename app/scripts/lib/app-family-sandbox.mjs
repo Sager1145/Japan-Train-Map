@@ -1,8 +1,8 @@
 // Shared Node-vm harness for replaying the frontend's classic-script family
 // (the ordered app-*.js list in public/index.html) outside a browser.
-// Consumers: scripts/precompute-train-parts.mjs (offline route export),
+// Consumers: scripts/build/precompute-train-parts.mjs (offline route export),
 // test/app-family-smoke.test.mjs (runtime smoke tests) and
-// scripts/check-undefined-globals.mjs (script-list extraction only).
+// scripts/validation/check-undefined-globals.mjs (script-list extraction only).
 //
 // The stub surface below is the UNION of what all consumers need: an extra
 // dummy-element property or I18N method is inert for a consumer that never
@@ -24,6 +24,15 @@ export const PUBLIC_DIR = path.join(
   "..",
   "public",
 );
+export const SHARED_DIR = path.join(PUBLIC_DIR, "..", "shared");
+
+// app-core keeps the long-standing /app-core.js browser URL, while its source
+// lives in shared/ so server and build tools do not import presentation code.
+export function resolveAppScript(name) {
+  return name === "app-core.js"
+    ? path.join(SHARED_DIR, name)
+    : path.join(PUBLIC_DIR, name);
+}
 
 // The frontend is a family of ordered classic scripts sharing one global
 // lexical scope. Replay EXACTLY the <script src> list from index.html — the
@@ -186,7 +195,7 @@ export function makeSandbox({
 // global lexical scope exactly like sequential classic <script> tags.
 export function evaluateAppScripts(context, scripts = readOrderedAppScripts()) {
   for (const name of scripts) {
-    const source = fs.readFileSync(path.join(PUBLIC_DIR, name), "utf8");
+    const source = fs.readFileSync(resolveAppScript(name), "utf8");
     vm.runInContext(source, context, { filename: name });
   }
 }

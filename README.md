@@ -59,15 +59,22 @@ Japan Train Map/
     ├── package.json     # dependencies and start scripts / 项目依赖与启动脚本
     ├── package-lock.json
     ├── node_modules/    # dependencies (created by npm install) / 依赖，npm install 生成
+    ├── shared/          # browser/Node protocol and pure helpers / 浏览器与 Node 共用协议及纯函数
+    │   └── app-core.js
     ├── public/          # frontend / 前端
     │   ├── index.html   # page (also the script load order) / 页面（亦即脚本加载顺序）
-    │   ├── app-core.js  # shared pure editor helpers / 编辑器共享纯函数
     │   ├── app.js, app-*.js # app module family; map in app.js's header / 应用模块族，模块表见 app.js 头部
     │   ├── i18n-strings.js, i18n.js # UI string catalogs + i18n runtime / UI 文案目录与多语言运行时
     │   ├── rail-network.js # compact rail-package conversion / 紧凑铁路数据转换
     │   ├── railmap.js, railmap-*.js # MapLibre map core family; map in railmap.js's header / MapLibre 地图核心模块族，模块表见 railmap.js 头部
     │   └── styles.css   # styles / 样式
-    ├── scripts/         # data, route-precompute and static-build tools / 数据、路线预计算与静态构建工具
+    ├── scripts/         # build, railway, sample, validation and migration tools / 构建、铁路数据、示例、验证及迁移工具
+    │   ├── build/
+    │   ├── railway/     # railway pipelines plus their data/ inputs and lib/ / 铁路流水线、输入数据及领域库
+    │   ├── samples/
+    │   ├── validation/
+    │   ├── migrations/
+    │   └── lib/         # cross-build/test harnesses / 构建与测试共用工具
     ├── test/            # Node characterization tests / Node 行为特征测试
     └── data/            # data / 数据
         ├── rail-sections.json    # N02 rail section geometry / N02 铁路区间几何
@@ -78,7 +85,7 @@ Japan Train Map/
         ├── matched-routes.json   # matched routes / 匹配后的路线
         ├── matched-stops.json    # matched stops / 匹配后的停靠站
         ├── train-store.json      # persisted train data (auto save/load) / 列车数据持久化存储（自动保存 / 载入）
-        └── N02-25_GML.zip        # raw N02 GML source data / N02 原始 GML 数据源
+        └── raw/N02-25_GML.zip    # raw N02 GML source data / N02 原始 GML 数据源
 ```
 
 ## Validation / 验证

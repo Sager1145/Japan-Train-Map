@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -7,7 +8,7 @@ import test from "node:test";
 import {
   DATASET_NAMES,
   buildStaticSite,
-} from "../scripts/build-static-site.mjs";
+} from "../scripts/build/build-static-site.mjs";
 
 const require = createRequire(import.meta.url);
 const { PART_DATASETS } = require("../server/datasets.js");
@@ -16,10 +17,12 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-build-"));
   const appDir = path.join(root, "app");
   const publicDir = path.join(appDir, "public");
+  const sharedDir = path.join(appDir, "shared");
   const dataDir = path.join(appDir, "data");
   const partsDir = path.join(dataDir, "sample-data");
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(sharedDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
 
   await fs.writeFile(
@@ -46,6 +49,10 @@ async function createFixture({ includeTrainStore = true } = {}) {
   );
   await fs.writeFile(path.join(publicDir, "styles.css"), "body {}\n");
   await fs.writeFile(path.join(publicDir, "styles.css.gz"), "ignored");
+  await fs.writeFile(
+    path.join(sharedDir, "app-core.js"),
+    "globalThis.AppCore = { fixture: true };\n",
+  );
 
   for (const name of DATASET_NAMES) {
     await fs.writeFile(
@@ -127,6 +134,10 @@ test("static build preserves the Pages file and rewrite contract", async () => {
       await fs.readFile(path.join(fixture.outputDir, "index.html"), "utf8"),
       '<link rel="preload" href="api/stations.json">',
     );
+    assert.equal(
+      await fs.readFile(path.join(fixture.outputDir, "app-core.js"), "utf8"),
+      "globalThis.AppCore = { fixture: true };\n",
+    );
 
     for (const name of DATASET_NAMES) {
       assert.deepEqual(
@@ -197,6 +208,64 @@ test("static build works without a train-store.json present", async () => {
       fs.access(path.join(fixture.outputDir, "api", "train-store.json")),
       { code: "ENOENT" },
     );
+  } finally {
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+// The app-*.js family shares ONE global scope, so a browser that revalidates
+// half of it and serves the rest from cache runs a combination that never
+// existed — app.js's boot calling a function a stale app-route-graph.js does
+// not define yet. Hand-maintained `?v=` tokens made that a matter of
+// remembering; the build now derives them from the shipped bytes.
+test("static build stamps script/style tags with content hashes", async () => {
+  const fixture = await createFixture();
+  try {
+    await fs.writeFile(
+      path.join(fixture.appDir, "public", "index.html"),
+      [
+        '<link rel="stylesheet" href="styles.css?v=20260101-handwritten" />',
+        '<link rel="preload" href="api/stations" as="fetch" />',
+        '<script src="app.js?v=20260101-stale"></script>',
+        '<script src="app-persistence.js"></script>',
+        '<script src="railmap.js?v=keep&flag=1"></script>',
+        '<script src="https://cdn.example.com/x.js?v=external"></script>',
+      ].join("\n"),
+    );
+
+    await buildStaticSite({
+      appDir: fixture.appDir,
+      outputDir: fixture.outputDir,
+      logger: { log() {} },
+    });
+
+    const html = await fs.readFile(
+      path.join(fixture.outputDir, "index.html"),
+      "utf8",
+    );
+    const tokenOf = (asset) =>
+      html.match(new RegExp(`["/]${asset}\\?[^"]*v=([a-f0-9]{8})`))?.[1];
+    const hashOf = async (asset) =>
+      createHash("sha256")
+        .update(await fs.readFile(path.join(fixture.outputDir, asset)))
+        .digest("hex")
+        .slice(0, 8);
+
+    // Every local asset is stamped with the hash of what actually shipped —
+    // i.e. AFTER the ${API_BASE}/HAS_BACKEND rewrites, not the source bytes.
+    for (const asset of ["styles.css", "app.js", "app-persistence.js"]) {
+      assert.equal(tokenOf(asset), await hashOf(asset), `${asset} token`);
+    }
+    // A file with no token at all still gets one.
+    assert.ok(tokenOf("app-persistence.js"), "untokenized tag gets stamped");
+    // Distinct contents must not collide onto one token.
+    assert.notEqual(tokenOf("app.js"), tokenOf("app-persistence.js"));
+    // Non-version query params survive; the old v= is replaced, not appended.
+    assert.match(html, /railmap\.js\?flag=1&v=[a-f0-9]{8}"/);
+    assert.doesNotMatch(html, /v=20260101-stale|v=20260101-handwritten|\?v=keep/);
+    // Cross-origin and non-stylesheet links are left alone.
+    assert.match(html, /https:\/\/cdn\.example\.com\/x\.js\?v=external/);
+    assert.match(html, /href="api\/stations\.json" as="fetch"/);
   } finally {
     await fs.rm(fixture.root, { recursive: true, force: true });
   }

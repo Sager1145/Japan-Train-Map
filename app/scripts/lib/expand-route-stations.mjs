@@ -18,7 +18,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-// Shared N02 5-decimal grid + geometry primitives: AppCore (public/app-core.js)
+// Shared N02 5-decimal grid + geometry primitives: AppCore (shared/app-core.js)
 // is the single owner of the grid rule, so this build-time graph quantizes
 // exactly like the in-browser solver/stats and station lookups tolerate the
 // same spelling variants the app tolerates.
@@ -28,7 +28,7 @@ const {
   equirectKm,
   TupleMinHeap: MinHeap,
   normalizeStationName,
-} = require("../../public/app-core.js");
+} = require("../../shared/app-core.js");
 
 const DATA_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

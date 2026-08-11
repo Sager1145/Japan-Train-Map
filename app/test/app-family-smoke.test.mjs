@@ -1,5 +1,5 @@
 // Smoke tests over the REAL frontend script family evaluated in a Node vm
-// (the same replay approach as scripts/precompute-train-parts.mjs).
+// (the same replay approach as scripts/build/precompute-train-parts.mjs).
 //
 // The app is a set of classic scripts sharing one global lexical scope, so a
 // stale cross-file reference only explodes at RUNTIME. The lint task now runs

@@ -11,11 +11,11 @@ const {
   coerceStore,
   createTrainStore,
 } = require("./train-store");
-const { countrySuffixed } = require("../public/app-core.js");
+const { countrySuffixed } = require("../shared/app-core.js");
 
 // Countries the server hosts a train store for (the frontend's
 // SUPPORTED_COUNTRIES mirrors this list in app-config.js).
-const STORE_COUNTRIES = ["jp", "tw", "hk", "mo"];
+const STORE_COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
 
 const STATIC_GZIP_EXTS = new Set([".json", ".js", ".css"]);
 const STATIC_CACHE_CONTROL = {
@@ -27,6 +27,7 @@ const STATIC_CACHE_CONTROL = {
 function createApp({
   dataDir = path.join(__dirname, "..", "data"),
   publicDir = path.join(__dirname, "..", "public"),
+  sharedDir = path.join(__dirname, "..", "shared"),
   logger = console,
   now,
   heartbeatMs,
@@ -100,7 +101,7 @@ function createApp({
       train_store: "/api/train-store",
       train_stores: Object.keys(trainStores).map((name) => `/api/${name}`),
       events: "/api/events",
-      agent_import: "/api/agent/import?country=jp|tw|hk|mo",
+      agent_import: "/api/agent/import?country=jp|tw|hk|mo|kr",
       live_clients: liveEvents.clientCount,
     });
   });
@@ -284,8 +285,9 @@ function createApp({
       return next();
     }
 
-    const filePath = path.normalize(path.join(publicDir, pathname));
-    if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) {
+    const staticRoot = pathname === "/app-core.js" ? sharedDir : publicDir;
+    const filePath = path.normalize(path.join(staticRoot, pathname));
+    if (filePath !== staticRoot && !filePath.startsWith(staticRoot + path.sep)) {
       return next();
     }
 

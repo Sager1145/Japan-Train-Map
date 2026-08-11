@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const AppCore = require("../public/app-core.js");
+const AppCore = require("../shared/app-core.js");
 
 test("date normalization preserves the documented shallow calendar validation", () => {
   assert.equal(AppCore.isValidDateString("2026-07-03"), true);

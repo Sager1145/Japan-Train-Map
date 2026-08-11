@@ -17,8 +17,10 @@ async function createFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "train-map-server-"));
   const dataDir = path.join(root, "data");
   const publicDir = path.join(root, "public");
+  const sharedDir = path.join(root, "shared");
   await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(publicDir, { recursive: true });
+  await fs.mkdir(sharedDir, { recursive: true });
 
   for (const file of Object.values(DATA_FILES)) {
     await fs.writeFile(
@@ -42,11 +44,15 @@ async function createFixture() {
   );
   await fs.writeFile(path.join(publicDir, "app.js"), "window.fixture = true;\n");
   await fs.writeFile(
+    path.join(sharedDir, "app-core.js"),
+    "globalThis.AppCore = { fixture: true };\n",
+  );
+  await fs.writeFile(
     path.join(publicDir, "asset.json"),
     JSON.stringify({ static: true }),
   );
 
-  return { root, dataDir, publicDir };
+  return { root, dataDir, publicDir, sharedDir };
 }
 
 async function withServer(run) {
@@ -59,6 +65,7 @@ async function withServer(run) {
   const app = createApp({
     dataDir: fixture.dataDir,
     publicDir: fixture.publicDir,
+    sharedDir: fixture.sharedDir,
     logger,
     now: () => FIXED_NOW,
     heartbeatMs: 1000,
@@ -147,6 +154,8 @@ test("health endpoint preserves the API listing contract", async () => {
         "/api/stations-hk",
         "/api/rail-sections-mo",
         "/api/stations-mo",
+        "/api/rail-sections-kr",
+        "/api/stations-kr",
         "/api/default-trains",
         "/api/matched-routes",
         "/api/matched-stops",
@@ -154,6 +163,7 @@ test("health endpoint preserves the API listing contract", async () => {
         "/api/station-readings-tw",
         "/api/station-readings-hk",
         "/api/station-readings-mo",
+        "/api/station-readings-kr",
       ],
       train_store: "/api/train-store",
       train_stores: [
@@ -161,9 +171,10 @@ test("health endpoint preserves the API listing contract", async () => {
         "/api/train-store-tw",
         "/api/train-store-hk",
         "/api/train-store-mo",
+        "/api/train-store-kr",
       ],
       events: "/api/events",
-      agent_import: "/api/agent/import?country=jp|tw|hk|mo",
+      agent_import: "/api/agent/import?country=jp|tw|hk|mo|kr",
       live_clients: 0,
     });
   });
@@ -616,6 +627,14 @@ test("sample data and static assets preserve validation and delivery headers", a
     const index = await fetch(`${baseUrl}/`);
     assert.equal(index.status, 200);
     assert.equal(await index.text(), "<!doctype html><title>Fixture</title>");
+
+    const appCore = await fetch(`${baseUrl}/app-core.js`);
+    assert.equal(appCore.status, 200);
+    assert.equal(appCore.headers.get("cache-control"), "no-cache");
+    assert.equal(
+      await appCore.text(),
+      "globalThis.AppCore = { fixture: true };\n",
+    );
   });
 });
 

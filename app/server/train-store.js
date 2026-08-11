@@ -2,15 +2,15 @@
 
 const fs = require("fs");
 const os = require("os");
-// The frontend owns the protocol constants (app-core.js is a UMD shared with
-// the browser), so a schema bump or an id-charset change (jsonspec §3.2: ids
+// shared/app-core.js owns the browser/Node protocol constants, so a schema bump
+// or an id-charset change (jsonspec §3.2: ids
 // feed route_id, cache keys and the append upsert's Map key) can never drift
 // between the two sides. The store's write default is the current version.
 const {
   ACCEPTED_SCHEMA_VERSIONS,
   SCHEMA_VERSION: DEFAULT_SCHEMA_VERSION,
   TRAIN_ID_PATTERN,
-} = require("../public/app-core.js");
+} = require("../shared/app-core.js");
 
 const FILE_LOCK_RETRY_MS = 15;
 const FILE_LOCK_TIMEOUT_MS = 15000;
