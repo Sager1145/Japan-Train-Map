@@ -4,17 +4,22 @@
     {
       "name": "train-map",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:static"],
-      "cwd": "app",
-      "port": 4000,
-      "autoPort": true
+      "runtimeArgs": ["--prefix", "app", "start"],
+      "port": 3100,
+      "env": { "PORT": "3100" }
     },
     {
-      "name": "train-map-backend",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
-      "cwd": "app",
-      "port": 3000,
+      "name": "train-map-3102",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "app", "start"],
+      "port": 3102,
+      "env": { "PORT": "3102" }
+    },
+    {
+      "name": "train-map-auto",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "app", "start"],
+      "port": 3104,
       "autoPort": true
     }
   ]
