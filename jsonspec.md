@@ -155,7 +155,7 @@
 }
 ```
 
-### 2.3 官方站点代码命名空间（日本 / 台湾 / 香港 / 澳门）
+### 2.3 官方站点代码命名空间（日本 / 台湾 / 香港 / 澳门 / 韩国）
 
 schema 1.3 的持久化键 `n02_station_code` 是历史兼容名称。它与 route section 的
 `from_n02_station_code` / `to_n02_station_code` 共同表示**当前国家/地区官方铁路数据源的站点代码**：
@@ -164,14 +164,15 @@ schema 1.3 的持久化键 `n02_station_code` 是历史兼容名称。它与 rou
 | --- | --- | --- | --- |
 | 日本 | 国土数値情報 N02 | `N02_005c` | 六位数字，例如 `003770` |
 | 台湾 | 交通部 TDX/PTX | `StationUID` | `OperatorID-StationID`，例如 `TYMC-A13`、`TRA-1000` |
-| 香港 | 港铁官方行程指南 + 开放数据 | `{线路别名}-{官方站别名}` | 重铁 `TML-MTR-WKS`（屯马线乌溪沙）、轻铁 `LR-505-LR-10`；线路别名为规范化前的大写别名（`AEL` / `EAL-LOW` / `LR-505` 等），**不随显示线路 id（`hk-mtr-*`）改名** |
+| 香港 | 港铁官方行程指南 + 开放数据；香港电车官方站表 | `{线路别名}-{官方站别名}` | 重铁 `TML-MTR-WKS`（屯马线乌溪沙）、轻铁 `LR-505-LR-10`、电车 `TRAM-E-01E`（东行轨北街）；线路别名为规范化前的大写别名（`AEL` / `EAL-LOW` / `LR-505` / `TRAM-E` 等），**不随显示线路 id（`hk-mtr-*` / `hk-tram-*`）改名** |
 | 澳门 | 澳门轻轨（MLM）官方路线 | `{线路别名}-MLM-{站别名}` | `MLM-TAIPA-MLM-BARRA`（氹仔线妈阁） |
+| 韩国 | 国土交通部 / 国家铁道公团 / 韩国铁道公社 公共数据 | `{线路 codePrefix}-{站别名}` | `KR-GYEONGBUSEON-SEOUL`（京釜线首尔）、`KR-SEOUL-JIHACHEOL-2H-SINDORIM`；codePrefix 为线名罗马字大写，**不随显示线路 id 改名** |
 
 规范要求：
 
 1. 同一 stop 与相邻 route section 端点必须使用同一个官方代码；无码时写 `null` 并保留站名。
 2. 台湾必须使用 TDX/PTX 原始 `StationUID`；香港/澳门必须使用打包脚本发布的官方别名代码。
-   任何地区都不得把 `tw-official-*` / `hk-official-*` / `mo-official-*` 几何分组 ID、
+   任何地区都不得把 `tw-official-*` / `hk-official-*` / `mo-official-*` / `kr-official-*` 几何分组 ID、
    站名、OSM id 或自行编造的序号写入该字段。
 3. 日本代码匹配 `^\d{6}$`；台湾 / 香港 / 澳门代码匹配
    `^[A-Z][A-Z0-9]*-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$`（首字符大写字母、以连字符分段）。
@@ -1695,16 +1696,22 @@ geometrySource.syntheticConnectors = 0
 
 | 项目 | 内容 |
 | --- | --- |
-| 主数据服务 | 港铁（MTR）官方行程指南 payload + `mtr_lines_and_stations.csv` / `light_rail_routes_and_stops.csv` 开放数据 |
-| 站点主键 | `{线路别名}-{官方站别名}`（重铁 `TML-MTR-WKS`，轻铁 `LR-505-LR-10`；见 §2.3） |
-| 路线主键 | 显示线路 id `hk-mtr-*`（`hk-mtr-ael` / `hk-mtr-eal-low` / `hk-mtr-lr-505` …）；东铁 / 将军澳按官方支线拆分 |
-| 站名 / 路线名 | 官方繁中 `nameTC` / 简中 `nameSC` / 英文 `name` |
-| 运营者 | `MTR`（canonical company 值；重铁与全部 11 条轻铁路线均为港铁运营） |
-| 几何 | LandsD iB1000 官方制图几何为权威；公开 iB1000 把地下铁路隧道并入通用 `TUR`，这些未分类地下区间由 OSM 路线关系作 ODbL 连续性补充 |
-| 当前打包产物 | `app/public/rail/hk-2025.json`，`country: "HK"`，23 条线路（12 重铁分支 + 11 轻铁路线） |
-| 求解数据集 | `rail-sections-hk.json` / `stations-hk.json`：全网统一 `institution_type_code: "4"`、`railway_class_code: "21"`；统计分类按线名 `輕鐵` 前缀区分重铁 / 轻铁 |
+| 主数据服务 | 港铁（MTR）官方行程指南 payload + `mtr_lines_and_stations.csv` / `light_rail_routes_and_stops.csv` 开放数据；香港电车有限公司 `summary_tram_stops_{tc,sc,en}.csv` 官方电车站开放数据 |
+| 站点主键 | `{线路别名}-{官方站别名}`（重铁 `TML-MTR-WKS`，轻铁 `LR-505-LR-10`，电车 `TRAM-E-01E`；见 §2.3） |
+| 路线主键 | 显示线路 id `hk-mtr-*`（`hk-mtr-ael` / `hk-mtr-eal-low` / `hk-mtr-lr-505` …）与 `hk-tram-*`（`hk-tram-east` / `hk-tram-west` / `hk-tram-hv` / `hk-tram-np`）；东铁 / 将军澳按官方支线拆分 |
+| 站名 / 路线名 | 官方繁中 `nameTC` / 简中 `nameSC` / 英文 `name`；电车取官方站表三语行 |
+| 运营者 | `MTR`（重铁与全部 11 条轻铁路线）与 `香港電車`（港岛电车）两个 canonical company 值 |
+| 几何 | LandsD iB1000 官方制图几何为权威；公开 iB1000 把地下铁路隧道并入通用 `TUR`，这些未分类地下区间由 OSM 路线关系作 ODbL 连续性补充；电车轨道整体取自 OSM `route=tram` 关系 |
+| 当前打包产物 | `app/public/rail/hk-2025.json`，`country: "HK"`，27 条线路（12 重铁分支 + 11 轻铁路线 + 4 条电车轨道） |
+| 求解数据集 | `rail-sections-hk.json` / `stations-hk.json`：全网统一 `institution_type_code: "4"`、`railway_class_code: "21"`；统计分类先按 `operator == 香港電車` 分出电车，MTR 内部再按线名 `輕鐵` 前缀区分重铁 / 轻铁 |
 | 坐标系 | WGS84 |
-| 许可 | DATA.GOV.HK 条款（MTR 开放数据）+ LandsD HKMS 2.0 开放制图 + ODbL（OSM 补充段）；`geometrySource` 保留 providers / license / sourceSha256 |
+| 许可 | DATA.GOV.HK 条款（MTR 与香港电车开放数据）+ LandsD HKMS 2.0 开放制图 + ODbL（OSM 补充段与电车轨道）；`geometrySource` 保留 providers / license / sourceSha256 |
+
+电车按**实体轨道**而非 6 条官方营运路线建模：6 条路线共用同一条双轨走廊，
+按路线建模会把同一段轨道画 5–6 遍并把电车里程从约 30 km 夸大到约 150 km。
+因此打包为东行轨、西行轨、跑马地支线与春秧街支线四条；两条支线各自重复
+其分岔与汇入处的干线车站（49E/52W、65E/32W），共享站组 ID 以免成为孤岛。
+官方站表里三个车厂专用站（`94W` / `97E` / `D`）不在任何营运路线关系上，不予发布。
 
 ```text
 geometrySource.officialOnly = 0   （存在 OSM 地下连续性补充段）
@@ -1733,6 +1740,33 @@ geometrySource.officialOnly = 0   （存在 OSM 地下连续性补充段）
 ```text
 geometrySource.officialOnly = 1
 ```
+
+### 2.10 韩国官方铁路数据源
+
+| 项目 | 内容 |
+| --- | --- |
+| 主数据服务 | 公共数据门户 data.go.kr：国土交通部《도시철도 전체노선》（46 线 1,103 站官方站序 순번）、国家铁道公团《철도역 정보》（一般/高速客运站 WGS84 坐标 + 한자·영문 站名）、韩国铁道公社《KTX 노선별 역정보》与《역 위치 정보》、首尔交通公社《1~8호선 역사 좌표》、国家铁道公团各线《역위치》(27)／《역간거리》(24) |
+| 站点主键 | `{线路 codePrefix}-{站别名}`（`KR-GYEONGBUSEON-SEOUL`；见 §2.3） |
+| 路线主键 | 显示线路 id `kr-{线名罗马字}`（`kr-gyeongbuseon` / `kr-gyeongbugosokseon` / `kr-seoul-jihacheol-2hoseon`…） |
+| 站名 / 路线名 | 官方한글为基准名；`한자역사명`/`역이름_중국어` 供繁体、OpenCC 转简体，`영문역사명` 供英文 |
+| 运营者 | 官方 운영기관명（한국철도공사 / 서울교통공사 / 부산교통공사 / 에스알 …） |
+| 几何 | **韩国不公开开放的轨道线形**（국토지리정보원 철도중심선 所在的 국가공간정보포털 域名已不可解析、V-World API 需密钥、국토정보플랫폼 需登录申请），故取 OpenStreetMap 韩国抽取包（Geofabrik，ODbL）：路线关系按共享节点成链（港铁法），干线按「本线命名轨子图 + 站到站最短路」重建（台湾法） |
+| 当前打包产物 | `app/public/rail/kr-2025.json`，`country: "KR"`，78 条线路 / 1,496 站行 / 约 4,262 km |
+| 求解数据集 | `rail-sections-kr.json` / `stations-kr.json`：institution 1=고속철도、2=한국철도공사 일반철도、3=公营都市铁道、4=民资轻轨；class 11/12=普通铁道、21=경전철、31=单轨·磁浮 |
+| 坐标系 | WGS84 |
+| 许可 | data.go.kr「이용허락범위 제한 없음」（官方记录）+ ODbL（OSM 轨道几何）；`geometrySource` 保留 providers / license / sourceSha256 |
+
+```text
+geometrySource.officialOnly = 0   （轨道几何来自 OSM）
+geometrySource.osmSources   = 1
+```
+
+**显示线路是实体铁路，不是运营品牌**：수도권 전철 1호선 跑在 경부선＋경인선＋경원선＋장항선 的同一批轨道上，
+경의·중앙선 跑在 경의선＋중앙선，수인·분당선 跑在 수인선＋분당선。若按品牌发布会把同一段轨道画两三遍、
+里程翻倍（与香港电车同型问题），故包内只收实体线路，官方运营线作为站点属性记录；
+候选线路若有 85% 以上落在已收线路 60 m 内亦不重复发布。인천공항 자기부상철도（2023-09 起停运）不收录。
+
+站点吸附几何为沿线 ≤180 m 短桩（同 §2.8），禁止把整段邻站区间写入 station feature。
 
 ---
 
@@ -2398,7 +2432,7 @@ route_sections 只保留 from/to 码：其 from/to 站名与 stops 重复、可�
 生成命令（官方快照目录由 `download-taiwan-rail-official.py` 产生）：
 
 ```sh
-python3 scripts/build-taiwan-station-readings.py \
+python3 scripts/railway/build-taiwan-station-readings.py \
   --source-dir /private/tmp/tw-rail-official
 ```
 
@@ -2410,10 +2444,10 @@ python3 scripts/build-taiwan-station-readings.py \
 
 | 字段 / 索引 | 规则 |
 | --- | --- |
-| `byCode[官方站点代码]` | §2.3 的持久化站点代码（`TML-MTR-WKS` / `MLM-TAIPA-MLM-BARRA`），逐线逐站全量收录 |
-| `byCode["<line.id>:<station-group-id>"]` | 台湾式网络别名（例如 `hk-mtr-tml:hk-official-mtr-wks`），供 compact rail package 的 marker 精确查表 |
-| `name` / `zh_Hant` | 官方繁中站名（港铁 `nameTC` / 澳门轻轨官方名） |
-| `zh_Hans` | 香港优先采用港铁官方简体 `nameSC`（例如 鰂魚涌→鲗鱼涌）；无官方值时按打包脚本字表转换。澳门按字表转换 |
+| `byCode[官方站点代码]` | §2.3 的持久化站点代码（`TML-MTR-WKS` / `TRAM-E-01E` / `MLM-TAIPA-MLM-BARRA`），逐线逐站全量收录 |
+| `byCode["<line.id>:<station-group-id>"]` | 台湾式网络别名（例如 `hk-mtr-tml:hk-official-mtr-wks`、`hk-tram-np:hk-official-tram-67e`），供 compact rail package 的 marker 精确查表 |
+| `name` / `zh_Hant` | 官方繁中站名（港铁 `nameTC` / 香港电车官方站表繁中行 / 澳门轻轨官方名） |
+| `zh_Hans` | 香港优先采用官方简体（港铁 `nameSC`，例如 鰂魚涌→鲗鱼涌；电车取官方简体站表行）；无官方值时按打包脚本字表转换。澳门按字表转换 |
 | `en` | 官方英文站名 |
 | `ja` | 两地运营方均无官方日文译名，固定为空字符串；显示层按查表顺序回退到官方繁中名 |
 | `byName` | 同名无歧义站名兜底，规则与台湾表一致 |
@@ -2424,9 +2458,9 @@ python3 scripts/build-taiwan-station-readings.py \
 生成命令（同一脚本一并产出 package / 求解数据集 / readings / 示例 store）：
 
 ```sh
-python3 scripts/build-hong-kong-rail-package.py \
+python3 scripts/railway/build-hong-kong-rail-package.py \
   --mtr-html /tmp/mtr-jp.html --mtr-csv /tmp/mtr_lines_and_stations.csv
-python3 scripts/build-macao-rail-package.py
+python3 scripts/railway/build-macao-rail-package.py
 ```
 
 ---

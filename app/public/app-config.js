@@ -71,7 +71,7 @@ function installLongTaskObserver() {
 // stays reachable.
 let TRAIN_STORE_API = "train-store";
 const COUNTRY_STORAGE_KEY = "n02-active-country";
-const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo"];
+const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
 let activeCountry = "jp";
 // Every per-country resource name flows through AppCore.countrySuffixed
 // (Japan keeps the historical unsuffixed name, others get "-{country}") —
@@ -163,6 +163,7 @@ const COUNTRY_SAMPLE_DATA_APIS = {
   tw: "sample-data-tw",
   hk: "sample-data-hk",
   mo: "sample-data-mo",
+  kr: "sample-data-kr",
 };
 const NEW_YEAR_GRAND_LOOP_API = "new-year-grand-loop-data";
 const TOKYO_LIMITED_EXPRESS_LOOP_API = "tokyo-limited-express-loop-data";
@@ -219,17 +220,29 @@ const MACAO_BOUNDS = [
   [22.1, 113.52],
   [22.23, 113.61],
 ];
+// South Korea: the overview frames the mainland network (목포/부산 up to
+// 도라산 on the 경의선), the territory clamp adds Jeju and the offshore margin.
+const KOREA_MAINLAND_BOUNDS = [
+  [34.2, 125.8],
+  [38.4, 129.6],
+];
+const KOREA_FULL_TERRITORY_BOUNDS = [
+  [33.0, 124.5],
+  [38.7, 131.1],
+];
 const COUNTRY_OVERVIEW_BOUNDS = {
   jp: JAPAN_MAIN_ISLANDS_BOUNDS,
   tw: TAIWAN_MAIN_ISLAND_BOUNDS,
   hk: HONG_KONG_BOUNDS,
   mo: MACAO_BOUNDS,
+  kr: KOREA_MAINLAND_BOUNDS,
 };
 const COUNTRY_TERRITORY_BOUNDS = {
   jp: JAPAN_FULL_TERRITORY_BOUNDS,
   tw: TAIWAN_FULL_TERRITORY_BOUNDS,
   hk: HONG_KONG_BOUNDS,
   mo: MACAO_BOUNDS,
+  kr: KOREA_FULL_TERRITORY_BOUNDS,
 };
 // The map frames / clamps to the ACTIVE country (see loadActiveCountry).
 function activeCountryOverviewBounds() {

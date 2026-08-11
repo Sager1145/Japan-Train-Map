@@ -86,6 +86,7 @@ jobs:
         run: |
           npm run precompute:hk
           npm run precompute:mo
+          npm run precompute:kr
         working-directory: app
 
       # The two special-sample loops ship as their own datasets (the 資料 card

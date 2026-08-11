@@ -315,7 +315,7 @@ async function replaceTrainStoreFromStoreProgressive(
 
 // ---------------------------------------------------------------------------
 // Sample-data parts (static deploys). The deploy pipeline runs the route
-// solver OFFLINE (app/scripts/precompute-train-parts.mjs) and publishes the
+// solver OFFLINE (app/scripts/build/precompute-train-parts.mjs) and publishes the
 // SAMPLE dataset as api/sample-data/: a manifest plus one part-NNN.json per
 // train, each carrying the raw train AND its solved route geometry keyed by
 // the exact cacheKey prepareTrainRouteSolve() computes. The manifest's `dates`
@@ -645,6 +645,11 @@ const CURATED_DATASET_BUTTONS = [
   },
   {
     buttonId: "load-sample-all-mo",
+    confirmKey: "confirm.loadSampleAll",
+    load: () => loadSampleData({ date: null }),
+  },
+  {
+    buttonId: "load-sample-all-kr",
     confirmKey: "confirm.loadSampleAll",
     load: () => loadSampleData({ date: null }),
   },
@@ -996,6 +1001,7 @@ function updateDataSourceUi() {
     "load-sample-all-tw",
     "load-sample-all-hk",
     "load-sample-all-mo",
+    "load-sample-all-kr",
   ]) {
     const btn = document.getElementById(id);
     if (btn) btn.disabled = dataSourceMode === "sample-all";

@@ -65,6 +65,7 @@
     "country.tw": { zh: "台灣", en: "Taiwan" },
     "country.hk": { zh: "香港", en: "Hong Kong" },
     "country.mo": { zh: "澳門", en: "Macao" },
+    "country.kr": { zh: "韓國", en: "South Korea" },
 
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
@@ -154,6 +155,10 @@
     "btn.loadSampleAllMo": {
       zh: "載入澳門示例資料",
       en: "Load Macao Sample Data",
+    },
+    "btn.loadSampleAllKr": {
+      zh: "載入韓國示例資料",
+      en: "Load South Korea Sample Data",
     },
     "btn.loadNewYearGrandLoop": {
       zh: "載入跨年大回行程",
@@ -318,10 +323,21 @@
     "stat.tram.tw": { zh: "輕軌", en: "Light rail" },
     // Hong Kong / Macao coverage buckets (see STAT_CATEGORIES_BY_COUNTRY):
     // MTR heavy rail rides the metro slot, Light Rail rides the tram slot,
-    // and Macao's single LRT system rides the metro slot.
+    // Hong Kong Tramways rides the "other railway" slot, and Macao's single
+    // LRT system rides the metro slot.
     "stat.metro.hk": { zh: "港鐵重鐵", en: "MTR heavy rail" },
     "stat.tram.hk": { zh: "輕鐵", en: "Light Rail" },
+    "stat.priv.hk": { zh: "電車", en: "Tramways" },
     "stat.metro.mo": { zh: "澳門輕軌", en: "Macao LRT" },
+    // South Korea's buckets over the same mask bits: KTX/SRT high speed, the
+    // KORAIL conventional network, municipal 도시철도, private 경전철 and the
+    // monorail / maglev slot (see STAT_CATEGORIES_BY_COUNTRY.kr).
+    "stat.hsr.kr": { zh: "高速鐵道（KTX・SRT）", en: "High Speed Rail (KTX/SRT)" },
+    "stat.conv.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
+    "stat.metro.kr": { zh: "都市鐵道", en: "Urban rail" },
+    "stat.tram.kr": { zh: "輕電鐵", en: "Light rail" },
+    "stat.priv.kr": { zh: "單軌・磁浮", en: "Monorail & maglev" },
+    "stat.all.kr": { zh: "全韓", en: "Nationwide" },
     "stat.allrail": { zh: "全部鐵道", en: "All Railways" },
     "stat.jrconv": { zh: "JR在來線", en: "JR Conventional" },
     "stats.loading": { zh: "正在載入路網資料…", en: "Loading rail network…" },
@@ -518,8 +534,8 @@
     },
     "info.hkRailTitle": { zh: "香港鐵路網", en: "Hong Kong railway network" },
     "info.hkRailBody": {
-      zh: "依香港鐵路有限公司官方行程指南與開放數據加工製作，包含港鐵重鐵及全部 11 條輕鐵路線。",
-      en: "Derived from MTR Corporation's official journey planner and open data, including heavy rail and all 11 Light Rail routes.",
+      zh: "依香港鐵路有限公司官方行程指南與開放數據，以及香港電車有限公司官方電車站開放數據加工製作，包含港鐵重鐵、全部 11 條輕鐵路線及港島電車軌道。",
+      en: "Derived from MTR Corporation's official journey planner and open data plus Hong Kong Tramways' official tram stop list, covering heavy rail, all 11 Light Rail routes and the Hong Kong Island tramway.",
     },
     "info.moRailTitle": { zh: "澳門輕軌網", en: "Macao LRT network" },
     "info.moRailBody": {
@@ -540,6 +556,10 @@
     "map.riddenGroup": { zh: "已乘路線顯示", en: "Ridden Lines" },
     "map.riddenJr": { zh: "JR在來線", en: "JR Conventional" },
     "map.riddenPriv": { zh: "私鐵・其他", en: "Private / Other" },
+    // South Korea reuses the same four filter slots: KTX/SRT, KORAIL
+    // conventional, urban rail and the light/monorail remainder.
+    "map.riddenJr.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
+    "map.riddenPriv.kr": { zh: "輕電鐵・單軌", en: "Light rail & monorail" },
     "map.unavailable": { zh: "不可用", en: "unavailable" },
     "map.connecting": { zh: "連線中…", en: "connecting…" },
     "map.retryFailed": { zh: "重試失敗", en: "retry failed" },
@@ -837,6 +857,7 @@
     "country.tw": "台湾",
     "country.hk": "香港",
     "country.mo": "マカオ",
+    "country.kr": "韓国",
     "disp.reset": "初期設定に戻す",
     "theme.label": "テーマ",
     "theme.system": "システム",
@@ -888,6 +909,7 @@
     "btn.loadSampleAllTw": "台湾サンプルデータを読み込む",
     "btn.loadSampleAllHk": "香港サンプルデータを読み込む",
     "btn.loadSampleAllMo": "マカオサンプルデータを読み込む",
+    "btn.loadSampleAllKr": "韓国サンプルデータを読み込む",
     "btn.loadNewYearGrandLoop": "年越し大回り行程を読み込む",
     "btn.loadTokyoLimitedExpressLoop": "東京特急大回り行程を読み込む",
     "btn.restoreMine": "自分のデータを復元",
@@ -987,7 +1009,14 @@
     "stat.tram.tw": "ライトレール",
     "stat.metro.hk": "MTR（重鉄）",
     "stat.tram.hk": "ライトレール（軽鉄）",
+    "stat.priv.hk": "香港トラム",
     "stat.metro.mo": "マカオLRT",
+    "stat.hsr.kr": "高速鉄道（KTX・SRT）",
+    "stat.conv.kr": "韓国鉄道（一般鉄道）",
+    "stat.metro.kr": "都市鉄道",
+    "stat.tram.kr": "軽電鉄",
+    "stat.priv.kr": "モノレール・リニア",
+    "stat.all.kr": "韓国全域",
     "stat.allrail": "全鉄道",
     "stat.jrconv": "JR在来線",
     "stat.rides": "{n} 回",
@@ -1077,7 +1106,7 @@
     "info.twTaipei": "台北メトロ GIS",
     "info.twLicense": "政府データオープンライセンス",
     "info.hkRailTitle": "香港の鉄道網",
-    "info.hkRailBody": "香港鉄路有限公司の公式経路案内とオープンデータを加工し、MTR と全 11 系統のライトレールを収録しています。",
+    "info.hkRailBody": "香港鉄路有限公司の公式経路案内・オープンデータと、香港電車有限公司の公式停留所データを加工し、MTR と全 11 系統のライトレール、香港島のトラム軌道を収録しています。",
     "info.moRailTitle": "マカオ LRT 網",
     "info.moRailBody": "マカオ LRT 株式会社が公開する現行路線・駅の公式情報を加工して作成しています。",
     "map.layers": "地図レイヤー",
@@ -1089,6 +1118,8 @@
     "map.terminals": "端点駅（始発／終着）",
     "map.passThrough": "通過駅",
     "map.allRailways": "全鉄道路線",
+    "map.riddenJr.kr": "韓国鉄道（一般鉄道）",
+    "map.riddenPriv.kr": "軽電鉄・モノレール",
     "map.riddenGroup": "乗車済み路線の表示",
     "map.riddenJr": "JR在来線",
     "map.riddenPriv": "私鉄・その他",

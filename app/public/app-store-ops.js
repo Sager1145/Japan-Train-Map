@@ -632,6 +632,19 @@ function createBlankTrain() {
       lineName: "機場快綫",
       color: "#1C7670",
     });
+  if (activeCountry === "kr")
+    return createBlankRegionalTrain({
+      id: "KR-KORAIL",
+      trainType: "무궁화호",
+      company: "한국철도공사",
+      origin: "서울",
+      destination: "영등포",
+      originCode: "KR-GYEONGBUSEON-SEOUL",
+      destinationCode: "KR-GYEONGBUSEON-YEONGDEUNGPO",
+      lineName: "경부선",
+      color: "#0067A3",
+      institutionCode: "2",
+    });
   if (activeCountry === "mo")
     return createBlankRegionalTrain({
       id: "MO-LRT",
@@ -663,7 +676,7 @@ function createBlankRegionalTrain(config) {
       jr_only: false,
       allow_alternatives: false,
       allow_browser_straight_line_fallback: false,
-      allowed_institution_type_codes: ["4"],
+      allowed_institution_type_codes: [config.institutionCode || "4"],
       preferred_line_names: [config.lineName],
       preferred_operator_names: [config.company],
       institution_filter_mode: "hard",

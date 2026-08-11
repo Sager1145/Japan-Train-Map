@@ -233,7 +233,7 @@
   let STATION_READINGS_COUNTRY = "JP";
   // Countries whose readings table localizes the base station NAME itself
   // (rather than annotating a Japanese name with kana/romaji sublines).
-  const LOCALIZED_NAME_COUNTRIES = new Set(["TW", "HK", "MO"]);
+  const LOCALIZED_NAME_COUNTRIES = new Set(["TW", "HK", "MO", "KR"]);
   // One station-name key rule for the whole system, owned by AppCore (the
   // station-resolution index and the build scripts use the same function).
   // app-core.js loads before this file — same load-order contract as
@@ -365,7 +365,7 @@
   // the country in via I18N.setCountry (i18n.js loads before app-config.js).
   let uiCountry = "jp";
   function setCountry(country) {
-    uiCountry = ["jp", "tw", "hk", "mo"].includes(country) ? country : "jp";
+    uiCountry = ["jp", "tw", "hk", "mo", "kr"].includes(country) ? country : "jp";
   }
   function countryVariantKey(key) {
     if (uiCountry === "jp") return key;
