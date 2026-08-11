@@ -5,7 +5,7 @@
 // with sha256(JSON.stringify(...)).
 
 export const EXPECTED_RENDER_HASH =
-  "291dcf80ccc4ed4dbf172661585e7de7c49032b3ee9c7ca19529f008a727e0d2";
+  "fd6089dd1dd43ebd8b8bf11250185e93fd06dd36aa23359b2e4e1ccd0e8d7215";
 
 export function renderRelevantSnapshot(network) {
   return {

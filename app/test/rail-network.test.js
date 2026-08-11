@@ -13,13 +13,14 @@ const PACKAGE_PATH = path.join(
   __dirname,
   "../public/rail/jp-2025.json",
 );
-// 601 lines, not 600: the 砂原支線 southern half ships as its own `-2` entry
-// (scripts/restore-hakodate-sunahara-branch.mjs), and its two stations are
-// second copies of 大沼 / 鹿部 sharing their existing station groups.
+// 602 lines, not 600: the 砂原支線 and the 辰野支線 each ship as their own
+// `-2` entry (scripts/split-interleaved-branches.mjs). Their junction stations
+// are second copies sharing the existing station groups, so `groups` is
+// unchanged while `stations` grows by four.
 const EXPECTED_COUNTS = Object.freeze({
-  segments: 601,
-  stations: 10153,
-  lines: 601,
+  segments: 602,
+  stations: 10155,
+  lines: 602,
   groups: 9046,
 });
 test("compact rail package produces the characterized render model", async () => {

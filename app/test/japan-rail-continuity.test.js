@@ -26,8 +26,8 @@ function decodedIntervals(line) {
 
 test("every Japanese package line is seam-free before it reaches the renderer", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
-  assert.equal(pkg.version, "2025.3.1");
-  assert.equal(pkg.lines.length, 601);
+  assert.equal(pkg.version, "2025.3.2");
+  assert.equal(pkg.lines.length, 602);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

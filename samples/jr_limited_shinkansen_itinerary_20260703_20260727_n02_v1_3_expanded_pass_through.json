@@ -12581,16 +12581,6 @@
         },
         {
           "from_n02_station_code": "000424",
-          "to_n02_station_code": "000422",
-          "line_names": [
-            "函館線"
-          ],
-          "operator_names": [
-            "北海道旅客鉄道"
-          ]
-        },
-        {
-          "from_n02_station_code": "000422",
           "to_n02_station_code": "000420",
           "line_names": [
             "函館線"
@@ -13184,14 +13174,6 @@
         {
           "name": "駒ヶ岳",
           "n02_station_code": "000424",
-          "arrival": null,
-          "departure": null,
-          "stop_type": "pass_through",
-          "ride_segment": true
-        },
-        {
-          "name": "東森",
-          "n02_station_code": "000422",
           "arrival": null,
           "departure": null,
           "stop_type": "pass_through",

@@ -134,11 +134,12 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 317/310, one more than before the 砂原支線 `-2` entry was restored: it is
-  // a second 函館線 row and, like every `-2` split, ships no package badge.
-  assert.equal(missingBadgeLines.length, 317);
+  // 318/311, two more than before the 砂原支線 and 辰野支線 were split out:
+  // each is a second row for its line and, like every `-2` split, ships no
+  // package badge of its own.
+  assert.equal(missingBadgeLines.length, 318);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 310);
+  assert.equal(coveredLines.length, 311);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(
