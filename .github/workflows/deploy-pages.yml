@@ -76,7 +76,19 @@ jobs:
       # transient timing failure on a contended hosted runner; two failures
       # still fail the job and block deployment.
       - name: Run tests
-        run: npm test -- --test-concurrency=1 || npm test -- --test-concurrency=1
+        shell: bash
+        run: |
+          set +e
+          npm test -- --test-concurrency=1 2>&1 | tee test-output.log
+          test_status=${PIPESTATUS[0]}
+          if (( test_status != 0 )); then
+            npm test -- --test-concurrency=1 2>&1 | tee test-output-retry.log
+            test_status=${PIPESTATUS[0]}
+            if (( test_status != 0 )); then
+              node scripts/validation/report-test-failure.mjs test-output-retry.log
+            fi
+          fi
+          exit "$test_status"
         working-directory: app
 
       - name: Configure Pages
