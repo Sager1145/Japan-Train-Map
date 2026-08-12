@@ -193,7 +193,6 @@ function finalizeManifestFromParts() {
   const manifest = {
     format: 1,
     schema_version: store.schema_version || "1.3",
-    generated_at: new Date().toISOString(),
     total: store.trains.length,
     solved: solvedCount,
     unsolvable: unsolvableCount,
@@ -349,7 +348,6 @@ async function main() {
     const manifest = {
       format: 1,
       schema_version: summary.schemaVersion || "1.3",
-      generated_at: new Date().toISOString(),
       total: summary.total,
       solved: solvedCount,
       unsolvable: unsolvableCount,

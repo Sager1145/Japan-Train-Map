@@ -32,10 +32,11 @@ permissions:
   pages: write
   id-token: write
 
-# Let a running deploy finish rather than cancelling it mid-publish.
+# Pages must always represent the newest main commit. Cancel a superseded run
+# so an older artifact cannot publish after a newer push or duplicate delivery.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
