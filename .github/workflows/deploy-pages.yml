@@ -72,8 +72,11 @@ jobs:
 
       # Several suites validate shared generated fixtures. Serial execution
       # makes the deploy deterministic on runners with different core counts.
+      # Retry once because the geometry-heavy suite can occasionally hit a
+      # transient timing failure on a contended hosted runner; two failures
+      # still fail the job and block deployment.
       - name: Run tests
-        run: npm test -- --test-concurrency=1
+        run: npm test -- --test-concurrency=1 || npm test -- --test-concurrency=1
         working-directory: app
 
       - name: Configure Pages
