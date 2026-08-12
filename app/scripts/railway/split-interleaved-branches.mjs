@@ -74,6 +74,17 @@ const CASES = [
     branchOnly: ['八丁畷', '川崎新町', '小田栄', '浜川崎'],
   },
   {
+    // 東武小泉線 has two services meeting at 東小泉. The package interleaved
+    // the 太田 branch between 小泉町 and 西小泉, which made the final interval
+    // run 太田 → 東小泉 → 西小泉 and double back at the junction. Keep the
+    // 館林—西小泉 route as the trunk and make 東小泉—太田 its own branch.
+    trunkId: 'jp-東武鉄道-小泉線',
+    branchId: 'jp-東武鉄道-小泉線-2',
+    trunkWindow: ['東小泉', '小泉町', '西小泉'],
+    branchOrder: ['東小泉', '竜舞', '太田'],
+    branchOnly: ['竜舞', '太田'],
+  },
+  {
     // 常陸太田支線. Branches at 上菅谷, dead-ends at 常陸太田. The package put
     // 南酒出 between 上菅谷 and 常陸鴻巣 on the main line and stranded the other
     // four branch stations at the very END of the list, after 安積永盛 — 100 km

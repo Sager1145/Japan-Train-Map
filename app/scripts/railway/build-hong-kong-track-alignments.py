@@ -22,7 +22,7 @@ detail, e.g.:
 Usage:
   python3 scripts/railway/build-hong-kong-track-alignments.py \
     --osm /tmp/hk-osm-rail-full.json \
-    --output scripts/railway/data/hk-track-alignments.json
+    --output data/raw/railway/hk/hk-track-alignments.json
 """
 
 from __future__ import annotations

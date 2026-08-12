@@ -59,7 +59,7 @@ const APP_DIR = path.resolve(
 );
 const RailNetwork = require(path.join(APP_DIR, "public/rail-network.js"));
 
-const COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
+export const COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
 
 // ── thresholds ───────────────────────────────────────────────────────────────
 // A station anchor sits up to ~130 m off the surveyed centre-line in jp-2025,
@@ -88,9 +88,9 @@ const CORRIDOR_MIN_LENGTH_METERS = 800;
 // railways stop overlapping on screen?". test/railway-topology-audit.test.js
 // asserts the two copies agree, so the mirror cannot drift.
 const RENDER_STYLE = Object.freeze({
-  stationDiameterPx: 7,
-  railWidthPx: 3.5,
-  parallelGapPx: 1.4,
+  stationDiameterPx: 6,
+  railWidthPx: 3,
+  parallelGapPx: 1.2,
   // …and the scale ramp those weights ride: full weight from this zoom in,
   // then base^(zoom − anchor) down to a floor.
   fullWeightZoom: 7,
@@ -671,6 +671,7 @@ const SAMPLE_DIRECTORIES = {
   tw: ["data/sample-data-tw"],
   hk: ["data/sample-data-hk"],
   mo: ["data/sample-data-mo"],
+  kr: ["data/sample-data-kr"],
 };
 // Metres, not pixels: only the SIDE is under test, and any positive scale
 // separates "on its railway" from "one corridor over".

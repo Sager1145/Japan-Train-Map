@@ -4,7 +4,7 @@
 The current line and station order comes from the Macao LRT Corporation
 route page; the small coordinate table is traced from the operator's
 published station maps. Track curves are cut from the prepared route
-centre-lines in ``scripts/railway/data/mo-track-alignments.json`` (built by
+centre-lines in ``data/raw/railway/mo/mo-track-alignments.json`` (built by
 scripts/railway/build-macao-track-alignments.py from DSCC's official Online Map).
 
 Outputs (mirroring the Japan/Taiwan layout):
@@ -46,7 +46,7 @@ from lib.geometry import (
 APP_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = APP_DIR / "data"
 RAIL_DIR = APP_DIR / "public" / "rail"
-TRACK_DATA = Path(__file__).resolve().parent / "data" / "mo-track-alignments.json"
+TRACK_DATA = DATA_DIR / "raw" / "railway" / "mo" / "mo-track-alignments.json"
 
 PACKAGE_VERSION = "2025.2.0"
 GENERATED_AT = "2026-08-10T00:00:00.000Z"

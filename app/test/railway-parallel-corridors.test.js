@@ -227,20 +227,18 @@ test("the parallel gap is an edge-to-edge screen-space constant", () => {
   assert.ok(tokens.parallelGapPx <= 0.6 * tokens.railWidthPx);
 });
 
-// ── the bundle is screen-space at EVERY zoom ────────────────────────────────
+// ── the bundle keeps one shared visual scale at EVERY zoom ─────────────────
 //
-// Zoom changes the map under the railway; it must not change the railway drawn
-// on it. Pull back and a bundle whose gap scaled with zoom welds itself into
-// one stroke — two railways reading as one, which is the single thing the
-// lanes exist to prevent; push in and the same bundle fans into a ladder that
-// says the two run further apart than they do.
+// Below z7 the whole railway language deliberately gets lighter. Every width,
+// gap, offset and marker must follow the same factor so the bundle retains its
+// proportions instead of welding or fanning out relative to its own strokes.
 //
 // Every check below reads validateParallelZoomStability(), which evaluates the
 // BUILT style's own paint expressions at a spread of zooms and reports the
 // pixel sizes a reader would see at each. Measuring the built style rather
 // than the tokens is the point: a ramp reintroduced on any single property
 // fails these instead of hiding behind the token it was applied to.
-const ZOOM_LEVELS = [8, 10, 12, 14, 16, 18];
+const ZOOM_LEVELS = [3, 5, 8, 10, 12, 14, 16, 18];
 
 let cachedStability = null;
 /** The three-lane case at every zoom level, measured once. */
@@ -253,7 +251,7 @@ function zoomStability() {
   return cachedStability;
 }
 
-test("a bundle draws the same at z8 as at z18", () => {
+test("parallel_zoom_levels_include_3_and_5", () => {
   const report = zoomStability();
   assert.deepEqual(Array.from(report.zooms), ZOOM_LEVELS);
   assert.equal(report.samples.length, ZOOM_LEVELS.length);
@@ -263,26 +261,31 @@ test("a bundle draws the same at z8 as at z18", () => {
   assert.equal(report.ok, true);
 });
 
-test("the parallel gap is the same number of pixels at every zoom", () => {
+test("parallel_spread_is_scale_normalized", () => {
   const report = zoomStability();
   const gaps = report.samples.map((sample) => sample.parallelGapPx);
   const style = loadStyle();
-  // The gap a reader sees IS the token, at every one of them.
+  // The gap follows the one shared railway scale; dividing it out recovers
+  // the full-weight token at every zoom.
   for (const [index, gap] of gaps.entries())
     assert.ok(
-      Math.abs(gap - style.RAILWAY_STYLE.parallelGapPx) <= report.tolerancePx,
+      Math.abs(
+        gap / style.railwayScaleAt(report.zooms[index]) -
+          style.RAILWAY_STYLE.parallelGapPx,
+      ) <= report.tolerancePx,
       `z${report.zooms[index]} draws a ${gap.toFixed(4)} px gap`,
     );
   assert.ok(report.spreadPx.parallelGapPx <= report.tolerancePx);
 });
 
-test("lane centre spacing is the same number of pixels at every zoom", () => {
+test("lane centre spacing follows the shared zoom scale", () => {
   const report = zoomStability();
   const style = loadStyle();
   const expected = style.parallelLaneCentreDistancePx();
   for (const sample of report.samples) {
     assert.ok(
-      Math.abs(sample.centreSpacingPx - expected) <= report.tolerancePx,
+      Math.abs(sample.centreSpacingPx / sample.scale - expected) <=
+        report.tolerancePx,
       `z${sample.zoom} spaces lane centres ${sample.centreSpacingPx.toFixed(4)} px apart`,
     );
     // …and evenly: with three lanes, the middle one stays on the alignment the
@@ -292,7 +295,7 @@ test("lane centre spacing is the same number of pixels at every zoom", () => {
   assert.ok(report.spreadPx.centreSpacingPx <= report.tolerancePx);
 });
 
-test("a bundle keeps its total width at every zoom", () => {
+test("a bundle keeps its normalized total width at every zoom", () => {
   const report = zoomStability();
   const style = loadStyle();
   // Three strokes and two gaps, however far in or out the map is.
@@ -303,25 +306,34 @@ test("a bundle keeps its total width at every zoom", () => {
   );
   for (const sample of report.samples)
     assert.ok(
-      Math.abs(sample.bundleWidthPx - expected) <= report.tolerancePx,
+      Math.abs(sample.bundleWidthPx / sample.scale - expected) <=
+        report.tolerancePx,
       `z${sample.zoom} draws a ${sample.bundleWidthPx.toFixed(4)} px bundle`,
     );
   assert.ok(report.spreadPx.bundleWidthPx <= report.tolerancePx);
 });
 
-test("the strokes inside a bundle keep their width at every zoom", () => {
+test("the strokes inside a bundle follow the shared zoom scale", () => {
   const report = zoomStability();
   const style = loadStyle();
+  const normalizedRiddenWidth =
+    report.samples[0].riddenWidthPx / report.samples[0].scale;
   // Fixing the gap while the strokes thinned would change the edge-to-edge
   // distance the reader actually perceives, so BOTH are pinned — the railway's
   // own stroke and the ride drawn inside its lane.
   for (const sample of report.samples) {
     assert.ok(
-      Math.abs(sample.railWidthPx - style.RAILWAY_STYLE.railWidthPx) <=
+      Math.abs(
+        sample.railWidthPx / sample.scale - style.RAILWAY_STYLE.railWidthPx,
+      ) <=
         report.tolerancePx,
       `z${sample.zoom} draws a ${sample.railWidthPx.toFixed(4)} px rail`,
     );
     assert.ok(sample.riddenWidthPx > 0);
+    assert.ok(
+      Math.abs(sample.riddenWidthPx / sample.scale - normalizedRiddenWidth) <=
+        report.tolerancePx,
+    );
   }
   assert.ok(report.spreadPx.railWidthPx <= report.tolerancePx);
   assert.ok(report.spreadPx.riddenWidthPx <= report.tolerancePx);
@@ -341,7 +353,7 @@ test("a ride sits in the railway's own lane at every zoom", () => {
     );
 });
 
-test("a platform marker spans the same lanes at every zoom", () => {
+test("a platform marker follows the same zoom scale as its lanes", () => {
   const report = zoomStability();
   const style = loadStyle();
   // The stub is what a station in a lane is drawn as, so its thickness IS the
@@ -350,7 +362,10 @@ test("a platform marker spans the same lanes at every zoom", () => {
   // metres between the railways underneath.
   for (const sample of report.samples)
     assert.ok(
-      Math.abs(sample.slotThicknessPx - style.RAILWAY_STYLE.stationDiameterPx) <=
+      Math.abs(
+        sample.slotThicknessPx / sample.scale -
+          style.RAILWAY_STYLE.stationDiameterPx,
+      ) <=
         report.tolerancePx,
       `z${sample.zoom} draws a ${sample.slotThicknessPx.toFixed(4)} px platform`,
     );
@@ -400,13 +415,37 @@ test("the zoom-stability check fails a bundle that scales with zoom", () => {
   const at = (zoom) => style.evaluateScreenValue(laneRamp, zoom, { lane: 1 });
   assert.ok(Math.abs(at(20) - at(4)) > 1);
   // …and an expression the evaluator does not know is never read as constant.
-  assert.ok(Number.isNaN(style.evaluateScreenValue(["case", true, 1, 2], 8, {})));
+  assert.ok(
+    Number.isNaN(style.evaluateScreenValue(["heatmap-density"], 8, {})),
+  );
+  assert.ok(
+    Number.isNaN(style.evaluateScreenValue(["image", "rn-station"], 8, {})),
+  );
+  // The LOD gates ARE known, and have to be evaluated rather than shrugged at,
+  // or every opacity in this style reads NaN and no test can hold one.
+  assert.equal(style.evaluateScreenValue(["case", true, 1, 2], 8, {}), 1);
+  assert.equal(style.evaluateScreenValue(["case", false, 1, 2], 8, {}), 2);
+  assert.equal(
+    style.evaluateScreenValue(["step", ["zoom"], 0, 10, 1], 8, {}),
+    0,
+  );
+  assert.equal(
+    style.evaluateScreenValue(["step", ["zoom"], 0, 10, 1], 12, {}),
+    1,
+  );
+  assert.equal(
+    style.evaluateScreenValue(
+      ["<=", ["coalesce", ["get", "minz"], 0], 9],
+      8,
+      { minz: 7 },
+    ),
+    true,
+  );
 });
 
-test("a shared station keeps one marker, not one per lane", () => {
+test("station_features_are_not_screen_merged", () => {
   const { network } = japan();
-  // Nothing was duplicated to make room for the offset: the station source
-  // still holds exactly one row per (line, station).
+  // The source retains one independent row per (line, station).
   const groups = new Map();
   for (const feature of network.stations.features) {
     const key = feature.properties.stationGroupId;
@@ -416,32 +455,33 @@ test("a shared station keeps one marker, not one per lane", () => {
   assert.ok(groups.size > 8000);
   assert.equal(network.groupMembers.size, groups.size);
 
-  // And a platform that BOTH members of a corridor call at stays on the
-  // shared centre-line — one marker, with the two lanes converging on it —
-  // instead of splitting into one dot per lane and inventing a station.
-  const lanedByGroup = new Map();
-  for (const feature of network.stations.features) {
-    if (!feature.properties.lane) continue;
-    const key = feature.properties.stationGroupId;
-    if (!key) continue;
-    const ids = lanedByGroup.get(key) || new Set();
-    ids.add(feature.properties.lineId);
-    lanedByGroup.set(key, ids);
-  }
-  for (const [key, ids] of lanedByGroup)
-    assert.equal(ids.size, 1, `${key} has ${ids.size} laned markers`);
-
-  // 新鎌ヶ谷: 北総線 and 京成成田空港線 both call, so one marker on the
-  // centre-line. 西白井: only 北総線 calls, so its dot moves into 北総線's
-  // lane and never claims a 成田空港線 stop.
-  const at = (name, lineId) =>
-    network.stations.features.find(
+  // 新鎌ヶ谷: 北総線 and 京成成田空港線 both call. They keep separate
+  // marker features and follow their own opposite lanes; sharing a station
+  // group may dedupe a label, but cannot pull either dot to a common centre.
+  const at = (collection, name, lineId) =>
+    collection.features.find(
       (feature) =>
-        feature.properties.name === name && feature.properties.lineId === lineId,
-    ).properties.lane;
-  assert.equal(at("新鎌ヶ谷", "jp-北総鉄道-北総線"), 0);
-  assert.equal(at("新鎌ヶ谷", "jp-京成電鉄-成田空港線"), 0);
-  assert.notEqual(at("西白井", "jp-北総鉄道-北総線"), 0);
+        (feature.properties.name === name ||
+          network.stationById.get(feature.properties.stationId)?.name === name) &&
+        feature.properties.lineId === lineId,
+    );
+  const hokuso = at(network.stationLanes, "新鎌ヶ谷", "jp-北総鉄道-北総線");
+  const skyAccess = at(
+    network.stationLanes,
+    "新鎌ヶ谷",
+    "jp-京成電鉄-成田空港線",
+  );
+  assert.ok(hokuso);
+  assert.ok(skyAccess);
+  assert.equal(hokuso.properties.stationGroupId, skyAccess.properties.stationGroupId);
+  assert.equal(hokuso.properties.lane, -skyAccess.properties.lane);
+  assert.notEqual(hokuso.properties.stationId, skyAccess.properties.stationId);
+
+  // 西白井 is only a 北総線 stop and remains in that line's lane.
+  assert.notEqual(
+    at(network.stationLanes, "西白井", "jp-北総鉄道-北総線").properties.lane,
+    0,
+  );
 });
 
 test("a line eases into its lane instead of stepping sideways", () => {
@@ -1159,14 +1199,22 @@ test("an interchange is drawn open and a single-railway stop solid", () => {
   // that it still CHOOSES by the same flag, and chooses a different mark.
   const marker = layers.find((l) => l.id === style.STATION_LANES_LAYER);
   const image = JSON.parse(JSON.stringify(marker.layout["icon-image"]));
-  assert.equal(image[0], "case");
-  assert.deepEqual(image[1], ["==", ["get", "interchange"], 1]);
-  assert.equal(image[2], style.stationIconId("light", true));
-  assert.equal(image[3], style.stationIconId("light", false));
-  assert.notEqual(image[2], image[3]);
+  assert.equal(image[0], "concat");
+  assert.equal(image[1], "rn-station-light-");
+  assert.deepEqual(image[2], [
+    "coalesce",
+    ["get", "colorKey"],
+    "7c8a82",
+  ]);
+  assert.deepEqual(image[3], [
+    "case",
+    ["==", ["get", "interchange"], 1],
+    "-interchange",
+    "",
+  ]);
   // And that the pair really is per theme, or a dark map would draw light dots.
   assert.notEqual(
-    style.stationIconId("dark", false),
-    style.stationIconId("light", false),
+    style.stationIconId("dark", false, "ff0000"),
+    style.stationIconId("light", false, "ff0000"),
   );
 });

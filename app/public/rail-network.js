@@ -410,6 +410,12 @@
   // is meaningless — invisible at any zoom, but it is still a corner, and the
   // audit that has to trust the corner count should not have to explain it.
   const ANCHOR_SEAM_METERS = 3;
+  // Branch splitting can cut at a switch a few metres from an already-seated
+  // platform and leave the exact anchor behind on the discarded overlap.  The
+  // approach is still the same surveyed stroke, so restore that vertex in the
+  // nearest edge after grooming.  This deliberately stays tiny: a larger gap
+  // is a source-data fault and must remain visible to the anchoring audit.
+  const LOST_ANCHOR_MAX_METERS = 5;
 
   function smoothstep(ratio) {
     const t = ratio <= 0 ? 0 : ratio >= 1 ? 1 : ratio;
@@ -679,6 +685,28 @@
     return keys;
   }
 
+  function restoreLostStationAnchors(parts, stationPoints) {
+    const present = new Set();
+    for (const coordinates of parts)
+      for (const point of coordinates) present.add(coordinateKey(point));
+
+    for (const anchor of stationPoints) {
+      const key = coordinateKey(anchor);
+      if (present.has(key)) continue;
+      let best = null;
+      for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+        const cut = nearestCutOnPath(parts[partIndex], anchor);
+        if (!cut || (best && cut.distance >= best.cut.distance)) continue;
+        best = { partIndex, cut };
+      }
+      if (!best || best.cut.distance > LOST_ANCHOR_MAX_METERS) continue;
+      const coordinates = parts[best.partIndex];
+      coordinates.splice(best.cut.index + 1, 0, [anchor[0], anchor[1]]);
+      present.add(key);
+    }
+    return parts;
+  }
+
   // Decode every interval and weld both of its ends to the authoritative
   // station anchor. The weld is what anchorIntervalsToStations then turns into
   // a real approach; on its own it is only a promise that the interval chain
@@ -859,7 +887,9 @@
         ),
       )
       .filter((coordinates) => coordinates.length >= 2);
-    return groomed.length ? groomed : [[stationPoints[0], stationPoints[0]]];
+    return groomed.length
+      ? restoreLostStationAnchors(groomed, stationPoints)
+      : [[stationPoints[0], stationPoints[0]]];
   }
 
   function medianSpacingMeters(compactLine) {
@@ -1930,6 +1960,8 @@
             name: station.name,
             nameRoma: station.nameRoma || "",
             stationGroupId: station.stationGroupId || "",
+            color: featureColor,
+            colorKey: featureColor.slice(1).toLowerCase(),
             // Set by the interchange pass below, which needs every line read
             // before it can answer how many railways call here.
             interchange: 0,
@@ -1958,6 +1990,8 @@
             stationId: station.stationId,
             lineId,
             stationGroupId: station.stationGroupId || "",
+            color: featureColor,
+            colorKey: featureColor.slice(1).toLowerCase(),
             interchange: 0,
             lane: laneValue,
             // Which way the track runs here; the style turns it into the side
@@ -1996,37 +2030,90 @@
       feature.properties.interchange =
         (railwaysAtGroup.get(groupKey) || 1) > 1 ? 1 : 0;
     }
-    // One platform, one marker.
+    // Marker identity stays per (line, station) even when another railway
+    // calls at the same named interchange. A platform on a non-zero lane is
+    // therefore kept in stationLaneFeatures and follows that railway's final
+    // offset; label deduplication may happen elsewhere, but never by moving or
+    // merging the round station marks themselves.
     //
-    // A station that only ONE member of a corridor calls at moves into that
-    // member's lane, so the dot names the railway that stops there instead of
-    // floating between two. But a station they BOTH call at is one station: it
-    // keeps a single marker on the shared centre-line, which is where the
-    // lanes converge anyway (they sit half a lane either side of it, inside
-    // the circle). Splitting it in two would invent a second station.
-    const groupKeyFor = (feature) =>
-      feature.properties.stationGroupId ||
-      `solo:${feature.geometry.coordinates ? feature.geometry.coordinates.join(",") : feature.properties.stationId}`;
-    const lanedLinesByGroup = new Map();
+    // …and "elsewhere" is here: exactly one platform per interchange group is
+    // elected into `stationLabels`, and the style's text layer draws only that
+    // collection.
+    // 東京 is nine platforms of five railways and ONE name; a renderer-side
+    // collision pass cannot produce that, because the platforms sit tens of
+    // metres apart and every one of the nine finds room for its own copy.
+    //
+    // The election is a LABEL right, nothing else. It does not merge, move,
+    // delete or re-colour a single mark: every platform keeps its own dot, its
+    // own lane and its own line identity in `stations`, and the elected
+    // collection holds the VERY SAME feature objects rather than copies of
+    // them — so a label cannot drift from the dot it names, and no property
+    // of the render model changes because a name was or was not elected.
+    // Choosing the platform that appears first in the package (lowest minz
+    // wins ties, then stationId) makes the choice deterministic across
+    // rebuilds rather than dependent on iteration order.
+    const labelPickByGroup = new Map();
     for (const feature of stationFeatures) {
-      if (!feature.properties.lane) continue;
-      const key = groupKeyFor(feature);
-      let ids = lanedLinesByGroup.get(key);
-      if (!ids) lanedLinesByGroup.set(key, (ids = new Set()));
-      ids.add(feature.properties.lineId);
+      const props = feature.properties;
+      const groupKey = props.stationGroupId || `solo:${props.stationId}`;
+      const current = labelPickByGroup.get(groupKey);
+      if (
+        !current ||
+        props.minz < current.properties.minz ||
+        (props.minz === current.properties.minz &&
+          props.stationId < current.properties.stationId)
+      )
+        labelPickByGroup.set(groupKey, feature);
     }
-    const sharedByLanedLines = new Set(
-      [...lanedLinesByGroup.entries()]
-        .filter(([, ids]) => ids.size > 1)
-        .map(([key]) => key),
-    );
-    if (sharedByLanedLines.size) {
-      for (const feature of stationFeatures)
-        if (feature.properties.lane && sharedByLanedLines.has(groupKeyFor(feature)))
-          feature.properties.lane = 0;
-      for (let index = stationLaneFeatures.length - 1; index >= 0; index -= 1)
-        if (sharedByLanedLines.has(groupKeyFor(stationLaneFeatures[index])))
-          stationLaneFeatures.splice(index, 1);
+    //
+    // One more pass, because a "station" and a "station group" are not always
+    // the same thing in the source data: 東京 is one place a passenger walks
+    // around, but JR East's 東京 and 東京メトロ's 東京 arrive as two groups
+    // several hundred metres apart, and naming both prints the name twice on
+    // top of itself. Two elected names that READ the same and sit inside
+    // LABEL_MERGE_METERS of each other are the same place being named twice,
+    // so the second one steps down. Different names never merge, however
+    // close (新宿 and 新宿三丁目 stay two labels), and no distance in this
+    // pass reaches a single dot.
+    const LABEL_MERGE_METERS = 600;
+    const cellOf = (lon, lat, size) =>
+      `${Math.floor(lon / size)}|${Math.floor(lat / size)}`;
+    // ~400 m of longitude at 35°, which is the worst case across all five
+    // packages; a slightly generous cell only costs a few extra comparisons.
+    const CELL_DEGREES = 0.0055;
+    const acceptedByCell = new Map();
+    const elected = [...labelPickByGroup.values()].sort((a, b) => {
+      if (a.properties.minz !== b.properties.minz)
+        return a.properties.minz - b.properties.minz;
+      return a.properties.stationId < b.properties.stationId ? -1 : 1;
+    });
+    const stationLabelFeatures = [];
+    for (const feature of elected) {
+      const [lon, lat] = feature.geometry.coordinates;
+      const name = feature.properties.name;
+      let duplicate = false;
+      const cx = Math.floor(lon / CELL_DEGREES);
+      const cy = Math.floor(lat / CELL_DEGREES);
+      for (let dx = -1; dx <= 1 && !duplicate; dx += 1)
+        for (let dy = -1; dy <= 1 && !duplicate; dy += 1) {
+          const bucket = acceptedByCell.get(`${cx + dx}|${cy + dy}`);
+          if (!bucket) continue;
+          for (const other of bucket) {
+            if (other.properties.name !== name) continue;
+            if (
+              distanceMeters(other.geometry.coordinates, [lon, lat]) <=
+              LABEL_MERGE_METERS
+            ) {
+              duplicate = true;
+              break;
+            }
+          }
+        }
+      if (duplicate) continue;
+      stationLabelFeatures.push(feature);
+      const key = cellOf(lon, lat, CELL_DEGREES);
+      if (!acceptedByCell.has(key)) acceptedByCell.set(key, []);
+      acceptedByCell.get(key).push(feature);
     }
 
     return {
@@ -2048,6 +2135,14 @@
       stationLanes: {
         type: "FeatureCollection",
         features: stationLaneFeatures,
+      },
+      // The names: one elected platform per station complex, holding the SAME
+      // feature objects `stations` holds. Nothing here is a copy and nothing
+      // here is drawn as a mark — this collection exists so that 東京 is named
+      // once rather than nine times, and for no other reason.
+      stationLabels: {
+        type: "FeatureCollection",
+        features: stationLabelFeatures,
       },
       lineById,
       stationById,

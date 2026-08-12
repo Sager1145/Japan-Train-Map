@@ -18,11 +18,13 @@ async function createFixture({ includeTrainStore = true } = {}) {
   const appDir = path.join(root, "app");
   const publicDir = path.join(appDir, "public");
   const sharedDir = path.join(appDir, "shared");
+  const stylesDir = path.join(publicDir, "styles");
   const dataDir = path.join(appDir, "data");
   const partsDir = path.join(dataDir, "sample-data");
   const outputDir = path.join(root, "_site");
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(sharedDir, { recursive: true });
+  await fs.mkdir(stylesDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
 
   await fs.writeFile(
@@ -47,8 +49,8 @@ async function createFixture({ includeTrainStore = true } = {}) {
     path.join(publicDir, "index.html"),
     '<link rel="preload" href="api/stations">',
   );
-  await fs.writeFile(path.join(publicDir, "styles.css"), "body {}\n");
-  await fs.writeFile(path.join(publicDir, "styles.css.gz"), "ignored");
+  await fs.writeFile(path.join(stylesDir, "device-layout.css"), "body {}\n");
+  await fs.writeFile(path.join(stylesDir, "device-layout.css.gz"), "ignored");
   await fs.writeFile(
     path.join(sharedDir, "app-core.js"),
     "globalThis.AppCore = { fixture: true };\n",
@@ -177,7 +179,7 @@ test("static build preserves the Pages file and rewrite contract", async () => {
     );
     await fs.access(path.join(fixture.outputDir, ".nojekyll"));
     await assert.rejects(
-      fs.access(path.join(fixture.outputDir, "styles.css.gz")),
+      fs.access(path.join(fixture.outputDir, "styles", "device-layout.css.gz")),
       { code: "ENOENT" },
     );
 
@@ -224,7 +226,7 @@ test("static build stamps script/style tags with content hashes", async () => {
     await fs.writeFile(
       path.join(fixture.appDir, "public", "index.html"),
       [
-        '<link rel="stylesheet" href="styles.css?v=20260101-handwritten" />',
+        '<link rel="stylesheet" href="styles/device-layout.css?v=20260101-handwritten" />',
         '<link rel="preload" href="api/stations" as="fetch" />',
         '<script src="app.js?v=20260101-stale"></script>',
         '<script src="app-persistence.js"></script>',
@@ -253,7 +255,11 @@ test("static build stamps script/style tags with content hashes", async () => {
 
     // Every local asset is stamped with the hash of what actually shipped —
     // i.e. AFTER the ${API_BASE}/HAS_BACKEND rewrites, not the source bytes.
-    for (const asset of ["styles.css", "app.js", "app-persistence.js"]) {
+    for (const asset of [
+      "styles/device-layout.css",
+      "app.js",
+      "app-persistence.js",
+    ]) {
       assert.equal(tokenOf(asset), await hashOf(asset), `${asset} token`);
     }
     // A file with no token at all still gets one.

@@ -1,6 +1,6 @@
 # Taiwan sample train sources
 
-The bundled Taiwan store contains twenty-three journeys dated 2026-08-02 through
+The bundled Taiwan store contains twenty-eight journeys dated 2026-08-02 through
 2026-08-13. Three Taipei Metro trips were added for the 2026-08-02 itinerary:
 
 - Bannan Line, Taipei Main Station to Ximen at about 14:45.
@@ -39,6 +39,14 @@ Six Kaohsiung Metro and Light Rail trips were added for 2026-08-10:
   heading toward C2 Kaisyuan Rueitian, and returning to C3.
 - The next feasible northbound Red Line train after the C3/R6 walking
   transfer, Kaisyuan to Kaohsiung Main Station.
+
+Five return journeys were added for 2026-08-12:
+
+- Red Line, Kaohsiung Main Station to Zuoying, arriving at about 11:20.
+- THSR train 826, Zuoying to Taipei, departing at 12:25.
+- TRA local train 1208, Taipei to Keelung, departing at 15:38.
+- TRA local train 4209, Nuannuan to Nangang, departing at 19:33.
+- THSR train 161, Nangang to Taipei, departing at 20:20.
 
 ## Official Taipei Metro checks for the August 2 additions
 
@@ -176,6 +184,36 @@ Six Kaohsiung Metro and Light Rail trips were added for 2026-08-10:
     timestamps reproduce the official station departure tables or are derived
     from the official directional travel-time matrix.
 
+## Official timetable checks for the August 12 additions
+
+- R11 Kaohsiung Main Station ordinary-weekday timetable, updated 2026-07-01:
+  <https://www.krtc.com.tw/Guide/train_times?n=R11>
+  - The northbound Red Line train closest to the user-supplied 11:20 Zuoying
+    arrival leaves R11 at 11:10. The official station-to-station travel-time
+    table gives ten minutes from R11 to R16, for an 11:20 arrival.
+  - All six physical stations from R11 through R16 are retained as passenger
+    stops with official TDX station identifiers.
+- THSR official timetable and fare search:
+  <https://www.thsrc.com.tw/ArticleContent/a3b630bb-1066-4352-a1ef-58c7b4e8ef7c>
+  - Daily northbound train 826 leaves Zuoying at 12:25 and reaches Taipei at
+    14:39. It calls at every physical station in the ridden interval: Tainan,
+    Chiayi, Yunlin, Changhua, Taichung, Miaoli, Hsinchu, Taoyuan, and Banqiao.
+  - The record ends at the passenger's Taipei destination even though train
+    826 continues to Nangang.
+- TRA train 1208 timetable (official data mirrored from MOTC TDX / TRA OpenData):
+  <https://livetra.app/train/1208>
+  - The local train leaves Taipei at 15:38 and reaches Keelung at 16:25,
+    calling at every physical station in the ridden interval.
+- TRA train 4209 timetable (official data mirrored from MOTC TDX / TRA OpenData):
+  <https://livetra.app/train/4209>
+  - The local train leaves Nuannuan at 19:33, changes from the Yilan Line to
+    the Western Trunk Line (Northern Section) at Badu, and reaches Nangang at
+    19:59.
+- THSR regular timetable effective 2026-02-02:
+  <https://www.thsrc.com.tw/Attachment/Download?id=b5e78f70-fa6d-4f75-8f31-a13387d7ea88&pageID=a3b630bb-1066-4352-a1ef-58c7b4e8ef7c>
+  - Daily southbound train 161 leaves Nangang at 20:20 and arrives in Taipei
+    at 20:28. The saved record ends where the passenger alights.
+
 ## Official rail geometry and station identifiers
 
 - Official station ids, names, coordinates, station order, and line shapes:
@@ -228,6 +266,13 @@ Rebuild the August 10 Kaohsiung additions idempotently with:
 ```sh
 cd app
 node scripts/migrations/add-august-10-kaohsiung-itinerary.mjs
+```
+
+Rebuild the August 12 return itinerary idempotently with:
+
+```sh
+cd app
+node scripts/migrations/add-august-12-taiwan-itinerary.mjs
 ```
 
 Rebuild the Airport MRT route after refreshing the Taiwan package with:

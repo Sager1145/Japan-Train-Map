@@ -119,7 +119,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     {
       format: "compact-v1",
       version: "2025.5.2",
-      generatedAt: "2026-08-04T16:38:19.000Z",
+      generatedAt: "2026-08-11T16:38:20.000Z",
       crs: "WGS84",
       country: "TW",
     },
@@ -133,8 +133,8 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   assert.equal(officialComparison.scope, "LineID/RAILNAME/MRTCODE/LRTCODE");
   assert.equal(officialComparison.lines, EXPECTED_COUNTS.lines);
   assert.equal(Object.keys(officialComparison.byLine).length, EXPECTED_COUNTS.lines);
-  assert.equal(officialComparison.vertices, 18_456);
-  assert.equal(officialComparison.edgeMidpoints, 17_908);
+  assert.equal(officialComparison.vertices, 18_291);
+  assert.equal(officialComparison.edgeMidpoints, 17_754);
   assert.ok(
     officialComparison.maxDeviationMeters <= officialComparison.toleranceMeters,
   );

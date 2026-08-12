@@ -26,8 +26,6 @@
     inkMuted: "#6B756F",
     white: "#FFFFFF",
   };
-  // Line treatment (railprint DESIGN.md glowing-line spec).
-  const stroke = { ridden: 4, unridden: 2 };
   const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
 
   // ─────────────────────── railway style tokens (screen space) ───────────────────────
@@ -42,14 +40,25 @@
   // and because none of these is scaled by zoom on its way to the paint
   // properties, that ratio, and every other proportion here, holds at every
   // zoom by construction rather than by a ramp keeping them in step.
-  const STATION_DIAMETER_PX = 7;
+  // Apple Maps desktop Transit reference, measured 2026-08-12 against macOS
+  // 「地圖」→ 大眾運輸 at 東京駅, city view (scale bar: 500 m across ~98 screenshot
+  // px, i.e. ≈5.1 m per point, z≈13.7): an ordinary transit line reads at
+  // about 2.8 pt and its station bead at about 6.2 pt, a ratio of ≈2.2. The
+  // earlier note in this file put those at 4 px / 8 px, which was a Retina
+  // DEVICE-pixel reading of the same screenshots — half again too heavy once
+  // it reached a CSS pixel. 6 / 3 keeps the exact 1:2 rail/station proportion
+  // this file is built on and lands inside the measured band.
+  const STATION_DIAMETER_PX = 6;
   const RAIL_WIDTH_TO_STATION_DIAMETER = 0.5;
   const RAILWAY_STYLE = Object.freeze({
     // Diameter of an ordinary network station dot.
     stationDiameterPx: STATION_DIAMETER_PX,
     stationRadiusPx: STATION_DIAMETER_PX / 2,
-    // Ring drawn around that dot so it stays legible over its own line.
-    stationRingPx: 1,
+    // Ring drawn around that dot so it stays legible over its own line. Held
+    // at an eighth of the dot, the proportion Apple's bead/keyline pair reads
+    // at — a ring that kept its absolute width while the dot shrank would
+    // swallow the colour it is supposed to separate.
+    stationRingPx: STATION_DIAMETER_PX / 8,
     // Rail stroke = half that. Derived, never set independently.
     railWidthToStationDiameter: RAIL_WIDTH_TO_STATION_DIAMETER,
     railWidthPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER,
@@ -59,14 +68,17 @@
     // scripts/validation/validate-railway-topology.mjs measures the real corridors
     // against. Screen-space like everything else here: this many pixels at z6
     // and the same many at z18.
-    parallelGapPx: 1.4,
+    parallelGapPx: 1.2,
+    // A quiet edge on either side of the coloured core separates railways
+    // from roads and from one another without turning them into glowing
+    // selection strokes. This is the full-scale edge width on ONE side.
+    networkCasingEdgePx: 0.6,
+    // Selected rides use the same restrained edge rhythm. The previous halo
+    // was more than twice the coloured line's total width.
+    selectionCasingEdgePx: 1.4,
     // How near a junction the geometry pipeline must stop grooming.
     junctionProtectionPx: 6,
   });
-  // The unridden field sits under the ridden routes, so it draws at the token
-  // weight while a ridden line draws proportionally heavier (see stroke).
-  const RIDDEN_TO_RAIL = stroke.ridden / stroke.unridden;
-
   // The network under the map is a per-COUNTRY package (jp-2025 / tw-2025), so
   // the credit carried on its source is per-country too — crediting N02 for
   // Taiwanese geometry would be a false licence declaration. Japan's station
@@ -109,7 +121,14 @@
   // colour holds still — and the field still recedes behind the ridden routes,
   // which sit above it at heavier weight.
   const UNRIDDEN_OPACITY = 1;
-  const NETWORK_COLOR_STRENGTH = 0.48;
+  // How far each line's own hue is carried before the surface starts showing
+  // through it. Apple's Transit view draws its lines at their full operator
+  // colour and lets WEIGHT, not paleness, decide what recedes; at 0.82 every
+  // line here arrived visibly chalked, which read as a printing fault rather
+  // than as depth. A tenth of the surface is enough to stop pure #FF0000-class
+  // hues vibrating against the map and to keep the field a step behind a
+  // ridden route drawn over it.
+  const NETWORK_COLOR_STRENGTH = 0.9;
   const RIDDEN_WIDTH_SCALE = 1.18;
 
   // colour × strength + surface × (1 - strength), per channel, at paint time:
@@ -131,6 +150,20 @@
       ["to-rgba", ["to-color", surface]],
       ["rgb", channel(0), channel(1), channel(2)],
     ];
+  }
+
+  // Apple Maps uses a fine surface-coloured keyline around transit strokes.
+  // Light gets a white separator; dark gets a near-black one. It is deliberately
+  // opaque and narrow rather than blurred: crisp edges preserve parallel-lane
+  // identity and avoid a neon/glow effect.
+  function networkCasingColor(theme) {
+    return theme === "dark" ? "rgb(7,8,10)" : "rgb(255,255,255)";
+  }
+
+  function networkCasingWidth() {
+    return railwayScale(
+      RAILWAY_STYLE.railWidthPx + RAILWAY_STYLE.networkCasingEdgePx * 2,
+    );
   }
 
   // ─────────────────── the railway's screen-space weight contract ───────────────────
@@ -249,17 +282,61 @@
       "case",
       ["==", ["get", "interchange"], 1],
       colors.stationRing,
-      colors.stationDot,
+      ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
     ];
   }
 
   function stationStroke(theme) {
-    const colors = MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
     return [
       "case",
       ["==", ["get", "interchange"], 1],
-      colors.casing,
-      colors.stationRing,
+      ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
+      networkCasingColor(theme),
+    ];
+  }
+
+  // ─────────────────────────── network label typography ───────────────────────────
+  // Apple's Transit view names two things and nothing else: the STATION, in
+  // the map's ordinary label ink beside its bead, and the LINE, written along
+  // the line in the line's own colour. Both are text, not marks — so neither
+  // rides railwayScale() (see the screen-space contract below: the ramp is for
+  // marks; a label that shrank with the network would stop being readable
+  // exactly when the network needed naming). They carry their own, much
+  // shallower zoom ramp, the way every other label on the map does.
+  const NETWORK_LABEL_FONT = ["Noto Sans Regular"];
+  // Station names appear a little after the beads themselves; line names
+  // later still, because a name written ALONG a line needs a run of line long
+  // enough to hold it. Both are floors in addition to each feature's own minz.
+  const STATION_LABEL_MIN_ZOOM = 12;
+  const LINE_LABEL_MIN_ZOOM = 12;
+
+  function networkLabelTextColor(theme) {
+    return theme === "dark" ? "rgb(236,238,240)" : "rgb(28,30,32)";
+  }
+  function networkLabelHaloColor(theme) {
+    return MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"].background;
+  }
+
+  // A line's name in the line's own hue, pulled toward the label ink until it
+  // is readable as TEXT rather than as a coloured smear: the pale end of an
+  // operator palette (yellow, light green) is a fine 3 px stroke and an
+  // illegible 10 px word. Same composite shape as networkLineColor, different
+  // anchor — text needs contrast against the surface, a stroke needs identity.
+  const LINE_LABEL_INK_STRENGTH = 0.55;
+  function networkLineLabelColor(theme) {
+    const ink = networkLabelTextColor(theme);
+    const channel = (index) => [
+      "+",
+      ["*", ["at", index, ["var", "line"]], LINE_LABEL_INK_STRENGTH],
+      ["*", ["at", index, ["var", "ink"]], 1 - LINE_LABEL_INK_STRENGTH],
+    ];
+    return [
+      "let",
+      "line",
+      ["to-rgba", ["to-color", ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR]]],
+      "ink",
+      ["to-rgba", ["to-color", ink]],
+      ["rgb", channel(0), channel(1), channel(2)],
     ];
   }
 
@@ -384,6 +461,13 @@
       RIDDEN_WIDTH_SCALE,
     ]);
   }
+  function riddenSelectionCasingWidth() {
+    return railwayScale([
+      "+",
+      ["*", ["get", "width"], RIDDEN_WIDTH_SCALE],
+      RAILWAY_STYLE.selectionCasingEdgePx * 2,
+    ]);
+  }
 
   // The ramp's value at ONE zoom, for the sizes JS computes itself instead of
   // handing MapLibre an expression.
@@ -420,11 +504,36 @@
     return expression;
   }
 
+  // The same per-feature minz gate, with a hard floor under it: a label has a
+  // second condition its mark does not, which is that there be room to read
+  // it. Below `floorZoom` the text is off outright; above it the feature's own
+  // minz decides, exactly as it does for the dot the label belongs to — so a
+  // name can never appear for a station that is itself still hidden.
+  function labelVisibilityOpacity(floorZoom, visibleOpacity) {
+    const floor = Math.max(0, Math.floor(Number(floorZoom) || 0));
+    const gate = (zoom) => [
+      "case",
+      ["<=", ["coalesce", ["get", "minz"], 0], zoom],
+      visibleOpacity,
+      0,
+    ];
+    const expression = ["step", ["zoom"], 0];
+    for (let zoom = floor; zoom <= 14; zoom += 1)
+      expression.push(zoom, gate(zoom));
+    return expression;
+  }
+
   // ───────────────────────────── source / layer ids ─────────────────────────────
   const SEGMENTS_SOURCE = "rn-segments";
   const STATIONS_SOURCE = "rn-stations";
   const STATION_LANES_SOURCE = "rn-station-lanes";
+  // The elected station names — the same platform features `rn-stations`
+  // carries, minus the ones whose complex is already named. A source of its
+  // own rather than a filter, so the render model that feeds the DOTS is
+  // untouched by anything the labels decide.
+  const STATION_LABELS_SOURCE = "rn-station-labels";
   const SEGMENTS_LAYER = "rn-segments-line";
+  const SEGMENTS_CASING_LAYER = "rn-segments-casing";
   const STATIONS_LAYER = "rn-stations-dot";
   // The same dot for a platform whose line runs in a parallel lane. It cannot
   // be a circle — MapLibre has no per-feature circle offset — so it is an ICON
@@ -439,6 +548,11 @@
   // dot when the country was on screen read as a capsule once you were down at
   // a single station. An icon has no length to grow.
   const STATION_LANES_LAYER = "rn-station-lanes-dot";
+  // Names. Both are text-only symbol layers with no icon of any kind: a
+  // station is named beside its bead, never replaced by one (see the station
+  // glyph contract — no logo, no badge, at any zoom).
+  const STATIONS_LABEL_LAYER = "rn-stations-label";
+  const SEGMENTS_LABEL_LAYER = "rn-segments-label";
   const FADE_LAYER = "rp-fade";
   const TRAIN_ROUTES_SOURCE = "train-routes";
   const TRAIN_PICK_SOURCE = "train-routes-pick";
@@ -462,8 +576,11 @@
   // validateParallelZoomStability measures) instead of hiding in the bitmap.
   const STATION_ICON_BASE_PX = 24;
 
-  function stationIconId(theme, interchange) {
-    return `rn-station-${theme === "dark" ? "dark" : "light"}${
+  function stationIconId(theme, interchange, colorKey) {
+    const key = /^[0-9a-f]{6}$/i.test(String(colorKey || ""))
+      ? String(colorKey).toLowerCase()
+      : DEFAULT_LINE_COLOR.slice(1).toLowerCase();
+    return `rn-station-${theme === "dark" ? "dark" : "light"}-${key}${
       interchange ? "-interchange" : ""
     }`;
   }
@@ -473,10 +590,10 @@
   // ordinary image carries its own colours.
   function stationIconImage(theme) {
     return [
-      "case",
-      ["==", ["get", "interchange"], 1],
-      stationIconId(theme, true),
-      stationIconId(theme, false),
+      "concat",
+      `rn-station-${theme === "dark" ? "dark" : "light"}-`,
+      ["coalesce", ["get", "colorKey"], DEFAULT_LINE_COLOR.slice(1).toLowerCase()],
+      ["case", ["==", ["get", "interchange"], 1], "-interchange", ""],
     ];
   }
 
@@ -514,6 +631,8 @@
   // target — carrying the identical offset expression.
   const RAILWAY_SCREEN_PAINT = [
     // the "all railway lines" field
+    [SEGMENTS_CASING_LAYER, "line-width", networkCasingWidth],
+    [SEGMENTS_CASING_LAYER, "line-offset", parallelLaneOffset],
     [SEGMENTS_LAYER, "line-width", () => railwayScale(RAILWAY_STYLE.railWidthPx)],
     [SEGMENTS_LAYER, "line-offset", parallelLaneOffset],
     [
@@ -559,7 +678,7 @@
     [
       TRAIN_SEL_CASING_LAYER,
       "line-width",
-      () => railwayScale(RAILWAY_STYLE.railWidthPx * RIDDEN_TO_RAIL * 2),
+      riddenSelectionCasingWidth,
     ],
     // …and their station dots. The two SEL dot layers are absent on purpose:
     // their radius carries the selection's focus boost, so RailMap re-applies
@@ -733,6 +852,10 @@
       type: "geojson",
       data: network ? network.stationLanes || EMPTY_FC : EMPTY_FC,
     };
+    sources[STATION_LABELS_SOURCE] = {
+      type: "geojson",
+      data: network ? network.stationLabels || EMPTY_FC : EMPTY_FC,
+    };
     // Ridden routes use exact slices of the same complete network lines and
     // therefore keep the same unsimplified coordinates at every zoom.
     sources[TRAIN_ROUTES_SOURCE] = {
@@ -796,6 +919,21 @@
 
     // ── the full national network — railprint's "unridden field" ──
     // Hidden by default: the network is opt-in via the layers-control switch.
+    // A narrow surface-coloured casing mirrors Apple Maps' Transit treatment:
+    // it separates coloured railway ink from roads and adjacent railways while
+    // keeping the edge crisp (no glow or blur).
+    layers.push({
+      id: SEGMENTS_CASING_LAYER,
+      type: "line",
+      source: SEGMENTS_SOURCE,
+      layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+      paint: {
+        "line-color": networkCasingColor(theme),
+        "line-opacity": lineLengthVisibilityOpacity(0.88),
+        "line-width": networkCasingWidth(),
+        "line-offset": parallelLaneOffset(),
+      },
+    });
     layers.push({
       id: SEGMENTS_LAYER,
       type: "line",
@@ -826,16 +964,19 @@
       filter: ["==", ["coalesce", ["get", "lane"], 0], 0],
       layout: { visibility: "none" },
       paint: {
-        // Theme-dependent: _applyThemePaint rewrites both colors on switch.
+        // Theme-dependent: _applyThemePaint rewrites both colors on switch,
+        // and buildBaseStyle stamps the BOOT theme here. It used to hardcode
+        // "light": a map that started in dark mode drew every platform in the
+        // light palette until the first manual theme switch repainted it.
         // Solid where one railway calls, open where two do — the convention
         // that says "you can change trains here" without a word of text.
-        "circle-color": stationFill("light"),
+        "circle-color": stationFill(theme),
         "circle-opacity": lineLengthVisibilityOpacity(1),
         // The other half of the rail-width contract: this diameter times
         // RAILWAY_STYLE.railWidthToStationDiameter IS the stroke above — one
         // ramp over both, so the ratio survives every zoom.
         "circle-radius": railwayScale(RAILWAY_STYLE.stationRadiusPx),
-        "circle-stroke-color": stationStroke("light"),
+        "circle-stroke-color": stationStroke(theme),
         "circle-stroke-opacity": lineLengthVisibilityOpacity(1),
         "circle-stroke-width": railwayScale(RAILWAY_STYLE.stationRingPx),
       },
@@ -858,8 +999,9 @@
       source: STATION_LANES_SOURCE,
       layout: {
         visibility: "none",
-        // Theme-dependent: _applyThemePaint swaps the pair on a switch.
-        "icon-image": stationIconImage("light"),
+        // Theme-dependent: _applyThemePaint swaps the pair on a switch, and
+        // buildBaseStyle stamps the BOOT theme (see STATIONS_LAYER above).
+        "icon-image": stationIconImage(theme),
         "icon-size": railwayScale(stationIconSize()),
         "icon-offset": parallelLaneIconOffset(),
         "icon-rotate": ["coalesce", ["get", "bearing"], 0],
@@ -874,6 +1016,117 @@
         "icon-opacity": lineLengthVisibilityOpacity(1),
       },
     });
+
+    // ── the names ──
+    // Text needs glyphs, and the glyph endpoint arrives WITH the basemap. A
+    // basemap-less map (offline, or "no map" by choice) therefore draws the
+    // network unlabelled rather than logging a styleglyphsmissing error per
+    // frame; the marks are the contract, the names are the enrichment.
+    if (basemap && basemap.glyphs) {
+      // The line's own name, written ALONG the line, in the line's own hue —
+      // placed BEFORE the station names. MapLibre runs its collision pass in
+      // REVERSE draw order — the layer drawn last is placed first and keeps
+      // its space — so "last" is "wins", and a name a reader navigates by
+      // outranks a name that merely identifies the colour it is written on.
+      // the one place this project follows Apple's Transit view into text.
+      // symbol-placement "line" is what makes it a name written on a railway
+      // rather than a badge dropped on one; text-max-angle keeps it off the
+      // curves too tight to read a word around.
+      layers.push({
+        id: SEGMENTS_LABEL_LAYER,
+        type: "symbol",
+        source: SEGMENTS_SOURCE,
+        layout: {
+          visibility: "none",
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-font": NETWORK_LABEL_FONT,
+          "text-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            LINE_LABEL_MIN_ZOOM,
+            9.5,
+            16,
+            11,
+          ],
+          "symbol-placement": "line",
+          // Long enough that one name is not repeated three times inside a
+          // single station spacing, short enough that a long line is named
+          // more than once across a city view.
+          "symbol-spacing": 260,
+          "text-max-angle": 32,
+          "text-letter-spacing": 0.01,
+          "text-padding": 3,
+          // A name is the one thing on this overlay that MAY be dropped when
+          // it does not fit: two names stacked on a shared corridor is worse
+          // than one name and a colour.
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+        },
+        paint: {
+          "text-color": networkLineLabelColor(theme),
+          "text-halo-color": networkLabelHaloColor(theme),
+          "text-halo-width": 1.1,
+          "text-halo-blur": 0.2,
+          "text-opacity": labelVisibilityOpacity(LINE_LABEL_MIN_ZOOM, 1),
+        },
+      });
+      // The station's name beside its bead, once per interchange group. The
+      // DOTS keep overlap allowed and are never merged, deleted or moved by
+      // any of this: dedupe happens on the NAMES, one layer above the marks.
+      layers.push({
+        id: STATIONS_LABEL_LAYER,
+        type: "symbol",
+        // One name per station complex. rail-network.js elects it into a
+        // collection of its own; every platform keeps its own dot on its own
+        // line at its own lane in rn-stations, which no part of this layer
+        // touches.
+        source: STATION_LABELS_SOURCE,
+        layout: {
+          visibility: "none",
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-font": NETWORK_LABEL_FONT,
+          "text-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            STATION_LABEL_MIN_ZOOM,
+            10,
+            16,
+            12,
+          ],
+          // Let the renderer choose which side of the bead has room, the way
+          // every other point label on the map is placed.
+          "text-variable-anchor": ["left", "right", "top", "bottom"],
+          "text-radial-offset": 0.75,
+          "text-justify": "auto",
+          "text-padding": 2,
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+          // Interchanges first, then terminals, then ordinary stops: when a
+          // dense district cannot show every name, the names that survive are
+          // the ones a reader navigates by. (Lower sorts earlier.) This is
+          // ordering WITHIN the elected names — it never revives a platform
+          // the election passed over.
+          "symbol-sort-key": [
+            "-",
+            0,
+            [
+              "+",
+              ["*", 2, ["coalesce", ["get", "interchange"], 0]],
+              ["coalesce", ["get", "isTerminal"], 0],
+            ],
+          ],
+        },
+        paint: {
+          "text-color": networkLabelTextColor(theme),
+          "text-halo-color": networkLabelHaloColor(theme),
+          "text-halo-width": 1.2,
+          "text-halo-blur": 0.2,
+          "text-opacity": labelVisibilityOpacity(STATION_LABEL_MIN_ZOOM, 1),
+        },
+      });
+    }
 
     // ── the trains ("ridden") — full-color line (glow removed by request) ──
     // line-sort-key (higher = on top) carries the static painter's order:
@@ -1041,10 +1294,10 @@
         "line-opacity": 0.9,
         // On the ramp with every other rail weight: the halo has to keep
         // showing the same PROPORTION of dark either side of the line it
-        // marks, or "selected" reads differently at every zoom.
-        "line-width": railwayScale(
-          RAILWAY_STYLE.railWidthPx * RIDDEN_TO_RAIL * 2,
-        ),
+        // marks, or "selected" reads differently at every zoom. The casing
+        // is only 1.4 px per side at full scale, matching Apple's restrained
+        // selected-transit outline instead of the old oversized white ribbon.
+        "line-width": riddenSelectionCasingWidth(),
         // The halo tracks the line it marks into its lane.
         "line-offset": parallelLaneOffset(),
       },
@@ -1279,6 +1532,9 @@
   // expression must fail the check loudly rather than measure as a constant.
   function evaluateScreenValue(value, zoom, properties) {
     if (typeof value === "number") return value;
+    // The LOD gates branch on booleans, so a literal one is a value here and
+    // not an unreadable expression.
+    if (typeof value === "boolean") return value;
     if (!Array.isArray(value)) return NaN;
     const rest = value.slice(1);
     const at = (item) => evaluateScreenValue(item, zoom, properties);
@@ -1339,6 +1595,36 @@
         }
         return stops[stops.length - 1][1];
       }
+      // The LOD gates are step/case/comparison expressions rather than
+      // arithmetic ones, so measuring "is this drawn at this zoom, for a
+      // feature with this minz?" needs them evaluated too — otherwise every
+      // opacity in this style reads NaN and no test can hold it to anything.
+      case "step": {
+        const input = at(rest[0]);
+        let result = at(rest[1]);
+        for (let index = 2; index + 1 < rest.length; index += 2) {
+          if (input < Number(rest[index])) break;
+          result = at(rest[index + 1]);
+        }
+        return result;
+      }
+      case "case": {
+        for (let index = 0; index + 1 < rest.length; index += 2)
+          if (at(rest[index])) return at(rest[index + 1]);
+        return rest.length % 2 ? at(rest[rest.length - 1]) : NaN;
+      }
+      case "==":
+        return at(rest[0]) === at(rest[1]);
+      case "!=":
+        return at(rest[0]) !== at(rest[1]);
+      case "<":
+        return at(rest[0]) < at(rest[1]);
+      case "<=":
+        return at(rest[0]) <= at(rest[1]);
+      case ">":
+        return at(rest[0]) > at(rest[1]);
+      case ">=":
+        return at(rest[0]) >= at(rest[1]);
       default:
         return NaN;
     }
@@ -1349,6 +1635,7 @@
   // that sit in its lane, and every layer that draws a ride over it — solid,
   // cross-day dashes, selected, its casing, hovered, and the hit target.
   const PARALLEL_LANE_LAYERS = Object.freeze([
+    SEGMENTS_CASING_LAYER,
     SEGMENTS_LAYER,
     STATION_LANES_LAYER,
     TRAIN_ROUTES_LAYER,
@@ -1563,6 +1850,8 @@
     railAttributionForCountry,
     stopMarkerZoomGate,
     networkLineColor,
+    networkCasingColor,
+    networkCasingWidth,
     riddenLineWidth,
     riddenHoverLineWidth,
     riddenFocusLineWidth,
@@ -1601,9 +1890,17 @@
     SEGMENTS_SOURCE,
     STATIONS_SOURCE,
     SEGMENTS_LAYER,
+    SEGMENTS_CASING_LAYER,
     STATIONS_LAYER,
     STATION_LANES_SOURCE,
     STATION_LANES_LAYER,
+    STATION_LABELS_SOURCE,
+    STATIONS_LABEL_LAYER,
+    SEGMENTS_LABEL_LAYER,
+    networkLabelTextColor,
+    networkLabelHaloColor,
+    networkLineLabelColor,
+    labelVisibilityOpacity,
     STATION_ICON_BASE_PX,
     stationIconId,
     stationIconImage,

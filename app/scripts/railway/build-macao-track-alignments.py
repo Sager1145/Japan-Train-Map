@@ -9,7 +9,7 @@ Usage:
     --taipa /tmp/mo-dscc-taipa.json \
     --seac-pai-van /tmp/mo-dscc-spv.json \
     --hengqin /tmp/mo-dscc-hengqin.json \
-    --output scripts/railway/data/mo-track-alignments.json
+    --output data/raw/railway/mo/mo-track-alignments.json
 """
 
 from __future__ import annotations

@@ -32,6 +32,16 @@ const PACKAGE_VERSION = '2025.3.3';
 
 const CASES = [
   {
+    // 姫新線 院庄 → 津山 4.5 km.  The graph path passes the 津山 platform,
+    // continues about 420 m east through the yard, then reverses over the same
+    // N02 alignment to reach the station node.  Drop that arrival fold so the
+    // through line reaches the platform once and continues towards 東津山.
+    lineId: 'jp-西日本旅客鉄道-姫新線',
+    from: '院庄',
+    to: '津山',
+    officialKm: 4.5,
+  },
+  {
     // 常磐線 取手 → 藤代 6.0 km. 取手 is where the 緩行線 from 綾瀬 terminates,
     // so the platform's nearest N02 node sits on that alignment and the path
     // had to run 2.5 km back towards 天王台 to reach the through track.
@@ -116,7 +126,10 @@ for (const plan of CASES) {
   const intervals = decodeIntervals(line);
   const before = intervals[index];
   // Both ends: a fold can just as easily sit at the arrival platform.
-  const after = trimFold(trimFold(before).reverse()).reverse();
+  // Never reverse the decoded interval in place: trimFold intentionally
+  // returns its input when that end is clean, and Array#reverse would then
+  // mutate `before` before the endpoint-safety check below.
+  const after = trimFold(trimFold(before).slice().reverse()).slice().reverse();
   const beforeKm = pathMetres(before) / 1000;
   const afterKm = pathMetres(after) / 1000;
 

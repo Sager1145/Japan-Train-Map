@@ -4,7 +4,7 @@
 Station names, line membership, colours and WGS84 station anchors come from
 MTR's official journey-planner payload. Branch ordering comes from the
 official ``mtr_lines_and_stations.csv`` open-data file. Track curves are cut
-from the prepared route centre-lines in ``scripts/railway/data/hk-track-alignments.json``
+from the prepared route centre-lines in ``data/raw/railway/hk/hk-track-alignments.json``
 (built by scripts/railway/build-hong-kong-track-alignments.py: official LandsD iB1000
 geometry, with OSM route relations only where the public official map exposes
 underground railways as undifferentiated generic tunnels).
@@ -52,13 +52,13 @@ from lib.geometry import (
 APP_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = APP_DIR / "data"
 RAIL_DIR = APP_DIR / "public" / "rail"
-SCRIPT_DATA = Path(__file__).resolve().parent / "data"
-TRACK_DATA = SCRIPT_DATA / "hk-track-alignments.json"
-TRAM_TRACK_DATA = SCRIPT_DATA / "hk-tram-alignments.json"
+SOURCE_DATA = DATA_DIR / "raw" / "railway" / "hk"
+TRACK_DATA = SOURCE_DATA / "hk-track-alignments.json"
+TRAM_TRACK_DATA = SOURCE_DATA / "hk-tram-alignments.json"
 TRAM_STOPS_CSV = {
-    "zh_Hant": SCRIPT_DATA / "hk-tramways-stops-tc.csv",
-    "zh_Hans": SCRIPT_DATA / "hk-tramways-stops-sc.csv",
-    "en": SCRIPT_DATA / "hk-tramways-stops-en.csv",
+    "zh_Hant": SOURCE_DATA / "hk-tramways-stops-tc.csv",
+    "zh_Hans": SOURCE_DATA / "hk-tramways-stops-sc.csv",
+    "en": SOURCE_DATA / "hk-tramways-stops-en.csv",
 }
 
 PACKAGE_VERSION = "2025.2.0"
@@ -238,13 +238,34 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
                 "ja": "",
                 "en": row[4],
             }
-            by_code[code] = localized
-            # Network alias, Taiwan-style: "{lineId}:{stationGroupId}" resolves
-            # the same row for popups that only know the display network ids.
-            by_code[f"{line['id']}:{row[0]}"] = localized
             if row[1] not in seen_names:
                 by_name[row[1]] = localized
                 seen_names.add(row[1])
+        # A physical branch only draws from its junction to its own terminus,
+        # but persisted route data may still address the operator's complete
+        # end-to-end service code on the shared trunk. Keep those names as
+        # reading aliases only: no duplicate station feature or geometry is
+        # emitted, so the map still has one marker per physical platform.
+        reading_aliases = line.get("readingAliases") or [
+            {
+                "alias": aliases[index],
+                "group": row[0],
+                "zh": row[1],
+                "zh_hans": hans_names[index],
+                "en": row[4],
+            }
+            for index, row in enumerate(station_rows)
+        ]
+        for alias in reading_aliases:
+            localized = {
+                "name": alias["zh"],
+                "zh_Hant": alias["zh"],
+                "zh_Hans": alias["zh_hans"] or to_hans(alias["zh"]),
+                "ja": "",
+                "en": alias["en"],
+            }
+            by_code[f'{code_prefix}-{alias["alias"]}'] = localized
+            by_code[f'{line["id"]}:{alias["group"]}'] = localized
     readings = {
         "note": "Official operator station names for the four UI languages; unavailable translations are empty.",
         "country": country.upper(),
@@ -330,7 +351,7 @@ def sample_store(country: str, lines: list[dict], operator: str | None = None) -
 def strip_build_fields(lines: list[dict]) -> list[dict]:
     stripped = []
     for line in lines:
-        clean = {key: value for key, value in line.items() if key not in {"codePrefix", "stationAliases", "stationHans"}}
+        clean = {key: value for key, value in line.items() if key not in {"codePrefix", "stationAliases", "stationHans", "readingAliases"}}
         stripped.append(clean)
     return stripped
 
@@ -446,8 +467,8 @@ def branch_variants(trunk, branch):
             junction = max(0, index - 1)
             break
     return [
-        (code_prefix, name, english, trunk_aliases),
-        (branch_prefix, name, english, branch_aliases[junction:]),
+        (code_prefix, name, english, trunk_aliases, trunk_aliases),
+        (branch_prefix, name, english, branch_aliases[junction:], branch_aliases),
     ]
 
 
@@ -468,7 +489,8 @@ def build_hong_kong(html_path: Path, csv_path: Path, track_path: Path, tram_trac
         alias = source_line["alias"]
         if alias == "HSR":
             continue  # Hong Kong West Kowloon is the only station inside the SAR.
-        variants = [(alias, source_line["nameTC"], source_line["name"], [heavy["stations"][[s["ID"] for s in heavy["stations"]].index(i)]["alias"] for i in source_line["stationIDs"]])]
+        source_aliases = [heavy["stations"][[s["ID"] for s in heavy["stations"]].index(i)]["alias"] for i in source_line["stationIDs"]]
+        variants = [(alias, source_line["nameTC"], source_line["name"], source_aliases, source_aliases)]
         if alias == "EAL":
             # ONE railway with a branch, not two railways. 東鐵綫 runs to 羅湖;
             # 落馬洲 hangs off 上水. Both rows therefore carry the LINE's name,
@@ -486,7 +508,7 @@ def build_hong_kong(html_path: Path, csv_path: Path, track_path: Path, tram_trac
                 ("TKL-POA", "將軍澳綫", "Tseung Kwan O Line", list(reversed(direction_rows[("TKL", "DT")]))),
                 ("TKL-LHP", direction_rows[("TKL", "TKS-UT")]),
             )
-        for code_prefix, name, english, station_aliases in variants:
+        for code_prefix, name, english, station_aliases, reading_aliases in variants:
             station_rows = []
             for station_alias in station_aliases:
                 station = heavy_stations[station_alias]
@@ -498,7 +520,19 @@ def build_hong_kong(html_path: Path, csv_path: Path, track_path: Path, tram_trac
                     "en": station["name"], "lon": lon, "lat": lat,
                 })
             line_id = f"hk-mtr-{code_prefix.lower()}"
-            lines.append(compact_line(line_id, code_prefix, name, english, "MTR", "#" + source_line["color"], 1, station_rows, track_data["routes"][code_prefix]))
+            line = compact_line(line_id, code_prefix, name, english, "MTR", "#" + source_line["color"], 1, station_rows, track_data["routes"][code_prefix])
+            service_aliases = []
+            for station_alias in reading_aliases:
+                station = heavy_stations[station_alias]
+                service_aliases.append({
+                    "alias": f"MTR-{station_alias}",
+                    "group": f"hk-official-mtr-{station_alias.lower()}",
+                    "zh": station["nameTC"],
+                    "zh_hans": station.get("nameSC", ""),
+                    "en": station["name"],
+                })
+            line["readingAliases"] = service_aliases
+            lines.append(line)
 
     light_stations = {str(station["ID"]): station for station in light["stations"]}
     for source_line in light["lines"]:

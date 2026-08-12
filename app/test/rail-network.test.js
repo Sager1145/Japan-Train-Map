@@ -13,27 +13,28 @@ const PACKAGE_PATH = path.join(
   __dirname,
   "../public/rail/jp-2025.json",
 );
-// 606 lines, not 600: six branches that the package had spliced into their
+// 607 lines, not 600: seven branches that the package had spliced into their
 // trunk's station order each ship as their own `-2` entry
 // (scripts/railway/split-interleaved-branches.mjs) — 砂原支線, 辰野支線, 南武支線,
-// 常陸太田支線, the 総武本線 御茶ノ水 支線 and the 予讃線 新線. Their junction
+// 常陸太田支線, the 総武本線 御茶ノ水 支線, the 予讃線 新線 and 東武小泉線's
+// 太田支線. Their junction
 // stations are second copies sharing the existing station groups, so `groups`
 // is unchanged while `stations` grows by one per junction.
 //
-// 862 drawn features for those 606 lines: where two INDEPENDENT railways share
+// Drawn features for those 607 lines: where two INDEPENDENT railways share
 // a corridor each takes its own lane, and a lane — plus the quarter-steps that
 // ease the line into and out of it — is a feature of its own so it can carry
 // its own screen-space offset (rail-network.js splitPartByLanes, table from
 // scripts/railway/build-parallel-corridors.mjs). Every feature still carries its
 // line's own id.
 const EXPECTED_COUNTS = Object.freeze({
-  // Not 606 (one feature per line): a line that takes a parallel lane ships
+  // Not 607 (one feature per line): a line that takes a parallel lane ships
   // one feature per lane VALUE, and the ramp in and out of a lane is two more.
   // 横浜市 1号線 and 3号線 are two line numbers of ONE railway (ブルーライン,
   // through-operated across 関内) and so share a stroke rather than a corridor.
-  segments: 889,
-  stations: 10160,
-  lines: 606,
+  segments: 890,
+  stations: 10161,
+  lines: 607,
   groups: 9046,
 });
 test("compact rail package produces the characterized render model", async () => {

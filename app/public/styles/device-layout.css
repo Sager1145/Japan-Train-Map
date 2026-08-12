@@ -1,0 +1,731 @@
+/* ==========================================================================
+   Terminal-aware interaction and density
+   --------------------------------------------------------------------------
+   `data-ui-mode` is resolved from UA-CH/UA + pointer capabilities, with a
+   compact-window fallback and an explicit user override. Device mode owns the
+   drawer axis and hit-target density; viewport width only reflows content.
+   ========================================================================== */
+
+.ui-mode-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 12px;
+  background: var(--ios-secondary-background);
+}
+
+.ui-mode-setting > label {
+  color: var(--ios-label);
+  font-weight: 600;
+}
+
+.ui-mode-setting select {
+  min-width: 116px;
+}
+
+.ui-mode-setting .display-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--font-sm);
+}
+
+/* The menu is the platform scroll container. Keep native momentum and edge
+   elasticity (including iOS scroll-to-top rebound) while the page/map remain
+   locked in place behind it. */
+#sidebar {
+  overflow-y: auto;
+  scroll-behavior: auto;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile UI can apply on tablets and wide mobile browsers, not only a narrow
+   CSS viewport. It keeps iOS touch targets, a three-detent bottom sheet and a
+   persistent five-item bottom bar. */
+html[data-ui-mode="mobile"] #app {
+  --panel-half: 50dvh;
+  --panel-full: calc(100dvh - env(safe-area-inset-top) - 10px);
+  --panel-clip: calc(var(--sidebar-open-size) - var(--sidebar-size));
+  --sidebar-open-size: var(--panel-full);
+  --sidebar-size: var(--panel-half);
+}
+
+html[data-ui-mode="mobile"][data-sidebar="collapsed"] #app,
+html[data-ui-mode="mobile"] #app.sidebar-collapsed {
+  --sidebar-size: 0px;
+}
+
+html[data-ui-mode="mobile"] #sidebar {
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: var(--sidebar-open-size);
+  min-height: var(--sidebar-open-size);
+  max-height: var(--sidebar-open-size);
+  padding: 38px 12px
+    calc(
+      var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom)
+    );
+  border: 1px solid var(--ios-separator);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  background: var(--ios-material);
+  transform: translateY(
+    calc(var(--sidebar-open-size) - var(--sidebar-size))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Reserve scroll room for the off-screen part of a half/peek sheet without
+   putting that reserve in padding. Padding enlarged the sheet's border box
+   beyond --panel-full, which hid the grabber under the fixed tab bar and made
+   drag calculations report a panel taller than the viewport. */
+html[data-ui-mode="mobile"] #sidebar::after {
+  content: "";
+  order: 100;
+  flex: 0 0 max(0px, var(--panel-clip, 0px));
+  width: 1px;
+  height: max(0px, var(--panel-clip, 0px));
+  pointer-events: none;
+}
+
+html[data-ui-mode="mobile"] #sidebar > * {
+  flex: 0 0 auto;
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-collapsed #sidebar {
+  /* The clipped scroll reserve grows the sheet's actual box when hidden.
+     Translate by that real box height so no material strip remains visible. */
+  transform: translateY(100%);
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-dragging #sidebar {
+  transform: translateY(
+    calc(var(--sidebar-open-size) - var(--sidebar-size))
+  );
+}
+
+html[data-ui-mode="mobile"] .workspace-nav {
+  --workspace-nav-height: calc(
+    var(--ios-tabbar-height) + env(safe-area-inset-bottom)
+  );
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 90;
+  order: initial;
+  width: 100%;
+  height: var(--workspace-nav-height);
+  margin: 0;
+  padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--ios-material-strong);
+  /* The tab bar remains viewport-fixed while open, then follows the sheet
+     only through its final bottom-edge retreat. During a drag, max() keeps
+     it fixed until the remaining sheet is shorter than the bar itself. */
+  transform: translateY(
+    max(0px, calc(var(--workspace-nav-height) - var(--sidebar-size)))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="mobile"] #app.sidebar-dragging .workspace-nav {
+  transition: none;
+}
+
+html[data-ui-mode="mobile"][data-sidebar="collapsed"] .workspace-nav,
+html[data-ui-mode="mobile"] #app.sidebar-collapsed .workspace-nav {
+  pointer-events: none;
+}
+
+html[data-ui-mode="mobile"] .workspace-nav a {
+  flex-direction: column;
+  gap: 2px;
+  min-height: 50px;
+  padding: 3px 2px;
+  border-radius: var(--radius-button);
+  font-size: 10px;
+  line-height: 1.05;
+}
+
+html[data-ui-mode="mobile"] #sidebar > header {
+  order: 99;
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) 0 0;
+  border-top: 1px solid var(--ios-separator);
+}
+
+html[data-ui-mode="mobile"] #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+  visibility: hidden;
+  opacity: 1;
+  pointer-events: none;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab,
+html[data-ui-mode="mobile"] .sidebar-edge-tab:hover,
+html[data-ui-mode="mobile"] .sidebar-edge-tab:focus-visible {
+  top: auto;
+  bottom: max(calc(var(--sidebar-size) - 31px), 0px);
+  left: 50%;
+  width: 54px;
+  height: 25px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-material);
+  cursor: ns-resize;
+  transform: translateX(-50%);
+  transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip {
+  flex-direction: column;
+  gap: 0;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip span {
+  display: none;
+}
+
+html[data-ui-mode="mobile"] .sidebar-edge-tab-grip span:first-child {
+  display: block;
+  width: 36px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--ios-label-tertiary);
+}
+
+html[data-ui-mode="mobile"] .maplibregl-ctrl-top-left {
+  left: 0;
+  margin-top: env(safe-area-inset-top);
+  margin-left: calc(10px + env(safe-area-inset-left));
+}
+
+html[data-ui-mode="mobile"] .maplibregl-ctrl-bottom-right {
+  bottom: min(var(--sidebar-size), 55dvh);
+}
+
+html[data-ui-mode="mobile"] .map-info-control {
+  bottom: calc(min(var(--sidebar-size), 55dvh) + 8px);
+}
+
+html[data-ui-mode="mobile"] .map-info-panel {
+  max-height: min(
+    520px,
+    calc(100dvh - min(var(--sidebar-size), 55dvh) - 68px)
+  );
+}
+
+html[data-ui-mode="mobile"] .toolbar > button {
+  flex: 1 1 112px;
+}
+
+html[data-ui-mode="mobile"] .form-grid {
+  grid-template-columns: 1fr;
+}
+
+/* Desktop UI uses the same opaque iOS component grammar at a substantially
+   tighter information density. This also overrides narrow-width sheet rules
+   when a phone or tablet explicitly selects Desktop. */
+html[data-ui-mode="desktop"] {
+  --ios-control-height: 32px;
+  --ios-touch-height: 32px;
+  --ios-tabbar-height: 54px;
+  --ios-nav-reserve: 70px;
+  --font-xs: 9px;
+  --font-sm: 10px;
+  --font-caption: 11px;
+  --font-md: 12px;
+  --font-base: 13px;
+  --font-lg: 14px;
+  --font-xl: 15px;
+  --font-title: 18px;
+  --font-stat: 20px;
+  --font-hero: 26px;
+}
+
+html[data-ui-mode="desktop"] #app {
+  --sidebar-open-size: min(400px, calc(100vw - 52px));
+  --sidebar-size: var(--sidebar-open-size);
+  --panel-clip: 0px;
+}
+
+html[data-ui-mode="desktop"][data-sidebar="collapsed"] #app,
+html[data-ui-mode="desktop"] #app.sidebar-collapsed {
+  --sidebar-size: 0px;
+}
+
+html[data-ui-mode="desktop"] #sidebar {
+  inset: 0 auto 0 0;
+  display: block;
+  width: var(--sidebar-open-size);
+  min-width: var(--sidebar-open-size);
+  max-width: var(--sidebar-open-size);
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  padding: 8px 10px calc(var(--ios-nav-reserve) + env(safe-area-inset-bottom));
+  border: 0;
+  border-right: 1px solid var(--ios-separator);
+  border-radius: 0;
+  background: var(--ios-material);
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+}
+
+html[data-ui-mode="desktop"] #sidebar > * {
+  flex: initial;
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-collapsed #sidebar {
+  transform: translateX(calc(-1 * var(--sidebar-open-size)));
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-dragging #sidebar {
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+}
+
+html[data-ui-mode="desktop"] #sidebar > header {
+  order: initial;
+  margin: 0 0 4px;
+  padding: 4px 2px;
+  border-top: 0;
+}
+
+html[data-ui-mode="desktop"] h1 {
+  font-size: var(--font-title);
+}
+
+html[data-ui-mode="desktop"] input,
+html[data-ui-mode="desktop"] select,
+html[data-ui-mode="desktop"] textarea,
+html[data-ui-mode="desktop"] button,
+html[data-ui-mode="desktop"] .rp-modal-btn,
+html[data-ui-mode="desktop"] .rp-modal-choice {
+  min-height: var(--ios-control-height);
+  font-size: 13px;
+}
+
+html[data-ui-mode="desktop"] button,
+html[data-ui-mode="desktop"] .rp-modal-btn,
+html[data-ui-mode="desktop"] .rp-modal-choice {
+  padding: 4px 9px;
+  border-radius: 8px;
+}
+
+html[data-ui-mode="desktop"] button.icon {
+  width: var(--ios-control-height);
+  min-width: var(--ios-control-height);
+  min-height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .inline-check,
+html[data-ui-mode="desktop"] .date-btn {
+  min-height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .card-body {
+  gap: 8px;
+  padding: 10px;
+}
+
+html[data-ui-mode="desktop"] .train-item {
+  min-height: 48px;
+  padding: 6px 8px;
+  border-radius: var(--radius-button);
+}
+
+html[data-ui-mode="desktop"] .workspace-nav {
+  position: fixed;
+  inset: auto auto 10px 10px;
+  z-index: 90;
+  order: initial;
+  width: calc(var(--sidebar-open-size) - 20px);
+  height: 54px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 13px;
+  background: var(--ios-material-strong);
+  transform: translateX(
+    calc(var(--sidebar-size) - var(--sidebar-open-size))
+  );
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="desktop"] #app.sidebar-dragging .workspace-nav {
+  transition: none;
+}
+
+html[data-ui-mode="desktop"][data-sidebar="collapsed"] .workspace-nav,
+html[data-ui-mode="desktop"] #app.sidebar-collapsed .workspace-nav {
+  pointer-events: none;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav a {
+  flex-direction: column;
+  gap: 1px;
+  min-height: 44px;
+  padding: 2px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+html[data-ui-mode="desktop"] .workspace-nav a > span:first-child {
+  flex-basis: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab,
+html[data-ui-mode="desktop"] .sidebar-edge-tab:hover,
+html[data-ui-mode="desktop"] .sidebar-edge-tab:focus-visible {
+  top: 50%;
+  bottom: auto;
+  left: var(--sidebar-size);
+  width: 22px;
+  height: 56px;
+  border: 1px solid var(--ios-separator);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: var(--ios-material-strong);
+  cursor: ew-resize;
+  transform: translateY(-50%);
+  transition: left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip {
+  flex-direction: row;
+  gap: 3px;
+}
+
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip span,
+html[data-ui-mode="desktop"] .sidebar-edge-tab-grip span:first-child {
+  display: block;
+  width: 2px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+html[data-ui-mode="desktop"] .maplibregl-ctrl-top-left {
+  left: var(--sidebar-size);
+  margin-top: 0;
+  margin-left: 0;
+}
+
+html[data-ui-mode="desktop"] .maplibregl-ctrl-bottom-right {
+  bottom: 0;
+}
+
+html[data-ui-mode="desktop"] .map-info-control {
+  bottom: 8px;
+}
+
+html[data-ui-mode="desktop"] .map-info-panel {
+  max-height: min(520px, calc(100dvh - 68px));
+}
+
+html[data-ui-mode="desktop"] .map-layers-summary,
+html[data-ui-mode="desktop"] .map-layers-control:not([open]) .map-layers-summary,
+html[data-ui-mode="desktop"] .map-layers-control select,
+html[data-ui-mode="desktop"] .map-layers-control label {
+  min-height: var(--ios-control-height);
+  font-size: var(--font-caption);
+}
+
+html[data-ui-mode="desktop"] .map-info-summary,
+html[data-ui-mode="desktop"] .maplibregl-ctrl-group button {
+  width: var(--ios-control-height);
+  height: var(--ios-control-height);
+}
+
+html[data-ui-mode="desktop"] .toolbar > button {
+  flex: 0 1 auto;
+}
+
+html[data-ui-mode="desktop"] #train-editor .card-body > .toolbar:last-child {
+  margin-top: var(--space-2);
+  background: var(--ios-secondary-grouped-background);
+}
+
+html[data-ui-mode="desktop"] .ui-mode-setting {
+  padding: 8px;
+  border-radius: var(--radius-button);
+}
+
+html[data-ui-mode="desktop"] .ui-mode-setting select {
+  min-width: 104px;
+}
+
+/* iOS map-layer menu ------------------------------------------------------
+   A compact pull-down button reveals one solid large-list menu. Mutually
+   exclusive basemaps use the platform select; independent visibility states
+   use trailing checkmarks, matching HIG toggled-menu semantics. */
+.map-layers-control,
+.map-layers-control[open],
+.map-layers-control:not([open]) {
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  border: 1px solid var(--ios-separator);
+  border-radius: var(--radius-pill);
+  background: var(--ios-material-strong);
+}
+
+.map-layers-summary,
+.map-layers-control:not([open]) .map-layers-summary {
+  gap: 8px;
+  min-height: var(--ios-touch-height);
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.map-layers-summary:hover,
+.map-layers-summary:focus-visible,
+.map-layers-control[open] .map-layers-summary {
+  border: 0;
+  background: var(--ios-tint-soft);
+}
+
+.map-layers-summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: -3px 1px 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  color: var(--ios-label-secondary);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.map-layers-control[open] .map-layers-summary::after {
+  margin-top: 3px;
+  transform: rotate(225deg);
+}
+
+.map-layers-body {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: min(284px, calc(100vw - 20px));
+  max-height: calc(100dvh - 72px);
+  gap: 0;
+  padding: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  border: 1px solid var(--ios-separator);
+  border-radius: 16px;
+  background: var(--ios-material-strong);
+  -webkit-overflow-scrolling: touch;
+}
+
+.map-layers-control .map-basemap-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, auto);
+  gap: 10px;
+  min-height: 42px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--ios-separator);
+  color: var(--ios-label);
+}
+
+.map-layers-control .map-basemap-field > span {
+  overflow: hidden;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-caption);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.map-layers-control .map-basemap-field select {
+  justify-self: end;
+  width: 100%;
+  max-width: 176px;
+  min-height: 32px;
+  margin: 0;
+  padding: 3px 22px 3px 6px;
+  border: 0;
+  border-radius: 8px;
+  background-color: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field) {
+  display: flex;
+  min-height: 38px;
+  gap: 10px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--ios-separator);
+  border-radius: 0;
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field):hover,
+.map-layers-control .map-layers-body > label:not(.map-basemap-field):focus-within {
+  background: var(--ios-fill-tertiary);
+}
+
+.map-layers-control .map-layers-body > label:not(.map-basemap-field) > span {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"] {
+  order: 2;
+  align-self: center;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0 2px 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]::after {
+  top: 1px;
+  left: 5px;
+  width: 6px;
+  height: 11px;
+  border-color: var(--ios-tint);
+  border-width: 0 2px 2px 0;
+  opacity: 0;
+  transform: rotate(45deg) scale(0.7);
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]:checked {
+  background: transparent;
+}
+
+html[data-ui-mode] .map-layers-control input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+html[data-theme="dark"][data-ui-mode]
+  .map-layers-control
+  input[type="checkbox"]:checked::after {
+  border-color: var(--ios-tint);
+}
+
+.map-layers-subhead {
+  margin: 6px -6px 0;
+  padding: 9px 14px 5px;
+  border-top: 6px solid var(--ios-grouped-background);
+  background: var(--ios-material-strong);
+  color: var(--ios-label-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.map-layers-subhead span::before {
+  content: none;
+}
+
+html[data-ui-mode="desktop"] .map-layers-summary,
+html[data-ui-mode="desktop"]
+  .map-layers-control:not([open])
+  .map-layers-summary {
+  min-height: var(--ios-control-height);
+  padding: 5px 10px;
+  font-size: var(--font-caption);
+}
+
+html[data-ui-mode="desktop"] .map-layers-body {
+  width: 260px;
+  padding: 5px;
+  border-radius: var(--radius-card);
+}
+
+html[data-ui-mode="desktop"]
+  .map-layers-control
+  .map-layers-body
+  > label:not(.map-basemap-field) {
+  min-height: 34px;
+  padding-block: 3px;
+  font-size: var(--font-caption);
+}
+
+html[data-ui-mode="desktop"] .map-layers-control .map-basemap-field {
+  min-height: 38px;
+}
+
+@media (max-width: 599px) {
+  html[data-ui-mode="mobile"] .map-layers-control[open] {
+    right: 8px;
+  }
+
+  html[data-ui-mode="mobile"] .map-layers-body {
+    width: calc(100vw - 16px);
+    max-height: max(
+      220px,
+      calc(100dvh - min(var(--sidebar-size), 55dvh) - 64px)
+    );
+    padding: 6px;
+    border-radius: 16px;
+  }
+
+  html[data-ui-mode="mobile"]
+    .map-layers-control
+    .map-layers-body
+    > label:not(.map-basemap-field) {
+    min-height: 44px;
+    padding: 5px 10px;
+    font-size: 15px;
+  }
+
+  html[data-ui-mode="mobile"] .map-layers-control .map-basemap-field {
+    min-height: 48px;
+    padding-inline: 10px;
+  }
+}
+
+/* Main-menu workspaces are pages, not nested cards. Keep their internal
+   grouped controls and separators, but remove every outer card treatment. */
+#sidebar > section.card,
+#sidebar > details.card {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

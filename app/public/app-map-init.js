@@ -15,8 +15,8 @@
 //     theme-matched background when unavailable or the user chooses no map,
 //   - the full MLIT N02 national network + stations from railprint's
 //     jp-2025 rail package, every line in its official color, revealed
-//     by zoom tier (rank) and station spacing — OFF by default, toggled
-//     via the "All Railway Lines" switch in the layers control,
+//     by zoom tier (rank) and station spacing — ON by default during the
+//     Apple Maps visual rebuild, toggled via the "All Railway Lines" switch,
 //   - train routes/markers as GeoJSON layers with railprint's "ridden"
 //     treatment: full official color, dark ink casing under the selected
 //     route (no glow).
@@ -133,15 +133,22 @@ function buildMapLayersControl(hasBasemap) {
   // Latest desired state of the 全部鐵路線 overlay. Its geometry model is
   // already loaded because ridden routes use it too; ensureNetwork() still
   // covers recovery after a failed request and country-switch races.
-  let networkOverlayWanted = false;
+  //
+  // TEMPORARY (Apple Maps 全部鐵路線 visual rebuild): the ridden-trip layers
+  // start HIDDEN and 全部鐵路線 starts ON, so the rebuilt network overlay is
+  // what a fresh load shows and can be compared against macOS Maps Transit
+  // without ridden routes drawn on top of it. Flip these four defaults back
+  // to true / allRailways back to false to restore the shipping behaviour;
+  // nothing else in the ridden pipeline was touched.
+  let networkOverlayWanted = true;
   const toggles = [
-    ["map.routes", (v) => RailMap.setVisible(v), true],
-    ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
-    ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), true],
-    ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
-    // 全部線路（全國路網 + 車站點）：opt-in, OFF by default. The complete-line
-    // model is shared with ridden routes, while this switch controls only the
-    // background network and station layers.
+    ["map.routes", (v) => RailMap.setVisible(v), false],
+    ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), false],
+    ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), false],
+    ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), false],
+    // 全部線路（全國路網 + 車站點）：ON by default during the visual rebuild.
+    // The complete-line model is shared with ridden routes, while this switch
+    // controls only the background network and station layers.
     [
       "map.allRailways",
       (v) => {
@@ -162,7 +169,7 @@ function buildMapLayersControl(hasBasemap) {
           RailMap.setNetworkStationsVisible(false);
         }
       },
-      false,
+      true,
     ],
   ];
   const toggleLabels = [];
@@ -172,6 +179,10 @@ function buildMapLayersControl(hasBasemap) {
     cb.type = "checkbox";
     cb.checked = on;
     cb.addEventListener("change", () => apply(cb.checked));
+    // The checkbox no longer merely MIRRORS RailMap's own defaults, so the
+    // starting state has to be pushed into the map as well — otherwise the
+    // box would read "off" while the layer still drew.
+    apply(on);
     const labelText = document.createElement("span");
     labelText.textContent = I18N.tc(labelKey);
     item.appendChild(cb);

@@ -87,14 +87,67 @@ def section_operator(props):
     return str(props.get("N02_004") or props.get("operator") or "")
 
 
+def node_point(node):
+    """The coordinate a graph node stands for.
+
+    A node is the coordinate tuple, optionally with a third element that
+    disambiguates one section's second pass over a point it has already
+    visited (see add_polyline). Nothing downstream may read that third
+    element as geometry.
+    """
+    return [node[0], node[1]]
+
+
 class LineGraph:
     def __init__(self):
         self.adj = defaultdict(list)  # node -> [(node, weight)]
         self.nodes = []
 
     def add_polyline(self, coords):
-        for a, b in zip(coords, coords[1:]):
-            na, nb = tuple(a), tuple(b)
+        # Where ONE section's polyline returns to a point it has already
+        # passed, the two passes are a spiral crossing over itself — not a
+        # junction a train may turn at. Japan's four loop lines are exactly
+        # this shape: ゆりかもめ's 芝浦 climb onto the Rainbow Bridge, 上越線's
+        # 湯檜曽 and 松川 loops, and 中村線's 川奥 loop. N02 draws each as a
+        # single section that leaves the junction, circles, and comes back to
+        # the same coordinate before carrying on.
+        #
+        # Keyed on the coordinate alone, those two passes are ONE graph node,
+        # which hands Dijkstra a zero-cost shortcut across the circle: the
+        # shortest path from the station to the far end of the section skips
+        # the loop entirely, and the drawn railway climbs 50 m in a straight
+        # line. So the repeat visits get their own node identity, and the
+        # only way through the section is the way the track goes.
+        #
+        # Which pass keeps the shared identity matters: the section's own
+        # ENDPOINTS are where other sections legitimately join, so those keep
+        # the plain coordinate and the interior passes are the private ones.
+        # A section whose two endpoints are the same point — a closed balloon
+        # attached to the rest of the line at one spot, as on 身延線 — has no
+        # interior repeat and is left exactly as it was.
+        seen = defaultdict(list)
+        for index, point in enumerate(coords):
+            seen[tuple(point)].append(index)
+        private = {}
+        last = len(coords) - 1
+        for point, indexes in seen.items():
+            if len(indexes) < 2 or indexes[-1] - indexes[0] < 2:
+                continue
+            endpoints = [i for i in indexes if i == 0 or i == last]
+            shared = set(endpoints) if endpoints else {indexes[0]}
+            occurrence = 0
+            for index in indexes:
+                if index in shared:
+                    continue
+                occurrence += 1
+                private[index] = point + (occurrence,)
+
+        def node_at(index):
+            return private.get(index, tuple(coords[index]))
+
+        for index in range(len(coords) - 1):
+            a, b = coords[index], coords[index + 1]
+            na, nb = node_at(index), node_at(index + 1)
             if na == nb:
                 continue
             w = metres(a, b)
@@ -253,7 +306,7 @@ def rebuild_intervals(graph, stations, segment_count, old, stats):
                 intervals.append({"coords": [list(a_pt), list(b_pt)], "extra": []})
             stats["fallbacks"] += 1
             continue
-        coords = dedupe([a_pt] + [list(node) for node in path] + [b_pt])
+        coords = dedupe([a_pt] + [node_point(node) for node in path] + [b_pt])
         if len(coords) < 2:
             coords = [a_pt, b_pt]
         extra = old[index]["extra"] if old is not None and index < len(old) else []

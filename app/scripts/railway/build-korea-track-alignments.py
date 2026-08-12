@@ -22,9 +22,14 @@ Two geometry sources, because Korean OSM is tagged two different ways:
   mileage, so each line is rebuilt by routing between its own stations over a
   graph of just that name's track (the Taiwan method).
 
-Output: scripts/railway/data/kr-track-alignments.json
+Output: data/raw/railway/kr/kr-track-alignments.json
 """
 import argparse, collections, heapq, json, math, os, re, sys
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_OUTPUT = os.path.join(
+    APP_DIR, "data", "raw", "railway", "kr", "kr-track-alignments.json"
+)
 
 M_LAT, M_LON = 110540.0, 88800.0
 RAIL_TYPES = {"rail", "light_rail", "subway", "monorail", "tram", "narrow_gauge"}
@@ -444,8 +449,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pbf", default=os.path.expanduser(
         "~/Library/Caches/japan-train-map/south-korea-latest.osm.pbf"))
-    ap.add_argument("--output", default=os.path.join(os.path.dirname(__file__), "data",
-                                                     "kr-track-alignments.json"))
+    ap.add_argument("--output", default=DEFAULT_OUTPUT)
     args = ap.parse_args()
     ways, nodes, rels = extract(args.pbf)
     print(f"OSM: {len(ways)} rail ways, {len(nodes)} station/stop nodes, {len(rels)} route relations")

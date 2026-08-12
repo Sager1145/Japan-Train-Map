@@ -31,6 +31,26 @@ const MINI_POSITRON = {
       "source-layer": "transportation",
     },
     {
+      id: "building",
+      type: "fill",
+      source: "openmaptiles",
+      "source-layer": "building",
+    },
+    {
+      id: "station_facility_fill",
+      type: "fill",
+      source: "openmaptiles",
+      "source-layer": "landuse",
+      filter: ["==", ["get", "class"], "station"],
+    },
+    {
+      id: "station_platform_outline",
+      type: "line",
+      source: "openmaptiles",
+      "source-layer": "transportation",
+      filter: ["==", ["get", "class"], "platform"],
+    },
+    {
       id: "boundary_2",
       type: "line",
       source: "openmaptiles",
@@ -173,6 +193,7 @@ test("sea and lake name labels are dropped worldwide, order otherwise intact", a
       "background",
       "water",
       "highway_minor",
+      "building",
       "boundary_2",
       "boundary_disputed",
       KOREA_FIX_CASING,
@@ -181,6 +202,16 @@ test("sea and lake name labels are dropped worldwide, order otherwise intact", a
       "airport",
     ],
   );
+});
+
+test("station_facility_area_is_not_visible", async () => {
+  const win = makeContext();
+  const basemap = await win.RailMapBasemap.loadBasemap("light");
+  const ids = new Set(basemap.layers.map((layer) => layer.id));
+  assert.equal(ids.has("station_facility_fill"), false);
+  assert.equal(ids.has("station_platform_outline"), false);
+  assert.equal(ids.has("building"), true, "ordinary buildings must remain");
+  assert.equal(ids.has("highway_minor"), true, "ordinary transport lines must remain");
 });
 
 test("z4 Korean border repair replaces the triplicate tile geometry with one line", async () => {

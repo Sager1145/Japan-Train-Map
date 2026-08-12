@@ -219,13 +219,7 @@ test("test_station_approach_has_no_large_artificial_turn", async () => {
   // alone: 阿里山線 spirals through 神木 at 109° and the 香港電車 rounds street
   // corners at a tram's radius, and neither is a defect. What is a defect is a
   // corner AT the platform that the rest of its own window does not explain.
-  const allowed = new Map([
-    // 姫新線's station order takes an excursion at 津山 and comes back, so the
-    // drawn stroke doubles back there. That is a station-ORDER defect, not an
-    // approach one — the platform sits 0.5 m off its own track — and belongs to
-    // the branch machinery, not here. Pinned so it cannot grow.
-    ["jp", 1],
-  ]);
+  const allowed = new Map();
   for (const country of COUNTRIES) {
     const rows = (await report(country)).rows;
     assert.equal(
@@ -330,12 +324,9 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     return [country, total];
   });
   assert.deepEqual(reachedByCountry, [
-    // 16 Japanese platforms are missing because the line that calls there is
-    // never DRAWN through them — the 埼京線 corridor and two branch stubs are
-    // dropped by the retrace split, which is a branch-topology defect tracked
-    // by validate-railway-topology.mjs. Every other platform in every package
-    // is on its own railway.
-    ["jp", 10144],
+    // Every package platform is now an exact vertex of its own drawn railway;
+    // branch splitting restores the tiny overlap anchors it used to discard.
+    ["jp", 10161],
     ["tw", 574],
     ["hk", 450],
     ["mo", 17],
@@ -455,14 +446,9 @@ test("test_parallel_single_stop_lane_passes_through_station_dot", () => {
     )
       onLine += 1;
   }
-  // Eight 東北線 platforms between 浮間舟渡 and 北与野 are the exception, and
-  // they are not an anchoring one: the 埼京線 stretch that serves them is
-  // dropped by the retrace split, so 東北線 is never DRAWN there for a platform
-  // to sit on. Tracked as station_not_on_render_line by both audits; pinned so
-  // the number cannot grow unnoticed.
   assert.equal(
     stubs.length - onLine,
-    8,
+    0,
     "every laned platform must be a vertex of its own railway",
   );
 });

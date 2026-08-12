@@ -1,0 +1,1120 @@
+/* ==========================================================================
+   Unified iOS / iPadOS presentation layer
+   --------------------------------------------------------------------------
+   The existing selectors remain the behavioral contract for the editor and
+   map. This final cascade maps them onto one semantic component system: inset
+   groups for content, tinted controls, floating materials for navigation and
+   map chrome, and a persistent compact-width tab bar.
+   ========================================================================== */
+
+html,
+body {
+  color: var(--ios-label);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "SF Pro Display",
+    "Hiragino Sans",
+    "Noto Sans JP",
+    system-ui,
+    sans-serif;
+  background: var(--ios-grouped-background);
+}
+
+#sidebar {
+  padding: var(--space-3) var(--space-3) var(--space-6);
+  border-right-color: var(--ios-separator);
+  background: var(--ios-material);
+  color: var(--ios-label);
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+header {
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-1) 0;
+}
+
+.header-row {
+  gap: var(--space-3);
+}
+
+h1 {
+  gap: var(--space-2);
+  color: var(--ios-label);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  width: 9px;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--ios-tint-vibrant);
+  color: transparent;
+  font-size: 0;
+}
+
+.hint,
+.status,
+.train-meta,
+.progress-text,
+.import-target {
+  color: var(--ios-label-secondary);
+}
+
+.country-switch label,
+.lang-switch label,
+.theme-switch label,
+label {
+  color: var(--ios-label-secondary);
+}
+
+.country-switch select,
+.lang-switch select,
+.theme-switch select {
+  min-height: 32px;
+  padding: 5px 28px 5px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+  font-size: var(--font-caption);
+  font-weight: 500;
+}
+
+/* Top-level navigation: a compact iPad-style material strip on regular widths
+   and a persistent tab bar in the compact tier below. */
+.workspace-nav {
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding: 6px;
+  border: 1px solid var(--ios-separator);
+  border-radius: 16px;
+  background: var(--ios-material-strong);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.workspace-nav a {
+  gap: 5px;
+  min-height: 38px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--ios-material-strong);
+  color: var(--ios-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  transition:
+    transform 0.12s ease,
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.workspace-nav a:hover,
+.workspace-nav a:focus-visible {
+  border-color: transparent;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a:active {
+  transform: scale(0.96);
+}
+
+.workspace-nav a.active,
+.workspace-nav a.active:hover,
+.workspace-nav a.active:focus-visible {
+  border-color: transparent;
+  background: var(--ios-tint-soft);
+  color: var(--ios-tint);
+}
+
+.workspace-nav a > span:first-child,
+.workspace-nav a.active > span:first-child {
+  position: relative;
+  display: block;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 0;
+}
+
+/* CSS-drawn, fixed-metric symbols avoid platform-dependent Unicode glyphs. */
+.workspace-nav a:nth-of-type(1) > span:first-child {
+  border: 1.7px solid currentColor;
+  border-radius: 5px;
+}
+.workspace-nav a:nth-of-type(1) > span:first-child::before {
+  content: "";
+  position: absolute;
+  inset: 4px 4px 7px;
+  border-radius: 1px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.workspace-nav a:nth-of-type(1) > span:first-child::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 9px 0 0 currentColor;
+}
+
+.workspace-nav a:nth-of-type(2) > span:first-child::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 8px;
+  width: 4px;
+  height: 15px;
+  border-radius: 2px 2px 1px 1px;
+  background: currentColor;
+  transform: rotate(42deg);
+}
+.workspace-nav a:nth-of-type(2) > span:first-child::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 3px;
+  width: 7px;
+  height: 1.7px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.workspace-nav a:nth-of-type(3) > span:first-child {
+  background:
+    linear-gradient(currentColor, currentColor) 2px 11px / 4px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) 8px 6px / 4px 12px no-repeat,
+    linear-gradient(currentColor, currentColor) 14px 2px / 4px 16px no-repeat;
+}
+.workspace-nav a:nth-of-type(3) > span:first-child::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  left: 0;
+  height: 1.5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.workspace-nav a:nth-of-type(4) > span:first-child::before,
+.workspace-nav a:nth-of-type(4) > span:first-child::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  width: 15px;
+  height: 7px;
+  border: 1.7px solid currentColor;
+}
+.workspace-nav a:nth-of-type(4) > span:first-child::before {
+  top: 2px;
+  border-width: 1.7px 1.7px 0 0;
+  transform: skewX(-26deg);
+}
+.workspace-nav a:nth-of-type(4) > span:first-child::after {
+  right: 2px;
+  bottom: 2px;
+  left: auto;
+  border-width: 0 0 1.7px 1.7px;
+  transform: skewX(-26deg);
+}
+
+.workspace-nav a:nth-of-type(5) > span:first-child {
+  border: 1.7px solid currentColor;
+  border-radius: 50%;
+  background: conic-gradient(currentColor 0 50%, transparent 50% 100%);
+}
+
+/* Inset-group content surfaces. */
+.card {
+  margin-top: var(--space-2);
+  border: 1px solid var(--ios-separator);
+  border-radius: 18px;
+  background: var(--ios-secondary-grouped-background);
+  box-shadow: none;
+}
+
+#sidebar > section.card {
+  margin-top: var(--space-2);
+}
+
+.card-body {
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.subhead,
+summary.subhead-toggle,
+.map-layers-subhead {
+  color: var(--ios-label-secondary);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.subhead::before,
+.map-layers-subhead span::before {
+  content: none;
+}
+
+/* A system popover remains visually exclusive; the information affordance
+   returns as soon as the layer menu closes. */
+#map.layers-menu-open .map-info-control {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+summary.subhead-toggle:hover {
+  color: var(--ios-tint);
+}
+
+.divider {
+  margin: var(--space-2) 0 var(--space-1);
+  background: var(--ios-separator);
+  opacity: 1;
+}
+
+.toolbar,
+.row {
+  gap: var(--space-2);
+}
+
+.form-grid {
+  gap: var(--space-3);
+}
+
+label {
+  gap: 5px;
+  font-size: var(--font-caption);
+  font-weight: 500;
+}
+
+input,
+select,
+textarea {
+  min-height: var(--ios-control-height);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+  caret-color: var(--ios-tint);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  background: var(--ios-fill-secondary);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: transparent;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ios-label-tertiary);
+  opacity: 1;
+}
+
+input[type="color"] {
+  height: var(--ios-control-height);
+  padding: 4px;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+button {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+  font-weight: 600;
+  transition:
+    transform 0.12s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+button:hover {
+  border-color: transparent;
+  background: var(--ios-fill);
+  color: var(--ios-label);
+}
+
+button:active:not(:disabled):not(.sidebar-edge-tab) {
+  transform: scale(0.965);
+}
+
+button.primary,
+.rp-modal-btn--primary {
+  border-color: transparent;
+  background: var(--ios-tint);
+  color: var(--ios-system-background);
+}
+
+button.primary:hover,
+.rp-modal-btn--primary:hover {
+  border-color: transparent;
+  background: var(--ios-tint-hover);
+  color: var(--on-accent);
+}
+
+button.danger {
+  border-color: transparent;
+  background: var(--ios-danger-soft);
+  color: var(--ios-red);
+}
+
+button.danger:hover {
+  border-color: transparent;
+  background: var(--ios-red);
+  color: var(--on-accent);
+}
+
+button:disabled {
+  opacity: 1;
+}
+
+button.icon {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* iOS checkmarks for selection semantics. Switches are reserved for settings. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 auto;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 1.5px solid var(--ios-label-tertiary);
+  border-radius: 6px;
+  background: var(--ios-secondary-grouped-background);
+  cursor: pointer;
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--ios-system-background);
+  border-width: 0 2px 2px 0;
+  opacity: 1;
+  transform: rotate(45deg) scale(0.7);
+  transition:
+    opacity 0.12s ease,
+    transform 0.12s ease;
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint);
+}
+
+input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+html[data-theme="dark"] input[type="checkbox"]:checked::after {
+  border-color: var(--on-accent);
+}
+
+.display-toggle {
+  display: flex;
+  min-height: var(--ios-touch-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 6px 0;
+  color: var(--ios-label);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.display-toggle span {
+  order: 1;
+}
+
+.display-toggle input[type="checkbox"] {
+  order: 2;
+  width: 46px;
+  min-width: 46px;
+  height: 28px;
+  min-height: 28px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-toggle input[type="checkbox"]::after {
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  /* iOS switch convention: the knob stays white in both themes. */
+  background: #ffffff;
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.display-toggle input[type="checkbox"]:checked {
+  /* App accent, not iOS switch green — every other control (sliders, active
+     pills, primary buttons) speaks the tint family; the switch follows. */
+  background: var(--ios-tint);
+}
+
+.display-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.display-control input[type="range"] {
+  height: var(--ios-touch-height);
+  min-height: var(--ios-touch-height);
+}
+
+.display-control input[type="range"]::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  margin-top: -10px;
+}
+
+.display-control input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+.date-bar {
+  flex-wrap: nowrap;
+  gap: 7px;
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 1px 0 5px;
+  scroll-padding-inline: var(--space-3);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.date-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.date-btn {
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.date-btn:hover {
+  border-color: transparent;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.date-btn.active {
+  border-color: transparent;
+  background: var(--ios-tint);
+  color: var(--on-accent);
+}
+
+.inline-check {
+  min-height: 32px;
+  gap: var(--space-2);
+  color: var(--ios-label-secondary);
+}
+
+.train-list {
+  gap: var(--space-2);
+}
+
+.train-item {
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.train-item:hover {
+  border-color: transparent;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.train-item.selected {
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+.train-item.focused {
+  background: var(--ios-tint-soft);
+}
+
+.train-state,
+.train-date-badge,
+.branch-tag {
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label-secondary);
+}
+
+.list-empty {
+  border: 0;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label-secondary);
+}
+
+.data-source-status,
+.status.ok {
+  color: var(--ios-green);
+}
+.data-source-status.sample-active,
+.status.warn {
+  color: var(--ios-orange);
+}
+.status.err,
+.danger-head {
+  color: var(--ios-red);
+}
+
+.progress-track,
+.stats-track {
+  border: 0;
+  background: var(--ios-fill-secondary);
+}
+
+.progress-fill,
+.stats-fill {
+  background: var(--ios-tint);
+}
+
+.stats-pct,
+.stats-daily-km {
+  color: var(--ios-tint-vibrant);
+}
+
+.stats-daily-hero {
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--ios-tint-soft);
+}
+
+.stat-pct,
+.display-control-val,
+.import-target strong {
+  color: var(--ios-tint);
+}
+
+.danger-zone {
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--ios-danger-soft);
+}
+
+.danger-zone[open] {
+  background: var(--ios-danger-soft);
+}
+
+.table-scroll {
+  border-color: var(--ios-separator);
+  border-radius: var(--radius-card);
+  background: var(--ios-secondary-grouped-background);
+}
+
+th,
+td {
+  border-bottom-color: var(--ios-separator);
+}
+
+th {
+  background: var(--ios-secondary-background);
+  color: var(--ios-label-secondary);
+}
+
+tr.branch-header td {
+  background: var(--ios-tint-soft);
+}
+
+tr.branch-header strong {
+  color: var(--ios-tint);
+}
+
+tr.branch-junction td {
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label-secondary);
+}
+
+/* Range controls are normalized instead of inheriting each browser's track. */
+.display-control input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: var(--ios-secondary-grouped-background);
+}
+
+.display-control input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-control input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -10px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ios-tint);
+  box-shadow: none;
+}
+
+.display-control input[type="range"]::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill);
+}
+
+.display-control input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ios-tint);
+  box-shadow: none;
+}
+
+/* Floating map chrome shares one material and elevation level. */
+.map-layers-control,
+.map-info-panel,
+.maplibregl-popup-content,
+.station-label,
+.map-line-tip,
+.rp-modal {
+  border-color: var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-label);
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.map-layers-control {
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+
+.map-layers-summary {
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--ios-tint);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+
+.map-layers-summary::before {
+  content: none;
+}
+
+.map-layers-summary::after {
+  color: var(--ios-label-secondary);
+}
+
+.map-layers-control label {
+  min-height: 36px;
+  color: var(--ios-label);
+}
+
+.map-info-summary {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.map-info-summary:hover,
+.map-info-summary:focus-visible,
+.map-info-control[open] .map-info-summary {
+  border-color: var(--ios-tint);
+  background: var(--ios-material-strong);
+}
+
+.map-info-panel {
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.map-info-header {
+  background: var(--ios-tint-soft);
+}
+
+.map-info-header h2,
+.map-info-legend-row strong,
+.map-info-source strong {
+  color: var(--ios-label);
+}
+
+.map-info-header p,
+.map-info-legend-row p,
+.map-info-source p {
+  color: var(--ios-label-secondary);
+}
+
+.map-info-section h3,
+.map-info-links a {
+  color: var(--ios-tint);
+}
+
+.map-info-source {
+  border-color: var(--ios-separator);
+  background: var(--ios-fill-tertiary);
+}
+
+.maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--ios-separator);
+  border-radius: 12px;
+  background: var(--ios-material-strong);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+html[data-theme="dark"] .maplibregl-ctrl-group {
+  background: var(--ios-material-strong);
+  box-shadow: 0 0 0 1px var(--ios-separator);
+}
+
+.station-label,
+.maplibregl-popup-content,
+.map-line-tip {
+  border-radius: var(--radius-card);
+  box-shadow: none;
+}
+
+.station-label--endpoint {
+  border-color: var(--ios-tint);
+}
+
+.station-label-badge {
+  border-radius: var(--radius-pill);
+  background: var(--ios-tint);
+  color: var(--ios-system-background);
+}
+
+.rp-modal-overlay {
+  background: var(--overlay-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.rp-modal {
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.rp-modal-input {
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.rp-modal-input:focus,
+.rp-modal-input:focus-visible {
+  outline: none;
+  border-color: var(--ios-tint);
+  box-shadow: var(--ios-focus-ring);
+}
+
+.rp-modal-choice {
+  min-height: var(--ios-touch-height);
+  border-color: transparent;
+  border-radius: 12px;
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-label);
+}
+
+.rp-modal-choice:hover,
+.rp-modal-choice:focus-visible {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint-soft);
+}
+
+.rp-modal-btn {
+  min-height: var(--ios-touch-height);
+  border: 0;
+  border-radius: 12px;
+  background: var(--ios-fill-secondary);
+  color: var(--ios-label);
+}
+
+.rp-modal-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--ios-focus-ring);
+}
+
+.rp-modal-btn--danger {
+  border-color: transparent;
+  background: var(--ios-red);
+  color: var(--on-accent);
+}
+
+.sidebar-edge-tab {
+  border-color: var(--ios-separator);
+  background: var(--ios-material-strong);
+  color: var(--ios-tint);
+  box-shadow: none;
+  -webkit-backdrop-filter: var(--ios-blur);
+  backdrop-filter: var(--ios-blur);
+}
+
+.sidebar-edge-tab:hover,
+.sidebar-edge-tab:focus-visible {
+  border-color: var(--ios-tint);
+  background: var(--ios-material-strong);
+}
+
+/* Compact width: persistent bottom tab bar inside the transformed sheet. Its
+   bottom offset mirrors the panel's clipped remainder, so it remains fixed to
+   the viewport at every detent without changing the DOM or event contract. */
+@media (max-width: 599px) {
+  #sidebar {
+    /* padding comes from the later compact block (38px 12px …). */
+    border: 1px solid var(--ios-separator);
+    border-bottom: 0;
+    border-radius: 24px 24px 0 0;
+    background: var(--ios-material);
+    box-shadow: none;
+  }
+
+  #sidebar .workspace-nav {
+    position: fixed;
+    inset: auto 0 var(--panel-clip, 0px);
+    z-index: 70;
+    order: initial;
+    height: calc(var(--ios-tabbar-height) + env(safe-area-inset-bottom));
+    margin: 0;
+    padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--ios-separator);
+    border-radius: 0;
+    background: var(--ios-material-strong);
+    box-shadow: none;
+    -webkit-backdrop-filter: var(--ios-blur);
+    backdrop-filter: var(--ios-blur);
+  }
+
+  #sidebar .workspace-nav a {
+    flex-direction: column;
+    gap: 2px;
+    padding: 3px 2px;
+    line-height: 1.05;
+  }
+
+  #sidebar .workspace-nav a > span:first-child {
+    flex-basis: 21px;
+    width: 21px;
+    height: 21px;
+  }
+
+  /* At the compact detent, reduce the sheet to the persistent tab bar. The
+     translated full-height panel otherwise leaves a clipped card sliver above
+     the bar, which reads as accidental overflow instead of a stable detent. */
+  #app[data-panel="peek"] #sidebar {
+    border-color: var(--ios-separator);
+    background: var(--ios-material);
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+    visibility: hidden;
+    opacity: 1;
+    pointer-events: none;
+  }
+
+  #sidebar > header {
+    order: 99;
+    margin: var(--space-5) 0 0;
+    padding: var(--space-4) 0 0;
+    border-top-color: var(--ios-separator);
+  }
+
+  #sidebar > section.card,
+  #sidebar > details.card {
+    margin-top: 0;
+  }
+
+  .card {
+    border-radius: 18px;
+  }
+
+  .card-body {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    min-height: var(--ios-touch-height);
+  }
+
+  .date-btn {
+    min-height: 36px;
+  }
+
+  .sidebar-edge-tab {
+    bottom: max(calc(var(--sidebar-size) - 31px), 0px);
+    width: 54px;
+    height: 25px;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--ios-material);
+    box-shadow: none;
+  }
+
+  .sidebar-edge-tab-grip {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .sidebar-edge-tab-grip span {
+    display: none;
+  }
+
+  .sidebar-edge-tab-grip span:first-child {
+    display: block;
+    width: 36px;
+    height: 5px;
+    border-radius: var(--radius-pill);
+    background: var(--ios-label-tertiary);
+  }
+
+  /* Static (not sticky): a sticky bar in the transformed sheet pulled the
+     stop toolbar over Train Data at the half detent. */
+  #train-editor .card-body > .toolbar:last-child {
+    margin-top: var(--space-2);
+    background: var(--ios-secondary-grouped-background);
+  }
+
+  .map-info-control {
+    bottom: calc(min(var(--sidebar-size), 55dvh) + 8px);
+    transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .maplibregl-ctrl-bottom-right {
+    bottom: min(var(--sidebar-size), 55dvh);
+  }
+
+  #app.sidebar-dragging .map-info-control {
+    transition: none;
+  }
+
+  .map-info-panel {
+    max-height: min(520px, calc(100dvh - min(var(--sidebar-size), 55dvh) - 68px));
+  }
+
+  .table-scroll tbody tr {
+    border-color: var(--ios-separator);
+    border-radius: var(--radius-card);
+    background: var(--ios-fill-tertiary);
+  }
+
+  .table-scroll tbody tr.branch-header {
+    background: var(--ios-tint-soft);
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 1023px) {
+  #sidebar {
+    background: var(--ios-material);
+  }
+}
+
+@media (pointer: coarse) {
+  #sidebar button,
+  #sidebar select,
+  #sidebar input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+    min-height: var(--ios-touch-height);
+  }
+
+  /* Map popover rows and modal action buttons are touch targets too — the
+     sidebar-scoped rule above used to leave them at desktop heights on
+     tablets (the phone tier has its own fuller treatment further down). */
+  .map-layers-control label,
+  .map-layers-control select,
+  .rp-modal-btn {
+    min-height: var(--ios-touch-height);
+  }
+}
+

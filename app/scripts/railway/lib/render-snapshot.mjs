@@ -4,8 +4,12 @@
 // The snapshot covers everything the map render/popup path reads; hash it
 // with sha256(JSON.stringify(...)).
 
+// 2025.3.4 — scripts/migrations/restore-n02-loop-line-geometry.py gave
+// ゆりかもめ, 上越線 and 中村線 back the loops the package's shortest-path cut
+// had been skipping. Segment/station/line/group counts are unchanged (890 /
+// 10161 / 607 / 9046); only three intervals grew vertices.
 export const EXPECTED_RENDER_HASH =
-  "74cf1e805190034797f03be1a0d3dbd030a7932c86cd68225a1e88c74ee3cd3f";
+  "b79f623816e5aa71ae85b71cea36d329437f074cf69a46b18e09757b54346657";
 
 export function renderRelevantSnapshot(network) {
   return {

@@ -23,6 +23,7 @@ test("rail network loader follows the active country and replaces cached data", 
     SEGMENTS_SOURCE: "rail-segments",
     STATIONS_SOURCE: "rail-stations",
     SEGMENTS_LAYER: "rail-segments-layer",
+    SEGMENTS_CASING_LAYER: "rail-segments-casing-layer",
     STATIONS_LAYER: "rail-stations-layer",
   };
   win.RailMapGeometry = {};

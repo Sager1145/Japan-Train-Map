@@ -678,7 +678,7 @@ test("Taiwan precomputed parts include every added official-line journey", async
   const officialSections = await readJson(
     path.join(APP_DIR, "data", "rail-sections-tw.json"),
   );
-  assert.equal(manifest.total, 23);
+  assert.equal(manifest.total, 28);
   assert.equal(manifest.total, store.trains.length);
   assert.equal(manifest.solved, store.trains.length);
   assert.equal(manifest.unsolvable, 0);
@@ -687,6 +687,7 @@ test("Taiwan precomputed parts include every added official-line journey", async
   assert.equal(manifest.dates["2026-08-08"].length, 4);
   assert.equal(manifest.dates["2026-08-09"].length, 4);
   assert.equal(manifest.dates["2026-08-10"].length, 6);
+  assert.equal(manifest.dates["2026-08-12"].length, 5);
 
   const parts = await Promise.all(
     manifest.parts.map((partName) =>
@@ -815,6 +816,86 @@ test("Taiwan precomputed parts include every added official-line journey", async
       ["凱旋中華", "前鎮之星"],
     ],
   );
+
+  const august12Ids = new Set([
+    "20260812_01_krtc_red_kaohsiung_zuoying",
+    "20260812_02_thsr_826_zuoying_taipei",
+    "20260812_03_tra_local_1208_taipei_keelung",
+    "20260812_04_tra_local_4209_nuannuan_nangang",
+    "20260812_05_thsr_161_nangang_taipei",
+  ]);
+  const august12Parts = parts.filter((part) =>
+    august12Ids.has(part.train.id),
+  );
+  assert.equal(august12Parts.length, 5);
+  august12Parts.forEach((part) => {
+    assert.equal(part.route.features.length, part.train.route_sections.length);
+  });
+  const august12Metro = august12Parts.find(
+    (part) => part.train.id === "20260812_01_krtc_red_kaohsiung_zuoying",
+  );
+  august12Metro.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_line_names, [
+      "高雄捷運紅線",
+    ]);
+    assert.deepEqual(feature.properties.required_operator_names, [
+      "高雄捷運股份有限公司",
+    ]);
+    assert.deepEqual(feature.properties.used_institution_type_codes, ["3"]);
+  });
+  const thsr826 = august12Parts.find(
+    (part) => part.train.id === "20260812_02_thsr_826_zuoying_taipei",
+  );
+  thsr826.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_line_names, [
+      "台灣高速鐵路",
+    ]);
+    assert.deepEqual(feature.properties.required_operator_names, [
+      "台灣高速鐵路股份有限公司",
+    ]);
+    assert.deepEqual(feature.properties.used_institution_type_codes, ["1"]);
+  });
+  const tra1208 = august12Parts.find(
+    (part) => part.train.id === "20260812_03_tra_local_1208_taipei_keelung",
+  );
+  tra1208.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_line_names, [
+      "縱貫線北段",
+    ]);
+    assert.deepEqual(feature.properties.required_operator_names, [
+      "國營臺灣鐵路股份有限公司",
+    ]);
+    assert.deepEqual(feature.properties.used_institution_type_codes, ["2"]);
+  });
+  const tra4209 = august12Parts.find(
+    (part) => part.train.id === "20260812_04_tra_local_4209_nuannuan_nangang",
+  );
+  assert.deepEqual(
+    new Set(
+      tra4209.route.features.flatMap(
+        (feature) => feature.properties.required_line_names,
+      ),
+    ),
+    new Set(["宜蘭線", "縱貫線北段"]),
+  );
+  tra4209.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_operator_names, [
+      "國營臺灣鐵路股份有限公司",
+    ]);
+    assert.deepEqual(feature.properties.used_institution_type_codes, ["2"]);
+  });
+  const thsr161 = august12Parts.find(
+    (part) => part.train.id === "20260812_05_thsr_161_nangang_taipei",
+  );
+  thsr161.route.features.forEach((feature) => {
+    assert.deepEqual(feature.properties.required_line_names, [
+      "台灣高速鐵路",
+    ]);
+    assert.deepEqual(feature.properties.required_operator_names, [
+      "台灣高速鐵路股份有限公司",
+    ]);
+    assert.deepEqual(feature.properties.used_institution_type_codes, ["1"]);
+  });
 
   const tra191 = parts.find(
     (part) =>

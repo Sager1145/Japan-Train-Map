@@ -26,8 +26,11 @@ function decodedIntervals(line) {
 
 test("every Japanese package line is seam-free before it reaches the renderer", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
-  assert.equal(pkg.version, "2025.3.3");
-  assert.equal(pkg.lines.length, 606);
+  // 2025.3.4 = scripts/migrations/restore-n02-loop-line-geometry.py, which gave
+  // ゆりかもめ, 上越線 and 中村線 back the loops N02 draws and the package's
+  // shortest-path cut had been skipping.
+  assert.equal(pkg.version, "2025.3.4");
+  assert.equal(pkg.lines.length, 607);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

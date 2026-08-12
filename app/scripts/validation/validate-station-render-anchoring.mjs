@@ -60,7 +60,7 @@ const APP_DIR = path.resolve(
 );
 const RailNetwork = require(path.join(APP_DIR, "public/rail-network.js"));
 
-const COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
+export const COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
 
 // ── thresholds ───────────────────────────────────────────────────────────────
 

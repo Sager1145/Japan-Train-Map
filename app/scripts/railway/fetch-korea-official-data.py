@@ -13,11 +13,14 @@ direct `fileDownload.do?atchFileId=…` link, and the files are CP949 CSV.
   국가철도공단_<line>_역위치             per-line station positions (27 lines)
   국가철도공단_<line>_역간거리           per-line inter-station distances (24 lines)
 
-Output: scripts/railway/data/kr/*.csv plus manifest.json (source URL + sha256 per file).
+Output: data/raw/railway/kr/official/*.csv plus manifest.json (source URL + sha256 per file).
 
 usage: python3 scripts/railway/fetch-korea-official-data.py [--out DIR]
 """
 import argparse, csv, hashlib, io, json, os, re, sys, time, urllib.parse, urllib.request
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_OUT = os.path.join(APP_DIR, "data", "raw", "railway", "kr", "official")
 
 UA = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -86,7 +89,7 @@ def download(pk, out_dir, want=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "data", "kr"))
+    ap.add_argument("--out", default=DEFAULT_OUT)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     manifest = {}

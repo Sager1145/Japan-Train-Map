@@ -64,7 +64,12 @@
       })();
     </script>
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
-    <link rel="stylesheet" href="styles.css?v=20260807-jplogos2" />
+    <!-- Cascade order is architectural: base components → iOS presentation →
+         opaque surface normalization → terminal-aware layout overrides. -->
+    <link rel="stylesheet" href="styles/railprint-base.css?v=20260812-csssplit1" />
+    <link rel="stylesheet" href="styles/ios-presentation.css?v=20260812-csssplit1" />
+    <link rel="stylesheet" href="styles/solid-surfaces.css?v=20260812-csssplit1" />
+    <link rel="stylesheet" href="styles/device-layout.css?v=20260812-csssplit1" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched

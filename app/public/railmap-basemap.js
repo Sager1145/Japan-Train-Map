@@ -34,20 +34,18 @@
   };
   const BASEMAP_LOAD_CACHE = new Map();
   const MAP_SURFACE_COLORS = {
-    // stationDot/stationRing recolor the rn-stations-dot circles per theme
-    // (dark values track the CSS dark tokens --rail-dim / --white).
+    // stationRing is the open middle of interchange markers. Ordinary dots
+    // now inherit their railway colour, as in Apple Maps Transit.
     light: {
       background: "rgb(242,243,240)",
       fade: "#FFFFFF",
       casing: "#1A1A1A",
-      stationDot: "#D7DEDA",
       stationRing: "#FFFFFF",
     },
     dark: {
       background: "rgb(12,12,12)",
       fade: "#0C0C0C",
       casing: "#F5EEE9",
-      stationDot: "#48484A",
       stationRing: "#2C2C2E",
     },
   };
@@ -150,6 +148,31 @@
     "water_name_point_label",
     "water_name_line_label",
   ];
+
+  // Remove only basemap layers that explicitly identify a station/platform
+  // AREA. Ordinary buildings, railway lines and station labels remain. The
+  // vendored positron currently has no such layer, but this exact guard keeps
+  // a future style refresh from reintroducing the pale facility polygons that
+  // conflict with the project's on-line round station glyphs.
+  function isStationFacilityAreaLayer(layer) {
+    if (!layer || typeof layer !== "object") return false;
+    const id = String(layer.id || "").toLowerCase();
+    const sourceLayer = String(layer["source-layer"] || "").toLowerCase();
+    const filter = JSON.stringify(layer.filter || []).toLowerCase();
+    const identity = `${id} ${sourceLayer} ${filter}`;
+    const identifiesStation = /(^|[^a-z])(station|platform|transit[_ -]?facility)([^a-z]|$)/.test(
+      identity,
+    );
+    if (!identifiesStation) return false;
+    if (layer.type === "fill" || layer.type === "fill-extrusion") return true;
+    // A polygon outline is a line layer, but require its own id to identify
+    // the station/facility so a generic transportation line filtered as
+    // `class=transit` can never be mistaken for an area outline.
+    return (
+      layer.type === "line" &&
+      /(station|platform|transit[_ -]?facility)/.test(id)
+    );
+  }
 
   // OpenFreeMap's z4 boundary tile encodes the Korean Demilitarized Zone as
   // three parallel admin_level=2 components inside one MultiLineString.  At
@@ -273,7 +296,9 @@
   // ("within" is per-point), which is why place names stayed while lines went.
   function applyBasemapLayerPolicy(basemap) {
     const dropped = new Set(DETAIL_LAYERS_DROPPED);
-    basemap.layers = basemap.layers.filter((layer) => !dropped.has(layer.id));
+    basemap.layers = basemap.layers.filter(
+      (layer) => !dropped.has(layer.id) && !isStationFacilityAreaLayer(layer),
+    );
     const hasCountryBorders = basemap.layers.some(
       (layer) => layer.id === "boundary_2",
     );

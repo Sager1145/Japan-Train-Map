@@ -67,10 +67,10 @@ Japan Train Map/
     │   ├── i18n-strings.js, i18n.js # UI string catalogs + i18n runtime / UI 文案目录与多语言运行时
     │   ├── rail-network.js # compact rail-package conversion / 紧凑铁路数据转换
     │   ├── railmap.js, railmap-*.js # MapLibre map core family; map in railmap.js's header / MapLibre 地图核心模块族，模块表见 railmap.js 头部
-    │   └── styles.css   # styles / 样式
+    │   └── styles/      # ordered base, presentation, surface and device layers / 有序基础、表现、表面及设备样式层
     ├── scripts/         # build, railway, sample, validation and migration tools / 构建、铁路数据、示例、验证及迁移工具
     │   ├── build/
-    │   ├── railway/     # railway pipelines plus their data/ inputs and lib/ / 铁路流水线、输入数据及领域库
+    │   ├── railway/     # railway pipelines and domain libraries / 铁路流水线及领域库
     │   ├── samples/
     │   ├── validation/
     │   ├── migrations/
@@ -85,7 +85,7 @@ Japan Train Map/
         ├── matched-routes.json   # matched routes / 匹配后的路线
         ├── matched-stops.json    # matched stops / 匹配后的停靠站
         ├── train-store.json      # persisted train data (auto save/load) / 列车数据持久化存储（自动保存 / 载入）
-        └── raw/N02-25_GML.zip    # raw N02 GML source data / N02 原始 GML 数据源
+        └── raw/railway/          # centralized downloaded/prepared railway sources by country / 按国家集中保存的铁路来源数据
 ```
 
 ## Validation / 验证

@@ -23,6 +23,7 @@
     "update:august-5-6:tw": "node scripts/migrations/add-august-5-6-taiwan-itinerary.mjs",
     "update:august-8-9:tw": "node scripts/migrations/add-august-8-9-taiwan-itinerary.mjs",
     "update:august-10:tw": "node scripts/migrations/add-august-10-kaohsiung-itinerary.mjs",
+    "update:august-12:tw": "node scripts/migrations/add-august-12-taiwan-itinerary.mjs",
     "normalize:companies:tw": "node scripts/railway/normalize-taiwan-company-names.mjs",
     "build:static": "node scripts/build/build-static-site.mjs",
     "serve:static": "node scripts/build/serve-static.mjs",

@@ -5,7 +5,8 @@ artifacts, and call reusable code from the nearest `lib/` directory.
 
 - `build/` assembles or previews deployable artifacts and precomputes routes.
 - `railway/` owns railway-package ingestion, normalization, topology repair,
-  validation primitives, and the raw inputs under `railway/data/`.
+  and validation primitives. Downloaded/prepared inputs live centrally under
+  `data/raw/railway/`, outside executable tooling.
 - `samples/` generates committed example train stores.
 - `validation/` contains repository and railway audit entry points.
 - `migrations/` preserves already-run, one-shot data corrections.

@@ -2,12 +2,12 @@
 """Build the Korean rail datasets (kr-2025) from official records + OSM track.
 
 Sources
-  official : scripts/railway/data/kr/*.csv — 국토교통부_도시철도 전체노선 (46 lines /
+  official : data/raw/railway/kr/official/*.csv — 국토교통부_도시철도 전체노선 (46 lines /
              1,103 stops in official order), 국가철도공단_철도역 정보 (intercity
              stations with WGS84 + 한자/영문 names), per-line 역위치 / 역간거리,
              한국철도공사 KTX 역정보 and 역 위치, 서울교통공사 역사 좌표.
-             All 「이용허락범위 제한 없음」; see scripts/railway/data/kr/manifest.json.
-  track    : scripts/railway/data/kr-track-alignments.json (OpenStreetMap, ODbL), built
+             All 「이용허락범위 제한 없음」; see data/raw/railway/kr/official/manifest.json.
+  track    : data/raw/railway/kr/kr-track-alignments.json (OpenStreetMap, ODbL), built
              by scripts/railway/build-korea-track-alignments.py.
 
 Korea publishes no open track geometry (국가공간정보포털's 철도중심선 host no
@@ -72,9 +72,9 @@ def clean_hanja(text: str) -> str:
 APP_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = APP_DIR / "data"
 RAIL_DIR = APP_DIR / "public" / "rail"
-SCRIPT_DATA = Path(__file__).resolve().parent / "data"
-TRACK_DATA = SCRIPT_DATA / "kr-track-alignments.json"
-OFFICIAL_DIR = SCRIPT_DATA / "kr"
+SOURCE_DATA = DATA_DIR / "raw" / "railway" / "kr"
+TRACK_DATA = SOURCE_DATA / "kr-track-alignments.json"
+OFFICIAL_DIR = SOURCE_DATA / "official"
 
 PACKAGE_VERSION = "2025.1.0"
 GENERATED_AT = "2026-08-11T00:00:00.000Z"

@@ -55,7 +55,7 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
     })()`,
     context,
   );
-  assert.equal(result.trains.length, 23);
+  assert.equal(result.trains.length, 28);
   context.__legacyTaiwanTrain = {
     ...context.__taiwanStore.trains[0],
     company: "桃園大眾捷運股份有限公司",
@@ -285,6 +285,57 @@ test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", ()
   );
   assert.equal(kaisyuanToKaohsiung.stops[0].departure, "18:54");
   assert.equal(kaisyuanToKaohsiung.stops.at(-1).arrival, "19:04");
+  const kaohsiungToZuoying = result.trains.find(
+    (train) => train.id === "20260812_01_krtc_red_kaohsiung_zuoying",
+  );
+  assert.equal(kaohsiungToZuoying.stops[0].departure, "11:10");
+  assert.equal(kaohsiungToZuoying.stops.at(-1).arrival, "11:20");
+  assert.deepEqual(
+    Array.from(kaohsiungToZuoying.stops.map((stop) => stop.n02_station_code)),
+    [
+      "KRTC-R11",
+      "KRTC-R12",
+      "KRTC-R13",
+      "KRTC-R14",
+      "KRTC-R15",
+      "KRTC-R16",
+    ],
+  );
+  assert.equal(kaohsiungToZuoying.route_sections.length, 5);
+  const thsr826 = result.trains.find(
+    (train) => train.id === "20260812_02_thsr_826_zuoying_taipei",
+  );
+  assert.equal(thsr826.stops[0].departure, "12:25");
+  assert.equal(thsr826.stops.at(-1).arrival, "14:39");
+  assert.equal(thsr826.stops.length, 11);
+  assert.equal(thsr826.route_sections.length, 10);
+  assert.equal(
+    thsr826.stops.every((stop) => stop.stop_type !== "pass_through"),
+    true,
+  );
+  const tra1208 = result.trains.find(
+    (train) => train.id === "20260812_03_tra_local_1208_taipei_keelung",
+  );
+  assert.equal(tra1208.stops[0].departure, "15:38");
+  assert.equal(tra1208.stops.at(-1).arrival, "16:25");
+  const tra4209 = result.trains.find(
+    (train) => train.id === "20260812_04_tra_local_4209_nuannuan_nangang",
+  );
+  assert.equal(tra4209.stops[0].departure, "19:33");
+  assert.equal(tra4209.stops.at(-1).arrival, "19:59");
+  assert.deepEqual(
+    Array.from(
+      new Set(
+        tra4209.route_sections.flatMap((section) => section.line_names),
+      ),
+    ),
+    ["宜蘭線", "縱貫線北段"],
+  );
+  const thsr161 = result.trains.find(
+    (train) => train.id === "20260812_05_thsr_161_nangang_taipei",
+  );
+  assert.equal(thsr161.stops[0].departure, "20:20");
+  assert.equal(thsr161.stops.at(-1).arrival, "20:28");
   assert.equal(
     result.trains.every(
       (train) => !/(?:股份有限公司|管理局|管理處)/.test(train.company),

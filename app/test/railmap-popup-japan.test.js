@@ -120,7 +120,7 @@ test("every non-line image falls back to the exact operator, never a parent or p
       logo: packageLogo,
     });
   });
-  const unresolvedOperators = new Set(["万葉線", "鞍馬寺"]);
+  const unresolvedOperators = new Set(["万葉線", "鞍馬寺", "東武鉄道"]);
   // These resolve to official line symbols ahead of the operator mark;
   // the dedicated override test covers them.
   const lineSymbolOverrides = new Set([
@@ -134,11 +134,11 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 322/315, six more than before the interleaved branches were split out:
+  // 323/315, seven more than before the interleaved branches were split out:
   // each `-2` entry is a second row for its line and, like every split, ships
   // no package badge of its own.
-  assert.equal(missingBadgeLines.length, 322);
-  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
+  assert.equal(missingBadgeLines.length, 323);
+  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 125);
   assert.equal(coveredLines.length, 315);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
