@@ -10,11 +10,12 @@
 ## 0. 当前阶段
 
 ```text
-Stage:            S16–S65 全部跑过 —— hk 27 / tw 39 / **jp 578 条显示线路已建**
-                  jp 批次行 **563/596 unverified**，余 33 行需要来源证据（见 §6.9）
-                  站锚点 jp 8799 个 —— 8788 PASS / 11 WARNING / **0 ERROR**
-                  structure 15826 行（隧道/桥梁，见 §6.10）
-                  node --test 241 pass / 18 fail（清空后基线 188/55，目标 243/0）
+Stage:            S16–S65 全部跑过 —— hk 27 / tw 39 / **jp 652 条显示线路已建**
+                  jp 批次行 **589/596 建成**（655 unverified / 4 blocked / 3 pending）
+                  站锚点 jp 9936 个 —— 9920 PASS / 16 WARNING / **0 ERROR**
+                  structure 17734 行 · lanes 162 段
+                  node --test 247 pass / 12 fail（清空后基线 188/55，目标 243/0）
+                  余 3 条 pending 需要「多股道中哪条属于该服务」的来源，见 §6.11
                   全境 Apple 复核未开始：阻塞在 Screen Recording 权限，见 §6.5
 Stage (S01):      S01 完成 —— 分批合并工具链就绪，等待 S02 起逐批重建
 Stage 1 executed: 2026-08-13 (Asia/Taipei)  线路数据清空
@@ -162,9 +163,9 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
 - [ ] `japan-rail-continuity.test.js` (5)
   - [ ] every Japanese package line is seam-free before it reaches the renderer
   - [x] Tokyo and Osaka metro lines use verified official line colours
-  - [ ] Japanese tunnel and bridge measures remain valid after branch splitting
+  - [x] Japanese tunnel and bridge measures remain valid after branch splitting
   - [x] Japan renders one complete feature per line, never one per station interval
-  - [ ] official Japanese branch endpoints omitted by the old package are restored
+  - [x] official Japanese branch endpoints omitted by the old package are restored
 - [ ] `railmap-popup-japan.test.js` (3)
   - [ ] only audited Japanese line badges stay ahead of operator fallbacks
   - [x] rejected or missing package art may use a verified official line symbol
@@ -200,8 +201,8 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
   - [x] one operator's two separate lines are drawn as separate lanes
   - [ ] a trunk and its own branch still overlap exactly
   - [x] two railways keep the same side of each other everywhere they meet
-  - [ ] lanes cut the drawn geometry only, never the topology
-  - [ ] station_features_are_not_screen_merged
+  - [x] lanes cut the drawn geometry only, never the topology
+  - [x] station_features_are_not_screen_merged
   - [x] a line eases into its lane instead of stepping sideways
   - [x] a laned platform moves into the lane of the railway that calls there
   - [x] a laned platform's marker points along the railway it belongs to
@@ -210,7 +211,7 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
   - [ ] one train keeps one side of a corridor for the whole way along it
   - [x] a ride carries no lane data at all off a parallel corridor
   - [x] one railway published as many services is drawn once, not many times
-  - [ ] independent railways sharing a corridor still render parallel
+  - [x] independent railways sharing a corridor still render parallel
   - [x] a platform is an interchange when two RAILWAYS meet, not two services
 - [ ] `station-render-anchoring.test.js` (6)
   - [x] test_interchange_dot_line_passes_through_center
@@ -224,11 +225,11 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
   - [ ] the official network is drawn, and what is not is accounted for
   - [x] independent railways sharing a corridor stay separate lines
   - [x] the corridor report says how many railways each corridor holds
-- [ ] `apple-maps-railway-contract.test.js` (4)
+- [x] `apple-maps-railway-contract.test.js` (4)
   - [x] station_minz_is_independent_lod
   - [x] five_country_build_and_validation_scope
   - [x] station_label_dedupes_by_group_without_merging_markers
-  - [ ] underground_structure_is_preserved_without_guessing_other_countries
+  - [x] underground_structure_is_preserved_without_guessing_other_countries
 - [ ] `ridden-route-network-geometry.test.js` (3)
   - [ ] every jp ridden sample uses complete-network geometry
   - [x] every tw ridden sample uses complete-network geometry
@@ -310,6 +311,64 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
 
 **CSV 按行回写**：`mark-batch-status.mjs` 新增 `--lines`，S17 的 7 行置 `unverified`、
 5 行保持 `pending`。一个 session 落地 7/12 时，把 12 行写成同一个状态就把表唯一承载的事实抹掉了。
+
+### 6.11 图分解四条判据 · jp 589/596（2026-08-15）
+
+```text
+jp 596 条 canonical -> 589 条已建（652 条显示线路）
+站锚点 9936 —— 9920 PASS / 16 WARNING / 0 ERROR
+structure 17734 行 · lanes 162 段
+node --test 247 pass / 12 fail（清空后基线 188/55）
+CSV：655 unverified / 4 blocked / 3 pending
+```
+
+**四条判据，全部由「官方营业里程对得上」验证，不是靠推测**
+
+1. **跳站服务边不是第二条轨道。** 鶴見線 記 安善–大川 1.285 km，而
+   安善–武蔵白石–大川 是 1.415 km —— 大川支線 自 1996 年 武蔵白石 站台拆除后
+   就是这么跑的。**审计自己的里程能分辨两者**：真正的绕行短路（chord）一定更短，
+   那才是它存在的理由；跳站边则与「经过该站」的路径等长。跳站边从排序图里移除并记录，
+   它指的那段轨道本来就已经画了。
+
+2. **等长还不够，必须用几何证实。** 函館線 森–駒ヶ岳 与 森–東森–駒ヶ岳 长度接近，
+   但 東森 在砂原線上、直连边走的是駒ヶ岳線 —— **两条真实走向**。
+   只按里程判会把其中一条删掉，18 km 轨道就不画了。
+   现在候选边会被**真的切一次**，问它是否从被跳过的那站旁经过：
+   同一条轨道会走到站台可及范围内，不同走向则把那站甩在后面。
+   函館線 因此保住砂原線与藤城線，同时仍正确删掉三条真跳站边。
+
+3. **无环的分支线路 = 主干 + 支线。** 树上任意两站之间只有一条路径，没有可选的东西：
+   主干取最长贯通路径，其余各臂各成一笔，每条支线保留它离开的那个分岔站
+   —— 那正是两笔笔画在图上相接的地方，每条边都恰好画一次。
+   验证：**山陰線 673.19 km（官方 673.8）**、仙崎支線 1.99（官方 2.2）、
+   鶴見線 拆出 海芝浦 与 大川 两支。
+
+4. **删掉跳站边后仍存在的环 = 真的两条走向**（审计的 `branch_rejoins`）：
+   長崎線 長与経由/市布経由、函館線 駒ヶ岳/砂原。两条都是真轨道、两条都画，
+   绕远的那条成为再次并入的支线，而不是被丢弃。
+
+**另外两条**：站序落在互不相连的轨道组上时按组切开
+（阪急今津線 1984 年起在 西宮北口 物理分离、南海高野線 的 汐見橋線 段，
+汐見橋線 切出 4.75 km / 官方 4.6）；主线建不出来时兄弟支线不单独发布。
+
+**四条明确「不画」的决定（CSV 记 `blocked`）**
+
+| 线路 | 事实 | 决定 |
+| --- | --- | --- |
+| 北海道 海峡線 | 2 站 **0 条邻接边**（吉岡海底/竜飛海底 2014 廃止） | 无客运区间可画 |
+| 三岐鉄道 近鉄連絡線 | 1 站 0 边 | 同上 |
+| 富山地鉄 富山駅南北接続線 | 1 站 0 边 | 同上 |
+| 広島電鉄 循環線 | N02-25 基准日之前尚未开业，无线路键 | 需非 N02 几何 |
+
+compact-v1 按**站对**定位几何，一条没有可指名端点的线路画不出来；
+这不是缺陷，是这个 schema 与这条线路的事实之间的关系，记录下来即可。
+
+**余 3 条 pending，全部是同一个决定**：東北線 東十条→赤羽（切 5.926 / 审计 1.369）、
+東日本 東海道線 横浜→保土ヶ谷（9.104 / 2.567）、鹿児島線 水巻→折尾（9.426 / 1.685）。
+N02 把多条实体股道记在同一个线路键下，**最短路不等于客运走的那条**。
+可行的解法是「按审计里程选路径而不是选最短」，但那需要 k-最短路径并把几何一起重建；
+**在没有「哪条股道属于哪个服务」的来源之前，构建器不应替它决定**（规范 §7.2）。
+计划书把这件事分给 J03/J04 组，这就是它该被解决的地方。
 
 ### 6.10 结构（隧道/桥梁）补回 + tw 并发写入澄清（2026-08-15）
 

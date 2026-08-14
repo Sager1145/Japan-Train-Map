@@ -81,7 +81,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟室蘭線,北海道旅客鉄道,室蘭線,jr_conventional,branched_terminal,47,226.9,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟釧網線,北海道旅客鉄道,釧網線,jr_conventional,ordinary_linear,24,166.3,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟石勝線,北海道旅客鉄道,石勝線,jr_conventional,ordinary_linear,7,132.5,,unverified
-17,J02,jp,JR北海道在来線,北海道旅客鉄道␟海峡線,北海道旅客鉄道,海峡線,jr_conventional,disconnected,2,88.9,,pending
+17,J02,jp,JR北海道在来線,北海道旅客鉄道␟海峡線,北海道旅客鉄道,海峡線,jr_conventional,disconnected,2,88.9,,blocked
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟千歳線,北海道旅客鉄道,千歳線,jr_conventional,branched_terminal,15,63.2,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟富良野線,北海道旅客鉄道,富良野線,jr_conventional,ordinary_linear,17,54.9,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟日高線,北海道旅客鉄道,日高線,jr_conventional,ordinary_linear,4,30.7,,unverified
@@ -442,7 +442,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 48,J09-1,jp,中小私鉄,近江鉄道␟多賀線,近江鉄道,多賀線,private,ordinary_linear,3,2.6,,unverified
 49,J09-2,jp,中小私鉄,三岐鉄道␟三岐線,三岐鉄道,三岐線,private,ordinary_linear,14,25.6,,unverified
 49,J09-2,jp,中小私鉄,三岐鉄道␟北勢線,三岐鉄道,北勢線,private,ordinary_linear,13,20.4,,unverified
-49,J09-2,jp,中小私鉄,三岐鉄道␟近鉄連絡線,三岐鉄道,近鉄連絡線,private,ordinary_linear,1,1.2,,pending
+49,J09-2,jp,中小私鉄,三岐鉄道␟近鉄連絡線,三岐鉄道,近鉄連絡線,private,ordinary_linear,1,1.2,,blocked
 49,J09-2,jp,中小私鉄,大井川鐵道␟大井川本線,大井川鐵道,大井川本線,private,ordinary_linear,20,39.6,,unverified
 49,J09-2,jp,中小私鉄,大井川鐵道␟井川線,大井川鐵道,井川線,private,ordinary_linear,14,25.6,,unverified
 49,J09-2,jp,中小私鉄,関東鉄道␟常総線,関東鉄道,常総線,private,ordinary_linear,25,51.4,,unverified
@@ -567,7 +567,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 58,J11-1,jp,路面電車,広島電鉄␟江波線,広島電鉄,江波線,tram,ordinary_linear,7,2.7,,unverified
 58,J11-1,jp,路面電車,広島電鉄␟横川線,広島電鉄,横川線,tram,ordinary_linear,5,1.5,,unverified
 58,J11-1,jp,路面電車,広島電鉄␟白島線,広島電鉄,白島線,tram,ordinary_linear,6,1.3,,unverified
-58,J11-1,jp,路面電車,広島電鉄␟循環線,広島電鉄,循環線,tram,ordinary_linear,0,0.0,,pending
+58,J11-1,jp,路面電車,広島電鉄␟循環線,広島電鉄,循環線,tram,ordinary_linear,0,0.0,,blocked
 58,J11-1,jp,路面電車,熊本市␟幹線,熊本市,幹線,tram,ordinary_linear,10,3.3,,unverified
 58,J11-1,jp,路面電車,熊本市␟健軍線,熊本市,健軍線,tram,ordinary_linear,9,3.1,,unverified
 58,J11-1,jp,路面電車,熊本市␟上熊本線,熊本市,上熊本線,tram,ordinary_linear,10,3.0,,unverified
@@ -587,7 +587,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 59,J11-2,jp,路面電車,富山地方鉄道␟支線,富山地方鉄道,支線,tram,ordinary_linear,4,1.1,,unverified
 59,J11-2,jp,路面電車,富山地方鉄道␟富山都心線,富山地方鉄道,富山都心線,tram,ordinary_linear,5,1.0,,unverified
 59,J11-2,jp,路面電車,富山地方鉄道␟安野屋線,富山地方鉄道,安野屋線,tram,ordinary_linear,3,0.5,,unverified
-59,J11-2,jp,路面電車,富山地方鉄道␟富山駅南北接続線,富山地方鉄道,富山駅南北接続線,tram,branched_terminal,1,0.3,,pending
+59,J11-2,jp,路面電車,富山地方鉄道␟富山駅南北接続線,富山地方鉄道,富山駅南北接続線,tram,branched_terminal,1,0.3,,blocked
 60,J11-3,jp,路面電車,とさでん交通␟伊野線,とさでん交通,伊野線,tram,ordinary_linear,34,11.2,,unverified
 60,J11-3,jp,路面電車,とさでん交通␟後免線,とさでん交通,後免線,tram,ordinary_linear,33,10.9,,unverified
 60,J11-3,jp,路面電車,とさでん交通␟桟橋線,とさでん交通,桟橋線,tram,ordinary_linear,8,2.4,,unverified
