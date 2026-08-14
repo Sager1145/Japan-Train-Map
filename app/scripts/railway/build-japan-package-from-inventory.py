@@ -755,7 +755,38 @@ def cycle_and_tails(edges):
 SKIP_EDGE_TOLERANCE = 0.10
 
 
-def drop_skip_station_edges(edges, distances):
+def confirms_skip(graph, points, a, b, middle, tolerance_m=150.0):
+    """Does the direct A–B track actually run past the station it is said to skip?
+
+    Matching distances alone cannot tell a skip edge from a second alignment
+    that happens to be about as long: 函館線's 森–駒ヶ岳 measures close to
+    森–東森–駒ヶ岳, but 東森 is on the 砂原 route and the direct edge is the
+    駒ヶ岳 route — two real alignments, not one.
+
+    So the direct edge is CUT and asked whether it passes the station. Same
+    track means the cut runs within a platform's reach of it; a separate
+    alignment leaves it behind.
+    """
+    start, end = graph.project(points[a]), graph.project(points[b])
+    if start is None or end is None:
+        return False
+    cut = graph.path_between(start, end)
+    if cut is None:
+        return False
+    coords = cut[0]
+    target = points[middle]
+    scale = 111_320 * math.cos(math.radians(target[1]))
+    best = float("inf")
+    for point in coords:
+        dx = (point[0] - target[0]) * scale
+        dy = (point[1] - target[1]) * 111_320
+        best = min(best, math.hypot(dx, dy))
+        if best <= tolerance_m:
+            return True
+    return best <= tolerance_m
+
+
+def drop_skip_station_edges(edges, distances, confirm=None):
     """Remove service edges that skip a station over track already drawn.
 
     A through service that does not call at 武蔵白石 still runs over the 大川
@@ -783,6 +814,8 @@ def drop_skip_station_edges(edges, distances):
                     tuple(sorted((middle, b))), 0.0
                 )
                 if through and abs(span - through) <= through * SKIP_EDGE_TOLERANCE:
+                    if confirm is not None and not confirm(a, b, middle):
+                        continue
                     skipped_over = middle
                     break
         if skipped_over is None:
@@ -799,18 +832,23 @@ def longest_path(edges, weight):
         return []
 
     def farthest(start):
-        best = (0.0, start, {start: None})
-        stack = [(start, None, 0.0)]
+        # Visited-guarded, so this is safe on a graph that still carries a
+        # cycle: the walk is a spanning tree of it, and the path it reports is
+        # a real route over real edges.
+        best = (0.0, start)
+        stack = [(start, 0.0)]
         parents = {start: None}
+        seen = {start}
         while stack:
-            node, parent, distance = stack.pop()
+            node, distance = stack.pop()
             if distance > best[0]:
-                best = (distance, node, None)
+                best = (distance, node)
             for other in near[node]:
-                if other == parent:
+                if other in seen:
                     continue
+                seen.add(other)
                 parents[other] = node
-                stack.append((other, node, distance + weight(node, other)))
+                stack.append((other, distance + weight(node, other)))
         return best[0], best[1], parents
 
     _d, far_node, _p = farthest(next(iter(near)))
@@ -829,8 +867,12 @@ def tree_decompose(edges, weight):
     it, and every edge is drawn exactly once. Each branch keeps the junction
     station it leaves from, which is where the two strokes meet.
 
-    Only trees. A cycle means two routes between the same pair, and picking one
-    is a decision that belongs to the sources.
+    This runs on graphs that still carry a cycle, and that is deliberate: after
+    skip-station edges are removed, a remaining cycle means the railway really
+    does have two alignments between the same pair of stations — 長崎線 via 長与
+    and via 市布 — which the audit classifies as `branch_rejoins`. Both are real
+    track and both are drawn; the longer way round becomes a rejoining branch
+    rather than being dropped.
     """
     remaining = set(edges)
     parts = []
@@ -848,7 +890,9 @@ def tree_decompose(edges, weight):
     return parts
 
 
-def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
+def plan_parts(
+    row, edges, uid_by_name, distances=None, station_by_uid=None, confirm_skip=None
+):
     """Every drawn stroke this canonical line yields, largest first.
 
     One ordered list of distinct stations is all compact-v1 can hold, so a
@@ -865,7 +909,7 @@ def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
 
     prefix = []
     if distances:
-        edges, dropped = drop_skip_station_edges(edges, distances)
+        edges, dropped = drop_skip_station_edges(edges, distances, confirm=confirm_skip)
         for (a, b), middle in dropped:
             name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
             prefix.append(
@@ -886,16 +930,18 @@ def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
             planned.extend((part_order, part_loop) for _s, part_order, part_loop in audited)
             notes.append(reason)
             continue
-        if len(piece) == len({u for pair in piece for u in pair}) - 1:
+        rings, why = cycle_and_tails(piece)
+        if rings is None:
             weight = lambda a, b: (distances or {}).get(tuple(sorted((a, b))), 1.0) or 1.0
             branches = tree_decompose(piece, weight)
             if len(branches) > 1:
                 planned.extend((branch, False) for branch in branches)
+                cycles = len(piece) - len({u for pair in piece for u in pair}) + 1
                 notes.append(
-                    f"tree with {len(branches) - 1} branch(es) split from the graph"
+                    f"trunk plus {len(branches) - 1} branch(es) split from the graph"
+                    + (f" ({cycles} rejoining route(s))" if cycles > 0 else "")
                 )
                 continue
-        rings, why = cycle_and_tails(piece)
         if rings is not None:
             planned.extend((part, len(part) > 2 and part[0] in neighbour_map(piece)[part[-1]]) for part in rings[:1])
             planned.extend((part, False) for part in rings[1:])
@@ -1096,6 +1142,7 @@ def build_lines(
                 for pair in edges
             },
             station_by_uid=station_by_uid,
+            confirm_skip=lambda a, b, middle: confirms_skip(graph, points, a, b, middle),
         )
         if parts is None:
             skipped.append((key, reason))

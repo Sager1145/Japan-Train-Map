@@ -100,7 +100,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟只見線,東日本旅客鉄道,只見線,jr_conventional,ordinary_linear,36,135.5,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟総武線,東日本旅客鉄道,総武線,jr_conventional,branched_terminal,48,127.6,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟内房線,東日本旅客鉄道,内房線,jr_conventional,ordinary_linear,30,121.7,,unverified
-19,J03-2,jp,JR東日本在来線,東日本旅客鉄道␟成田線,東日本旅客鉄道,成田線,jr_conventional,branched_terminal,27,117.6,,pending
+19,J03-2,jp,JR東日本在来線,東日本旅客鉄道␟成田線,東日本旅客鉄道,成田線,jr_conventional,branched_terminal,27,117.6,,unverified
 19,J03-2,jp,JR東日本在来線,東日本旅客鉄道␟花輪線,東日本旅客鉄道,花輪線,jr_conventional,ordinary_linear,27,107.2,,unverified
 19,J03-2,jp,JR東日本在来線,東日本旅客鉄道␟山田線,東日本旅客鉄道,山田線,jr_conventional,ordinary_linear,15,101.1,,unverified
 19,J03-2,jp,JR東日本在来線,東日本旅客鉄道␟飯山線,東日本旅客鉄道,飯山線,jr_conventional,ordinary_linear,31,97.0,,unverified
@@ -203,7 +203,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 26,J04-4,jp,JR西日本在来線,西日本旅客鉄道␟桜島線,西日本旅客鉄道,桜島線,jr_conventional,ordinary_linear,4,4.4,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟日豊線,九州旅客鉄道,日豊線,jr_conventional,disconnected,113,475.2,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟鹿児島線,九州旅客鉄道,鹿児島線,jr_conventional,disconnected,99,300.8,,pending
-27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟長崎線,九州旅客鉄道,長崎線,jr_conventional,branched_terminal,41,149.3,,pending
+27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟長崎線,九州旅客鉄道,長崎線,jr_conventional,branched_terminal,41,149.3,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟豊肥線,九州旅客鉄道,豊肥線,jr_conventional,ordinary_linear,37,148.2,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟久大線,九州旅客鉄道,久大線,jr_conventional,ordinary_linear,37,140.9,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟肥薩線,九州旅客鉄道,肥薩線,jr_conventional,loop_and_switchbacks_suspended,28,124.7,,unverified
@@ -234,7 +234,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 29,J05-3,jp,JR東海・四国・九州在来線,東海旅客鉄道␟参宮線,東海旅客鉄道,参宮線,jr_conventional,ordinary_linear,10,29.3,,unverified
 29,J05-3,jp,JR東海・四国・九州在来線,東海旅客鉄道␟武豊線,東海旅客鉄道,武豊線,jr_conventional,branch_rejoins,10,20.7,,unverified
 29,J05-3,jp,JR東海・四国・九州在来線,東海旅客鉄道␟太多線,東海旅客鉄道,太多線,jr_conventional,ordinary_linear,8,18.0,,unverified
-30,J05-4,jp,JR東海・四国・九州在来線,四国旅客鉄道␟予讃線,四国旅客鉄道,予讃線,jr_conventional,branch_rejoins,95,325.4,,pending
+30,J05-4,jp,JR東海・四国・九州在来線,四国旅客鉄道␟予讃線,四国旅客鉄道,予讃線,jr_conventional,branch_rejoins,95,325.4,,unverified
 30,J05-4,jp,JR東海・四国・九州在来線,四国旅客鉄道␟土讃線,四国旅客鉄道,土讃線,jr_conventional,branched_terminal,61,198.5,,unverified
 30,J05-4,jp,JR東海・四国・九州在来線,四国旅客鉄道␟牟岐線,四国旅客鉄道,牟岐線,jr_conventional,ordinary_linear,29,78.1,,unverified
 30,J05-4,jp,JR東海・四国・九州在来線,四国旅客鉄道␟予土線,四国旅客鉄道,予土線,jr_conventional,ordinary_linear,20,76.2,,unverified
@@ -273,7 +273,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 33,J06-3,jp,地下鉄,神戸市␟北神線,神戸市,北神線,subway,ordinary_linear,2,7.7,,unverified
 33,J06-3,jp,地下鉄,神戸市␟山手線,神戸市,山手線,subway,ordinary_linear,8,7.6,,unverified
 33,J06-3,jp,地下鉄,神戸市␟西神線,神戸市,西神線,subway,ordinary_linear,4,5.8,,unverified
-33,J06-3,jp,地下鉄,東京都␟12号線大江戸線,東京都,12号線大江戸線,subway,loop_with_tail,38,40.8,,pending
+33,J06-3,jp,地下鉄,東京都␟12号線大江戸線,東京都,12号線大江戸線,subway,loop_with_tail,38,40.8,,unverified
 33,J06-3,jp,地下鉄,東京都␟6号線三田線,東京都,6号線三田線,subway,ordinary_linear,27,26.7,,unverified
 33,J06-3,jp,地下鉄,東京都␟10号線新宿線,東京都,10号線新宿線,subway,ordinary_linear,21,23.9,,unverified
 33,J06-3,jp,地下鉄,東京都␟1号線浅草線,東京都,1号線浅草線,subway,ordinary_linear,20,18.5,,unverified
@@ -329,7 +329,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 38,J07-4,jp,関東大手私鉄,東急電鉄␟東急新横浜線,東急電鉄,東急新横浜線,private,ordinary_linear,3,6.1,,unverified
 38,J07-4,jp,関東大手私鉄,東急電鉄␟東急多摩川線,東急電鉄,東急多摩川線,private,ordinary_linear,7,5.7,,unverified
 38,J07-4,jp,関東大手私鉄,東急電鉄␟こどもの国線,東急電鉄,こどもの国線,private,ordinary_linear,3,3.4,,unverified
-38,J07-4,jp,関東大手私鉄,京王電鉄␟京王線,京王電鉄,京王線,private,loop_with_tail,35,40.7,,pending
+38,J07-4,jp,関東大手私鉄,京王電鉄␟京王線,京王電鉄,京王線,private,loop_with_tail,35,40.7,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟相模原線,京王電鉄,相模原線,private,ordinary_linear,12,22.8,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟井の頭線,京王電鉄,井の頭線,private,ordinary_linear,17,12.9,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟高尾線,京王電鉄,高尾線,private,ordinary_linear,7,8.8,,unverified
@@ -514,7 +514,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 54,J10-2,jp,第三セクター,肥薩おれんじ鉄道␟肥薩おれんじ鉄道線,肥薩おれんじ鉄道,肥薩おれんじ鉄道線,third_sector,ordinary_linear,28,117.2,,unverified
 54,J10-2,jp,第三セクター,あいの風とやま鉄道␟あいの風とやま鉄道線,あいの風とやま鉄道,あいの風とやま鉄道線,third_sector,ordinary_linear,23,104.8,,unverified
 54,J10-2,jp,第三セクター,秋田内陸縦貫鉄道␟秋田内陸線,秋田内陸縦貫鉄道,秋田内陸線,third_sector,ordinary_linear,29,94.6,,unverified
-54,J10-2,jp,第三セクター,松浦鉄道␟西九州線,松浦鉄道,西九州線,third_sector,branched_terminal,57,93.7,,pending
+54,J10-2,jp,第三セクター,松浦鉄道␟西九州線,松浦鉄道,西九州線,third_sector,branched_terminal,57,93.7,,unverified
 54,J10-2,jp,第三セクター,アイジーアールいわて銀河鉄道␟いわて銀河鉄道線,アイジーアールいわて銀河鉄道,いわて銀河鉄道線,third_sector,ordinary_linear,18,92.6,,unverified
 54,J10-2,jp,第三セクター,ハピラインふくい␟ハピラインふくい線,ハピラインふくい,ハピラインふくい線,third_sector,ordinary_linear,19,85.8,,unverified
 54,J10-2,jp,第三セクター,長良川鉄道␟越美南線,長良川鉄道,越美南線,third_sector,ordinary_linear,38,72.3,,unverified
@@ -561,7 +561,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 57,J10-5,jp,第三セクター,万葉線␟新湊港線,万葉線,新湊港線,third_sector,ordinary_linear,8,5.0,,unverified
 57,J10-5,jp,第三セクター,横浜高速鉄道␟みなとみらい21線,横浜高速鉄道,みなとみらい21線,third_sector,ordinary_linear,6,4.4,,unverified
 57,J10-5,jp,第三セクター,芝山鉄道␟芝山鉄道線,芝山鉄道,芝山鉄道線,third_sector,ordinary_linear,2,2.3,,unverified
-58,J11-1,jp,路面電車,広島電鉄␟宇品線,広島電鉄,宇品線,tram,branch_rejoins,20,6.3,,pending
+58,J11-1,jp,路面電車,広島電鉄␟宇品線,広島電鉄,宇品線,tram,branch_rejoins,20,6.3,,unverified
 58,J11-1,jp,路面電車,広島電鉄␟本線,広島電鉄,本線,tram,branched_terminal,21,5.6,,unverified
 58,J11-1,jp,路面電車,広島電鉄␟皆実線,広島電鉄,皆実線,tram,ordinary_linear,8,3.0,,unverified
 58,J11-1,jp,路面電車,広島電鉄␟江波線,広島電鉄,江波線,tram,ordinary_linear,7,2.7,,unverified
@@ -578,7 +578,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 59,J11-2,jp,路面電車,長崎電気軌道␟大浦支線,長崎電気軌道,大浦支線,tram,ordinary_linear,5,1.2,,unverified
 59,J11-2,jp,路面電車,長崎電気軌道␟桜町支線,長崎電気軌道,桜町支線,tram,ordinary_linear,3,1.0,,unverified
 59,J11-2,jp,路面電車,長崎電気軌道␟赤迫支線,長崎電気軌道,赤迫支線,tram,ordinary_linear,2,0.4,,unverified
-59,J11-2,jp,路面電車,伊予鉄道␟城南線,伊予鉄道,城南線,tram,branched_terminal,12,3.7,,pending
+59,J11-2,jp,路面電車,伊予鉄道␟城南線,伊予鉄道,城南線,tram,branched_terminal,12,3.7,,unverified
 59,J11-2,jp,路面電車,伊予鉄道␟本町線,伊予鉄道,本町線,tram,ordinary_linear,5,1.4,,unverified
 59,J11-2,jp,路面電車,伊予鉄道␟大手町線,伊予鉄道,大手町線,tram,ordinary_linear,5,1.4,,unverified
 59,J11-2,jp,路面電車,伊予鉄道␟花園線,伊予鉄道,花園線,tram,ordinary_linear,2,0.5,,unverified
