@@ -792,6 +792,62 @@ def drop_skip_station_edges(edges, distances):
     return keep, dropped
 
 
+def longest_path(edges, weight):
+    """The heaviest leaf-to-leaf path through a tree — its trunk."""
+    near = neighbour_map(edges)
+    if not near:
+        return []
+
+    def farthest(start):
+        best = (0.0, start, {start: None})
+        stack = [(start, None, 0.0)]
+        parents = {start: None}
+        while stack:
+            node, parent, distance = stack.pop()
+            if distance > best[0]:
+                best = (distance, node, None)
+            for other in near[node]:
+                if other == parent:
+                    continue
+                parents[other] = node
+                stack.append((other, node, distance + weight(node, other)))
+        return best[0], best[1], parents
+
+    _d, far_node, _p = farthest(next(iter(near)))
+    _d2, end, parents = farthest(far_node)
+    path = [end]
+    while parents[path[-1]] is not None:
+        path.append(parents[path[-1]])
+    return path
+
+
+def tree_decompose(edges, weight):
+    """Split a branched but cycle-free railway into a trunk and its branches.
+
+    A tree has exactly one route between any two stations, so there is nothing
+    to choose: the trunk is the longest through route, every other arm hangs off
+    it, and every edge is drawn exactly once. Each branch keeps the junction
+    station it leaves from, which is where the two strokes meet.
+
+    Only trees. A cycle means two routes between the same pair, and picking one
+    is a decision that belongs to the sources.
+    """
+    remaining = set(edges)
+    parts = []
+    guard = 0
+    while remaining and guard < 200:
+        guard += 1
+        for piece in components(sorted(remaining)):
+            path = longest_path(piece, weight)
+            if len(path) < 2:
+                remaining -= set(piece)
+                continue
+            parts.append(path)
+            for a, b in zip(path, path[1:]):
+                remaining.discard(tuple(sorted((a, b))))
+    return parts
+
+
 def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
     """Every drawn stroke this canonical line yields, largest first.
 
@@ -830,6 +886,15 @@ def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
             planned.extend((part_order, part_loop) for _s, part_order, part_loop in audited)
             notes.append(reason)
             continue
+        if len(piece) == len({u for pair in piece for u in pair}) - 1:
+            weight = lambda a, b: (distances or {}).get(tuple(sorted((a, b))), 1.0) or 1.0
+            branches = tree_decompose(piece, weight)
+            if len(branches) > 1:
+                planned.extend((branch, False) for branch in branches)
+                notes.append(
+                    f"tree with {len(branches) - 1} branch(es) split from the graph"
+                )
+                continue
         rings, why = cycle_and_tails(piece)
         if rings is not None:
             planned.extend((part, len(part) > 2 and part[0] in neighbour_map(piece)[part[-1]]) for part in rings[:1])
