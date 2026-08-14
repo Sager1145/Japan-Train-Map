@@ -752,7 +752,47 @@ def cycle_and_tails(edges):
     return parts, None
 
 
-def plan_parts(row, edges, uid_by_name):
+SKIP_EDGE_TOLERANCE = 0.10
+
+
+def drop_skip_station_edges(edges, distances):
+    """Remove service edges that skip a station over track already drawn.
+
+    A through service that does not call at 武蔵白石 still runs over the 大川
+    支線's only track: 鶴見線 files 安善–大川 at 1.285 km beside 安善–武蔵白石–
+    大川 at 1.415 km. The two are the same railway, and the display purpose here
+    is the infrastructure network, so the skip edge adds no track to draw — it
+    only adds a cycle that makes the line's order ambiguous.
+
+    The audit's own distances tell the two cases apart. A skip edge measures the
+    same as the path through the station it misses; a genuine chord — a bypass
+    that is its own track — is the shorter route, which is the whole reason it
+    exists. So only near-equal length counts, and the edge is reported, never
+    silently dropped.
+    """
+    near = neighbour_map(edges)
+    dropped = []
+    keep = []
+    for pair in edges:
+        a, b = pair
+        span = distances.get(pair, 0.0)
+        skipped_over = None
+        if span:
+            for middle in near[a] & near[b]:
+                through = distances.get(tuple(sorted((a, middle))), 0.0) + distances.get(
+                    tuple(sorted((middle, b))), 0.0
+                )
+                if through and abs(span - through) <= through * SKIP_EDGE_TOLERANCE:
+                    skipped_over = middle
+                    break
+        if skipped_over is None:
+            keep.append(pair)
+        else:
+            dropped.append((pair, skipped_over))
+    return keep, dropped
+
+
+def plan_parts(row, edges, uid_by_name, distances=None, station_by_uid=None):
     """Every drawn stroke this canonical line yields, largest first.
 
     One ordered list of distinct stations is all compact-v1 can hold, so a
@@ -767,9 +807,19 @@ def plan_parts(row, edges, uid_by_name):
     if not edges:
         return None, "no adjacency rows for this line"
 
+    prefix = []
+    if distances:
+        edges, dropped = drop_skip_station_edges(edges, distances)
+        for (a, b), middle in dropped:
+            name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
+            prefix.append(
+                f"{name(a)}–{name(b)} skips {name(middle)} over the same track "
+                f"— service edge, not a second alignment"
+            )
+
     pieces = components(edges)
     planned = []
-    notes = []
+    notes = list(prefix)
     for piece in pieces:
         order, flag = station_order(piece)
         if order is not None:
@@ -972,7 +1022,16 @@ def build_lines(
         uid_by_name = {}
         for uid in uids:
             uid_by_name.setdefault(station_by_uid[uid]["station_name"], uid)
-        parts, reason = plan_parts(row, edges, uid_by_name)
+        parts, reason = plan_parts(
+            row,
+            edges,
+            uid_by_name,
+            distances={
+                pair: audited_distance.get((key, pair), 0.0)
+                for pair in edges
+            },
+            station_by_uid=station_by_uid,
+        )
         if parts is None:
             skipped.append((key, reason))
             continue
