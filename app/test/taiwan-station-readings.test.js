@@ -16,10 +16,10 @@ test("Taiwan station table covers every network alias and canonical sample UID",
 
   assert.equal(table.country, "TW");
   assert.deepEqual(table.languages, ["zh-Hant", "zh-Hans", "ja", "en"]);
-  assert.equal(table.stats.byCode, 1136);
-  assert.equal(table.stats.officialStationUIDs, 532);
-  assert.equal(table.stats.matchedOfficialStationUIDs, 517);
-  assert.equal(table.stats.networkAliases, 585);
+  assert.equal(table.stats.byCode, 1149);
+  assert.equal(table.stats.officialStationUIDs, 544);
+  assert.equal(table.stats.matchedOfficialStationUIDs, 529);
+  assert.equal(table.stats.networkAliases, 586);
   assert.equal(table.stats.fallbackAliases, 23);
 
   // Keep line-specific interchange codes even when the compact display map
@@ -74,6 +74,13 @@ test("Taiwan station translations use official values and documented fallbacks",
     zh_Hans: "红树林",
     ja: "紅樹林",
     en: "Hongshulin",
+  });
+  assert.deepEqual(table.byCode["NTMC-LB08"], {
+    name: "鶯歌車站",
+    zh_Hant: "鶯歌車站",
+    zh_Hans: "莺歌车站",
+    ja: "",
+    en: "Yingge Railway Station",
   });
 
   const alishan =

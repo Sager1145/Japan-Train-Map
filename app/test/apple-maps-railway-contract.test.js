@@ -432,15 +432,13 @@ test("station_glyph_follows_the_boot_theme", () => {
   }
 });
 
-test("underground_dashes_have_no_data_to_stand_on", () => {
-  // Apple dashes underground stretches. Five packages, no per-segment (or even
-  // per-line) surface attribute anywhere in any of them — so this project
-  // reports the coverage gap rather than guessing from a line's name. If a
-  // package ever grows the field, this test fails and the gap can be closed
-  // honestly.
+test("underground_structure_is_preserved_without_guessing_other_countries", () => {
+  // Japan now carries OSM-conflated tunnel/bridge measures with provenance.
+  // The other four packages still have no common segment-level field, so the
+  // renderer must not infer underground status from a line name or mode.
   const SURFACE_FIELDS =
     /^(underground|tunnel|subway|elevated|surface|grade|structure)$/i;
-  for (const country of COUNTRIES) {
+  for (const country of COUNTRIES.filter((country) => country !== "jp")) {
     const { pkg } = packageAndNetwork(country);
     const seen = new Set();
     const walk = (value, depth) => {
@@ -461,7 +459,17 @@ test("underground_dashes_have_no_data_to_stand_on", () => {
       `${country} now carries a surface attribute — close the underground gap`,
     );
   }
-  // …and no network layer may fake one meanwhile.
+  const { pkg: japan } = packageAndNetwork("jp");
+  const structureRows = japan.lines.reduce(
+    (sum, line) => sum + (line.structure?.length || 0),
+    0,
+  );
+  assert.ok(structureRows > 16000);
+  assert.match(japan.attributeSources.structure, /OpenStreetMap/);
+
+  // A dashed network overlay is deliberately deferred until those measures
+  // are cut onto the final branched/lane display features; painting whole
+  // subway lines dashed would be a false shortcut.
   const { byId } = labelLayers();
   for (const id of [style.SEGMENTS_LAYER, style.SEGMENTS_CASING_LAYER])
     assert.equal(byId.get(id).paint["line-dasharray"], undefined);

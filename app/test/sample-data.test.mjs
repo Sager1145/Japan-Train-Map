@@ -967,10 +967,14 @@ test("Taiwan precomputed parts include every added official-line journey", async
     (feature) =>
       feature.properties.from === "神木" && feature.properties.to === "阿里山",
   );
+  // 113 since 2025.6.1: the interval starts at 神木, which stands at the far
+  // end of its own reversal tail, runs back down that tail through the
+  // junction, and finishes by running the whole 439 m 阿里山 reversal tail and
+  // back (scripts/railway/repair-alishan-switchbacks.mjs).
   assert.equal(
     sacredTreeToAlishan.geometry.coordinates.length,
-    86,
-    "the Alishan station-throat reversal tail was shortened",
+    113,
+    "the Alishan reversal tails were shortened",
   );
 
   const shenmuIds = new Set([

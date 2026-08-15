@@ -327,7 +327,7 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // Every package platform is now an exact vertex of its own drawn railway;
     // branch splitting restores the tiny overlap anchors it used to discard.
     ["jp", 10161],
-    ["tw", 574],
+    ["tw", 586],
     ["hk", 450],
     ["mo", 17],
   ]);

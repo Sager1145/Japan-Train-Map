@@ -436,18 +436,24 @@ test("Taiwan ridden routes keep the exact ordered Alishan display interval", asy
     context,
   );
   const plain = JSON.parse(JSON.stringify(result));
+  // 神木 stands at the far end of its own 118 m reversal tail, so the interval
+  // opens there, runs back down the tail through the junction, and descends —
+  // and it ends by running the whole 439 m 阿里山 reversal tail and back
+  // (2025.6.1, scripts/railway/repair-alishan-switchbacks.mjs). A ridden route
+  // has to keep that ordering vertex for vertex or it draws a shortcut across
+  // the zigzag.
   const official = context.__twSections.features.find((feature) => {
     const coordinates = feature.geometry.coordinates;
     return (
       feature.properties.line_name === "阿里山線" &&
-      coordinates[0][0] === 120.806072 &&
-      coordinates[0][1] === 23.518996 &&
+      coordinates[0][0] === 120.808069 &&
+      coordinates[0][1] === 23.518658 &&
       coordinates.at(-1)[0] === 120.805009 &&
       coordinates.at(-1)[1] === 23.510618
     );
   });
   assert.ok(official, "the groomed 神木→阿里山 interval is missing");
-  assert.equal(official.geometry.coordinates.length, 86);
+  assert.equal(official.geometry.coordinates.length, 113);
   assert.equal(
     plain.uphillFeature.properties.route_choice,
     "official_interval_exact",

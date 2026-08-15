@@ -13,17 +13,17 @@ const MATCHED_ROUTES_PATH = path.join(__dirname, "../data/matched-routes.json");
 const MATCHED_STOPS_PATH = path.join(__dirname, "../data/matched-stops.json");
 const TYMC_SAMPLE_ID =
   "20260802_01_taoyuan_airport_mrt_express_t2_taipei";
-// 574 stations, not 585: 中和新蘆線 is ONE railway to 迴龍 with a branch off
+// 586 station occurrences: 中和新蘆線 is ONE railway to 迴龍 with a branch off
 // 大橋頭 to 蘆洲, so the 蘆洲 row carries only its own six stations instead of
 // repeating the twelve it shares with the trunk
 // (scripts/railway/collapse-branch-services.mjs). Both rows keep the line's own name,
 // which is how the renderer knows to draw their shared track coincident
 // rather than as two independent railways in parallel lanes.
 const EXPECTED_COUNTS = Object.freeze({
-  lines: 38,
-  stations: 574,
-  segments: 537,
-  groups: 495,
+  lines: 39,
+  stations: 586,
+  segments: 548,
+  groups: 505,
 });
 
 function lineById(compactPackage, id) {
@@ -118,23 +118,43 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     },
     {
       format: "compact-v1",
-      version: "2025.5.2",
-      generatedAt: "2026-08-11T16:38:20.000Z",
+      version: "2025.6.1",
+      generatedAt: "2026-08-13T06:38:19.000Z",
       crs: "WGS84",
       country: "TW",
     },
   );
-  assert.equal(compactPackage.geometrySource.officialOnly, 1);
   assert.equal(compactPackage.geometrySource.nlscRailRevision, "1150409");
   assert.equal(compactPackage.geometrySource.syntheticConnectors, 0);
-  assert.equal(compactPackage.geometrySource.osmSources, 0);
+  // 2025.6.1: the 阿里山 zigzag reversal tails come from OpenStreetMap because
+  // no official centreline carries them as traversable track
+  // (scripts/railway/repair-alishan-switchbacks.mjs). A package-wide
+  // "official only" flag would have to lie about that, so the exception is
+  // named instead — and it must stay named, and stay this small.
+  assert.equal(compactPackage.geometrySource.officialOnly, 0);
+  assert.equal(compactPackage.geometrySource.osmSources, 1);
+  assert.deepEqual(compactPackage.geometrySource.osmGeometry.lines, [
+    "tw-alsr-alishan",
+    "tw-alsr-shenmu",
+  ]);
+  assert.match(compactPackage.geometrySource.osmGeometry.license, /ODbL/);
+  assert.equal(compactPackage.geometrySource.osmGeometry.relation, 5_570_989);
+  // Every other line is still drawn from official data alone.
+  for (const line of compactPackage.lines) {
+    if (compactPackage.geometrySource.osmGeometry.lines.includes(line.id))
+      continue;
+    assert.ok(
+      compactPackage.geometrySource.officialGeometryComparison.byLine[line.id],
+      `${line.id} is not covered by the official-geometry comparison`,
+    );
+  }
   const officialComparison =
     compactPackage.geometrySource.officialGeometryComparison;
   assert.equal(officialComparison.scope, "LineID/RAILNAME/MRTCODE/LRTCODE");
   assert.equal(officialComparison.lines, EXPECTED_COUNTS.lines);
   assert.equal(Object.keys(officialComparison.byLine).length, EXPECTED_COUNTS.lines);
-  assert.equal(officialComparison.vertices, 18_291);
-  assert.equal(officialComparison.edgeMidpoints, 17_754);
+  assert.equal(officialComparison.vertices, 18_582);
+  assert.equal(officialComparison.edgeMidpoints, 18_034);
   assert.ok(
     officialComparison.maxDeviationMeters <= officialComparison.toleranceMeters,
   );
@@ -152,7 +172,18 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
     );
   }
   assert.ok(compactPackage.geometrySource.sourceSha256["TRA:shape"]);
-  assert.doesNotMatch(source.toString("utf8"), /tw-osm|openstreetmap/i);
+  // Nothing may name OpenStreetMap except the one declared exception above:
+  // an id, a station name or a source string that mentions it anywhere else
+  // means non-official data got in without being declared.
+  {
+    const withoutDeclaration = { ...compactPackage };
+    withoutDeclaration.geometrySource = { ...compactPackage.geometrySource };
+    delete withoutDeclaration.geometrySource.osmGeometry;
+    assert.doesNotMatch(
+      JSON.stringify(withoutDeclaration),
+      /tw-osm|openstreetmap/i,
+    );
+  }
   assert.equal(compactPackage.lines.length, EXPECTED_COUNTS.lines);
   assert.equal(
     new Set(compactPackage.lines.map((line) => line.id)).size,
@@ -277,11 +308,13 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
   }
   assert.equal(stationCount, EXPECTED_COUNTS.stations);
   assert.equal(segmentCount, EXPECTED_COUNTS.segments);
-  // 2025.5.2's minimum-corner-radius pass straightens sub-40 m digitising
-  // artefacts, which costs 46 m across the whole network. The remaining 12 km
-  // are the 中和新蘆線 trunk the 蘆洲 row used to repeat: the package now
-  // counts that track once, as one railway does.
-  assert.equal(Math.round(totalKm * 10) / 10, 1784.0);
+  // 2025.6.0 adds the 13.6 km official Sanying alignment to the previously
+  // characterized network. 中和新蘆線 still counts its shared trunk once.
+  // 2025.6.1 adds 0.9 km of 阿里山 zigzag: the 神木 reversal tail the routed
+  // build skipped (twice over, on the 阿里山線 and on 神木線) and the last
+  // 128 m of the 阿里山 reversal tail. A reversal tail is real track a train
+  // really runs, so it counts like any other metre of railway.
+  assert.equal(Math.round(totalKm * 10) / 10, 1798.5);
   assert.ok(edgeCount >= 17_000, `only ${edgeCount} geometry edges`);
   assert.ok(maxEdgeKm < 0.2, `${maxEdgeKm} km output edge`);
   assert.equal(maxUnsharedJoinKm, 0, `${maxUnsharedJoinKm} km station gap`);
@@ -289,6 +322,7 @@ test("Taiwan 2025 package matches compact-v1 and its characterized network", () 
 
   assert.equal(lineById(compactPackage, "tw-thsr-main").stations.length, 12);
   assert.equal(lineById(compactPackage, "tw-trtc-bl").stations.length, 23);
+  assert.equal(lineById(compactPackage, "tw-ntmetro-lb").stations.length, 12);
   assert.equal(lineById(compactPackage, "tw-tym-a").stations.length, 22);
   assert.equal(lineById(compactPackage, "tw-krtc-r").stations.length, 25);
   assert.equal(lineById(compactPackage, "tw-klrt-c").stations.length, 38);
@@ -336,6 +370,63 @@ test("Taipei Main Station is grouped across high speed, TRA, and metro", () => {
   assert.ok(
     new Set(stationRows.map((row) => `${row[2]},${row[3]}`)).size > 1,
     "separate Taipei Main platforms should retain their own on-line points",
+  );
+});
+
+test("Sanying Line uses the official 12-stop order and both official interchanges", () => {
+  const compactPackage = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const line = lineById(compactPackage, "tw-ntmetro-lb");
+  assert.ok(line);
+  assert.equal(line.name, "三鶯線");
+  assert.equal(line.nameRoma, "Sanying Line");
+  assert.equal(line.operator, "新北大眾捷運股份有限公司");
+  // Lower case since the 2026-08-13 rebuild: package colours now come from the
+  // audit inventory's colours/line-colours.csv, which stores them lower case,
+  // and finalize-japan-package.mjs already lower-cased Japan's. One convention
+  // across all five countries; the colour itself is unchanged.
+  assert.equal(line.color, "#4eb7d5");
+  assert.deepEqual(
+    line.stations.map((station) => station[1]),
+    [
+      "頂埔",
+      "媽祖田",
+      "長壽山",
+      "橫溪",
+      "龍埔",
+      "三峽",
+      "臺北大學",
+      "鶯歌車站",
+      "陶瓷老街",
+      "國華",
+      "永吉公園",
+      "鶯桃福德",
+    ],
+  );
+  assert.equal(line.segments.length, 11);
+
+  const comparison =
+    compactPackage.geometrySource.officialGeometryComparison.byLine[
+      "tw-ntmetro-lb"
+    ];
+  assert.deepEqual(comparison.shapeRefs, ["NTMC:LB"]);
+  assert.ok(comparison.maxDeviationMeters <= 20);
+  assert.ok(
+    compactPackage.geometrySource.sourceSha256["NTMC:SanyingStations"],
+  );
+
+  const station = (lineId, stationName) =>
+    lineById(compactPackage, lineId).stations.find(
+      (row) => row[1] === stationName,
+    );
+  assert.equal(
+    station("tw-ntmetro-lb", "頂埔")[0],
+    station("tw-trtc-bl", "頂埔")[0],
+    "LB01 must interchange with Taipei Metro BL01",
+  );
+  assert.equal(
+    station("tw-ntmetro-lb", "鶯歌車站")[0],
+    station("tw-tra-western-north", "鶯歌")[0],
+    "LB08 must interchange with TRA Yingge",
   );
 });
 

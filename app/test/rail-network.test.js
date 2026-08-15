@@ -32,7 +32,7 @@ const EXPECTED_COUNTS = Object.freeze({
   // one feature per lane VALUE, and the ramp in and out of a lane is two more.
   // 横浜市 1号線 and 3号線 are two line numbers of ONE railway (ブルーライン,
   // through-operated across 関内) and so share a stroke rather than a corridor.
-  segments: 890,
+  segments: 888,
   stations: 10161,
   lines: 607,
   groups: 9046,

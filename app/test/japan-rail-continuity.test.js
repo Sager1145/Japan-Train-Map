@@ -26,10 +26,9 @@ function decodedIntervals(line) {
 
 test("every Japanese package line is seam-free before it reaches the renderer", () => {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
-  // 2025.3.4 = scripts/migrations/restore-n02-loop-line-geometry.py, which gave
-  // ゆりかもめ, 上越線 and 中村線 back the loops N02 draws and the package's
-  // shortest-path cut had been skipping.
-  assert.equal(pkg.version, "2025.3.4");
+  // 2025.4.2 keeps the 2025.3.4 loop repair, then reapplies the branch and
+  // doubling-back repairs after the OSM attribute/official-colour enrichment.
+  assert.equal(pkg.version, "2025.4.2");
   assert.equal(pkg.lines.length, 607);
 
   let intervalCount = 0;
@@ -71,6 +70,44 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
     });
   }
   assert.ok(intervalCount > pkg.lines.length * 10);
+});
+
+test("Tokyo and Osaka metro lines use verified official line colours", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const expected = new Map([
+    ["jp-東京地下鉄-3号線銀座線", "#ff9500"],
+    ["jp-東京地下鉄-4号線丸ノ内線", "#f62e36"],
+    ["jp-大阪市高速電気軌道-1号線(御堂筋線)", "#db260a"],
+    ["jp-大阪市高速電気軌道-4号線(中央線)", "#00a53c"],
+  ]);
+  for (const [id, color] of expected) {
+    const line = pkg.lines.find((candidate) => candidate.id === id);
+    assert.ok(line, `missing ${id}`);
+    assert.equal(line.color, color, id);
+    assert.match(line.colorSource, /^https:\/\//, id);
+  }
+});
+
+test("Japanese tunnel and bridge measures remain valid after branch splitting", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  let rows = 0;
+  for (const line of pkg.lines) {
+    const totalMeters = line.segments.reduce(
+      (sum, segment) => sum + segment[0] * 1000,
+      0,
+    );
+    for (const structure of line.structure || []) {
+      rows += 1;
+      assert.ok(structure[0] >= 0, `${line.id} structure begins before its line`);
+      assert.ok(structure[1] > structure[0], `${line.id} has an empty structure interval`);
+      assert.ok(
+        structure[1] <= totalMeters + 1,
+        `${line.id} structure ends beyond its line`,
+      );
+      assert.ok(structure[2] === 1 || structure[2] === 2);
+    }
+  }
+  assert.ok(rows > 16000, `only ${rows} structure intervals survived`);
 });
 
 test("Japan renders one complete feature per line, never one per station interval", () => {

@@ -32,8 +32,8 @@ test("Taiwan solver datasets answer the shared country-neutral schema", () => {
   // One row per drawn interval / station, so these follow the package: the
   // 中和新蘆線 collapse (scripts/railway/collapse-branch-services.mjs) stopped the
   // 蘆洲 branch repeating the twelve trunk stations it shares with 迴龍.
-  assert.equal(sections.features.length, 537);
-  assert.equal(stations.features.length, 574);
+  assert.equal(sections.features.length, 548);
+  assert.equal(stations.features.length, 586);
 
   for (const feature of sections.features) {
     const p = feature.properties;
