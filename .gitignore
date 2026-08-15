@@ -86,3 +86,17 @@ app/data/raw/railway/jp/apple-maps/*.zip
 # scripts/railway/promote-lines.mjs writes public/rail/*.json, one session's
 # lines at a time (RAILWAY_REBUILD_SESSION_PLAN.md S01).
 app/data/staging/
+
+# Scratch: transport archives, applied-patch snapshots and staging copies moved
+# through here by hand. 245 MB and none of it reproduces anything.
+tmp/
+
+# Duplicates of app/data/raw/railway/jp/rebuild-inventory/, which IS committed.
+# `classification/` is the same tables under their pre-organisation names and
+# `backup-n02-.../` is a snapshot taken before the 2026-08-13 corrections were
+# applied; together 277 MB of second copies.
+app/data/raw/railway/jp/classification/
+app/data/raw/railway/jp/backup-n02-2025-baseline-20260813/
+
+# Transport archive of the directory committed beside it.
+app/data/raw/railway/hk/rebuild-inventory.zip
