@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 OUTPUT_DIR="$APP_DIR/../outputs/apple-maps-reference"
-CAPTURE_REGION="0,33,1512,949"
+CAPTURE_REGION="0,33,1512,855"
 mkdir -p "$OUTPUT_DIR"
 
 ROWS=(
@@ -26,15 +26,37 @@ ROWS=(
   "jp-biei-z16|43.5910|142.4611|16"
   "jp-hida-furukawa-z16|36.2368|137.1890|16"
   "tw-taipei-z15|25.0478|121.5170|15"
+  "tw-sanying-z15|24.9500|121.3750|15"
   "tw-kaohsiung-z14|22.6273|120.3014|14"
   "hk-kowloon-z14|22.3125|114.1818|14"
   "hk-tuen-mun-z15|22.3910|113.9730|15"
+  "hk-tin-shui-wai-z16|22.4580|114.0030|16"
+  "hk-island-tram-z16|22.2830|114.1810|16"
 )
+
+requested_names=("$@")
 
 for row in "${ROWS[@]}"; do
   IFS="|" read -r name latitude longitude zoom <<<"$row"
+  if (( ${#requested_names[@]} )); then
+    selected=0
+    for requested_name in "${requested_names[@]}"; do
+      if [[ "$requested_name" == "$name" ]]; then
+        selected=1
+        break
+      fi
+    done
+    if (( ! selected )); then
+      continue
+    fi
+  fi
   open -a Maps "http://maps.apple.com/?ll=${latitude},${longitude}&z=${zoom}&t=r"
   osascript -e 'tell application "Maps" to activate'
+  osascript \
+    -e 'tell application "System Events" to tell process "Maps"' \
+    -e 'set position of front window to {0, 33}' \
+    -e 'set size of front window to {1512, 855}' \
+    -e 'end tell'
   sleep 3
   screencapture -x -o -R"$CAPTURE_REGION" "$OUTPUT_DIR/$name.png"
   echo "$name | $latitude,$longitude | z$zoom | transit"
