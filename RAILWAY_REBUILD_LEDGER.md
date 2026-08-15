@@ -10,12 +10,12 @@
 ## 0. 当前阶段
 
 ```text
-Stage:            S16–S65 全部跑过 —— hk 27 / tw 39 / **jp 652 条显示线路已建**
-                  jp 批次行 **589/596 建成**（655 unverified / 4 blocked / 3 pending）
-                  站锚点 jp 9936 个 —— 9920 PASS / 16 WARNING / **0 ERROR**
-                  structure 17734 行 · lanes 162 段
-                  node --test 247 pass / 12 fail（清空后基线 188/55，目标 243/0）
-                  余 3 条 pending 需要「多股道中哪条属于该服务」的来源，见 §6.11
+Stage:            S16–S65 全部跑过 —— hk 27 / tw 39 / **jp 672 条显示线路已建**
+                  jp 批次行 **592/596 建成**（658 unverified / 4 blocked / 0 pending）
+                  站锚点 jp 10246 个 —— 10228 PASS / 18 WARNING / **0 ERROR**
+                  structure 18268 行 · lanes 195 段
+                  node --test 248 pass / 11 fail（清空后基线 188/55，目标 243/0）
+                  余 4 条是明确「不画」的决定；3 项 topology ERROR 见 §6.12 待决
                   全境 Apple 复核未开始：阻塞在 Screen Recording 权限，见 §6.5
 Stage (S01):      S01 完成 —— 分批合并工具链就绪，等待 S02 起逐批重建
 Stage 1 executed: 2026-08-13 (Asia/Taipei)  线路数据清空
@@ -230,8 +230,8 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
   - [x] five_country_build_and_validation_scope
   - [x] station_label_dedupes_by_group_without_merging_markers
   - [x] underground_structure_is_preserved_without_guessing_other_countries
-- [ ] `ridden-route-network-geometry.test.js` (3)
-  - [ ] every jp ridden sample uses complete-network geometry
+- [x] `ridden-route-network-geometry.test.js` (3)
+  - [x] every jp ridden sample uses complete-network geometry
   - [x] every tw ridden sample uses complete-network geometry
   - [x] every hk ridden sample uses complete-network geometry
 - [ ] `rail-network.test.js` (1)
@@ -311,6 +311,57 @@ app-family-smoke（前端沙箱冒烟）: 17 pass —— 页面脚本在空网�
 
 **CSV 按行回写**：`mark-batch-status.mjs` 新增 `--lines`，S17 的 7 行置 `unverified`、
 5 行保持 `pending`。一个 session 落地 7/12 时，把 12 行写成同一个状态就把表唯一承载的事实抹掉了。
+
+### 6.12 按审计里程选股道 · jp 592/596 全部可建（2026-08-15）
+
+**余下 3 条不是「缺证据」，证据一直在审计里程里。**
+
+東十条 与 赤羽 **两站都能 0.0 m 投影到轨道上，但落在不同的平行股道上**，
+于是两点之间的最短路是 5.926 km，而运营里程是 1.369 km。实测：把两站都锚到
+**它们共有的那条 section**，路径长度是 **1.370 km** —— 审计里程本身就指明了
+服务走的是哪条股道。
+
+所以增加一遍 **Viterbi 锚点重选**：每站的候选是 400 m 内的各条 section，
+相邻两站之间的代价是「切出来的长度」与「审计里程」之差，整条站序一次求解。
+这不是构建器替资料选股道，而是**用运营者自己的里程把股道认出来**，
+结果仍要过与其他所有区间相同的容差检查。
+
+两条正则项，都是被实测逼出来的：
+
+| 正则项 | 为什么 | 症状 |
+| --- | --- | --- |
+| 偏离站台每米记 0.5 m 代价 | 站台位置本身也是证据，里程分不出胜负时应留在最近的轨道上 | 王子 被挪到 19.5 m 外的平行股道，画出来的线离站点圆点 20 m |
+| 投影落在 section 端点记 150 m 代价 | 站台在轨道**尽头之外**说明它不在这条轨道上 | 初台 距笔画 21 m，验证器报 `platform beyond the last surveyed vertex` |
+
+**结果**
+
+```text
+jp 596 条 canonical -> 592 条已建（672 条显示线路）
+站锚点 10246 —— 10228 PASS / 18 WARNING / **0 ERROR**
+structure 18268 行 · lanes 195 段 · node --test 248 pass / 11 fail
+余 4 条即 §6.11 已记录的「明确不画」，无一条是建不出来
+```
+
+官方营业里程对照：**東北線 干线 535.22 km（官方 東京–盛岡 535.3）**、
+鹿児島線 230.69 + 48.71（官方 232.3 + 49.3）。
+
+**新浮现的一个真问题（3 项 topology ERROR，未修，需要决定）**
+
+`service_misclassified_as_independent_parallel`：成田線 / 東北線 / 東海道線 的
+兄弟部分被画成**相隔 2 条车道**，最长的一段并行 9.70 km。
+
+根因不是车道算法错了，而是**数据与规则在这里正面冲突**：
+
+- 数据：N02 把**多条实体平行股道**记在同一个线路键下 ——
+  `jp-…-東北線` 是 東京–神田–上野–日暮里 一侧，`-3` 是 田端–上中里–王子–日暮里–鶯谷–上野
+  一侧，也就是 宇都宮 与 京浜東北/山手 两条**不同的实体轨道**；
+- 规则：§7.4「车道数 = 独立**铁路**数」，同名同运营者即同一条铁路，只能占一条车道。
+
+两条股道叠画会丢掉真实存在的轨道；分开画则违反车道契约。
+**这正是 §7.2 那个决定，只是现在它的边界清楚了**：不再是「哪条股道属于哪个服务」，
+而是「同一铁路的多条实体股道该不该各占一条车道」。
+在决定之前，这三条线**保持绘制**（它们是 500+ km 真实铁路，不画的代价更大），
+3 项 ERROR 如实留在台账里。
 
 ### 6.11 图分解四条判据 · jp 589/596（2026-08-15）
 

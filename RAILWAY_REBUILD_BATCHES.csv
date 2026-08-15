@@ -86,7 +86,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟富良野線,北海道旅客鉄道,富良野線,jr_conventional,ordinary_linear,17,54.9,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟日高線,北海道旅客鉄道,日高線,jr_conventional,ordinary_linear,4,30.7,,unverified
 17,J02,jp,JR北海道在来線,北海道旅客鉄道␟札沼線,北海道旅客鉄道,札沼線,jr_conventional,ordinary_linear,14,29.0,,unverified
-18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟東北線,東日本旅客鉄道,東北線,jr_conventional,disconnected,155,606.0,,pending
+18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟東北線,東日本旅客鉄道,東北線,jr_conventional,disconnected,155,606.0,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟奥羽線,東日本旅客鉄道,奥羽線,jr_conventional,complex_loop,105,508.1,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟常磐線,東日本旅客鉄道,常磐線,jr_conventional,disconnected,81,356.0,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟羽越線,東日本旅客鉄道,羽越線,jr_conventional,ordinary_linear,60,290.4,,unverified
@@ -94,7 +94,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟上越線,東日本旅客鉄道,上越線,jr_conventional,complex_multicycle,39,197.9,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟信越線,東日本旅客鉄道,信越線,jr_conventional,disconnected,55,181.1,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟磐越西線,東日本旅客鉄道,磐越西線,jr_conventional,ordinary_linear,43,175.0,,unverified
-18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟東海道線,東日本旅客鉄道,東海道線,jr_conventional,complex_multicycle,46,167.3,,pending
+18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟東海道線,東日本旅客鉄道,東海道線,jr_conventional,complex_multicycle,46,167.3,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟五能線,東日本旅客鉄道,五能線,jr_conventional,ordinary_linear,43,147.4,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟水郡線,東日本旅客鉄道,水郡線,jr_conventional,branched_terminal,45,146.9,,unverified
 18,J03-1,jp,JR東日本在来線,東日本旅客鉄道␟只見線,東日本旅客鉄道,只見線,jr_conventional,ordinary_linear,36,135.5,,unverified
@@ -202,7 +202,7 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 26,J04-4,jp,JR西日本在来線,西日本旅客鉄道␟博多南線,西日本旅客鉄道,博多南線,jr_conventional,ordinary_linear,2,9.4,,unverified
 26,J04-4,jp,JR西日本在来線,西日本旅客鉄道␟桜島線,西日本旅客鉄道,桜島線,jr_conventional,ordinary_linear,4,4.4,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟日豊線,九州旅客鉄道,日豊線,jr_conventional,disconnected,113,475.2,,unverified
-27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟鹿児島線,九州旅客鉄道,鹿児島線,jr_conventional,disconnected,99,300.8,,pending
+27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟鹿児島線,九州旅客鉄道,鹿児島線,jr_conventional,disconnected,99,300.8,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟長崎線,九州旅客鉄道,長崎線,jr_conventional,branched_terminal,41,149.3,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟豊肥線,九州旅客鉄道,豊肥線,jr_conventional,ordinary_linear,37,148.2,,unverified
 27,J05-1,jp,JR東海・四国・九州在来線,九州旅客鉄道␟久大線,九州旅客鉄道,久大線,jr_conventional,ordinary_linear,37,140.9,,unverified

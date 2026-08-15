@@ -385,6 +385,90 @@ class TrackGraph:
                     heapq.heappush(queue, (step, other))
         return cost, previous
 
+    def _assemble(self, start, end, walked, head_node, end_node, total):
+        """Turn a walked run of sections into (coords, length_m, pieces)."""
+        start_coords = self.sections[start["section"]].coords
+        end_coords = self.sections[end["section"]].coords
+        head_measure = (
+            0.0 if nkey(start_coords[0]) == head_node else self.length_m(start["section"])
+        )
+        coords = self.slice(start["section"], start["measure_m"], head_measure)
+        pieces = [(start["section"], start["measure_m"], head_measure)]
+        for index, from_node, _to_node in walked:
+            piece = [list(point) for point in self.sections[index].coords]
+            forward = nkey(piece[0]) == from_node
+            if not forward:
+                piece = list(reversed(piece))
+            span = self.length_m(index)
+            pieces.append((index, 0.0, span) if forward else (index, span, 0.0))
+            coords = join(coords, piece)
+        tail_measure = (
+            0.0 if nkey(end_coords[0]) == end_node else self.length_m(end["section"])
+        )
+        coords = join(coords, self.slice(end["section"], tail_measure, end["measure_m"]))
+        pieces.append((end["section"], tail_measure, end["measure_m"]))
+        return coords, total, pieces
+
+    def path_matching(self, start, end, target_m, budget=60000):
+        """The path whose length best matches the distance the audit states.
+
+        Where several physical tracks share one N02 key — 東北線 carrying the
+        京浜東北, 山手 and freight alignments, 東海道線 through 横浜, 鹿児島線
+        through 折尾 — the SHORTEST path between two adjacent stations is often
+        not the one the service runs on. Taking it drew 大阪 → 福島 at 8.4 km
+        where the operator's own kilometrage says 0.683.
+
+        Which track a service uses is not this builder's call, but it is not an
+        open question either: the audit STATES the distance, and among the
+        routes the track graph offers, the one that matches it is the one the
+        operator measured. So this searches for that path instead of the
+        shortest, and the caller still checks the result against the same
+        tolerance — a match that is not close enough is refused as before.
+
+        The walk is bounded by the target, which keeps it small: these are
+        adjacent stations, so the target is a kilometre or two.
+        """
+        if start["section"] == end["section"]:
+            return None
+        limit = target_m * 2.0 + 1000.0
+        start_coords = self.sections[start["section"]].coords
+        end_coords = self.sections[end["section"]].coords
+        end_ends = {
+            nkey(end_coords[0]): end["measure_m"],
+            nkey(end_coords[-1]): self.length_m(end["section"]) - end["measure_m"],
+        }
+        best = None
+        seen = 0
+        for head_node, head_len in (
+            (nkey(start_coords[0]), start["measure_m"]),
+            (nkey(start_coords[-1]), self.length_m(start["section"]) - start["measure_m"]),
+        ):
+            stack = [(head_node, head_len, (), frozenset((head_node,)))]
+            while stack and seen < budget:
+                seen += 1
+                node, length, walked, visited = stack.pop()
+                if node in end_ends and walked:
+                    total = length + end_ends[node]
+                    if best is None or abs(total - target_m) < abs(best[0] - target_m):
+                        best = (total, walked, head_node, node)
+                if length > limit:
+                    continue
+                for other, index in self.adjacency[node]:
+                    if other in visited:
+                        continue
+                    stack.append(
+                        (
+                            other,
+                            length + self.length_m(index),
+                            walked + ((index, node, other),),
+                            visited | {other},
+                        )
+                    )
+        if best is None:
+            return None
+        total, walked, head_node, end_node = best
+        return self._assemble(start, end, list(walked), head_node, end_node, total)
+
     def path_between(self, start, end):
         """Track between two anchors. Returns (coords, length_m, pieces) or None.
 
@@ -436,29 +520,7 @@ class TrackGraph:
             walked.append((index, parent, cursor))
             cursor = parent
         walked.reverse()
-
-        head_node = cursor
-        head_measure = (
-            0.0
-            if nkey(start_coords[0]) == head_node
-            else self.length_m(start["section"])
-        )
-        coords = self.slice(start["section"], start["measure_m"], head_measure)
-        pieces = [(start["section"], start["measure_m"], head_measure)]
-        for index, from_node, _to_node in walked:
-            piece = [list(point) for point in self.sections[index].coords]
-            forward = nkey(piece[0]) == from_node
-            if not forward:
-                piece = list(reversed(piece))
-            span = self.length_m(index)
-            pieces.append((index, 0.0, span) if forward else (index, span, 0.0))
-            coords = join(coords, piece)
-
-        tail_measure = 0.0 if nkey(end_coords[0]) == node else self.length_m(end["section"])
-        tail = self.slice(end["section"], tail_measure, end["measure_m"])
-        pieces.append((end["section"], tail_measure, end["measure_m"]))
-        coords = join(coords, tail)
-        return coords, total, pieces
+        return self._assemble(start, end, walked, cursor, node, total)
 
 
 def join(coords, piece):
@@ -1239,7 +1301,7 @@ def build_lines(
                     {uid: station_by_uid[uid]["station_name"] for uid in order},
                     row.get("main_path", "") if not suffix else "",
                 )
-            entry, problem, mismatched = build_display_line(
+            attempt = build_display_line(
                 suffix=suffix,
                 order=order,
                 is_loop=is_loop,
@@ -1259,6 +1321,51 @@ def build_lines(
                 normalise_line_name=n02_source.normalise_line_name,
                 structure_by_section=structure_by_section,
             )
+            entry, problem, mismatched = attempt
+            if problem and "several tracks share" in problem:
+                # The nearest section is not always the track the service runs
+                # on. Re-anchor the whole chain against the audited distances
+                # and try once more; if that still cannot reproduce them, the
+                # refusal below stands.
+                refined = refine_anchors_by_distance(
+                    order,
+                    points,
+                    graph,
+                    anchors,
+                    {
+                        pair: (audited_distance.get((key, pair)) or 0) * 1000
+                        for pair in adjacency.get(key, set())
+                    },
+                )
+                if refined:
+                    entry, problem, mismatched = build_display_line(
+                        suffix=suffix,
+                        order=order,
+                        is_loop=is_loop,
+                        key=key,
+                        name=name,
+                        operator=operator,
+                        row=row,
+                        info=info,
+                        display=display,
+                        graph=graph,
+                        anchors=refined,
+                        station_by_uid=station_by_uid,
+                        audited_distance=audited_distance,
+                        english=english,
+                        operator_short=operator_short,
+                        geometry_lib=geometry_lib,
+                        normalise_line_name=n02_source.normalise_line_name,
+                        structure_by_section=structure_by_section,
+                    )
+                    if not problem:
+                        notes.append(
+                            (
+                                f"{key}{suffix}",
+                                "anchors re-chosen against the audited distances "
+                                "— several tracks share this line's N02 key",
+                            )
+                        )
             if problem:
                 skipped.append((f"{key}{suffix}", problem))
                 if not suffix:
@@ -1374,6 +1481,129 @@ def split_by_track_group(order, points, graph, keep_within_m=250.0):
     return [members for _group, members in runs]
 
 
+ANCHOR_CANDIDATE_M = 400.0
+ANCHOR_CANDIDATES = 6
+ANCHOR_STAY_WEIGHT = 0.5
+ANCHOR_OFF_END_PENALTY_M = 150.0
+
+
+def anchor_candidates(point, graph, component, limit=ANCHOR_CANDIDATE_M):
+    """Every section near enough to a platform to be the one it stands on."""
+    out = []
+    for index in graph.indices:
+        if graph.component[index] != component:
+            continue
+        if graph._box_distance_m(index, point) > limit:
+            continue
+        coords = [list(vertex) for vertex in graph.sections[index].coords]
+        distance, measure, projected = graph.geometry_lib.project_to_route(
+            point, coords, graph.measures[index]
+        )
+        if distance <= limit:
+            out.append(
+                {
+                    "section": index,
+                    "measure_m": measure,
+                    "point": [projected[0], projected[1]],
+                    "distance_m": distance,
+                }
+            )
+    out.sort(key=lambda anchor: anchor["distance_m"])
+    return out[:ANCHOR_CANDIDATES]
+
+
+def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
+    """Choose which of several parallel tracks each station stands on.
+
+    In a multi-track corridor a platform is metres from more than one N02
+    section, and the nearest one is not always the one its service runs on:
+    東十条 and 赤羽 both project onto track at 0.0 m, but onto DIFFERENT
+    parallel alignments, so the route between them came out at 5.926 km where
+    the operator's kilometrage says 1.369.
+
+    The operator's own distances settle it. Anchoring both to the section they
+    share gives 1.370 km — so the chain of audited distances is read as the
+    evidence it is, and the anchors that reproduce it are the right ones. This
+    is a Viterbi pass over the station order: each station's candidates are the
+    sections within reach, and the cost of a step is how far the track between
+    two candidates falls from the distance the audit states.
+
+    Returns new anchors, or None when nothing better than the current ones
+    exists — in which case the caller refuses the part exactly as before.
+    """
+    if len(order) < 2:
+        return None
+    component = graph.component[anchors[order[0]]["section"]]
+    candidates = {
+        uid: anchor_candidates(points[uid], graph, component) or [anchors[uid]]
+        for uid in order
+    }
+
+    cache = {}
+
+    def step_cost(first, second, target):
+        pair = (first["section"], round(first["measure_m"]), second["section"], round(second["measure_m"]))
+        if pair not in cache:
+            cut = graph.path_between(first, second)
+            cache[pair] = None if cut is None else cut[1]
+        length = cache[pair]
+        if length is None:
+            return 1e9
+        if not target:
+            return length
+        return abs(length - target)
+
+    # The platform's own position is evidence too: a station sits on the track
+    # it stands beside unless the kilometrage says otherwise. Charging half a
+    # metre per metre of displacement breaks ties toward the nearest section
+    # without ever outweighing a real distance mismatch, which is measured in
+    # hundreds of metres. Without it the pass moved 王子 19.5 m onto a parallel
+    # track that matched just as well, and the drawn line left the dot behind.
+    def stay_cost(candidate):
+        cost = candidate["distance_m"] * ANCHOR_STAY_WEIGHT
+        # A projection that lands on a section's very end means the platform is
+        # PAST that track, not beside it, and the drawn line then stops short of
+        # its own dot — 初台 ended up 21 m off the stroke that way. Prefer a
+        # section the station stands within.
+        span = graph.length_m(candidate["section"])
+        if candidate["measure_m"] <= 1.0 or candidate["measure_m"] >= span - 1.0:
+            cost += ANCHOR_OFF_END_PENALTY_M
+        return cost
+
+    best = [
+        {
+            index: (stay_cost(candidate), None)
+            for index, candidate in enumerate(candidates[order[0]])
+        }
+    ]
+    for position in range(1, len(order)):
+        previous_uid, uid = order[position - 1], order[position]
+        target = audited_m.get(tuple(sorted((previous_uid, uid))), 0.0)
+        layer = {}
+        for index, candidate in enumerate(candidates[uid]):
+            choice = None
+            for prior, (accrued, _back) in best[-1].items():
+                cost = (
+                    accrued
+                    + step_cost(candidates[previous_uid][prior], candidate, target)
+                    + stay_cost(candidate)
+                )
+                if choice is None or cost < choice[0]:
+                    choice = (cost, prior)
+            layer[index] = choice
+        best.append(layer)
+
+    tail = min(best[-1].items(), key=lambda item: item[1][0])
+    picked = [tail[0]]
+    for position in range(len(order) - 1, 0, -1):
+        picked.append(best[position][picked[-1]][1])
+    picked.reverse()
+    return {
+        uid: {**candidates[uid][index], "platform_len_m": anchors[uid]["platform_len_m"]}
+        for uid, index in zip(order, picked)
+    }
+
+
 def anchor_part(order, points, graph, platforms_by_group, station_by_uid):
     """Anchor one part's stations onto the one track group they mostly sit on.
 
@@ -1458,9 +1688,23 @@ def build_display_line(
                 f"{station_by_uid[end_uid]['station_name']}: cut collapsed to a point"
             )
             break
+        audited = audited_distance.get((key, tuple(sorted((start_uid, end_uid))))) or 0
+        if audited and length_m > max(
+            audited * 1000 * GROSS_DETOUR_FACTOR, audited * 1000 + GROSS_DETOUR_FLOOR_M
+        ):
+            # The shortest route is not the one the operator measured, so ask
+            # the graph for the route that IS. This is not the builder choosing
+            # a track: the audit states the distance and the search returns the
+            # path that satisfies it, which is then held to the same tolerance
+            # as every other interval below.
+            retry = graph.path_matching(
+                anchors[start_uid], anchors[end_uid], audited * 1000
+            )
+            if retry is not None:
+                coords, length_m, pieces = retry
+                coords = dedupe_points(coords)
         coords[0] = list(anchors[start_uid]["point"])
         coords[-1] = list(anchors[end_uid]["point"])
-        audited = audited_distance.get((key, tuple(sorted((start_uid, end_uid))))) or 0
         if audited and length_m > max(
             audited * 1000 * GROSS_DETOUR_FACTOR, audited * 1000 + GROSS_DETOUR_FLOOR_M
         ):
