@@ -36,7 +36,8 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // unchanged: every line's intervals match its station order, and every
   // interval meets its neighbour exactly.
   assert.equal(pkg.version, "2025.4.2");
-  assert.equal(pkg.lines.length, 649);
+    // 652 with the three paired alignments — see render-snapshot.mjs.
+  assert.equal(pkg.lines.length, 652);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

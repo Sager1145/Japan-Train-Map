@@ -1209,6 +1209,11 @@
   // stroke, where the vertex "behind" the start and the vertex "ahead" of it
   // are the same place and no geometric test can separate them. Only the
   // branch that built the slice knows, so only it may say.
+  // Enough to settle a tie between two bores of one railway, far too little to
+  // pull a ride onto an unrelated line: a wrong-line candidate is out by
+  // hundreds of metres, and the endpoint gate above refuses anything past 1.5 km.
+  const ALIGNMENT_MATCH_BONUS = 25;
+
   function canonicalLineSlice(line, start, end, rawCoordinates) {
     const metric = lineMetrics(line)[start.partIndex];
     if (!metric) return { coordinates: [], backward: false };
@@ -1335,7 +1340,29 @@
           const seam = continueFrom
             ? distanceMeters(continueFrom, start.coordinate)
             : 0;
-          const candidate = { line, start, end, fit, seam, score: fit + seam };
+          // A paired alignment is the SAME railway's other direction on its own
+          // track — 上越線's up line keeps the older bore while the down line
+          // takes the 新清水トンネル loop, and the two have separate platforms.
+          // Both fit a ride between the same two stations, so where the package
+          // carries a SOURCED direction for the pair, the ride's own direction
+          // of travel decides between them: forward through the line's station
+          // order is 下り, against it 上り. A pair with no sourced direction
+          // gets no nudge and geometry alone decides, which is the honest
+          // outcome when nothing states which bore is which.
+          const alignment = line.alignmentDirection;
+          let bias = 0;
+          if (alignment === "up" || alignment === "down") {
+            const rode = start.measure <= end.measure ? "down" : "up";
+            bias = alignment === rode ? -ALIGNMENT_MATCH_BONUS : ALIGNMENT_MATCH_BONUS;
+          }
+          const candidate = {
+            line,
+            start,
+            end,
+            fit,
+            seam,
+            score: fit + seam + bias,
+          };
           if (!best || candidate.score < best.score) best = candidate;
         }
       }
@@ -1842,6 +1869,11 @@
         nameRoma: compactLine.nameRoma,
         isHSR: Boolean(compactLine.isHSR),
         isLoop: Boolean(compactLine.isLoop),
+        // Paired alignments: this railway's other direction on its own track,
+        // with the sourced 上り/下り label when the package carries one.
+        alignmentOf: compactLine.alignmentOf || null,
+        alignmentRole: compactLine.alignmentRole || null,
+        alignmentDirection: compactLine.alignmentDirection || null,
         rank: compactLine.rank,
         color: compactLine.color,
         // A split part is the SAME railway as its parent and has no badge file

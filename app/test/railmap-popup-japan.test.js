@@ -148,9 +148,9 @@ test("every non-line image falls back to the exact operator, never a parent or p
   // package badge must resolve to its OWN operator's mark. That is why a split
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
-  assert.equal(missingBadgeLines.length, 331);
+  assert.equal(missingBadgeLines.length, 334);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 324);
+  assert.equal(coveredLines.length, 327);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

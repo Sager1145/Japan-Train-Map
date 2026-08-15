@@ -38,9 +38,11 @@ const EXPECTED_COUNTS = Object.freeze({
   // (a junction shared by two strokes is a platform row on each) while station
   // GROUPS fall slightly, since the rebuild draws 4 lines fewer — the ones with
   // no passenger adjacency at all, itemised in the ledger.
-  segments: 913,
-  stations: 10189,
-  lines: 649,
+  // +3 lines / +3 segments / +6 platforms: the paired alignments, each a
+  // two-station stroke on the other direction's track.
+  segments: 916,
+  stations: 10195,
+  lines: 652,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {
