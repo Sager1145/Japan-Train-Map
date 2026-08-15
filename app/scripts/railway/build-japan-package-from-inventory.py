@@ -164,6 +164,13 @@ ALTERNATE_TOLERANCE = 0.25
 # two tram stops across a street are a few metres. 150 m clears all three.
 SEPARATED_MIN_M = 150.0
 
+# ...and how far apart they can get and still be the same railway's two tracks.
+# Cutting an interval and re-asking the graph finds SOME route on a dense
+# network: 函館線 answers 東森–駒ヶ岳 with the 砂原 route 13 km away, and 上越線
+# answers with a 24 km loop through the neighbouring valley. Those are other
+# routes, not this interval's other track.
+SEPARATED_MAX_M = 2000.0
+
 ROMA_SOURCE_OSM = 1
 
 RANK_BY_KIND = {
@@ -1785,6 +1792,63 @@ def separated_direction_runs(order, platforms_by_group, station_by_uid):
     return runs
 
 
+def divergent_alignment(graph, start, end, pieces, primary_coords):
+    """A second, edge-disjoint track between the SAME two stations.
+
+    The platform test cannot see this shape. It finds a separated alignment by
+    the second platform feature N02 files at each station inside it — but where
+    the two directions rejoin AT every station and only the track between them
+    parts company, both stations have one platform and there is nothing to
+    detect. 羽越本線 村上–間島 is that case: the down line hugs the coast (it
+    lost its roadbed to a storm in 2000, and trains ran single-track on the up
+    line until it was rebuilt) while the up line takes 村上トンネル, 2,308 m
+    inland. N02 carries both, 778 m apart, and the package drew only one.
+
+    So cut the track the primary interval uses and ask the graph for a route
+    between the same two anchors that reuses none of it. A line with real
+    double track filed as one centreline has no such route; one with two
+    alignments does.
+    """
+    cut = graph.path_between(
+        start, end, exclude={piece[0] for piece in pieces}
+    )
+    if cut is None:
+        return None
+    coords, length_m, _pieces = cut
+    coords = dedupe_points(coords)
+    if len(coords) < 2 or length_m <= 0:
+        return None
+    primary_m = polyline_m(primary_coords)
+    # A detour several times as long is a different route — a freight avoiding
+    # line or a branch that happens to reconnect — not this interval's other
+    # track. The same ratio window the audit-driven retry uses.
+    if primary_m > 0 and not (
+        ALTERNATE_MIN_RATIO <= length_m / primary_m <= ALTERNATE_MAX_RATIO
+    ):
+        return None
+    coords[0] = anchor_point(start)
+    coords[-1] = anchor_point(end)
+    separation_m = max_separation_m(coords, primary_coords)
+    if not (SEPARATED_MIN_M <= separation_m <= SEPARATED_MAX_M):
+        return None
+    return {
+        "separation_m": separation_m,
+        "points": [anchor_point(start), anchor_point(end)],
+        "coords": coords,
+        "length_m": length_m,
+    }
+
+
+def polyline_m(coords):
+    total = 0.0
+    for first, second in zip(coords, coords[1:]):
+        scale = 111_320 * math.cos(math.radians(first[1]))
+        total += math.hypot(
+            (second[0] - first[0]) * scale, (second[1] - first[1]) * 111_320
+        )
+    return total
+
+
 def max_separation_m(alternate, primary):
     """How far the two alignments get from each other, at their widest.
 
@@ -2043,6 +2107,12 @@ def build_display_line(
                         round(audited, 3),
                     )
                 )
+        divergent = divergent_alignment(
+            graph, anchors[start_uid], anchors[end_uid], pieces, coords
+        )
+        if divergent is not None:
+            divergent["uids"] = [start_uid, end_uid]
+            alternates.append(divergent)
         structure.extend(
             structure_on_cut(pieces, measure, structure_by_section or {})
         )
