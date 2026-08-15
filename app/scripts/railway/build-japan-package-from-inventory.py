@@ -1834,6 +1834,21 @@ def build(args) -> None:
     }
 
     STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    # A build report beside the package: what each line's build decided, so the
+    # per-line checklist can carry it without re-deriving or scraping stdout.
+    (STAGING_DIR / "jp-2025.build-report.json").write_text(
+        json.dumps(
+            {
+                "built": [line["id"] for line in lines],
+                "skipped": [{"key": key, "reason": reason} for key, reason in skipped],
+                "notes": [{"key": key, "note": note} for key, note in notes],
+            },
+            ensure_ascii=False,
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     destination = STAGING_DIR / "jp-2025.staging.json"
     destination.write_text(json.dumps(package, ensure_ascii=False) + "\n", encoding="utf-8")
 
