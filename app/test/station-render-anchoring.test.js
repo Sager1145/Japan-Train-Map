@@ -276,16 +276,16 @@ test("test_station_approach_does_not_use_hard_stub", () => {
       }
     }
   }
-  // 山陽線 lists 神戸 BEFORE 兵庫, but 兵庫 is the next station westward and
-  // 神戸 the terminus beyond it, so the drawn stroke reaches 神戸 and turns
-  // straight back to pick 兵庫 up. That is the station ORDER, not the approach:
-  // the platform sits on its own track and the pass has nothing to correct.
-  // Repairing it belongs with the other order defects
-  // (scripts/railway/repair-doubling-back-intervals.mjs), so it is pinned here rather
-  // than absorbed by a smoothing rule that would hide the next one too.
+  // FIXED by the 2026-08-15 rebuild, and the empty list is the record of it.
+  // 山陽線 used to list 神戸 BEFORE 兵庫 — 兵庫 is the next station westward and
+  // 神戸 the terminus beyond it — so the stroke reached 神戸 and turned straight
+  // back. That was a station ORDER defect, pinned here rather than absorbed by
+  // a smoothing rule that would have hidden the next one too. The rebuild takes
+  // the order from the audited adjacency graph, which puts 兵庫 in its place,
+  // and the connector is gone.
   assert.deepEqual(
     offenders,
-    ["jp 山陽線 / 神戸: 151 m connector at 144° off a 1873 m approach"],
+    [],
     offenders.join("\n"),
   );
 });
@@ -326,7 +326,9 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
   assert.deepEqual(reachedByCountry, [
     // Every package platform is now an exact vertex of its own drawn railway;
     // branch splitting restores the tiny overlap anchors it used to discard.
-    ["jp", 10161],
+    // 10189 after the 2026-08-15 rebuild: the drawn set grew from 607 lines to
+    // 649, and a junction shared by two strokes is a platform row on each.
+    ["jp", 10189],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

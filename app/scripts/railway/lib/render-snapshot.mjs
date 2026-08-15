@@ -10,12 +10,18 @@
 // longitude/latitude) so the characterization remains visually exact while
 // being deterministic on both local machines and GitHub's Linux runners.
 
-// 2025.4.2 — OSM structure/colour enrichment is combined with the established
-// branch, doubling-back and loop repairs, and global physical-side lane order.
-// The latter merges two redundant lane-value features (888 / 10161 / 607 /
-// 9046) while retaining every railway and station.
+// 2026-08-15 rebuild — 913 / 10189 / 649 / 9039, from 888 / 10161 / 607 / 9046.
+//
+// The drawn set grew because each railway's separate alignments became their
+// own strokes: a rejoining route, a physically detached half, a branch off a
+// tree. Platforms rose with it (a junction shared by two strokes is a row on
+// each) while station GROUPS fell by seven, since four lines with no passenger
+// adjacency at all are no longer drawn.
+//
+// This hash is the single point that pins the whole render model. Update it
+// only alongside the package it characterises, never to make a suite pass.
 export const EXPECTED_RENDER_HASH =
-  "41708ac9964dbfe2973f6bf5d10c357c0a2edcc5d50aa9bf77d5bee6d10ecce6";
+  "07f4b54442013a57b3f3b0d907b7822bfa58a2a0395ecf73769f2d8ff3343845";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 
