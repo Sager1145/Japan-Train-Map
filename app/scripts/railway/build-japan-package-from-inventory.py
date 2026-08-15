@@ -814,81 +814,17 @@ def cycle_and_tails(edges):
     return parts, None
 
 
-SKIP_EDGE_TOLERANCE = 0.10
-
-
-def confirms_skip(graph, points, a, b, middle, tolerance_m=150.0):
-    """Does the direct A–B track actually run past the station it is said to skip?
-
-    Matching distances alone cannot tell a skip edge from a second alignment
-    that happens to be about as long: 函館線's 森–駒ヶ岳 measures close to
-    森–東森–駒ヶ岳, but 東森 is on the 砂原 route and the direct edge is the
-    駒ヶ岳 route — two real alignments, not one.
-
-    So the direct edge is CUT and asked whether it passes the station. Same
-    track means the cut runs within a platform's reach of it; a separate
-    alignment leaves it behind.
-    """
-    start, end = graph.project(points[a]), graph.project(points[b])
-    if start is None or end is None:
-        return False
-    cut = graph.path_between(start, end)
-    if cut is None:
-        return False
-    coords = cut[0]
-    target = points[middle]
-    scale = 111_320 * math.cos(math.radians(target[1]))
-    best = float("inf")
-    for point in coords:
-        dx = (point[0] - target[0]) * scale
-        dy = (point[1] - target[1]) * 111_320
-        best = min(best, math.hypot(dx, dy))
-        if best <= tolerance_m:
-            return True
-    return best <= tolerance_m
-
-
-def drop_skip_station_edges(edges, distances, confirm=None):
-    """Remove service edges that skip a station over track already drawn.
-
-    A through service that does not call at 武蔵白石 still runs over the 大川
-    支線's only track: 鶴見線 files 安善–大川 at 1.285 km beside 安善–武蔵白石–
-    大川 at 1.415 km. The two are the same railway, and the display purpose here
-    is the infrastructure network, so the skip edge adds no track to draw — it
-    only adds a cycle that makes the line's order ambiguous.
-
-    The audit's own distances tell the two cases apart. A skip edge measures the
-    same as the path through the station it misses; a genuine chord — a bypass
-    that is its own track — is the shorter route, which is the whole reason it
-    exists. So only near-equal length counts, and the edge is reported, never
-    silently dropped.
-    """
-    near = neighbour_map(edges)
-    dropped = []
-    keep = []
-    for pair in edges:
-        a, b = pair
-        span = distances.get(pair, 0.0)
-        skipped_over = None
-        if span:
-            for middle in near[a] & near[b]:
-                through = distances.get(tuple(sorted((a, middle))), 0.0) + distances.get(
-                    tuple(sorted((middle, b))), 0.0
-                )
-                if through and abs(span - through) <= through * SKIP_EDGE_TOLERANCE:
-                    if confirm is not None and not confirm(a, b, middle):
-                        continue
-                    skipped_over = middle
-                    break
-        if skipped_over is None:
-            keep.append(pair)
-        else:
-            dropped.append((pair, skipped_over))
-    return keep, dropped
+# How close a cut has to come to a station to count as running past it. A
+# platform is a few hundred metres long and its anchor sits at the middle, so a
+# track through the station area can be this far from the anchor and still be
+# the same track — 佐世保線's phantom 大塔→三河内 edge passes 334 m from 早岐.
+# Two genuinely separate alignments are kilometres apart where they diverge
+# (函館線 via 駒ヶ岳 against via 渡島砂原), so this does not reach them.
+SKIP_PASSES_M = 400.0
 
 
 def longest_path(edges, weight):
-    """The heaviest leaf-to-leaf path through a tree — its trunk."""
+    """The heaviest leaf-to-leaf path through a component — its trunk."""
     near = neighbour_map(edges)
     if not near:
         return []
@@ -913,8 +849,8 @@ def longest_path(edges, weight):
                 stack.append((other, distance + weight(node, other)))
         return best[0], best[1], parents
 
-    _d, far_node, _p = farthest(next(iter(near)))
-    _d2, end, parents = farthest(far_node)
+    _first, far_node, _parents = farthest(next(iter(near)))
+    _second, end, parents = farthest(far_node)
     path = [end]
     while parents[path[-1]] is not None:
         path.append(parents[path[-1]])
@@ -922,19 +858,18 @@ def longest_path(edges, weight):
 
 
 def tree_decompose(edges, weight):
-    """Split a branched but cycle-free railway into a trunk and its branches.
+    """Split a branched railway into a trunk and the arms hanging off it.
 
-    A tree has exactly one route between any two stations, so there is nothing
-    to choose: the trunk is the longest through route, every other arm hangs off
-    it, and every edge is drawn exactly once. Each branch keeps the junction
-    station it leaves from, which is where the two strokes meet.
+    The trunk is the longest through route; every remaining arm becomes its own
+    stroke, keeping the junction station it leaves from, which is where the two
+    strokes meet. Every edge is drawn exactly once.
 
-    This runs on graphs that still carry a cycle, and that is deliberate: after
-    skip-station edges are removed, a remaining cycle means the railway really
-    does have two alignments between the same pair of stations — 長崎線 via 長与
-    and via 市布 — which the audit classifies as `branch_rejoins`. Both are real
-    track and both are drawn; the longer way round becomes a rejoining branch
-    rather than being dropped.
+    This runs on graphs that still carry a cycle, and that is deliberate: once
+    skip edges are removed, a remaining cycle means the railway really does have
+    two alignments between the same pair of stations — 長崎線 via 長与 and via
+    市布 — which the audit classifies as `branch_rejoins`. Both are real track
+    and both are drawn; the longer way round becomes a rejoining branch rather
+    than being dropped.
     """
     remaining = set(edges)
     parts = []
@@ -952,8 +887,75 @@ def tree_decompose(edges, weight):
     return parts
 
 
+def stations_passed_by_cut(graph, points, a, b, others, tolerance_m=SKIP_PASSES_M):
+    """Stations of the same line whose platform the A–B track runs past."""
+    start, end = graph.project(points[a]), graph.project(points[b])
+    if start is None or end is None:
+        return []
+    cut = graph.path_between(start, end)
+    if cut is None:
+        return []
+    coords = cut[0]
+    passed = []
+    for uid in others:
+        target = points[uid]
+        scale = 111_320 * math.cos(math.radians(target[1]))
+        for point in coords:
+            dx = (point[0] - target[0]) * scale
+            dy = (point[1] - target[1]) * 111_320
+            if math.hypot(dx, dy) <= tolerance_m:
+                passed.append(uid)
+                break
+    return passed
+
+
+def drop_skip_station_edges(edges, passes=None):
+    """Remove service edges that run over track the drawn order already covers.
+
+    An express that does not call at 武蔵白石 still runs over the 大川支線's only
+    track, and 成田線 files 久住–空港第2ビル between two stations that are nowhere
+    near each other in the order. Such an edge adds no track to draw; it only
+    adds a cycle that makes the line's order ambiguous, and treating one as a
+    second alignment drew a 26 km "branch" between adjacent stations.
+
+    The test is geometric, and deliberately so. The audit's distances cannot
+    arbitrate here — around 成田 it files 久住–下総松崎 at 10.556 km for a hop of
+    about three — but the track can be cut and asked what it runs past. An edge
+    whose own track passes another station OF THE SAME LINE is covering ground
+    the hops through that station already cover. A genuine chord, the kind that
+    earns its own stroke, passes no station it does not stop at: 函館線's 藤城線
+    bypasses 七飯 rather than running through it.
+
+    An edge is only dropped while the rest of the graph still connects its two
+    ends, so nothing is ever severed from the line.
+    """
+    working = list(edges)
+    dropped = []
+    order = sorted(edges, key=lambda edge: -len(passes(edge[0], edge[1])) if passes else 0)
+    for pair in order:
+        if passes is None:
+            break
+        skipped = passes(pair[0], pair[1])
+        if not skipped:
+            continue
+        remaining = [edge for edge in working if edge != pair]
+        near = neighbour_map(remaining)
+        seen, stack = {pair[0]}, [pair[0]]
+        while stack:
+            node = stack.pop()
+            for other in near[node]:
+                if other not in seen:
+                    seen.add(other)
+                    stack.append(other)
+        if pair[1] not in seen:
+            continue
+        working = remaining
+        dropped.append((pair, skipped))
+    return working, dropped
+
+
 def plan_parts(
-    row, edges, uid_by_name, distances=None, station_by_uid=None, confirm_skip=None
+    row, edges, uid_by_name, distances=None, station_by_uid=None, passes=None
 ):
     """Every drawn stroke this canonical line yields, largest first.
 
@@ -970,13 +972,18 @@ def plan_parts(
         return None, "no adjacency rows for this line"
 
     prefix = []
-    if distances:
-        edges, dropped = drop_skip_station_edges(edges, distances, confirm=confirm_skip)
-        for (a, b), middle in dropped:
+    if passes is not None:
+        edges, dropped = drop_skip_station_edges(edges, passes=passes)
+        for (a, b), skipped in dropped:
             name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
+            over = (
+                name(skipped[0])
+                if len(skipped) == 1
+                else f"{len(skipped)} stations"
+            )
             prefix.append(
-                f"{name(a)}–{name(b)} skips {name(middle)} over the same track "
-                f"— service edge, not a second alignment"
+                f"{name(a)}–{name(b)} runs past {over} — service edge over track "
+                f"the order already draws, not a second alignment"
             )
 
     pieces = components(edges)
@@ -1204,7 +1211,9 @@ def build_lines(
                 for pair in edges
             },
             station_by_uid=station_by_uid,
-            confirm_skip=lambda a, b, middle: confirms_skip(graph, points, a, b, middle),
+            passes=lambda a, b: stations_passed_by_cut(
+                graph, points, a, b, [uid for uid in uids if uid not in (a, b)]
+            ),
         )
         if parts is None:
             skipped.append((key, reason))
