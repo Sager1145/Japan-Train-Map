@@ -94,6 +94,21 @@ export const CorridorRenderMode = Object.freeze({
  * facts about a SERVICE, and the number of railways drawn in a corridor is
  * the number of RAILWAYS in it.
  */
+/**
+ * Which RAILWAY a stroke belongs to, for lane purposes.
+ *
+ * Lanes count railways, not strokes: a railway drawn as several strokes — a
+ * trunk and its branch, or the two bores of 上越線 where the directions run
+ * through different tunnels — occupies ONE lane in a corridor, because it is
+ * one railway. Keying the solver by lineId instead let two strokes of one
+ * railway take separate lanes, which is the defect
+ * `service_misclassified_as_independent_parallel` names; worse, whether they
+ * did depended on floating-point ties, so the lane table stopped being
+ * reproducible across Node versions and the deploy failed on a table that
+ * validated locally.
+ */
+const railwayKey = (part) => part.railwayId ?? part.groupKey ?? part.lineId;
+
 export function corridorRenderMode(a, b) {
   if (a.lineId === b.lineId) return CorridorRenderMode.SINGLE;
   // A package that states no railway identity is stating that each of its
@@ -285,9 +300,11 @@ export function buildGlobalLaneOrder(parts, index, near, step) {
       const cosLat = Math.cos((sample.point[1] * Math.PI) / 180);
       const seenHere = new Set();
       for (const [meta] of found) {
-        if (meta.lineId === part.lineId || seenHere.has(meta.lineId)) continue;
-        seenHere.add(meta.lineId);
-        link(part.lineId, meta.lineId);
+        const mine = railwayKey(part);
+        const theirs = railwayKey(meta);
+        if (theirs === mine || seenHere.has(theirs)) continue;
+        seenHere.add(theirs);
+        link(mine, theirs);
         const q = nearestPointOn(meta.coordinates, sample.point);
         if (!q) continue;
         const dx = (q[0] - sample.point[0]) * 111320.0 * cosLat;
@@ -295,9 +312,11 @@ export function buildGlobalLaneOrder(parts, index, near, step) {
         const cross = vx * dy - vy * dx;
         if (!cross) continue;
         const side = cross > 0 ? 1 : -1;
-        const a = part.lineId < meta.lineId ? part.lineId : meta.lineId;
-        const b = part.lineId < meta.lineId ? meta.lineId : part.lineId;
-        const signed = part.lineId < meta.lineId ? side : -side;
+        const mineKey = railwayKey(part);
+        const theirsKey = railwayKey(meta);
+        const a = mineKey < theirsKey ? mineKey : theirsKey;
+        const b = mineKey < theirsKey ? theirsKey : mineKey;
+        const signed = mineKey < theirsKey ? side : -side;
         const key = a + " " + b;
         votes.set(key, (votes.get(key) || 0) + signed * step);
         weight.set(key, (weight.get(key) || 0) + step);
@@ -377,9 +396,10 @@ export function detectIndependentOverlappingCorridors(parts, options = {}) {
       if (!found.size) return null;
       const partners = new Map();
       for (const [meta, distance] of found) {
-        const previous = partners.get(meta.lineId);
+        const key = railwayKey(meta);
+        const previous = partners.get(key);
         if (!previous || distance < previous.distance)
-          partners.set(meta.lineId, { meta, distance });
+          partners.set(key, { meta, distance });
       }
       return partners;
     });
@@ -391,7 +411,7 @@ export function detectIndependentOverlappingCorridors(parts, options = {}) {
     // and the side each one takes matches the ground.
     const laneAt = partnersAt.map((partners) => {
       if (!partners) return { lane: 0, members: null, partners: null };
-      const members = [...new Set([part.lineId, ...partners.keys()])].sort(
+      const members = [...new Set([railwayKey(part), ...partners.keys()])].sort(
         (a, b) => {
           const ra = globalOrder.has(a) ? globalOrder.get(a) : Number.MAX_SAFE_INTEGER;
           const rb = globalOrder.has(b) ? globalOrder.get(b) : Number.MAX_SAFE_INTEGER;
@@ -400,7 +420,7 @@ export function detectIndependentOverlappingCorridors(parts, options = {}) {
         },
       );
       return {
-        lane: members.indexOf(part.lineId) - (members.length - 1) / 2,
+        lane: members.indexOf(railwayKey(part)) - (members.length - 1) / 2,
         members,
         partners,
       };

@@ -40,7 +40,10 @@ const EXPECTED_COUNTS = Object.freeze({
   // no passenger adjacency at all, itemised in the ledger.
   // +3 lines / +3 segments / +6 platforms: the paired alignments, each a
   // two-station stroke on the other direction's track.
-  segments: 916,
+  // 912 once lanes became a property of the RAILWAY rather than the stroke:
+  // a railway drawn as several strokes shares one lane, so the split-at-lane-
+  // boundary features it used to generate collapse.
+  segments: 912,
   stations: 10195,
   lines: 652,
   groups: 9039,
