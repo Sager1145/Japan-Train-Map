@@ -283,15 +283,77 @@ function encodeRow(coordinates, shared) {
 
 let changed = 0;
 const branchStationCodes = new Set();
+const TOPOLOGY_FIELDS = new Set(["id", "logo", "stations", "segments", "structure"]);
+
+function inheritLineMetadata(target, source) {
+  for (const [key, value] of Object.entries(source)) {
+    if (TOPOLOGY_FIELDS.has(key) || key in target) continue;
+    target[key] = value;
+  }
+}
+
+function structureIndexFor(line, names) {
+  const out = new Map();
+  let segmentStart = 0;
+  for (let index = 0; index < line.segments.length; index += 1) {
+    const from = names[index];
+    const to = names[(index + 1) % names.length];
+    const lengthMeters = line.segments[index][0] * 1000;
+    const segmentEnd = segmentStart + lengthMeters;
+    const rows = (line.structure || [])
+      .filter((row) => Number(row[0]) < segmentEnd && Number(row[1]) > segmentStart)
+      .map((row) => [
+        Math.max(0, Math.round(Number(row[0]) - segmentStart)),
+        Math.min(Math.round(lengthMeters), Math.round(Number(row[1]) - segmentStart)),
+        ...row.slice(2),
+      ])
+      .filter((row) => row[1] > row[0]);
+    out.set(`${from}\u0000${to}`, rows);
+    out.set(
+      `${to}\u0000${from}`,
+      rows.map((row) => [
+        Math.max(0, Math.round(lengthMeters - Number(row[1]))),
+        Math.max(0, Math.round(lengthMeters - Number(row[0]))),
+        ...row.slice(2),
+      ]),
+    );
+    segmentStart = segmentEnd;
+  }
+  return out;
+}
+
+function remapStructure(index, stationNames, segments) {
+  const rows = [];
+  let segmentStart = 0;
+  for (let segmentIndex = 0; segmentIndex < stationNames.length - 1; segmentIndex += 1) {
+    const key = `${stationNames[segmentIndex]}\u0000${stationNames[segmentIndex + 1]}`;
+    for (const row of index.get(key) || [])
+      rows.push([
+        Math.round(segmentStart + Number(row[0])),
+        Math.round(segmentStart + Number(row[1])),
+        ...row.slice(2),
+      ]);
+    segmentStart += segments[segmentIndex][0] * 1000;
+  }
+  return rows;
+}
+
 for (const plan of CASES) {
   const trunk = pkg.lines.find((line) => line.id === plan.trunkId);
   if (!trunk) throw new Error(`${plan.trunkId} missing`);
   const names = trunk.stations.map((row) => row[1]);
+  const oldStructure = structureIndexFor(trunk, names);
   // A branch runs BETWEEN two junction stations; those two stay on the trunk
   // (函館線's 森 and 大沼, 中央線's 岡谷 and 塩尻). Everything strictly inside
   // the branch order is what has to leave the trunk's station list.
   const branchOnly = plan.branchOnly || plan.branchOrder.slice(1, -1);
   if (!branchOnly.some((n) => names.includes(n))) {
+    const branch = pkg.lines.find((line) => line.id === plan.branchId);
+    if (!branch) throw new Error(`${plan.branchId} missing after split`);
+    const before = JSON.stringify(branch);
+    delete branch.logo;
+    inheritLineMetadata(branch, trunk);
+    if (JSON.stringify(branch) !== before) changed += 1;
     console.log(`${plan.trunkId}: already split`);
     continue;
   }
@@ -366,6 +428,13 @@ for (const plan of CASES) {
     ...windowIntervals.map((coordinates, i) => encodeRow(coordinates, lo + i > 0)),
     ...keptAfter,
   ];
+  const trunkStructure = remapStructure(
+    oldStructure,
+    trunk.stations.map((row) => row[1]),
+    trunk.segments,
+  );
+  if (trunkStructure.length) trunk.structure = trunkStructure;
+  else delete trunk.structure;
 
   // ── branch ──
   const branch = {
@@ -379,6 +448,9 @@ for (const plan of CASES) {
       .slice(0, -1)
       .map((from, i) => encodeRow(intervalFor(from, plan.branchOrder[i + 1]), i > 0)),
   };
+  inheritLineMetadata(branch, trunk);
+  const branchStructure = remapStructure(oldStructure, plan.branchOrder, branch.segments);
+  if (branchStructure.length) branch.structure = branchStructure;
   const existing = pkg.lines.findIndex((line) => line.id === plan.branchId);
   if (existing >= 0) pkg.lines[existing] = branch;
   else pkg.lines.splice(pkg.lines.indexOf(trunk) + 1, 0, branch);
