@@ -25,6 +25,8 @@
     "update:august-10:tw": "node scripts/migrations/add-august-10-kaohsiung-itinerary.mjs",
     "update:august-12:tw": "node scripts/migrations/add-august-12-taiwan-itinerary.mjs",
     "normalize:companies:tw": "node scripts/railway/normalize-taiwan-company-names.mjs",
+    "rebuild:railway:jp": "node scripts/railway/rebuild-japan-railway.mjs",
+    "audit:apple-tiles:jp": "node scripts/validation/audit-apple-maps-tiles.mjs",
     "build:static": "node scripts/build/build-static-site.mjs",
     "serve:static": "node scripts/build/serve-static.mjs",
     "dev:static": "npm run build:static && node scripts/build/serve-static.mjs",

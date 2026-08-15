@@ -56,3 +56,33 @@ _site*/
 
 # Local output directory for reports and dumps
 outputs/
+
+# Apple Maps transit survey (app/data/raw/railway/jp/apple-maps/).
+# 2,417 full-screen captures of Apple Maps in transit mode covering Hokkaido,
+# Honshu, Shikoku and Kyushu at three zoom levels — 11 GB of PNG. Source
+# imagery rather than derived data, and reproducible: 3-RUN-CAPTURE.command
+# replays the whole survey from tiles/*.tsv in ~1h45m and resumes if stopped.
+app/data/raw/railway/jp/apple-maps/out/
+
+# Calibration captures used to measure Apple's zoom-to-ground-scale mapping.
+# Kept locally as evidence for the constants in stitch.py; ~190 MB, not needed
+# to rebuild anything.
+app/data/raw/railway/jp/apple-maps/_calib/
+app/data/raw/railway/jp/apple-maps/_calib2/
+
+# Stitched mosaics, rebuilt from the tiles by stitch.py / fullres_png.py.
+# japan_z2_FULLRES.png alone is 453 MB (2.85 gigapixels) — well past GitHub's
+# 100 MB per-file limit, and this repo has no LFS configured.
+app/data/raw/railway/jp/apple-maps/mosaics/
+
+# Transport archives used to move the survey onto this machine.
+app/data/raw/railway/jp/apple-maps/*.zip
+
+# NOTE: tiles/*.tsv (the capture grids) and manifests/*.csv (per-tile lat/lon
+# and N/S/E/W bounds) ARE committed. They are small, they define the survey,
+# and stitch.py needs them to place every tile.
+
+# Staged-rebuild scratch. Country builders write WHOLE packages here; only
+# scripts/railway/promote-lines.mjs writes public/rail/*.json, one session's
+# lines at a time (RAILWAY_REBUILD_SESSION_PLAN.md S01).
+app/data/staging/
