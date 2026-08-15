@@ -38,6 +38,9 @@ from lib import railpkg
 
 APP_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = APP_DIR / "public" / "rail" / "tw-2025.json"
+DEFAULT_SANYING_STATIONS = (
+    APP_DIR / "data" / "raw" / "railway" / "tw" / "sanying-official-stations.json"
+)
 # The app's route solver, station index, and mileage statistics read ONE
 # schema for every country.  Japan supplies it through the historical N02_*
 # property names; every other country supplies the same facts under the
@@ -187,9 +190,9 @@ class TrackedLineSequences(Dict[Tuple[str, str], Tuple[str, ...]]):
     The display lines are enumerated by hand — name, English name, operator,
     and colour are editorial choices no official field supplies, and several
     specs are sub-ranges of one official LineID (縱貫線 WL becomes north /
-    臺中線 / south).  A "built 38 lines" audit cannot protect that list: when
-    an operator publishes a NEW LineID, the hand-written specs still build
-    exactly 38 lines and the new one is silently absent.
+    臺中線 / south).  A fixed display-line count cannot protect that list: when
+    an operator publishes a NEW LineID, the hand-written specs can still build
+    the old count and the new one is silently absent.
 
     Every spec takes its station order from this mapping, so recording each
     read yields the exact set of official lines the package consumed, which
@@ -2156,8 +2159,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--nlsc-lrt-stations",
         type=Path,
-        required=True,
-        help="current NLSC light-rail station SHP or ZIP",
+        help="optional current NLSC light-rail station SHP or ZIP refinement",
     )
     parser.add_argument(
         "--taipei-metro",
@@ -2170,6 +2172,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         type=Path,
         required=True,
         help="current NLSC railway-station SHP or ZIP",
+    )
+    parser.add_argument(
+        "--sanying-stations",
+        type=Path,
+        default=DEFAULT_SANYING_STATIONS,
+        help="official Sanying Line station list with New Taipei City address coordinates",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
@@ -2201,6 +2209,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     str(row.get(field, ""))
                     for field in ("UpdateTime", "SrcUpdateTime")
                 )
+    tdx_revision = utc_timestamp(update_times)
 
     station_maps: Dict[str, Dict[str, Station]] = {}
     line_sequences = TrackedLineSequences()
@@ -2245,12 +2254,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 parts = [subdivide_part(part, 0.1) for part in parts]
             shape_parts.setdefault((system, line_id), []).extend(parts)
 
+    sanying_source = json.loads(args.sanying_stations.read_text(encoding="utf-8"))
+    sanying_rows = sanying_source.get("stations", [])
+    if [row.get("stationId") for row in sanying_rows] != [
+        f"LB{index:02d}" for index in range(1, 13)
+    ]:
+        raise RuntimeError("Sanying official station supplement must contain LB01-LB12 in order")
+    for row in sanying_rows:
+        station_id = str(row["stationId"])
+        lon, lat = twd97_tm2_to_wgs84(float(row["x3826"]), float(row["y3826"]))
+        station_maps["NTMC"][station_id] = Station(
+            system="NTMC",
+            station_id=station_id,
+            uid=str(row.get("stationUid") or f"NTMC-{station_id}"),
+            name=str(row["name"]),
+            name_en=str(row.get("nameEn", "")),
+            lon=round(lon, 6),
+            lat=round(lat, 6),
+        )
+    update_times.append(str(sanying_source.get("updatedAt", "")))
+
     # PTX currently publishes K03 and K04 of Ankeng LRT at effectively the
     # same coordinate.  The current NLSC official station layer has the
     # distinct platform locations, so it is the coordinate authority for all
     # light-rail stations while TDX/PTX remains the name and station-order
     # authority.
-    for feature in load_shape_features(args.nlsc_lrt_stations):
+    lrt_station_features = (
+        load_shape_features(args.nlsc_lrt_stations)
+        if args.nlsc_lrt_stations and args.nlsc_lrt_stations.is_file()
+        else []
+    )
+    for feature in lrt_station_features:
         row = feature.attrs
         if not feature.parts or not feature.parts[0]:
             continue
@@ -2597,6 +2631,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             (("NTMC", "Y"),),
         ),
         LineSpec(
+            "tw-ntmetro-lb",
+            "三鶯線",
+            "Sanying Line",
+            "新北大眾捷運股份有限公司",
+            "#4EB7D5",
+            2,
+            refs("NTMC", tuple(f"LB{index:02d}" for index in range(1, 13))),
+            (("NTMC", "LB"),),
+        ),
+        LineSpec(
             "tw-tym-a",
             "桃園機場捷運",
             "Taoyuan Airport MRT",
@@ -2857,12 +2901,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ("TYMC", "A"): ("機場捷運",),
         ("TMRT", "G"): ("綠線",),
         ("NTMC", "Y"): ("環狀線",),
+        ("NTMC", "LB"): ("三鶯線",),
     }
     for shape_ref, source_codes in nlsc_mrt_codes.items():
         source_system = nlsc_mrt_systems[shape_ref[0]]
         official_parts = []
         for feature in current_mrt_features:
-            if feature.attrs.get("STATUS", "0") not in ("", "0"):
+            # NLSC 1150409 still labels Sanying as under construction, but the
+            # operator began passenger trial operation on 2026-06-30. That
+            # newer official operation notice overrides only this stale status
+            # code; geometry remains the NLSC official centreline.
+            stale_sanying_status = shape_ref == ("NTMC", "LB")
+            if (
+                feature.attrs.get("STATUS", "0") not in ("", "0")
+                and not stale_sanying_status
+            ):
                 continue
             if feature.attrs.get("MRTSYS", "") != source_system:
                 continue
@@ -2875,7 +2928,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     if len(part) >= 2
                 ]
             )
-        shape_parts[shape_ref].extend(official_parts)
+        shape_parts.setdefault(shape_ref, []).extend(official_parts)
 
     nlsc_lrt_codes = {
         ("NTDLRT", "V"): (
@@ -3194,18 +3247,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "AFR:rail": hashlib.sha256(args.alishan_rail.read_bytes()).hexdigest(),
             "NLSC:MRT": hashlib.sha256(args.nlsc_mrt.read_bytes()).hexdigest(),
             "NLSC:LRT": hashlib.sha256(args.nlsc_lrt.read_bytes()).hexdigest(),
-            "NLSC:LRTStation": hashlib.sha256(
-                args.nlsc_lrt_stations.read_bytes()
-            ).hexdigest(),
             "Taipei:MRT": hashlib.sha256(args.taipei_metro.read_bytes()).hexdigest(),
             "AFR:station": hashlib.sha256(
                 args.alishan_stations.read_bytes()
             ).hexdigest(),
+            "NTMC:SanyingStations": hashlib.sha256(
+                args.sanying_stations.read_bytes()
+            ).hexdigest(),
         }
     )
+    if args.nlsc_lrt_stations and args.nlsc_lrt_stations.is_file():
+        fingerprints["NLSC:LRTStation"] = hashlib.sha256(
+            args.nlsc_lrt_stations.read_bytes()
+        ).hexdigest()
+    # 2025.6.1 is this build plus scripts/railway/repair-alishan-switchbacks.mjs,
+    # which splices the 神木 and 阿里山 reversal tails a shortest-path router
+    # cannot reach. Re-run that repair after every rebuild; it is idempotent and
+    # states this same version.
     package: Dict[str, object] = {
         "format": "compact-v1",
-        "version": "2025.5.2",
+        "version": "2025.6.1",
         "generatedAt": utc_timestamp(update_times),
         "crs": "WGS84",
         "country": "TW",
@@ -3216,9 +3277,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 "交通部運輸資料流通服務（TDX/PTX）",
                 "農業部阿里山林業鐵路及文化資產管理處",
                 "內政部國土測繪中心",
+                "新北市政府（新北捷運營運公告及門牌坐標）",
             ],
             "license": "政府資料開放授權條款第1版",
-            "tdxRevision": utc_timestamp(update_times),
+            "tdxRevision": tdx_revision,
             "nlscRailRevision": "1150409",
             "moaAlishanRevision": "11001",
             "osmSources": 0,
@@ -3239,8 +3301,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # The other half of the completeness gate above: that one fails when an
     # official line reaches no spec, this one when the spec list itself is
     # edited into building a different number of display lines.
-    if audit["lines"] != 38:
-        raise RuntimeError(f"expected 38 lines, built {audit['lines']}")
+    if audit["lines"] != 39:
+        raise RuntimeError(f"expected 39 lines, built {audit['lines']}")
     write_package(args.output, package)
     print(f"wrote {args.output}")
     print("audit " + json.dumps(audit, ensure_ascii=False, sort_keys=True))

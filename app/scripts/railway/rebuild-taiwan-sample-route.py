@@ -53,7 +53,7 @@ def main() -> int:
     line = next((row for row in package["lines"] if row["id"] == LINE_ID), None)
     if line is None:
         raise RuntimeError(f"official line missing: {LINE_ID}")
-    context = line_context(line)
+    context = line_context(line, package)
     station_by_name = context["station_by_name"]
     station_index = context["station_index"]
     segments = context["segments"]

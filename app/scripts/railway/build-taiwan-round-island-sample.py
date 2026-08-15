@@ -55,7 +55,7 @@ def main() -> int:
         line = lines_by_id.get(line_id)
         if line is None:
             raise RuntimeError(f"official line missing: {line_id}")
-        contexts[line_name] = line_context(line)
+        contexts[line_name] = line_context(line, package)
 
     store = json.loads(STORE_PATH.read_text(encoding="utf-8"))
     train = next((row for row in store["trains"] if row["id"] == TRAIN_ID), None)

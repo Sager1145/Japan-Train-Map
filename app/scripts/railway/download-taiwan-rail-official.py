@@ -14,6 +14,12 @@ from typing import Dict, Optional, Sequence
 TDX_ROOT = "https://tdx.transportdata.tw/api/basic/v2/Rail"
 PTX_ROOT = "https://ptx.transportdata.tw/MOTC/v2/Rail/Metro"
 
+# TGOS currently advertises this legacy resource through data.gov.tw but
+# returns HTTP 403 even with a browser user agent and TGOS referer.  The build
+# can use the current PTX station coordinates when this optional refinement
+# layer is unavailable; all route geometry still comes from official sources.
+OPTIONAL_SOURCES = {"tw_lrt_station_open.zip"}
+
 
 def official_sources() -> Dict[str, str]:
     sources: Dict[str, str] = {}
@@ -93,7 +99,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if output.is_file() and not args.force:
             print(f"kept       {output}")
             continue
-        download(url, output)
+        try:
+            download(url, output)
+        except urllib.error.HTTPError as error:
+            if filename not in OPTIONAL_SOURCES:
+                raise
+            print(f"unavailable {output} (official endpoint HTTP {error.code}; optional)")
+            continue
         print(f"downloaded {output}")
     return 0
 

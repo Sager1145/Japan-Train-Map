@@ -31,16 +31,41 @@ LICENSE = "政府資料開放授權條款第1版"
 
 
 def load_official_package(path: Path = PACKAGE_PATH) -> Dict[str, object]:
-    """Read the Taiwan package and refuse anything not official-only."""
+    """Read the Taiwan package and refuse geometry a sample may not slice.
+
+    The package is official-only apart from one declared exception: the 阿里山
+    zigzag reversal tails, which no official centreline carries as traversable
+    track (scripts/railway/repair-alishan-switchbacks.mjs).  A package-wide
+    "official only" flag would either have to lie or lock the curated samples
+    out of the other 38 lines, so the check is per line instead — the exception
+    has to be declared, and ``line_context`` refuses the lines it names.
+    """
     package = json.loads(Path(path).read_text(encoding="utf-8"))
     source = package.get("geometrySource", {})
-    if source.get("officialOnly") != 1 or source.get("osmSources") != 0:
-        raise RuntimeError("Taiwan package is not official-only")
+    if source.get("syntheticConnectors") != 0:
+        raise RuntimeError("Taiwan package carries synthetic connectors")
+    declared = set((source.get("osmGeometry") or {}).get("lines") or ())
+    if source.get("officialOnly") != 1 and not declared:
+        raise RuntimeError("Taiwan package is neither official-only nor declares its sources")
+    if bool(source.get("osmSources")) != bool(declared):
+        raise RuntimeError("Taiwan package's osmSources count and osmGeometry disagree")
     return package
 
 
-def line_context(line: Dict[str, object]) -> Dict[str, object]:
+def line_context(
+    line: Dict[str, object], package: Dict[str, object] | None = None
+) -> Dict[str, object]:
     """Everything the slicer needs about one official line."""
+    if package is not None:
+        declared = set(
+            (package.get("geometrySource", {}).get("osmGeometry") or {}).get("lines")
+            or ()
+        )
+        if line["id"] in declared:
+            raise RuntimeError(
+                f"{line['id']} carries non-official geometry and may not be "
+                "sliced into a curated sample"
+            )
     return {
         "line": line,
         "station_by_name": {row[1]: row for row in line["stations"]},

@@ -7,19 +7,20 @@
     "ja",
     "en"
   ],
-  "officialRevision": "2026-08-04T23:38:39+08:00",
-  "packageVersion": "2025.5.2",
+  "officialRevision": "2026-08-13T13:38:21+08:00",
+  "packageVersion": "2025.6.0",
   "sources": [
     "交通部運輸資料流通服務（TDX/PTX）",
     "內政部國土測繪中心（NLSC）",
-    "農業部林業及自然保育署阿里山林業鐵路及文化資產管理處（AFR）"
+    "農業部林業及自然保育署阿里山林業鐵路及文化資產管理處（AFR）",
+    "新北捷運及新北市政府（三鶯線站名、英文名与门牌坐标）"
   ],
   "stats": {
-    "byCode": 1136,
-    "byName": 480,
-    "officialStationUIDs": 532,
-    "matchedOfficialStationUIDs": 517,
-    "networkAliases": 585,
+    "byCode": 1149,
+    "byName": 491,
+    "officialStationUIDs": 544,
+    "matchedOfficialStationUIDs": 529,
+    "networkAliases": 586,
     "fallbackAliases": 23,
     "ambiguousNamesWithoutFallback": 22
   },
@@ -856,6 +857,90 @@
       "zh_Hans": "台北海洋大学",
       "ja": "台北海洋大学",
       "en": "Taipei University of Marine Technology"
+    },
+    "NTMC-LB01": {
+      "name": "頂埔",
+      "zh_Hant": "頂埔",
+      "zh_Hans": "顶埔",
+      "ja": "",
+      "en": "Dingpu"
+    },
+    "NTMC-LB02": {
+      "name": "媽祖田",
+      "zh_Hant": "媽祖田",
+      "zh_Hans": "媽祖田",
+      "ja": "",
+      "en": "Mazu Tian"
+    },
+    "NTMC-LB03": {
+      "name": "長壽山",
+      "zh_Hant": "長壽山",
+      "zh_Hans": "长寿山",
+      "ja": "",
+      "en": "Changshoushan"
+    },
+    "NTMC-LB04": {
+      "name": "橫溪",
+      "zh_Hant": "橫溪",
+      "zh_Hans": "横溪",
+      "ja": "",
+      "en": "Hengxi"
+    },
+    "NTMC-LB05": {
+      "name": "龍埔",
+      "zh_Hant": "龍埔",
+      "zh_Hans": "龙埔",
+      "ja": "",
+      "en": "Longpu"
+    },
+    "NTMC-LB06": {
+      "name": "三峽",
+      "zh_Hant": "三峽",
+      "zh_Hans": "三峽",
+      "ja": "",
+      "en": "Sanxia"
+    },
+    "NTMC-LB07": {
+      "name": "臺北大學",
+      "zh_Hant": "臺北大學",
+      "zh_Hans": "台北大学",
+      "ja": "",
+      "en": "National Taipei University"
+    },
+    "NTMC-LB08": {
+      "name": "鶯歌車站",
+      "zh_Hant": "鶯歌車站",
+      "zh_Hans": "莺歌车站",
+      "ja": "",
+      "en": "Yingge Railway Station"
+    },
+    "NTMC-LB09": {
+      "name": "陶瓷老街",
+      "zh_Hant": "陶瓷老街",
+      "zh_Hans": "陶瓷老街",
+      "ja": "",
+      "en": "Ceramics Old Street"
+    },
+    "NTMC-LB10": {
+      "name": "國華",
+      "zh_Hant": "國華",
+      "zh_Hans": "国华",
+      "ja": "",
+      "en": "Guohua"
+    },
+    "NTMC-LB11": {
+      "name": "永吉公園",
+      "zh_Hant": "永吉公園",
+      "zh_Hans": "永吉公园",
+      "ja": "",
+      "en": "Yongji Park"
+    },
+    "NTMC-LB12": {
+      "name": "鶯桃福德",
+      "zh_Hant": "鶯桃福德",
+      "zh_Hans": "莺桃福德",
+      "ja": "",
+      "en": "Yingtao Fude"
     },
     "NTMCC-Y07": {
       "name": "大坪林",
@@ -4651,6 +4736,90 @@
       "ja": "十四張",
       "en": "Shisizhang"
     },
+    "tw-ntmetro-lb:tw-official-ntmc-lb01": {
+      "name": "頂埔",
+      "zh_Hant": "頂埔",
+      "zh_Hans": "顶埔",
+      "ja": "",
+      "en": "Dingpu"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb02": {
+      "name": "媽祖田",
+      "zh_Hant": "媽祖田",
+      "zh_Hans": "媽祖田",
+      "ja": "",
+      "en": "Mazu Tian"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb03": {
+      "name": "長壽山",
+      "zh_Hant": "長壽山",
+      "zh_Hans": "长寿山",
+      "ja": "",
+      "en": "Changshoushan"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb04": {
+      "name": "橫溪",
+      "zh_Hant": "橫溪",
+      "zh_Hans": "横溪",
+      "ja": "",
+      "en": "Hengxi"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb05": {
+      "name": "龍埔",
+      "zh_Hant": "龍埔",
+      "zh_Hans": "龙埔",
+      "ja": "",
+      "en": "Longpu"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb06": {
+      "name": "三峽",
+      "zh_Hant": "三峽",
+      "zh_Hans": "三峽",
+      "ja": "",
+      "en": "Sanxia"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb07": {
+      "name": "臺北大學",
+      "zh_Hant": "臺北大學",
+      "zh_Hans": "台北大学",
+      "ja": "",
+      "en": "National Taipei University"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb08": {
+      "name": "鶯歌車站",
+      "zh_Hant": "鶯歌車站",
+      "zh_Hans": "莺歌车站",
+      "ja": "",
+      "en": "Yingge Railway Station"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb09": {
+      "name": "陶瓷老街",
+      "zh_Hant": "陶瓷老街",
+      "zh_Hans": "陶瓷老街",
+      "ja": "",
+      "en": "Ceramics Old Street"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb10": {
+      "name": "國華",
+      "zh_Hant": "國華",
+      "zh_Hans": "国华",
+      "ja": "",
+      "en": "Guohua"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb11": {
+      "name": "永吉公園",
+      "zh_Hant": "永吉公園",
+      "zh_Hans": "永吉公园",
+      "ja": "",
+      "en": "Yongji Park"
+    },
+    "tw-ntmetro-lb:tw-official-ntmc-lb12": {
+      "name": "鶯桃福德",
+      "zh_Hant": "鶯桃福德",
+      "zh_Hans": "莺桃福德",
+      "ja": "",
+      "en": "Yingtao Fude"
+    },
     "tw-ntmetro-v-blue:tw-official-ntdlrt-v09": {
       "name": "濱海沙崙",
       "zh_Hant": "濱海沙崙",
@@ -6016,6 +6185,13 @@
       "ja": "",
       "en": "Hualien"
     },
+    "tw-tra-western-north:tw-official-ntmc-lb08": {
+      "name": "鶯歌",
+      "zh_Hant": "鶯歌",
+      "zh_Hans": "莺歌",
+      "ja": "",
+      "en": "Yingge"
+    },
     "tw-tra-western-north:tw-official-ntmcc-y16": {
       "name": "板橋",
       "zh_Hant": "板橋",
@@ -6134,13 +6310,6 @@
       "zh_Hans": "山佳",
       "ja": "",
       "en": "Shanjia"
-    },
-    "tw-tra-western-north:tw-official-tra-1070": {
-      "name": "鶯歌",
-      "zh_Hant": "鶯歌",
-      "zh_Hans": "莺歌",
-      "ja": "",
-      "en": "Yingge"
     },
     "tw-tra-western-north:tw-official-tra-1075": {
       "name": "鳳鳴",
@@ -6779,6 +6948,13 @@
       "ja": "",
       "en": "Nuannuan"
     },
+    "tw-trtc-bl:tw-official-ntmc-lb01": {
+      "name": "頂埔",
+      "zh_Hant": "頂埔",
+      "zh_Hans": "顶埔",
+      "ja": "頂埔",
+      "en": "Dingpu"
+    },
     "tw-trtc-bl:tw-official-ntmcc-y16": {
       "name": "板橋",
       "zh_Hant": "板橋",
@@ -6813,13 +6989,6 @@
       "zh_Hans": "龙山寺",
       "ja": "龍山寺",
       "en": "Longshan Temple"
-    },
-    "tw-trtc-bl:tw-official-trtc-bl01": {
-      "name": "頂埔",
-      "zh_Hant": "頂埔",
-      "zh_Hans": "顶埔",
-      "ja": "頂埔",
-      "en": "Dingpu"
     },
     "tw-trtc-bl:tw-official-trtc-bl02": {
       "name": "永寧",
@@ -7402,83 +7571,6 @@
       "ja": "迴龍",
       "en": "Huilong"
     },
-    "tw-trtc-o-luzhou:tw-official-ntmcc-y11": {
-      "name": "景安",
-      "zh_Hant": "景安",
-      "zh_Hans": "景安",
-      "ja": "景安",
-      "en": "Jingan"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-bl14": {
-      "name": "忠孝新生",
-      "zh_Hant": "忠孝新生",
-      "zh_Hans": "忠孝新生",
-      "ja": "忠孝新生",
-      "en": "Zhongxiao Xinsheng"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-g09": {
-      "name": "古亭",
-      "zh_Hant": "古亭",
-      "zh_Hans": "古亭",
-      "ja": "古亭",
-      "en": "Guting"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-g15": {
-      "name": "松江南京",
-      "zh_Hant": "松江南京",
-      "zh_Hans": "松江南京",
-      "ja": "松江南京",
-      "en": "Songjiang Nanjing"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o01": {
-      "name": "南勢角",
-      "zh_Hant": "南勢角",
-      "zh_Hans": "南势角",
-      "ja": "南勢角",
-      "en": "Nanshijiao"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o03": {
-      "name": "永安市場",
-      "zh_Hant": "永安市場",
-      "zh_Hans": "永安市场",
-      "ja": "永安市場",
-      "en": "Yongan Market"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o04": {
-      "name": "頂溪",
-      "zh_Hant": "頂溪",
-      "zh_Hans": "顶溪",
-      "ja": "頂渓",
-      "en": "Dingxi"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o06": {
-      "name": "東門",
-      "zh_Hant": "東門",
-      "zh_Hans": "东门",
-      "ja": "東門",
-      "en": "Dongmen"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o09": {
-      "name": "行天宮",
-      "zh_Hant": "行天宮",
-      "zh_Hans": "行天宫",
-      "ja": "行天宮",
-      "en": "Xingtian Temple"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o10": {
-      "name": "中山國小",
-      "zh_Hant": "中山國小",
-      "zh_Hans": "中山国小",
-      "ja": "中山小学校",
-      "en": "Zhongshan Elementary School"
-    },
-    "tw-trtc-o-luzhou:tw-official-trtc-o11": {
-      "name": "民權西路",
-      "zh_Hant": "民權西路",
-      "zh_Hans": "民权西路",
-      "ja": "民権西路",
-      "en": "Minquan W. Rd."
-    },
     "tw-trtc-o-luzhou:tw-official-trtc-o12": {
       "name": "大橋頭",
       "zh_Hant": "大橋頭",
@@ -8019,6 +8111,12 @@
       "zh_Hans": "三姓桥",
       "ja": "",
       "en": "Sanxingqiao"
+    },
+    "三峽": {
+      "zh_Hant": "三峽",
+      "zh_Hans": "三峽",
+      "ja": "",
+      "en": "Sanxia"
     },
     "三民": {
       "zh_Hant": "三民",
@@ -8728,6 +8826,12 @@
       "ja": "国父紀念館",
       "en": "Sun Yat-Sen Memorial Hall"
     },
+    "國華": {
+      "zh_Hant": "國華",
+      "zh_Hans": "国华",
+      "ja": "",
+      "en": "Guohua"
+    },
     "圓山": {
       "zh_Hant": "圓山",
       "zh_Hans": "圆山",
@@ -8949,6 +9053,12 @@
       "zh_Hans": "奋起湖",
       "ja": "",
       "en": ""
+    },
+    "媽祖田": {
+      "zh_Hant": "媽祖田",
+      "zh_Hans": "媽祖田",
+      "ja": "",
+      "en": "Mazu Tian"
     },
     "安康": {
       "zh_Hant": "安康",
@@ -9670,6 +9780,12 @@
       "ja": "橫山駅",
       "en": "Hengshan Station"
     },
+    "橫溪": {
+      "zh_Hant": "橫溪",
+      "zh_Hans": "横溪",
+      "ja": "",
+      "en": "Hengxi"
+    },
     "正義": {
       "zh_Hant": "正義",
       "zh_Hans": "正义",
@@ -9729,6 +9845,12 @@
       "zh_Hans": "水里",
       "ja": "",
       "en": "Shuili"
+    },
+    "永吉公園": {
+      "zh_Hant": "永吉公園",
+      "zh_Hans": "永吉公园",
+      "ja": "",
+      "en": "Yongji Park"
     },
     "永安市場": {
       "zh_Hant": "永安市場",
@@ -10270,6 +10392,12 @@
       "ja": "",
       "en": "Taipei Surround Island"
     },
+    "臺北大學": {
+      "zh_Hant": "臺北大學",
+      "zh_Hans": "台北大学",
+      "ja": "",
+      "en": "National Taipei University"
+    },
     "臺南": {
       "zh_Hant": "臺南",
       "zh_Hans": "台南",
@@ -10564,6 +10692,12 @@
       "ja": "",
       "en": "Zhen'an"
     },
+    "長壽山": {
+      "zh_Hant": "長壽山",
+      "zh_Hans": "长寿山",
+      "ja": "",
+      "en": "Changshoushan"
+    },
     "長庚醫院站": {
       "zh_Hant": "長庚醫院站",
       "zh_Hans": "长庚医院站",
@@ -10593,6 +10727,12 @@
       "zh_Hans": "阿里山",
       "ja": "",
       "en": ""
+    },
+    "陶瓷老街": {
+      "zh_Hant": "陶瓷老街",
+      "zh_Hans": "陶瓷老街",
+      "ja": "",
+      "en": "Ceramics Old Street"
     },
     "陽光運動公園": {
       "zh_Hant": "陽光運動公園",
@@ -10774,11 +10914,23 @@
       "ja": "",
       "en": "Fengming"
     },
+    "鶯桃福德": {
+      "zh_Hant": "鶯桃福德",
+      "zh_Hans": "莺桃福德",
+      "ja": "",
+      "en": "Yingtao Fude"
+    },
     "鶯歌": {
       "zh_Hant": "鶯歌",
       "zh_Hans": "莺歌",
       "ja": "",
       "en": "Yingge"
+    },
+    "鶯歌車站": {
+      "zh_Hant": "鶯歌車站",
+      "zh_Hans": "莺歌车站",
+      "ja": "",
+      "en": "Yingge Railway Station"
     },
     "鹽埕埔": {
       "zh_Hant": "鹽埕埔",
@@ -10827,6 +10979,12 @@
       "zh_Hans": "龙井",
       "ja": "",
       "en": "Longjing"
+    },
+    "龍埔": {
+      "zh_Hant": "龍埔",
+      "zh_Hans": "龙埔",
+      "ja": "",
+      "en": "Longpu"
     },
     "龍山寺": {
       "zh_Hant": "龍山寺",

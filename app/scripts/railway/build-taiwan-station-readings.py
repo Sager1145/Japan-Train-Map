@@ -26,6 +26,9 @@ from typing import Dict, List, Optional, Sequence, Tuple
 APP_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_PACKAGE = APP_DIR / "public" / "rail" / "tw-2025.json"
 DEFAULT_OUTPUT = APP_DIR / "data" / "station-readings-tw.json"
+DEFAULT_SANYING_STATIONS = (
+    APP_DIR / "data" / "raw" / "railway" / "tw" / "sanying-official-stations.json"
+)
 
 # Every Traditional character that changes under character-level T→S
 # conversion in the current official station names. Keeping the complete
@@ -154,11 +157,35 @@ def load_official_stations(source_dir: Path) -> Tuple[List[OfficialStation], str
     return output, max(revisions, default="")
 
 
+def load_sanying_stations(path: Path) -> Tuple[List[OfficialStation], str]:
+    source = json.loads(path.read_text(encoding="utf-8"))
+    rows = source.get("stations", [])
+    if [row.get("stationId") for row in rows] != [
+        f"LB{index:02d}" for index in range(1, 13)
+    ]:
+        raise RuntimeError("Sanying official station supplement must contain LB01-LB12")
+    return [
+        OfficialStation(
+            system="NTMC",
+            uid=str(row["stationUid"]),
+            station_id=str(row["stationId"]),
+            zh_hant=str(row["name"]),
+            zh_hans=simplified_name(str(row["name"])),
+            english=str(row.get("nameEn", "")),
+            japanese="",
+            lon=float(row["longitude"]),
+            lat=float(row["latitude"]),
+        )
+        for row in rows
+    ], str(source.get("updatedAt", ""))
+
+
 def system_for_line(line_id: str) -> str:
     rules = (
         ("tw-thsr", "THSR"),
         ("tw-tra", "TRA"),
         ("tw-trtc-y", "NTMC"),
+        ("tw-ntmetro-lb", "NTMC"),
         ("tw-trtc", "TRTC"),
         ("tw-tym", "TYMC"),
         ("tw-tcmrt", "TMRT"),
@@ -346,6 +373,7 @@ def build_table(
             "交通部運輸資料流通服務（TDX/PTX）",
             "內政部國土測繪中心（NLSC）",
             "農業部林業及自然保育署阿里山林業鐵路及文化資產管理處（AFR）",
+            "新北捷運及新北市政府（三鶯線站名、英文名与门牌坐标）",
         ],
         "stats": {
             "byCode": len(by_code),
@@ -376,11 +404,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--package", type=Path, default=DEFAULT_PACKAGE)
+    parser.add_argument(
+        "--sanying-stations",
+        type=Path,
+        default=DEFAULT_SANYING_STATIONS,
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
 
     package = json.loads(args.package.read_text(encoding="utf-8"))
     official_stations, revision = load_official_stations(args.source_dir)
+    sanying_stations, sanying_revision = load_sanying_stations(args.sanying_stations)
+    official_stations.extend(sanying_stations)
+    revision = max(revision, sanying_revision)
     table = build_table(package, official_stations, revision)
     write_table(args.output, table)
     print(

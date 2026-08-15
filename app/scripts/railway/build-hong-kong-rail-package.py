@@ -184,7 +184,17 @@ def compact_line(line_id, code_prefix, name, english, operator, color, rank, sta
 # platform lines are ~70 m, Taiwan's official stubs ~90-190 m). Emitting the
 # whole neighbour interval here once put snap candidates kilometres from the
 # station and collapsed every solved route to zero-length fragments.
-def build_derived_datasets(country: str, lines: list[dict], source_names: list[str]):
+def build_derived_datasets(
+    country: str,
+    lines: list[dict],
+    source_names: list[str],
+    write_readings: bool = True,
+):
+    # write_readings=False for Taiwan: build-taiwan-station-readings.py owns
+    # station-readings-tw.json and publishes a different schema (per-code
+    # official TDX readings with their own coverage stats), which
+    # test/taiwan-station-readings.test.js pins. Overwriting it with the Hong
+    # Kong shape would silently replace audited data with a weaker derivation.
     sections = []
     stations = []
     by_code = {}
@@ -279,7 +289,8 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
     }
     write_json(DATA_DIR / f"rail-sections-{country}.json", {"type": "FeatureCollection", "features": sections})
     write_json(DATA_DIR / f"stations-{country}.json", {"type": "FeatureCollection", "features": stations})
-    write_json(DATA_DIR / f"station-readings-{country}.json", readings)
+    if write_readings:
+        write_json(DATA_DIR / f"station-readings-{country}.json", readings)
 
 
 def sample_store(country: str, lines: list[dict], operator: str | None = None) -> dict:
