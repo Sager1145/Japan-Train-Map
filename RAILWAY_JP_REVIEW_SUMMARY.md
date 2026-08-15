@@ -137,10 +137,12 @@ CI（`.github/workflows/deploy-pages.yml`）在 `npm run build` 之后跑 lint �
 
 ```text
 jp   592/596 canonical 建成（649 条显示线路）
-     站锚点 10189 —— 10174 PASS / 15 WARNING / **0 ERROR**
-     structure 18146 行 · lanes 186 段
+     站锚点 10189 —— 10173 PASS / 16 WARNING / **0 ERROR**
+     structure 18146 行 · lanes 189 段
+     拓扑 633 PASS / 13 WARNING / 3 ERROR（3 项均为 §3.2 D 的未决冲突）
 五国 tw 38/1/0 · hk 27/0/0 · kr 82/0/0 · mo 3/0/0，站锚点四国全 PASS
-测试 248 pass / 11 fail（清空后基线 188/55）
+测试 **259 pass / 0 fail** · lint PASS · npm run build 成功
+     （清空后基线 188/55，清空前原始基线 243/0）
 ```
 
 ## 5. 下一步该做什么
