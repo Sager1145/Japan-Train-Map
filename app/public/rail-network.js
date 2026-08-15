@@ -1844,7 +1844,14 @@
         isLoop: Boolean(compactLine.isLoop),
         rank: compactLine.rank,
         color: compactLine.color,
-        logo: compactLine.logo ? `/rail/logos/${lineId}.png` : null,
+        // A split part is the SAME railway as its parent and has no badge file
+        // of its own — the art is named after the railway, not the stroke. So a
+        // trailing `-2`/`-3` resolves to the parent's badge; without this,
+        // 京王線-2 and its kind asked for a PNG that was never created and fell
+        // through to an operator mark those railways do not have.
+        logo: compactLine.logo
+          ? `/rail/logos/${lineId.replace(/-\d+$/, "")}.png`
+          : null,
         stationOrder: stationIds,
         km: totalKm,
         visibilityKm,

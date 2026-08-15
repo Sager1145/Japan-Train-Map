@@ -1784,6 +1784,9 @@ def build_display_line(
         "nameNorm": normalise_line_name(name),
         "operatorShort": operator_short.get(operator, operator),
     }
+    # Siblings carry the flag too: they are the same railway, and the renderer
+    # resolves a `-N` id to the parent's badge file, which is what the art is
+    # named after.
     if display.get("logo"):
         entry["logo"] = display["logo"]
     if row.get("line_code"):

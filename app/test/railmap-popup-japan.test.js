@@ -41,14 +41,21 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
     branding.verifiedPackageLineLogo({
       ...line,
       lineId: line.id,
-      logo: `/rail/logos/${line.id}.png`,
+      // Same rule the renderer uses: a split part's badge is its parent's,
+      // because the art is named after the railway rather than the stroke.
+      logo: `/rail/logos/${line.id.replace(/-\d+$/, "")}.png`,
     }),
   );
 
-  assert.equal(packageImages.length, 349);
-  assert.equal(linesWithBadges.length, 284);
+  // 383/318, up from 349/284 with the 2026-08-15 rebuild: the drawn set grew
+  // from 607 lines to 649 as each railway's separate alignments became their
+  // own strokes, and a split part carries its parent railway's badge. The
+  // difference below is unchanged at 65, and the loop still proves every badge
+  // it claims is a real PNG.
+  assert.equal(packageImages.length, 383);
+  assert.equal(linesWithBadges.length, 318);
   for (const line of linesWithBadges) {
-    const existingLogo = `/rail/logos/${line.id}.png`;
+    const existingLogo = `/rail/logos/${line.id.replace(/-\d+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
     assert.equal(fs.existsSync(existingLogoPath), true, `${line.id} badge exists`);
     assert.equal(
@@ -113,7 +120,9 @@ test("rejected or missing package art may use a verified official line symbol", 
 test("every non-line image falls back to the exact operator, never a parent or predecessor", () => {
   const { branding } = loadPopup();
   const missingBadgeLines = JAPAN_NETWORK.lines.filter((line) => {
-    const packageLogo = line.logo ? `/rail/logos/${line.id}.png` : null;
+    const packageLogo = line.logo
+      ? `/rail/logos/${line.id.replace(/-\d+$/, "")}.png`
+      : null;
     return !branding.verifiedPackageLineLogo({
       ...line,
       lineId: line.id,
@@ -134,12 +143,14 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 323/315, seven more than before the interleaved branches were split out:
-  // each `-2` entry is a second row for its line and, like every split, ships
-  // no package badge of its own.
-  assert.equal(missingBadgeLines.length, 323);
-  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 125);
-  assert.equal(coveredLines.length, 315);
+  // 331/324, moved by the 2026-08-15 rebuild's larger drawn set. The rule is
+  // unchanged and the loop below is what enforces it: every line without a
+  // package badge must resolve to its OWN operator's mark. That is why a split
+  // part now inherits its parent railway's badge — 京王線-2 and its kind
+  // otherwise fell through to an operator mark those railways do not have.
+  assert.equal(missingBadgeLines.length, 331);
+  assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
+  assert.equal(coveredLines.length, 324);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(
