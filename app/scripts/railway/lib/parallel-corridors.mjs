@@ -203,6 +203,153 @@ function corridorHeadingSign(part, run, cumulative) {
  * corridor always stays symmetric about the alignment it shares and the
  * station markers on it stay in the middle.
  */
+
+// ---------------------------------------------------------------------------
+// Global lane order
+//
+// The order used to be "sort this sample's members by line id". That is stable
+// for a FIXED member set, but the member set is recomputed independently for
+// every part from that part's own proximity hits, so one end of a corridor can
+// see {A,B} while the other sees {A,B,C} and the two ends then derive their
+// offsets from different sets — the pair comes out swapped, or on the same
+// side, between them. Alphabetical order also has no relation to which railway
+// is physically on the left, so a corridor could be drawn mirrored.
+//
+// So the order is decided ONCE for the whole corridor graph: every proximity
+// hit votes on which side its partner lies (weighted by the track it covers),
+// votes reduce to one side per pair, pairs group into connected components,
+// and each component is totally ordered by relaxation — which degrades
+// gracefully when the constraints contain a cycle instead of failing. Ties
+// break on line id, so the result is deterministic.
+// ---------------------------------------------------------------------------
+
+function nearestPointOn(coordinates, point) {
+  let best = null;
+  let bestD = Infinity;
+  const cosLat = Math.cos((point[1] * Math.PI) / 180);
+  for (let i = 0; i < coordinates.length - 1; i += 1) {
+    const [ax, ay] = coordinates[i];
+    const [bx, by] = coordinates[i + 1];
+    const dx = (bx - ax) * cosLat;
+    const dy = by - ay;
+    const l2 = dx * dx + dy * dy;
+    let t = 0;
+    if (l2 > 0) {
+      t = (((point[0] - ax) * cosLat) * dx + (point[1] - ay) * dy) / l2;
+      t = Math.max(0, Math.min(1, t));
+    }
+    const qx = ax + (bx - ax) * t;
+    const qy = ay + (by - ay) * t;
+    const d = ((qx - point[0]) * cosLat) ** 2 + (qy - point[1]) ** 2;
+    if (d < bestD) { bestD = d; best = [qx, qy]; }
+  }
+  return best;
+}
+
+function bearingAt(coordinates, point) {
+  let bestI = 0;
+  let bestD = Infinity;
+  const cosLat = Math.cos((point[1] * Math.PI) / 180);
+  for (let i = 0; i < coordinates.length; i += 1) {
+    const d = ((coordinates[i][0] - point[0]) * cosLat) ** 2
+      + (coordinates[i][1] - point[1]) ** 2;
+    if (d < bestD) { bestD = d; bestI = i; }
+  }
+  const a = coordinates[Math.max(0, bestI - 1)];
+  const b = coordinates[Math.min(coordinates.length - 1, bestI + 1)];
+  return Math.atan2((b[1] - a[1]) * 110540.0, (b[0] - a[0]) * 111320.0 * cosLat);
+}
+
+export function buildGlobalLaneOrder(parts, index, near, step) {
+  const votes = new Map();
+  const weight = new Map();
+  const adjacency = new Map();
+  const link = (a, b) => {
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    if (!adjacency.has(b)) adjacency.set(b, new Set());
+    adjacency.get(a).add(b);
+    adjacency.get(b).add(a);
+  };
+
+  for (const part of parts) {
+    const samples = resample(part.coordinates, step);
+    if (samples.length < 2) continue;
+    for (const sample of samples) {
+      const found = index.within(sample.point, near, (meta) =>
+        corridorRenderMode(part, meta) === CorridorRenderMode.INDEPENDENT_PARALLEL,
+      );
+      if (!found.size) continue;
+      const bearing = bearingAt(part.coordinates, sample.point);
+      const vx = Math.cos(bearing);
+      const vy = Math.sin(bearing);
+      const cosLat = Math.cos((sample.point[1] * Math.PI) / 180);
+      const seenHere = new Set();
+      for (const [meta] of found) {
+        if (meta.lineId === part.lineId || seenHere.has(meta.lineId)) continue;
+        seenHere.add(meta.lineId);
+        link(part.lineId, meta.lineId);
+        const q = nearestPointOn(meta.coordinates, sample.point);
+        if (!q) continue;
+        const dx = (q[0] - sample.point[0]) * 111320.0 * cosLat;
+        const dy = (q[1] - sample.point[1]) * 110540.0;
+        const cross = vx * dy - vy * dx;
+        if (!cross) continue;
+        const side = cross > 0 ? 1 : -1;
+        const a = part.lineId < meta.lineId ? part.lineId : meta.lineId;
+        const b = part.lineId < meta.lineId ? meta.lineId : part.lineId;
+        const signed = part.lineId < meta.lineId ? side : -side;
+        const key = a + " " + b;
+        votes.set(key, (votes.get(key) || 0) + signed * step);
+        weight.set(key, (weight.get(key) || 0) + step);
+      }
+    }
+  }
+
+  const sides = new Map();
+  for (const [key, v] of votes) sides.set(key, v >= 0 ? 1 : -1);
+
+  const seen = new Set();
+  const order = new Map();
+  for (const start of adjacency.keys()) {
+    if (seen.has(start)) continue;
+    const comp = [];
+    const stack = [start];
+    seen.add(start);
+    while (stack.length) {
+      const id = stack.pop();
+      comp.push(id);
+      for (const nb of adjacency.get(id) || []) {
+        if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
+      }
+    }
+    comp.sort();
+    const pos = new Map(comp.map((id, i) => [id, i]));
+    for (let iter = 0; iter < 64; iter += 1) {
+      const delta = new Map();
+      let moved = 0;
+      for (const [key, side] of sides) {
+        const [a, b] = key.split(" ");
+        if (!pos.has(a) || !pos.has(b)) continue;
+        const want = side > 0 ? -1 : 1;
+        const cur = pos.get(b) - pos.get(a);
+        if (Math.sign(cur) === Math.sign(want) && Math.abs(cur) >= 0.5) continue;
+        const w = Math.min(1, (weight.get(key) || 0) / 5000);
+        const push = (want * 0.5 - cur) * 0.5 * (0.25 + 0.75 * w);
+        delta.set(b, (delta.get(b) || 0) + push);
+        delta.set(a, (delta.get(a) || 0) - push);
+        moved += Math.abs(push);
+      }
+      if (!delta.size || moved < 1e-4) break;
+      for (const [id, dv] of delta) pos.set(id, pos.get(id) + dv);
+    }
+    comp
+      .slice()
+      .sort((x, y) => pos.get(x) - pos.get(y) || (x < y ? -1 : 1))
+      .forEach((id, i) => order.set(id, i));
+  }
+  return order;
+}
+
 export function detectIndependentOverlappingCorridors(parts, options = {}) {
   const near = options.nearMeters ?? CORRIDOR_NEAR_METERS;
   const step = options.sampleMeters ?? CORRIDOR_SAMPLE_METERS;
@@ -212,6 +359,9 @@ export function detectIndependentOverlappingCorridors(parts, options = {}) {
 
   const index = createEdgeIndex(0.005);
   for (const part of parts) index.add(part.coordinates, part);
+
+  // One order for the whole corridor graph, decided before any part is laned.
+  const globalOrder = buildGlobalLaneOrder(parts, index, near, step);
 
   const rows = [];
   const corridors = [];
@@ -234,13 +384,21 @@ export function detectIndependentOverlappingCorridors(parts, options = {}) {
       return partners;
     });
 
-    // Lane per sample. Sorting the members by line id is what makes the order
-    // stable: two railways that meet in two different places sit the same way
-    // round in both, and a third joining slots BETWEEN them rather than
-    // shuffling them past each other.
+    // Lane per sample, taken as the SUBSEQUENCE of the one global order
+    // computed above. Because every part reads the same order, two railways
+    // sit the same way round everywhere they meet, a third joining slots into
+    // the existing order instead of shuffling the first two past each other,
+    // and the side each one takes matches the ground.
     const laneAt = partnersAt.map((partners) => {
       if (!partners) return { lane: 0, members: null, partners: null };
-      const members = [...new Set([part.lineId, ...partners.keys()])].sort();
+      const members = [...new Set([part.lineId, ...partners.keys()])].sort(
+        (a, b) => {
+          const ra = globalOrder.has(a) ? globalOrder.get(a) : Number.MAX_SAFE_INTEGER;
+          const rb = globalOrder.has(b) ? globalOrder.get(b) : Number.MAX_SAFE_INTEGER;
+          if (ra !== rb) return ra - rb;
+          return a < b ? -1 : a > b ? 1 : 0;
+        },
+      );
       return {
         lane: members.indexOf(part.lineId) - (members.length - 1) / 2,
         members,

@@ -10,12 +10,12 @@
 // longitude/latitude) so the characterization remains visually exact while
 // being deterministic on both local machines and GitHub's Linux runners.
 
-// 2025.3.4 — scripts/migrations/restore-n02-loop-line-geometry.py gave
-// ゆりかもめ, 上越線 and 中村線 back the loops the package's shortest-path cut
-// had been skipping. Segment/station/line/group counts are unchanged (890 /
-// 10161 / 607 / 9046); only three intervals grew vertices.
+// 2025.4.2 — OSM structure/colour enrichment is combined with the established
+// branch, doubling-back and loop repairs, and global physical-side lane order.
+// The latter merges two redundant lane-value features (888 / 10161 / 607 /
+// 9046) while retaining every railway and station.
 export const EXPECTED_RENDER_HASH =
-  "880596d8b981c24c8defc5a6b2ba7d853148c696c27623d0e844fa5ffb10b276";
+  "41708ac9964dbfe2973f6bf5d10c357c0a2edcc5d50aa9bf77d5bee6d10ecce6";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

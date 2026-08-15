@@ -25,6 +25,10 @@ const SKIPPED_DIRECTORIES = new Set([
   "sample-data-kr",
   "new-year-grand-loop-data",
   "tokyo-limited-express-loop-data",
+  // Staged-rebuild scratch: whole packages a country builder just wrote, from
+  // which promote-lines.mjs takes one session's lines. Generated output, and
+  // re-parsing a 9 MB package on every lint buys nothing.
+  "staging",
 ]);
 const checked = { javascript: 0, json: 0, references: 0 };
 

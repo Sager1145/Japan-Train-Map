@@ -678,10 +678,18 @@
     return intervals;
   }
 
+  // Vertices the grooming may not trim past or smooth away: every platform
+  // anchor, plus any end of track the line deliberately runs into and reverses
+  // at (`reversalTails`, e.g. the 阿里山 zigzag). A reversal tail and a
+  // station-throat artefact are the same shape — out and straight back — so
+  // the stroke-end fold guard cannot tell them apart by geometry and would eat
+  // the real one. Only the package knows which is which, so it says so.
   function stationAnchorKeys(compactLine) {
     const keys = new Set();
     for (const row of compactLine.stations)
       keys.add(coordinateKey([row[2], row[3]]));
+    for (const point of compactLine.reversalTails || [])
+      keys.add(coordinateKey(point));
     return keys;
   }
 
@@ -887,9 +895,50 @@
         ),
       )
       .filter((coordinates) => coordinates.length >= 2);
-    return groomed.length
+    const chain = groomed.length
       ? restoreLostStationAnchors(groomed, stationPoints)
       : [[stationPoints[0], stationPoints[0]]];
+    return chain.concat(extraSegmentParts(compactLine, stationPoints, limits));
+  }
+
+  // Track a line runs on that its station ORDER cannot carry.
+  //
+  // compact-v1 stores a line as distinct stations in order, and segment i runs
+  // station i to station i+1. A line whose two directions are not mirror images
+  // — Light Rail 505 takes different streets each way, 751 serves 安定 one way
+  // only — has real edges that no such order puts next to each other. Dropping
+  // them silently is `network_union_missing_branch_edge`: the drawn network
+  // would be missing track the operator runs.
+  //
+  // Each entry names its two stations by index and MAY carry its own geometry.
+  // One without geometry is recorded, not drawn: where the archived alignment
+  // holds a single centre-line for both directions, cutting a stroke from it
+  // would lay a second line exactly over the first and assert shared track that
+  // the survey says is not shared. The edge is known, the geometry is a
+  // documented gap, and supplying it later needs no change here.
+  //
+  // Each is its own part, so it joins the chain visually at the station anchors
+  // it names while nothing can slice or smooth through the junction — the same
+  // contract every branch stroke already has.
+  function extraSegmentParts(compactLine, stationPoints, limits) {
+    const rows = compactLine.extraSegments;
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const parts = [];
+    for (const row of rows) {
+      if (!row || !Array.isArray(row.geometry) || row.geometry.length < 2) continue;
+      const from = stationPoints[row.from];
+      const to = stationPoints[row.to];
+      if (!from || !to) continue;
+      const coordinates = row.geometry.map((point) => [point[0], point[1]]);
+      // Both ends onto the authoritative station anchors, exactly as
+      // decodeIntervals does for the chain, so the two meet to the vertex.
+      coordinates[0] = [from[0], from[1]];
+      coordinates[coordinates.length - 1] = [to[0], to[1]];
+      const anchors = new Set([coordinateKey(from), coordinateKey(to)]);
+      const groomed = smoothMicroKinks(coordinates, limits, anchors);
+      if (groomed.length >= 2) parts.push(groomed);
+    }
+    return parts;
   }
 
   function medianSpacingMeters(compactLine) {
