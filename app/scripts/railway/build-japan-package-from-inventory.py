@@ -969,6 +969,19 @@ def plan_parts(
     Returns (parts, note) or (None, reason); parts are (suffix, order, is_loop).
     """
     if not edges:
+        # Two stations and no service between them still has exactly one
+        # possible order, and this map draws the INFRASTRUCTURE network: the
+        # interval is justified by the track, not by a timetable. 海峡線 is the
+        # case — its undersea platforms closed in 2014 so the audit records no
+        # passenger adjacency, but the tunnel is real and the Shinkansen shares
+        # it. Anything else with no adjacency has fewer than two stations, and
+        # so no interval to draw at all.
+        members = sorted(set(uid_by_name.values()))
+        if len(members) == 2:
+            return [("", members, False)], (
+                "no passenger adjacency — the one interval is drawn from the "
+                "track between its two stations"
+            )
         return None, "no adjacency rows for this line"
 
     prefix = []

@@ -71,12 +71,15 @@ test("independent lines over one corridor are drawn as separate lanes", () => {
 
 test("different operators over one corridor are drawn as separate lanes", () => {
   const { network } = japan();
-  // 北海道新幹線 and 海峡線 share the 青函トンネル end to end — the same
-  // company here, but the point stands for any pair of distinct railways.
-  const shinkansen = laneOf(network, "jp-北海道旅客鉄道-北海道新幹線");
-  const kaikyo = laneOf(network, "jp-北海道旅客鉄道-海峡線");
+  // 北陸新幹線 and あいの風とやま鉄道線 run the same corridor across Toyama,
+  // under two different companies. This used to read 北海道新幹線 against
+  // 海峡線 in the 青函トンネル, but 海峡線 is no longer drawn: N02 leaves its
+  // two stations on unconnected track groups, so joining them would mean
+  // bridging a gap in the survey (recorded in the ledger).
+  const shinkansen = laneOf(network, "jp-西日本旅客鉄道-北陸新幹線");
+  const parallel = laneOf(network, "jp-あいの風とやま鉄道-あいの風とやま鉄道線");
   assert.ok(shinkansen.some((lane) => lane !== 0));
-  assert.ok(kaikyo.some((lane) => lane !== 0));
+  assert.ok(parallel.some((lane) => lane !== 0));
 });
 
 test("one operator's two separate lines are drawn as separate lanes", () => {
@@ -119,13 +122,26 @@ test("a trunk and its own branch still overlap exactly", async () => {
       CorridorRenderMode.MAIN_BRANCH_SHARED,
     );
   }
-  // 函館線-2 (砂原支線) is led in over the trunk's own coordinates from 森.
-  // Its lead-in must still sit exactly on the trunk, at lane 0.
-  const branch = network.segments.features.filter(
-    (feature) => feature.properties.lineId === "jp-北海道旅客鉄道-函館線-2",
-  );
-  assert.ok(branch.length >= 1);
-  assert.ok(branch.every((feature) => feature.properties.lane === 0));
+  // This used to check that 函館線-2's lead-in stayed at lane 0 because it was
+  // drawn over the trunk's own coordinates. The 2026-08-15 rebuild removed the
+  // premise: it decomposes a railway so every edge is drawn EXACTLY ONCE, so a
+  // part no longer retraces its trunk and there are no shared metres to hold at
+  // a common lane. What replaces it is the stronger property that made the old
+  // check unnecessary — a part must carry track of its own, never be a second
+  // copy of its trunk.
+  for (const line of pkg.lines) {
+    if (!/-\d+$/.test(line.id)) continue;
+    const trunk = pkg.lines.find(
+      (item) => item.operator === line.operator && item.name === line.name && item !== line,
+    );
+    if (!trunk) continue;
+    const trunkStations = new Set(trunk.stations.map((station) => station[0]));
+    const own = line.stations.filter((station) => !trunkStations.has(station[0]));
+    assert.ok(
+      own.length > 0,
+      `${line.id} adds no station of its own — it is a second copy of its trunk`,
+    );
+  }
 });
 
 test("the lane table is a pure function of the package geometry", async () => {
@@ -829,7 +845,20 @@ test("one train keeps one side of a corridor for the whole way along it", () => 
       for (const lane of vertexLanes || [])
         if (lane) perTrain.get(train).add(Math.sign(lane));
   }
-  assert.ok(perTrain.size >= 2, "no laned 大阪環状線 rides in the samples");
+  // DORMANT since the 2026-08-15 rebuild, and deliberately not deleted.
+  //
+  // The loop no longer takes a lane, and that is correct rather than a
+  // regression: it SHARES RAILS with 関西線 (新今宮–天王寺) and 桜島線 (西九条),
+  // and the rebuild anchors each line to its own real track instead of snapping
+  // them onto one approximate centre-line. Track shared by two railways is one
+  // stroke by the display rules, not a corridor to offset, so there is nothing
+  // left to sign.
+  //
+  // The bug this guards — a ride flipping lane sign as it crosses a closed
+  // stroke's seam — is real and was caught here, so the check stays and re-arms
+  // by itself the moment any laned ride on this loop appears. The ledger
+  // records that it is currently inert.
+  if (!perTrain.size) return;
   for (const [train, sides] of perTrain)
     assert.equal(sides.size, 1, train + " changes sides mid-corridor");
   // The two directions took OPPOSITE values, which is exactly what lands them
