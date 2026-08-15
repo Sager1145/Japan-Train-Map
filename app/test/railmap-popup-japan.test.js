@@ -143,14 +143,14 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 331/324, moved by the 2026-08-15 rebuild's larger drawn set. The rule is
+  // 332/325, moved by the 2026-08-15 rebuild's larger drawn set. The rule is
   // unchanged and the loop below is what enforces it: every line without a
   // package badge must resolve to its OWN operator's mark. That is why a split
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
-  assert.equal(missingBadgeLines.length, 334);
+  assert.equal(missingBadgeLines.length, 332);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 327);
+  assert.equal(coveredLines.length, 325);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

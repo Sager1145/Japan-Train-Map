@@ -158,6 +158,12 @@ ALTERNATE_MIN_RATIO = 0.25
 ALTERNATE_MAX_RATIO = 4.0
 ALTERNATE_TOLERANCE = 0.25
 
+# How far apart two alignments must get before they are a directional split
+# rather than double track. 上越線's bores are kilometres apart; 中央本線's 笹子
+# and 新笹子 tunnels are 25 m apart and are ordinary double track bored twice;
+# two tram stops across a street are a few metres. 150 m clears all three.
+SEPARATED_MIN_M = 150.0
+
 ROMA_SOURCE_OSM = 1
 
 RANK_BY_KIND = {
@@ -1433,32 +1439,58 @@ def build_lines(
             # becomes a display line rather than an extra segment welded to the
             # other bore's dot, which would fold the stroke back to reach a
             # platform it does not serve.
-            for position, alternate in enumerate(alternates, start=1):
+            position = 0
+            for candidate in alternates:
+                # Geometry can show that a station's two platforms sit far
+                # apart; it cannot show that the railway runs its two
+                # DIRECTIONS over them. Both candidates rejected here look
+                # exactly like 上越線 to a distance test and are neither:
+                # 近鉄 大阪上本町's second platform is the underground 難波線
+                # level 180 m under the 大阪線, and 新橋's is the 汐留 freight
+                # curve, which draws 8.9 km to cross a 1.2 km gap. So a span is
+                # only drawn once a source says it really is a directional
+                # split — and each rejected one is reported, not dropped.
+                sourced = pair_directions.get(
+                    (
+                        key,
+                        station_by_uid[candidate["uids"][0]]["station_name"],
+                        station_by_uid[candidate["uids"][-1]]["station_name"],
+                    )
+                )
+                if sourced is None:
+                    notes.append(
+                        (
+                            f"{key}{suffix}",
+                            "separate platforms "
+                            f"{station_by_uid[candidate['uids'][0]]['station_name']}"
+                            f"–{station_by_uid[candidate['uids'][-1]]['station_name']} "
+                            f"({candidate['length_m'] / 1000:.2f} km, up to "
+                            f"{candidate['separation_m']:.0f} m apart) are not drawn as a "
+                            "paired alignment: no source says the two directions split here",
+                        )
+                    )
+                    continue
+                position += 1
+                alternate = candidate
                 paired = dict(entry)
                 paired["id"] = f"{entry['id']}-p{position}"
                 paired["stations"] = [
                     [
-                        station_by_uid[alternate["from_uid"]]["physical_station_group"],
-                        station_by_uid[alternate["from_uid"]]["station_name"],
-                        alternate["coords"][0][0],
-                        alternate["coords"][0][1],
+                        station_by_uid[uid]["physical_station_group"],
+                        station_by_uid[uid]["station_name"],
+                        point[0],
+                        point[1],
                         english.get(
-                            station_by_uid[alternate["from_uid"]]["physical_station_group"], ""
+                            station_by_uid[uid]["physical_station_group"], ""
                         ),
                         ROMA_SOURCE_OSM,
-                    ],
-                    [
-                        station_by_uid[alternate["to_uid"]]["physical_station_group"],
-                        station_by_uid[alternate["to_uid"]]["station_name"],
-                        alternate["coords"][-1][0],
-                        alternate["coords"][-1][1],
-                        english.get(
-                            station_by_uid[alternate["to_uid"]]["physical_station_group"], ""
-                        ),
-                        ROMA_SOURCE_OSM,
-                    ],
+                    ]
+                    for uid, point in zip(alternate["uids"], alternate["points"])
                 ]
-                paired["segments"] = [[alternate["km"], 0, alternate["coords"]]]
+                # One interval per station pair, same as any other stroke.
+                paired["segments"] = split_alternate_segments(
+                    alternate, geometry_lib
+                )
                 paired.pop("structure", None)
                 paired.pop("isLoop", None)
                 paired["alignmentOf"] = entry["id"]
@@ -1466,27 +1498,18 @@ def build_lines(
                 # Which bore carries 上り and which 下り is a fact about the
                 # railway that N02 does not record, so it comes from the
                 # evidence file or stays unassigned — never guessed here.
-                sourced = pair_directions.get(
-                    (
-                        key,
-                        station_by_uid[alternate["from_uid"]]["station_name"],
-                        station_by_uid[alternate["to_uid"]]["station_name"],
-                    )
+                source_url = sourced.get("source") or sourced["sources"][0]
+                paired["alignmentDirection"] = sourced["paired_direction"]
+                paired["alignmentSource"] = source_url
+                entry.setdefault("alignmentPairs", []).append(
+                    {
+                        "with": paired["id"],
+                        "from": station_by_uid[alternate["uids"][0]]["station_name"],
+                        "to": station_by_uid[alternate["uids"][-1]]["station_name"],
+                        "direction": sourced["primary_direction"],
+                        "source": source_url,
+                    }
                 )
-                paired["alignmentDirection"] = (
-                    sourced["paired_direction"] if sourced else "unassigned"
-                )
-                if sourced:
-                    paired["alignmentSource"] = sourced["source"]
-                    entry.setdefault("alignmentPairs", []).append(
-                        {
-                            "with": paired["id"],
-                            "from": station_by_uid[alternate["from_uid"]]["station_name"],
-                            "to": station_by_uid[alternate["to_uid"]]["station_name"],
-                            "direction": sourced["primary_direction"],
-                            "source": sourced["source"],
-                        }
-                    )
                 built_parts.append(paired)
 
         if failed_trunk:
@@ -1724,44 +1747,157 @@ def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
     }
 
 
-def second_platform_path(
-    graph, geometry_lib, platforms_by_group, from_group, to_group, first_start, first_end
-):
-    """Track between the SECOND platforms of two stations, when both have one.
+def separated_direction_runs(order, platforms_by_group, station_by_uid):
+    """Spans where a railway's two directions run on their own track.
 
-    Returns (coords, length_m) or None. None whenever either station has a
-    single platform, either second platform anchors onto the same section the
-    first one did (so it is the same track, filed twice), or no route joins
-    them.
+    N02 marks this by filing a SECOND platform feature at a station: the two
+    directions stop there in different places. A run of such stations is the
+    separated span, and it ENDS at the next ordinary station, which is where the
+    two alignments rejoin — that station has one platform because both
+    directions use it.
+
+    上越線 is the shape: 水上 has one platform, 湯檜曽 and 土合 have two each,
+    土樽 has one. The separation therefore runs 湯檜曽 → 土合 → 土樽, which is
+    exactly what the 清水トンネル article states — the alignments part at 湯檜曽
+    and meet again at 土樽. Detecting only the middle hop left the up line as a
+    4 km stub that stopped inside the mountain instead of rejoining the railway.
+
+    Returns a list of index ranges into `order`.
     """
-    from_all = platforms_by_group.get(from_group) or []
-    to_all = platforms_by_group.get(to_group) or []
-    if len(from_all) < 2 or len(to_all) < 2:
-        return None
+    def platforms(uid):
+        return platforms_by_group.get(
+            station_by_uid[uid]["physical_station_group"]
+        ) or []
 
-    def other_anchor(platforms, taken):
+    runs = []
+    index = 0
+    while index < len(order):
+        if len(platforms(order[index])) < 2:
+            index += 1
+            continue
+        first = index
+        while index < len(order) and len(platforms(order[index])) >= 2:
+            index += 1
+        # ...and on to the rejoin, when the order has one.
+        last = min(index, len(order) - 1)
+        if last > first:
+            runs.append((first, last))
+    return runs
+
+
+def max_separation_m(alternate, primary):
+    """How far the two alignments get from each other, at their widest.
+
+    This is what separates a real directional split from ordinary double track.
+    上越線's bores are kilometres apart through the mountain; 中央本線's 笹子 and
+    新笹子 tunnels are 25 m apart, which is side-by-side double track that
+    happens to be bored twice; and two tram stops facing each other across a
+    street are a few metres apart. Only the first is a separate alignment.
+    """
+    if not primary:
+        return 0.0
+    widest = 0.0
+    for point in alternate:
+        scale = 111_320 * math.cos(math.radians(point[1]))
+        best = math.inf
+        for other in primary:
+            dx = (other[0] - point[0]) * scale
+            dy = (other[1] - point[1]) * 111_320
+            best = min(best, math.hypot(dx, dy))
+            if best <= widest:
+                break
+        if best is not math.inf:
+            widest = max(widest, best)
+    return widest
+
+
+def separated_alignment(
+    graph,
+    geometry_lib,
+    platforms_by_group,
+    order,
+    anchors,
+    station_by_uid,
+    span,
+    primary_coords=(),
+):
+    """The other direction's track across one separated span, end to end.
+
+    Every station inside the span is anchored on its SECOND platform, because
+    that is the one on this alignment; the station that closes the span keeps
+    its shared platform, so the stroke rejoins the railway there instead of
+    stopping in mid-air.
+    """
+    first, last = span
+    picked = []
+    for position in range(first, last + 1):
+        uid = order[position]
+        group = station_by_uid[uid]["physical_station_group"]
+        options = platforms_by_group.get(group) or []
+        if position == last or len(options) < 2:
+            picked.append((uid, anchors[uid]))
+            continue
+        taken = anchors[uid]
         best = None
-        for platform in platforms:
-            anchor = graph.project(platform_midpoint(platform, geometry_lib))
-            if anchor is None or anchor["section"] == taken["section"]:
+        for platform in options:
+            candidate = graph.project(platform_midpoint(platform, geometry_lib))
+            if candidate is None or candidate["section"] == taken["section"]:
                 continue
-            if best is None or anchor["distance_m"] < best["distance_m"]:
-                best = anchor
-        return best
+            if best is None or candidate["distance_m"] < best["distance_m"]:
+                best = candidate
+        if best is None:
+            return None
+        picked.append((uid, best))
 
-    start = other_anchor(from_all, first_start)
-    end = other_anchor(to_all, first_end)
-    if start is None or end is None:
-        return None
-    cut = graph.path_between(start, end)
-    if cut is None:
-        return None
-    coords = dedupe_points(cut[0])
+    coords = []
+    total = 0.0
+    for (start_uid, start_anchor), (end_uid, end_anchor) in zip(picked, picked[1:]):
+        cut = graph.path_between(start_anchor, end_anchor)
+        if cut is None:
+            return None
+        piece = dedupe_points(cut[0])
+        if len(piece) < 2:
+            return None
+        piece[0] = anchor_point(start_anchor)
+        piece[-1] = anchor_point(end_anchor)
+        coords = join(coords, piece) if coords else piece
+        total += cut[1]
     if len(coords) < 2:
         return None
-    coords[0] = anchor_point(start)
-    coords[-1] = anchor_point(end)
-    return coords, cut[1]
+    return {
+        "separation_m": max_separation_m(coords, primary_coords),
+        "uids": [uid for uid, _anchor in picked],
+        "points": [anchor_point(anchor) for _uid, anchor in picked],
+        "coords": coords,
+        "km": round(geometry_lib.polyline_km(coords), 3),
+        "length_m": total,
+    }
+
+
+def split_alternate_segments(alternate, geometry_lib):
+    """Cut a separated alignment into one interval per station pair."""
+    coords = alternate["coords"]
+    points = alternate["points"]
+    segments = []
+    cursor = 0
+    for index in range(1, len(points)):
+        target = points[index]
+        at = cursor
+        for position in range(cursor + 1, len(coords)):
+            if coords[position] == target:
+                at = position
+                break
+        else:
+            at = len(coords) - 1
+        piece = coords[cursor : at + 1]
+        if len(piece) < 2:
+            piece = [coords[cursor], target]
+        kilometres = round(geometry_lib.polyline_km(piece), 3)
+        segments.append(
+            [kilometres, 0, piece] if not segments else [kilometres, 1, piece[1:]]
+        )
+        cursor = at
+    return segments
 
 
 def anchor_point(anchor):
@@ -1907,38 +2043,6 @@ def build_display_line(
                         round(audited, 3),
                     )
                 )
-        # A SECOND alignment between the same two stations, if the line has one.
-        #
-        # Some double-track railways send the two directions through different
-        # tunnels rather than side by side, and N02 says so plainly: it files
-        # TWO platform features for such a station, one on each bore. 湯檜曽 and
-        # 土合 each have two, because 上越線's down line takes the 新清水
-        # トンネル loop while the up line keeps the older one. Drawing only the
-        # alignment the first platform sits on loses the other — 34 km of real
-        # track on this line alone.
-        #
-        # So the second alignment is cut between the OTHER platforms, which is
-        # the only way to reach it: its track never touches the first one's
-        # between these two stations.
-        second = second_platform_path(
-            graph,
-            geometry_lib,
-            platforms_by_group or {},
-            station_by_uid[start_uid]["physical_station_group"],
-            station_by_uid[end_uid]["physical_station_group"],
-            anchors[start_uid],
-            anchors[end_uid],
-        )
-        if second is not None:
-            other, other_m = second
-            alternates.append(
-                {
-                    "from_uid": start_uid,
-                    "to_uid": end_uid,
-                    "km": round(geometry_lib.polyline_km(other), 3),
-                    "coords": other,
-                }
-            )
         structure.extend(
             structure_on_cut(pieces, measure, structure_by_section or {})
         )
@@ -2004,6 +2108,20 @@ def build_display_line(
         entry["isLoop"] = 1
     if row.get("network_status") and row["network_status"] != "active":
         entry["serviceStatus"] = row["network_status"]
+    if not is_loop:
+        for span in separated_direction_runs(order, platforms_by_group or {}, station_by_uid):
+            found = separated_alignment(
+                graph,
+                geometry_lib,
+                platforms_by_group or {},
+                order,
+                anchors,
+                station_by_uid,
+                span,
+                primary_coords=[point for segment in segments for point in segment[2]],
+            )
+            if found is not None and found["separation_m"] >= SEPARATED_MIN_M:
+                alternates.append(found)
 
     if structure:
         total_m = sum(segment[0] for segment in segments) * 1000

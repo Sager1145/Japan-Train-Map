@@ -326,9 +326,9 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
   assert.deepEqual(reachedByCountry, [
     // Every package platform is now an exact vertex of its own drawn railway;
     // branch splitting restores the tiny overlap anchors it used to discard.
-    // 10189 after the 2026-08-15 rebuild: the drawn set grew from 607 lines to
-    // 649, and a junction shared by two strokes is a platform row on each.
-    ["jp", 10195],
+    // 10192 after the 2026-08-15 rebuild: the drawn set grew from 607 lines to
+    // 650, and a junction shared by two strokes is a platform row on each.
+    ["jp", 10192],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

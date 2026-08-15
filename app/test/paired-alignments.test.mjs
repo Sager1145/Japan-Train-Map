@@ -1,12 +1,18 @@
 // Some double-track railways send their two directions through different
 // tunnels rather than side by side. 上越線 is the case: the down line takes the
-// 新清水トンネル loop while the up line keeps the older bore, and 湯檜曽 and 土合
+// 新清水トンネル loop while the up line keeps 清水トンネル, and 湯檜曽 and 土合
 // each have two platforms in different places as a result.
 //
-// N02 states THAT this is so — it files a second platform feature at each end
-// of such a section — but carries no direction attribute, so which bore is
-// which has to come from a source. These tests pin both halves: the geometry is
-// derived, the 上り/下り label is sourced, and neither is invented.
+// Two things have to be true at once, and these tests pin them separately.
+// The geometry is DERIVED: N02 files a second platform feature at each station
+// inside such a span, so the run of stations that have one says where the
+// alignments part and where they meet again. The 上り/下り label is SOURCED:
+// N02 carries no direction attribute, so it comes from the evidence file.
+//
+// The gate matters as much as the geometry. Two platforms far apart is not by
+// itself a directional split — 近鉄 大阪上本町's second platform is the
+// underground 難波線 level — so a span is drawn only when a source says the
+// two directions really do separate there.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -30,24 +36,36 @@ test("a paired alignment is its own stroke, not a second copy of its partner", (
     assert.ok(partner, `${line.id} names a partner that is not in the package`);
     assert.equal(line.operator, partner.operator);
     assert.equal(line.name, partner.name);
-    // Two stations, one interval: it is the track between one pair of platforms.
-    assert.equal(line.stations.length, 2, `${line.id} should join two platforms`);
-    assert.equal(line.segments.length, 1);
+    // It spans the whole run of separated stations, one interval per pair.
+    assert.ok(line.stations.length >= 2, `${line.id} should join two platforms`);
+    assert.equal(line.segments.length, line.stations.length - 1);
 
-    // Its platforms are NOT the partner's. That is the whole point — if they
-    // were, this would be a duplicate stroke rather than the other direction's
-    // track, and welding it to the partner's dots would fold it back on itself.
+    // Every station it passes through stands on its OWN platform, not the
+    // partner's. That is the whole point — reusing them would make this a
+    // duplicate stroke rather than the other direction's track, and welding it
+    // to the partner's dots would fold it back to reach a platform it does not
+    // serve. The LAST station is the deliberate exception, below.
     const partnerPoints = new Set(
       partner.stations.map((station) => `${station[2]},${station[3]}`),
     );
-    for (const station of line.stations)
+    for (const station of line.stations.slice(0, -1))
       assert.ok(
         !partnerPoints.has(`${station[2]},${station[3]}`),
         `${line.id} reuses ${station[1]}'s platform from its partner`,
       );
 
+    // ...and the closing station keeps the shared platform, because that is
+    // where the two alignments meet again. Without it the stroke would stop in
+    // mid-air at the mouth of a tunnel instead of rejoining the railway.
+    const last = line.stations.at(-1);
+    assert.ok(
+      partnerPoints.has(`${last[2]},${last[3]}`),
+      `${line.id} ends at ${last[1]} without rejoining its partner`,
+    );
+
     // And it draws real track, not a hairline.
-    assert.ok(line.segments[0][0] > 0.1, `${line.id} has no length`);
+    for (const segment of line.segments)
+      assert.ok(segment[0] > 0.1, `${line.id} has a zero-length interval`);
   }
 });
 
@@ -56,11 +74,16 @@ test("上越線's two bores are drawn separately, with the sourced direction", (
   const down = byId.get("jp-東日本旅客鉄道-上越線");
   assert.ok(up && down);
 
-  // The up line keeps the older alignment and the down line takes the loop, so
-  // the loop is much the longer of the two. 湯檜曽 -> 土合 is 3.5 km by the
-  // operator's kilometrage; the loop is roughly twice that on the ground.
-  const upKm = up.segments[0][0];
-  assert.ok(upKm > 3 && upKm < 6, `up bore is ${upKm} km`);
+  // The alignments part at 湯檜曽 and meet again at 土樽, so the up bore runs
+  // 湯檜曽 -> 土合 -> 土樽: about 4 km on the surface past the 湯檜曽 loop, then
+  // 清水トンネル's 9,702 m under the ridge. Anything much shorter means the
+  // stroke stopped at 土合 inside the mountain instead of rejoining the line.
+  assert.deepEqual(
+    up.stations.map((station) => station[1]),
+    ["湯檜曽", "土合", "土樽"],
+  );
+  const upKm = up.segments.reduce((total, segment) => total + segment[0], 0);
+  assert.ok(upKm > 13 && upKm < 16, `up bore is ${upKm} km`);
   assert.equal(up.alignmentDirection, "up");
   assert.ok(up.alignmentSource, "the direction label must name its source");
 
@@ -69,16 +92,22 @@ test("上越線's two bores are drawn separately, with the sourced direction", (
   assert.ok(record, "the down line does not record the pair");
   assert.equal(record.direction, "down");
   assert.equal(record.from, "湯檜曽");
-  assert.equal(record.to, "土合");
+  assert.equal(record.to, "土樽");
 });
 
-test("an unsourced pair says so rather than claiming a direction", () => {
+test("no alignment is drawn as a pair without a source saying it is one", () => {
+  // The builder finds more candidates than this by geometry alone: 大阪上本町's
+  // underground 難波線 platform is 180 m off the 大阪線 and looks identical to a
+  // split. Drawing those would invent second directions that do not exist, so
+  // the evidence file is the gate and every drawn pair carries its source.
   for (const line of paired) {
-    if (line.alignmentSource) continue;
-    assert.equal(
-      line.alignmentDirection,
-      "unassigned",
-      `${line.id} claims a direction with no source behind it`,
+    assert.ok(
+      line.alignmentSource,
+      `${line.id} is drawn as a pair with no source behind it`,
+    );
+    assert.ok(
+      line.alignmentDirection === "up" || line.alignmentDirection === "down",
+      `${line.id} is sourced but claims no direction`,
     );
   }
 });
