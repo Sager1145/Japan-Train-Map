@@ -151,6 +151,13 @@ GROSS_DETOUR_FLOOR_M = 2000.0
 # the same kind the 2026-08-13 audit deleted twelve of, not a loop to draw.
 MIN_RING_STATIONS = 4
 
+# A second alignment runs roughly where the first does. Below the floor it is a
+# short cut-off rather than the other direction's track; above the ceiling the
+# search has gone the long way round the network instead.
+ALTERNATE_MIN_RATIO = 0.25
+ALTERNATE_MAX_RATIO = 4.0
+ALTERNATE_TOLERANCE = 0.25
+
 ROMA_SOURCE_OSM = 1
 
 RANK_BY_KIND = {
@@ -367,7 +374,7 @@ class TrackGraph:
             "distance_m": best[3],
         }
 
-    def _dijkstra(self, sources):
+    def _dijkstra(self, sources, exclude=()):
         """sources: {node: cost}. Returns cost and predecessor maps."""
         cost = dict(sources)
         previous = {}
@@ -378,6 +385,8 @@ class TrackGraph:
             if here > cost.get(node, math.inf):
                 continue
             for other, index in self.adjacency[node]:
+                if index in exclude:
+                    continue
                 step = here + self.length_m(index)
                 if step < cost.get(other, math.inf) - 1e-9:
                     cost[other] = step
@@ -469,8 +478,12 @@ class TrackGraph:
         total, walked, head_node, end_node = best
         return self._assemble(start, end, list(walked), head_node, end_node, total)
 
-    def path_between(self, start, end):
+    def path_between(self, start, end, exclude=()):
         """Track between two anchors. Returns (coords, length_m, pieces) or None.
+
+        `exclude` bars a set of sections, which is how the SECOND alignment
+        between two stations is found: cut the first, then ask the graph for a
+        route that reuses none of it.
 
         Both anchors sit at a measure along a section, so the search runs from
         the two ends of the start section to the two ends of the end section and
@@ -500,7 +513,11 @@ class TrackGraph:
             nkey(end_coords[0]): end["measure_m"],
             nkey(end_coords[-1]): self.length_m(end["section"]) - end["measure_m"],
         }
-        cost, previous = self._dijkstra(start_ends)
+        # The anchors sit ON their sections, so those two can never be excluded
+        # — only the track between them can.
+        exclude = {index for index in exclude
+                   if index not in (start["section"], end["section"])}
+        cost, previous = self._dijkstra(start_ends, exclude=exclude)
 
         best = None
         for node, tail in end_ends.items():
@@ -1151,6 +1168,7 @@ def build_lines(
     }
     carried = carried_display_attributes()
     structure_by_section = load_structure()
+    pair_directions = load_pair_directions()
 
     # adjacency and per-line membership, keyed the way the batch table is
     adjacency = collections.defaultdict(set)
@@ -1170,8 +1188,10 @@ def build_lines(
 
     # N02 platform polylines, by (line, operator) and station group
     platforms = collections.defaultdict(dict)
+    all_platforms = collections.defaultdict(lambda: collections.defaultdict(list))
     for station in net.stations:
         platforms[station.line_key].setdefault(station.group, station)
+        all_platforms[station.line_key][station.group].append(station)
 
     lines, skipped, notes = [], [], []
 
@@ -1342,8 +1362,9 @@ def build_lines(
                 geometry_lib=geometry_lib,
                 normalise_line_name=n02_source.normalise_line_name,
                 structure_by_section=structure_by_section,
+                platforms_by_group=all_platforms.get((name, operator), {}),
             )
-            entry, problem, mismatched = attempt
+            entry, problem, mismatched, alternates = attempt
             if problem and "several tracks share" in problem:
                 # The nearest section is not always the track the service runs
                 # on. Re-anchor the whole chain against the audited distances
@@ -1360,7 +1381,7 @@ def build_lines(
                     },
                 )
                 if refined:
-                    entry, problem, mismatched = build_display_line(
+                    entry, problem, mismatched, alternates = build_display_line(
                         suffix=suffix,
                         order=order,
                         is_loop=is_loop,
@@ -1407,6 +1428,66 @@ def build_lines(
                     )
                 )
             built_parts.append(entry)
+            # A paired alignment is its OWN stroke with its own platforms — the
+            # two bores of 上越線 put 湯檜曽 and 土合 in different places — so it
+            # becomes a display line rather than an extra segment welded to the
+            # other bore's dot, which would fold the stroke back to reach a
+            # platform it does not serve.
+            for position, alternate in enumerate(alternates, start=1):
+                paired = dict(entry)
+                paired["id"] = f"{entry['id']}-p{position}"
+                paired["stations"] = [
+                    [
+                        station_by_uid[alternate["from_uid"]]["physical_station_group"],
+                        station_by_uid[alternate["from_uid"]]["station_name"],
+                        alternate["coords"][0][0],
+                        alternate["coords"][0][1],
+                        english.get(
+                            station_by_uid[alternate["from_uid"]]["physical_station_group"], ""
+                        ),
+                        ROMA_SOURCE_OSM,
+                    ],
+                    [
+                        station_by_uid[alternate["to_uid"]]["physical_station_group"],
+                        station_by_uid[alternate["to_uid"]]["station_name"],
+                        alternate["coords"][-1][0],
+                        alternate["coords"][-1][1],
+                        english.get(
+                            station_by_uid[alternate["to_uid"]]["physical_station_group"], ""
+                        ),
+                        ROMA_SOURCE_OSM,
+                    ],
+                ]
+                paired["segments"] = [[alternate["km"], 0, alternate["coords"]]]
+                paired.pop("structure", None)
+                paired.pop("isLoop", None)
+                paired["alignmentOf"] = entry["id"]
+                paired["alignmentRole"] = "paired_alignment"
+                # Which bore carries 上り and which 下り is a fact about the
+                # railway that N02 does not record, so it comes from the
+                # evidence file or stays unassigned — never guessed here.
+                sourced = pair_directions.get(
+                    (
+                        key,
+                        station_by_uid[alternate["from_uid"]]["station_name"],
+                        station_by_uid[alternate["to_uid"]]["station_name"],
+                    )
+                )
+                paired["alignmentDirection"] = (
+                    sourced["paired_direction"] if sourced else "unassigned"
+                )
+                if sourced:
+                    paired["alignmentSource"] = sourced["source"]
+                    entry.setdefault("alignmentPairs", []).append(
+                        {
+                            "with": paired["id"],
+                            "from": station_by_uid[alternate["from_uid"]]["station_name"],
+                            "to": station_by_uid[alternate["to_uid"]]["station_name"],
+                            "direction": sourced["primary_direction"],
+                            "source": sourced["source"],
+                        }
+                    )
+                built_parts.append(paired)
 
         if failed_trunk:
             for entry in built_parts:
@@ -1426,6 +1507,23 @@ def build_lines(
 
 
 STRUCTURE_KIND = {"tunnel": 1, "bridge": 2}
+
+
+def load_pair_directions():
+    """Sourced 上り/下り labels for paired alignments, keyed by line and stations.
+
+    N02 says THAT the two directions run on separate track — a second platform
+    feature at each end — but carries no direction attribute, so this cannot be
+    derived. Every row in the evidence file names a source; a pair with no row
+    stays `unassigned` and the importer falls back to geometric fit.
+    """
+    path = RAW / "evidence" / "paired-alignment-directions.json"
+    if not path.exists():
+        return {}
+    rows = json.loads(path.read_text("utf-8")).get("pairs", [])
+    return {
+        (row["line"], row["from_station"], row["to_station"]): row for row in rows
+    }
 
 
 def load_structure():
@@ -1626,6 +1724,46 @@ def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
     }
 
 
+def second_platform_path(
+    graph, geometry_lib, platforms_by_group, from_group, to_group, first_start, first_end
+):
+    """Track between the SECOND platforms of two stations, when both have one.
+
+    Returns (coords, length_m) or None. None whenever either station has a
+    single platform, either second platform anchors onto the same section the
+    first one did (so it is the same track, filed twice), or no route joins
+    them.
+    """
+    from_all = platforms_by_group.get(from_group) or []
+    to_all = platforms_by_group.get(to_group) or []
+    if len(from_all) < 2 or len(to_all) < 2:
+        return None
+
+    def other_anchor(platforms, taken):
+        best = None
+        for platform in platforms:
+            anchor = graph.project(platform_midpoint(platform, geometry_lib))
+            if anchor is None or anchor["section"] == taken["section"]:
+                continue
+            if best is None or anchor["distance_m"] < best["distance_m"]:
+                best = anchor
+        return best
+
+    start = other_anchor(from_all, first_start)
+    end = other_anchor(to_all, first_end)
+    if start is None or end is None:
+        return None
+    cut = graph.path_between(start, end)
+    if cut is None:
+        return None
+    coords = dedupe_points(cut[0])
+    if len(coords) < 2:
+        return None
+    coords[0] = anchor_point(start)
+    coords[-1] = anchor_point(end)
+    return coords, cut[1]
+
+
 def anchor_point(anchor):
     """An anchor's coordinate at the package's own precision, in one place.
 
@@ -1686,6 +1824,7 @@ def build_display_line(
     geometry_lib,
     normalise_line_name,
     structure_by_section=None,
+    platforms_by_group=None,
 ):
     """One ordered station list -> one compact-v1 display line.
 
@@ -1702,6 +1841,7 @@ def build_display_line(
     failed = None
     mismatched = []
     structure = []
+    alternates = []
     measure = 0.0
     for start_uid, end_uid in pairs:
         cut = graph.path_between(anchors[start_uid], anchors[end_uid])
@@ -1767,6 +1907,38 @@ def build_display_line(
                         round(audited, 3),
                     )
                 )
+        # A SECOND alignment between the same two stations, if the line has one.
+        #
+        # Some double-track railways send the two directions through different
+        # tunnels rather than side by side, and N02 says so plainly: it files
+        # TWO platform features for such a station, one on each bore. 湯檜曽 and
+        # 土合 each have two, because 上越線's down line takes the 新清水
+        # トンネル loop while the up line keeps the older one. Drawing only the
+        # alignment the first platform sits on loses the other — 34 km of real
+        # track on this line alone.
+        #
+        # So the second alignment is cut between the OTHER platforms, which is
+        # the only way to reach it: its track never touches the first one's
+        # between these two stations.
+        second = second_platform_path(
+            graph,
+            geometry_lib,
+            platforms_by_group or {},
+            station_by_uid[start_uid]["physical_station_group"],
+            station_by_uid[end_uid]["physical_station_group"],
+            anchors[start_uid],
+            anchors[end_uid],
+        )
+        if second is not None:
+            other, other_m = second
+            alternates.append(
+                {
+                    "from_uid": start_uid,
+                    "to_uid": end_uid,
+                    "km": round(geometry_lib.polyline_km(other), 3),
+                    "coords": other,
+                }
+            )
         structure.extend(
             structure_on_cut(pieces, measure, structure_by_section or {})
         )
@@ -1782,7 +1954,7 @@ def build_display_line(
         else:
             segments.append([kilometres, 0, coords])
     if failed:
-        return None, failed, []
+        return None, failed, [], []
 
     station_rows = []
     for uid in order:
@@ -1832,6 +2004,7 @@ def build_display_line(
         entry["isLoop"] = 1
     if row.get("network_status") and row["network_status"] != "active":
         entry["serviceStatus"] = row["network_status"]
+
     if structure:
         total_m = sum(segment[0] for segment in segments) * 1000
         clipped = []
@@ -1842,7 +2015,7 @@ def build_display_line(
                 clipped.append([round(start), round(end), kind, layer])
         if clipped:
             entry["structure"] = clipped
-    return entry, None, mismatched
+    return entry, None, mismatched, alternates
 
 
 def build(args) -> None:
