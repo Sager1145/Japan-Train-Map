@@ -32,10 +32,16 @@ const EXPECTED_COUNTS = Object.freeze({
   // one feature per lane VALUE, and the ramp in and out of a lane is two more.
   // 横浜市 1号線 and 3号線 are two line numbers of ONE railway (ブルーライン,
   // through-operated across 関内) and so share a stroke rather than a corridor.
-  segments: 888,
-  stations: 10161,
-  lines: 607,
-  groups: 9046,
+  //
+  // Rebuilt 2026-08-15: 649 lines against the old 607, because each railway's
+  // separate alignments are now their own strokes. Stations rise with them
+  // (a junction shared by two strokes is a platform row on each) while station
+  // GROUPS fall slightly, since the rebuild draws 4 lines fewer — the ones with
+  // no passenger adjacency at all, itemised in the ledger.
+  segments: 913,
+  stations: 10189,
+  lines: 649,
+  groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {
   // Snapshot + expected hash are shared with test/rail-loader-parity.test.mjs

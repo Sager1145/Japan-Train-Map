@@ -1613,6 +1613,15 @@ def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
     }
 
 
+def anchor_point(anchor):
+    """An anchor's coordinate at the package's own precision, in one place.
+
+    Station rows and the interval ends that must coincide with them have to be
+    written the same way; deriving both from here is what keeps them identical.
+    """
+    return [round(anchor["point"][0], 6), round(anchor["point"][1], 6)]
+
+
 def anchor_part(order, points, graph, platforms_by_group, station_by_uid):
     """Anchor one part's stations onto the one track group they mostly sit on.
 
@@ -1712,8 +1721,13 @@ def build_display_line(
             if retry is not None:
                 coords, length_m, pieces = retry
                 coords = dedupe_points(coords)
-        coords[0] = list(anchors[start_uid]["point"])
-        coords[-1] = list(anchors[end_uid]["point"])
+        # Rounded to the SAME precision the station rows are written at. The
+        # renderer's contract is that an interval's end and its station's dot
+        # are the same point, and the package is compared as text — a full
+        # precision endpoint beside a 6 dp station row breaks the seam even
+        # though the two are millimetres apart.
+        coords[0] = anchor_point(anchors[start_uid])
+        coords[-1] = anchor_point(anchors[end_uid])
         if audited and length_m > max(
             audited * 1000 * GROSS_DETOUR_FACTOR, audited * 1000 + GROSS_DETOUR_FLOOR_M
         ):
@@ -1744,7 +1758,16 @@ def build_display_line(
             structure_on_cut(pieces, measure, structure_by_section or {})
         )
         measure += length_m
-        segments.append([round(geometry_lib.polyline_km(coords), 3), 0, coords])
+        # compact-v1's seam encoding: every interval after the first drops the
+        # vertex it shares with its predecessor and sets the flag, and the
+        # renderer puts it back from the previous interval's last point. Storing
+        # it twice is not merely larger — the two copies can drift, and then the
+        # stroke opens at a station.
+        kilometres = round(geometry_lib.polyline_km(coords), 3)
+        if segments:
+            segments.append([kilometres, 1, coords[1:]])
+        else:
+            segments.append([kilometres, 0, coords])
     if failed:
         return None, failed, []
 
@@ -1757,8 +1780,7 @@ def build_display_line(
             [
                 group,
                 record["station_name"],
-                round(anchor["point"][0], 6),
-                round(anchor["point"][1], 6),
+                *anchor_point(anchor),
                 english.get(group, ""),
                 ROMA_SOURCE_OSM,
             ]

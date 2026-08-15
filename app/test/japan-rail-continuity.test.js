@@ -28,8 +28,15 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
   // 2025.4.2 keeps the 2025.3.4 loop repair, then reapplies the branch and
   // doubling-back repairs after the OSM attribute/official-colour enrichment.
+  //
+  // 649 lines, up from 607: the 2026-08-15 rebuild draws each railway's
+  // separate alignments as their own strokes, so a line with a rejoining route
+  // or a physically detached half yields more than one. The count is a
+  // characterisation, not a rule — everything below it is the rule, and it is
+  // unchanged: every line's intervals match its station order, and every
+  // interval meets its neighbour exactly.
   assert.equal(pkg.version, "2025.4.2");
-  assert.equal(pkg.lines.length, 607);
+  assert.equal(pkg.lines.length, 649);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {
