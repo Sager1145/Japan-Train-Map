@@ -40,27 +40,44 @@ test("a paired alignment is its own stroke, not a second copy of its partner", (
     assert.ok(line.stations.length >= 2, `${line.id} should join two platforms`);
     assert.equal(line.segments.length, line.stations.length - 1);
 
-    // Every station it passes through stands on its OWN platform, not the
-    // partner's. That is the whole point — reusing them would make this a
-    // duplicate stroke rather than the other direction's track, and welding it
-    // to the partner's dots would fold it back to reach a platform it does not
-    // serve. The LAST station is the deliberate exception, below.
+    // The closing station keeps its partner's platform, because that is where
+    // the two alignments meet again. Without it the stroke would stop in mid-air
+    // at the mouth of a tunnel instead of rejoining the railway.
     const partnerPoints = new Set(
       partner.stations.map((station) => `${station[2]},${station[3]}`),
     );
-    for (const station of line.stations.slice(0, -1))
-      assert.ok(
-        !partnerPoints.has(`${station[2]},${station[3]}`),
-        `${line.id} reuses ${station[1]}'s platform from its partner`,
-      );
-
-    // ...and the closing station keeps the shared platform, because that is
-    // where the two alignments meet again. Without it the stroke would stop in
-    // mid-air at the mouth of a tunnel instead of rejoining the railway.
     const last = line.stations.at(-1);
     assert.ok(
       partnerPoints.has(`${last[2]},${last[3]}`),
       `${line.id} ends at ${last[1]} without rejoining its partner`,
+    );
+
+    // And the track between really is different track. This is the invariant
+    // that holds whichever way the two alignments part: 上越線 separates at the
+    // PLATFORMS, so 湯檜曽 and 土合 stand in two places, while 北陸線 separates
+    // only BETWEEN stations — 敦賀 and 新疋田 each have one platform and the
+    // 鳩原 loop swings a kilometre away in between. Sharing both dots is fine;
+    // sharing the track is not, because then this is a duplicate stroke.
+    const partnerTrack = partner.segments.flatMap((segment) => segment[2]);
+    const widest = Math.max(
+      ...line.segments
+        .flatMap((segment) => segment[2])
+        .map((point) =>
+          Math.min(
+            ...partnerTrack.map((other) =>
+              Math.hypot(
+                (other[0] - point[0]) *
+                  111320 *
+                  Math.cos((point[1] * Math.PI) / 180),
+                (other[1] - point[1]) * 111320,
+              ),
+            ),
+          ),
+        ),
+    );
+    assert.ok(
+      widest >= 150,
+      `${line.id} never gets more than ${Math.round(widest)} m from its partner`,
     );
 
     // And it draws real track, not a hairline.
@@ -69,21 +86,55 @@ test("a paired alignment is its own stroke, not a second copy of its partner", (
   }
 });
 
+test("北陸線's 鳩原 loop is labelled by station order, not the operator's word", () => {
+  // The trap this pins: the matcher decides which bore a ride used from
+  // `start.measure <= end.measure`, i.e. the line's own station order. This
+  // package orders 北陸線 敦賀 → 米原, which is the operator's 上り direction, so
+  // the loop — 上り線 to the railway — is ridden WITH the station order and has
+  // to be labelled "down" here. Copying the operator's word would send every
+  // 北陸線 ride to the wrong bore, and it would look right in the evidence file.
+  const loop = byId.get("jp-西日本旅客鉄道-北陸線-p1");
+  assert.ok(loop, "北陸線's loop is not in the package");
+  assert.equal(loop.alignmentDirection, "down");
+  assert.deepEqual(
+    loop.stations.map((station) => station[1]),
+    ["敦賀", "新疋田"],
+  );
+  // ~9.7 km round the spiral against 6.6 km direct — if these were close the
+  // detector would have found ordinary double track, not the loop.
+  const loopKm = loop.segments.reduce((total, segment) => total + segment[0], 0);
+  assert.ok(loopKm > 9 && loopKm < 10.5, `loop is ${loopKm} km`);
+  const direct = byId.get("jp-西日本旅客鉄道-北陸線");
+  assert.ok(loopKm > direct.segments[0][0] * 1.3);
+});
+
 test("上越線's two bores are drawn separately, with the sourced direction", () => {
-  const up = byId.get("jp-東日本旅客鉄道-上越線-p1");
   const down = byId.get("jp-東日本旅客鉄道-上越線");
-  assert.ok(up && down);
+  // Found by the span it covers, not by its id: 上越線 separates TWICE — again
+  // past 土樽 for the 松川ループ — so which suffix lands on which span is not
+  // something this test should care about.
+  const up = paired.find(
+    (line) =>
+      line.alignmentOf === down.id && line.stations[0][1] === "湯檜曽",
+  );
+  assert.ok(up && down, "上越線's 湯檜曽 span is not in the package");
 
   // The alignments part at 湯檜曽 and meet again at 土樽, so the up bore runs
-  // 湯檜曽 -> 土合 -> 土樽: about 4 km on the surface past the 湯檜曽 loop, then
-  // 清水トンネル's 9,702 m under the ridge. Anything much shorter means the
-  // stroke stopped at 土合 inside the mountain instead of rejoining the line.
+  // 湯檜曽 -> 土合 -> 土樽. It is much the longer of the two because it is the
+  // 1931 line: it climbs the 湯檜曽ループ spiral and then takes 清水トンネル's
+  // 9,702 m, where the down bore simply goes under the ridge in 新清水トンネル.
+  // If this ever drops to ~14 km the two bores have swapped, which is the bug
+  // that put the main line on the loop and left this stroke on the tunnel.
   assert.deepEqual(
     up.stations.map((station) => station[1]),
     ["湯檜曽", "土合", "土樽"],
   );
   const upKm = up.segments.reduce((total, segment) => total + segment[0], 0);
-  assert.ok(upKm > 13 && upKm < 16, `up bore is ${upKm} km`);
+  assert.ok(upKm > 16 && upKm < 20, `up bore is ${upKm} km`);
+  // ...and the down bore's own 湯檜曽 -> 土合 hop stays close to the operator's
+  // 3.493 km. It measured 7.529 when the main line was drawn on the loop.
+  const hop = down.segments[down.stations.findIndex((s) => s[1] === "湯檜曽")][0];
+  assert.ok(hop > 3 && hop < 4.5, `down bore's 湯檜曽 hop is ${hop} km`);
   assert.equal(up.alignmentDirection, "up");
   assert.ok(up.alignmentSource, "the direction label must name its source");
 

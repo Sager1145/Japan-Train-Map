@@ -47,15 +47,15 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
     }),
   );
 
-  // 383/318, up from 349/284 with the 2026-08-15 rebuild: the drawn set grew
+  // 384/319, up from 349/284 with the 2026-08-15 rebuild: the drawn set grew
   // from 607 lines to 649 as each railway's separate alignments became their
   // own strokes, and a split part carries its parent railway's badge. The
   // difference below is unchanged at 65, and the loop still proves every badge
   // it claims is a real PNG.
-  assert.equal(packageImages.length, 383);
-  assert.equal(linesWithBadges.length, 318);
+  assert.equal(packageImages.length, 384);
+  assert.equal(linesWithBadges.length, 319);
   for (const line of linesWithBadges) {
-    const existingLogo = `/rail/logos/${line.id.replace(/-\d+$/, "")}.png`;
+    const existingLogo = `/rail/logos/${line.id.replace(/-p?\d+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
     assert.equal(fs.existsSync(existingLogoPath), true, `${line.id} badge exists`);
     assert.equal(
@@ -143,14 +143,14 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 332/325, moved by the 2026-08-15 rebuild's larger drawn set. The rule is
+  // 333/326, moved by the 2026-08-15 rebuild's larger drawn set. The rule is
   // unchanged and the loop below is what enforces it: every line without a
   // package badge must resolve to its OWN operator's mark. That is why a split
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
-  assert.equal(missingBadgeLines.length, 332);
+  assert.equal(missingBadgeLines.length, 333);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 325);
+  assert.equal(coveredLines.length, 326);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

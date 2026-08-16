@@ -38,16 +38,17 @@ const EXPECTED_COUNTS = Object.freeze({
   // (a junction shared by two strokes is a platform row on each) while station
   // GROUPS fall slightly, since the rebuild draws 4 lines fewer — the ones with
   // no passenger adjacency at all, itemised in the ledger.
-  // +1 line / +2 segments / +3 platforms: 上越線's up bore, the one separated
-  // alignment a source confirms AND N02 carries as its own track. Candidates
-  // that are only one of those two are recorded in the evidence file rather
-  // than drawn, so this number tracks sourced fact, not a distance threshold.
+  // +3 lines / +3 segments / +7 platforms: 上越線's up bore in two spans (it
+  // separates again past 土樽 for the 松川ループ) and 北陸線's 鳩原ループ — every
+  // separated alignment a source confirms AND N02 carries as its own track. Candidates that are only one of those two are
+  // recorded in the evidence file rather than drawn, so this number tracks
+  // sourced fact, not a distance threshold.
   // 907 once lanes became a property of the RAILWAY rather than the stroke:
   // a railway drawn as several strokes shares one lane, so the split-at-lane-
   // boundary features it used to generate collapse.
-  segments: 907,
-  stations: 10192,
-  lines: 650,
+  segments: 910,
+  stations: 10196,
+  lines: 652,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

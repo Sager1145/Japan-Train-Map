@@ -151,6 +151,13 @@ GROSS_DETOUR_FLOOR_M = 2000.0
 # the same kind the 2026-08-13 audit deleted twelve of, not a loop to draw.
 MIN_RING_STATIONS = 4
 
+# How badly a station's own anchor has to disagree with the measured
+# kilometrage before another of its platforms may be tried instead. Small
+# disagreements are normal — the audit measures a route, this draws track — and
+# trading them for a moved station is a bad bargain. 上越線 is not a close call:
+# 7.529 km drawn against an audited 3.493.
+ANCHOR_AUDIT_SLACK_M = 1000.0
+
 # A second alignment runs roughly where the first does. Below the floor it is a
 # short cut-off rather than the other direction's track; above the ceiling the
 # search has gone the long way round the network instead.
@@ -169,7 +176,12 @@ SEPARATED_MIN_M = 150.0
 # network: 函館線 answers 東森–駒ヶ岳 with the 砂原 route 13 km away, and 上越線
 # answers with a 24 km loop through the neighbouring valley. Those are other
 # routes, not this interval's other track.
-SEPARATED_MAX_M = 2000.0
+#
+# 3 km rather than 2, because the widest real one clears 2.5: 東海道本線's 下り
+# takes the 新垂井線 from 南荒尾信号場 to 関ケ原, 2.7 km off the 垂井 alignment
+# the 上り keeps — far enough that 新垂井駅 served down trains at a place no up
+# train passed. A bound under that would cut the best case in the country.
+SEPARATED_MAX_M = 3000.0
 
 ROMA_SOURCE_OSM = 1
 
@@ -351,17 +363,22 @@ class TrackGraph:
         dy = max(0.0, min_y - point[1], point[1] - max_y) * 111_320
         return math.hypot(dx, dy)
 
-    def project(self, point, component=None):
+    def project(self, point, component=None, exclude=()):
         """Nearest (section, measure, distance_m) over this railway's track.
 
         `component` restricts the search to one connected track group, which is
         what keeps a station chain on track it can actually be walked along.
+        `exclude` bars sections outright, which is how a paired alignment's
+        platform is kept off the track the OTHER direction uses — at 湯檜曽 the
+        two bores pass within 15 m, so nearest-track alone picks the wrong one.
         """
         candidates = (
             self.indices
             if component is None
             else [index for index in self.indices if self.component[index] == component]
         )
+        if exclude:
+            candidates = [index for index in candidates if index not in exclude]
         best = None
         ordered = sorted(
             ((self._box_distance_m(index, point), index) for index in candidates),
@@ -1446,8 +1463,20 @@ def build_lines(
             # becomes a display line rather than an extra segment welded to the
             # other bore's dot, which would fold the stroke back to reach a
             # platform it does not serve.
-            position = 0
+            # The two detectors can answer for the same span — 北陸線's loop is
+            # both "a second platform at 敦賀" and "another route to 新疋田" — and
+            # emitting both would draw the pair twice and consume one evidence
+            # row for each. Keep the widest, which is the one that actually
+            # leaves the primary alignment.
+            widest = {}
             for candidate in alternates:
+                span_key = (candidate["uids"][0], candidate["uids"][-1])
+                if candidate["separation_m"] > widest.get(
+                    span_key, {"separation_m": -1.0}
+                )["separation_m"]:
+                    widest[span_key] = candidate
+            position = 0
+            for candidate in widest.values():
                 # Geometry can show that a station's two platforms sit far
                 # apart; it cannot show that the railway runs its two
                 # DIRECTIONS over them. Both candidates rejected here look
@@ -1754,6 +1783,100 @@ def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
     }
 
 
+def choose_platform_by_audit(
+    order,
+    anchors,
+    graph,
+    geometry_lib,
+    platforms_by_group,
+    station_by_uid,
+    audited_distance,
+    key,
+):
+    """At a station with two platforms, keep the one the audit agrees with.
+
+    Anchoring projects ONE point per station onto the nearest track, so a
+    station whose two directions stop in different places never reconsiders —
+    and at 湯檜曽 the nearest track to the point N02 offers first is the UP line.
+    The main stroke then climbed the 湯檜曽ループ: 7.529 km against an audited
+    3.493, with the down bore through 新清水トンネル left for the paired stroke.
+    Both alignments were drawn, but as each other, so the 上り/下り labels were
+    backwards and the paired stroke started by running south out of the station
+    to reach track the main line had taken.
+
+    The audit settles it without guessing: try each platform and keep the one
+    whose distance to its neighbours matches the measured kilometrage. Only
+    stations with a real choice and a real measurement are touched, and the
+    walk is in order so each station is judged against a neighbour already
+    settled.
+    """
+    # Only stations inside a separated run are eligible. A second platform on
+    # its own means nothing much — 大沼 is a junction and has one — and moving a
+    # junction's anchor is how 函館線's branch came back out at 159°. What marks
+    # a directional split is a RUN of them, which is the same signal the drawn
+    # alignment is derived from.
+    eligible = set()
+    for first, last in separated_direction_runs(
+        order, platforms_by_group, station_by_uid
+    ):
+        eligible.update(order[first:last])
+    for position, uid in enumerate(order):
+        if uid not in eligible:
+            continue
+        options = platforms_by_group.get(
+            station_by_uid[uid]["physical_station_group"]
+        ) or []
+        if len(options) < 2 or uid not in anchors:
+            continue
+        neighbours = []
+        if position:
+            neighbours.append(order[position - 1])
+        if position + 1 < len(order):
+            neighbours.append(order[position + 1])
+        measured = [
+            (other, audited_distance.get((key, tuple(sorted((uid, other))))))
+            for other in neighbours
+        ]
+        measured = [
+            (other, km) for other, km in measured if km and other in anchors
+        ]
+        if not measured:
+            continue
+        def audit_error(candidate):
+            error = 0.0
+            for other, km in measured:
+                cut = graph.path_between(candidate, anchors[other])
+                if cut is None:
+                    return math.inf
+                error += abs(cut[1] - km * 1000)
+            return error
+
+        standing = audit_error(anchors[uid])
+        # Only a decisive disagreement may move a station. A station is anchored
+        # for many reasons — branch junctions read their direction off it — and
+        # trading a few metres of audit agreement for that is a bad bargain: it
+        # sent 函館線's branch back out of its junction at 159°. 上越線 is what
+        # this is for, and it is not a close call there: 7.529 km drawn against
+        # an audited 3.493 becomes 4.135.
+        if standing <= ANCHOR_AUDIT_SLACK_M:
+            continue
+        best = None
+        for platform in options:
+            candidate = graph.project(platform_midpoint(platform, geometry_lib))
+            if candidate is None or candidate["distance_m"] > ANCHOR_MAX_M:
+                continue
+            error = audit_error(candidate)
+            if error is math.inf:
+                continue
+            if best is None or error < best[0]:
+                best = (error, candidate)
+        if best is None or best[0] > standing - ANCHOR_AUDIT_SLACK_M:
+            continue
+        chosen = best[1]
+        chosen["platform_len_m"] = anchors[uid].get("platform_len_m", 0.0)
+        anchors[uid] = chosen
+
+
 def separated_direction_runs(order, platforms_by_group, station_by_uid):
     """Spans where a railway's two directions run on their own track.
 
@@ -1809,9 +1932,23 @@ def divergent_alignment(graph, start, end, pieces, primary_coords):
     double track filed as one centreline has no such route; one with two
     alignments does.
     """
-    cut = graph.path_between(
-        start, end, exclude={piece[0] for piece in pieces}
+    # Cutting the WHOLE primary demands a fully edge-disjoint route, and that is
+    # stricter than the railway. 北陸本線's 鳩原ループ carries the up line a
+    # kilometre away and then rejoins the main line short of 新疋田, so every
+    # route to that platform reuses the last stretch — the strict search calls
+    # it "no alternate" and misses the best case on JR West. Cutting the primary
+    # longest piece instead forces the answer to diverge where the interval
+    # actually is one piece of track, while letting both ends share an approach.
+    spans = sorted(
+        pieces, key=lambda piece: abs(piece[2] - piece[1]), reverse=True
     )
+    cut = None
+    for excluded in ({piece[0] for piece in pieces}, {spans[0][0]} if spans else set()):
+        if not excluded:
+            continue
+        cut = graph.path_between(start, end, exclude=excluded)
+        if cut is not None:
+            break
     if cut is None:
         return None
     coords, length_m, _pieces = cut
@@ -1884,6 +2021,7 @@ def separated_alignment(
     station_by_uid,
     span,
     primary_coords=(),
+    primary_sections=frozenset(),
 ):
     """The other direction's track across one separated span, end to end.
 
@@ -1904,7 +2042,15 @@ def separated_alignment(
         taken = anchors[uid]
         best = None
         for platform in options:
-            candidate = graph.project(platform_midpoint(platform, geometry_lib))
+            # Project onto the nearest track, NOT onto "any track the other
+            # direction does not use". Forcing the latter walked 湯檜曽's up
+            # platform 190 m up the valley to reach the first section N02 files
+            # separately, and left the coordinate that IS the station — its
+            # surface platform, 7 m from the real building — used by neither
+            # stroke. Where the two bores separate is a question about track;
+            # where a platform is, is not.
+            point = platform_midpoint(platform, geometry_lib)
+            candidate = graph.project(point)
             if candidate is None or candidate["section"] == taken["section"]:
                 continue
             if best is None or candidate["distance_m"] < best["distance_m"]:
@@ -1916,7 +2062,15 @@ def separated_alignment(
     coords = []
     total = 0.0
     for (start_uid, start_anchor), (end_uid, end_anchor) in zip(picked, picked[1:]):
-        cut = graph.path_between(start_anchor, end_anchor)
+        # ...and the track between them must be the OTHER track too. Without
+        # this the walk is free to hop onto the primary alignment wherever the
+        # two run close: at 湯檜曽 the two bores pass within 15 m, so the up
+        # stroke left the station southwards along the DOWN line before turning
+        # round — a stub pointing away from 土合, which is the next station.
+        cut = graph.path_between(
+            start_anchor, end_anchor, exclude=primary_sections
+        )
+        cut = cut or graph.path_between(start_anchor, end_anchor)
         if cut is None:
             return None
         piece = dedupe_points(cut[0])
@@ -2033,6 +2187,17 @@ def build_display_line(
     name, operator and colour — they are the same railway, drawn as the separate
     strokes it actually has.
     """
+    if not is_loop:
+        choose_platform_by_audit(
+            order,
+            anchors,
+            graph,
+            geometry_lib,
+            platforms_by_group or {},
+            station_by_uid,
+            audited_distance,
+            key,
+        )
     pairs = [(order[i], order[i + 1]) for i in range(len(order) - 1)]
     if is_loop:
         pairs.append((order[-1], order[0]))
@@ -2042,6 +2207,7 @@ def build_display_line(
     mismatched = []
     structure = []
     alternates = []
+    interval_sections = []
     measure = 0.0
     for start_uid, end_uid in pairs:
         cut = graph.path_between(anchors[start_uid], anchors[end_uid])
@@ -2071,7 +2237,9 @@ def build_display_line(
             retry = graph.path_matching(
                 anchors[start_uid], anchors[end_uid], audited * 1000
             )
-            if retry is not None:
+            if retry is not None and abs(retry[1] - audited * 1000) < abs(
+                length_m - audited * 1000
+            ):
                 coords, length_m, pieces = retry
                 coords = dedupe_points(coords)
         # Rounded to the SAME precision the station rows are written at. The
@@ -2107,6 +2275,7 @@ def build_display_line(
                         round(audited, 3),
                     )
                 )
+        interval_sections.append({piece[0] for piece in pieces})
         divergent = divergent_alignment(
             graph, anchors[start_uid], anchors[end_uid], pieces, coords
         )
@@ -2180,6 +2349,9 @@ def build_display_line(
         entry["serviceStatus"] = row["network_status"]
     if not is_loop:
         for span in separated_direction_runs(order, platforms_by_group or {}, station_by_uid):
+            primary_sections = set()
+            for index in range(span[0], min(span[1], len(interval_sections))):
+                primary_sections |= interval_sections[index]
             found = separated_alignment(
                 graph,
                 geometry_lib,
@@ -2189,6 +2361,7 @@ def build_display_line(
                 station_by_uid,
                 span,
                 primary_coords=[point for segment in segments for point in segment[2]],
+                primary_sections=primary_sections,
             )
             if found is not None and found["separation_m"] >= SEPARATED_MIN_M:
                 alternates.append(found)

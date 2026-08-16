@@ -1881,8 +1881,10 @@
         // trailing `-2`/`-3` resolves to the parent's badge; without this,
         // 京王線-2 and its kind asked for a PNG that was never created and fell
         // through to an operator mark those railways do not have.
+        // `-p1` is the same story for a paired alignment: 北陸線's 鳩原 loop is
+        // the same railway as 北陸線 and wears the same badge.
         logo: compactLine.logo
-          ? `/rail/logos/${lineId.replace(/-\d+$/, "")}.png`
+          ? `/rail/logos/${lineId.replace(/-p?\d+$/, "")}.png`
           : null,
         stationOrder: stationIds,
         km: totalKm,
