@@ -171,6 +171,21 @@ ALTERNATE_TOLERANCE = 0.25
 # two tram stops across a street are a few metres. 150 m clears all three.
 SEPARATED_MIN_M = 150.0
 
+# A separated alignment has two ends, and both have to be closed. The far end
+# closes on the rejoin station's shared platform. The near end has no station to
+# close on — the two bores part company somewhere BETWEEN stations — so the
+# stroke has to be walked back along its own track until it reaches the primary.
+# Without this the up stroke simply stopped at its platform: at 湯檜曽 that left
+# it 71 m from the down line with nothing joining them, which reads on the map
+# as a branch dangling in mid-air. OSM puts the real convergence 117 m south of
+# the up platform, at the 新清水トンネル portal.
+# A separated run therefore spans SHARED STATION to SHARED STATION. The far end
+# already closed on the rejoin station; the near end has to reach back to the
+# last station both bores share, because the bores part company BETWEEN
+# stations and compact-v1 has no slot for track before a line's first station.
+# Left unclosed, the up stroke stopped at its platform 71 m from the down line
+# with nothing joining them — a branch dangling in mid-air.
+
 # ...and how far apart they can get and still be the same railway's two tracks.
 # Cutting an interval and re-asking the graph finds SOME route on a dense
 # network: 函館線 answers 東森–駒ヶ岳 with the 砂原 route 13 km away, and 上越線
@@ -1905,7 +1920,12 @@ def separated_direction_runs(order, platforms_by_group, station_by_uid):
         if len(platforms(order[index])) < 2:
             index += 1
             continue
-        first = index
+        # Back up one station first. The bores part company BETWEEN stations —
+        # at 湯檜曽 the down line dives into 新清水トンネル 117 m south of the up
+        # platform — so the run has to start at the last station both still
+        # share, or the paired stroke begins in mid-air with nothing joining it
+        # to the railway. Symmetric with the rejoin at the far end.
+        first = max(index - 1, 0)
         while index < len(order) and len(platforms(order[index])) >= 2:
             index += 1
         # ...and on to the rejoin, when the order has one.
@@ -2082,6 +2102,7 @@ def separated_alignment(
         total += cut[1]
     if len(coords) < 2:
         return None
+
     return {
         "separation_m": max_separation_m(coords, primary_coords),
         "uids": [uid for uid, _anchor in picked],
