@@ -114,23 +114,27 @@ test("上越線's two bores are drawn separately, with the sourced direction", (
   // past 土樽 for the 松川ループ — so which suffix lands on which span is not
   // something this test should care about.
   const up = paired.find(
-    (line) =>
-      line.alignmentOf === down.id && line.stations[0][1] === "湯檜曽",
+    (line) => line.alignmentOf === down.id && line.stations[0][1] === "水上",
   );
-  assert.ok(up && down, "上越線's 湯檜曽 span is not in the package");
+  assert.ok(up && down, "上越線's 清水 span is not in the package");
 
-  // The alignments part at 湯檜曽 and meet again at 土樽, so the up bore runs
-  // 湯檜曽 -> 土合 -> 土樽. It is much the longer of the two because it is the
+  // The bores part 117 m SOUTH of 湯檜曽 — the down line dives into 新清水トンネル
+  // there — and meet again at 土樽. compact-v1 has no slot for track before a
+  // line's first station, so the stroke starts at 水上, the last station both
+  // still share, and is coincident with the down line until the portal. Without
+  // that it stopped at 湯檜曽's up platform 71 m from the down line, joined to
+  // nothing: a branch dangling in mid-air.
+  // It is much the longer of the two because it is the
   // 1931 line: it climbs the 湯檜曽ループ spiral and then takes 清水トンネル's
   // 9,702 m, where the down bore simply goes under the ridge in 新清水トンネル.
   // If this ever drops to ~14 km the two bores have swapped, which is the bug
   // that put the main line on the loop and left this stroke on the tunnel.
   assert.deepEqual(
     up.stations.map((station) => station[1]),
-    ["湯檜曽", "土合", "土樽"],
+    ["水上", "湯檜曽", "土合", "土樽"],
   );
   const upKm = up.segments.reduce((total, segment) => total + segment[0], 0);
-  assert.ok(upKm > 16 && upKm < 20, `up bore is ${upKm} km`);
+  assert.ok(upKm > 19 && upKm < 23, `up bore is ${upKm} km`);
   // ...and the down bore's own 湯檜曽 -> 土合 hop stays close to the operator's
   // 3.493 km. It measured 7.529 when the main line was drawn on the loop.
   const hop = down.segments[down.stations.findIndex((s) => s[1] === "湯檜曽")][0];
@@ -142,7 +146,7 @@ test("上越線's two bores are drawn separately, with the sourced direction", (
   const record = pairs.find((entry) => entry.with === up.id);
   assert.ok(record, "the down line does not record the pair");
   assert.equal(record.direction, "down");
-  assert.equal(record.from, "湯檜曽");
+  assert.equal(record.from, "水上");
   assert.equal(record.to, "土樽");
 });
 
@@ -180,7 +184,7 @@ test("上越線's spirals are on the up line, which is how the bores tell apart"
   };
 
   for (const [from, to] of [
-    ["湯檜曽", "土樽"],
+    ["水上", "土樽"],
     ["土樽", "越後中里"],
   ]) {
     const up = paired.find(
@@ -235,4 +239,31 @@ test("the renderer carries the pairing through to the ride matcher", () => {
   assert.equal(line.alignmentRole, "paired_alignment");
   assert.equal(line.alignmentDirection, "up");
   assert.equal(line.alignmentOf, "jp-東日本旅客鉄道-上越線");
+});
+
+// The defect this pins is the one that showed on the map: a paired alignment
+// drawn from its own platform outward, ending in mid-air because the bores part
+// BETWEEN stations. Both ends have to land exactly on the primary stroke — the
+// far end on the rejoin station, the near end on the last shared station.
+test("a paired alignment meets the primary stroke at both of its ends", () => {
+  const metres = (a, b) =>
+    Math.hypot(
+      (a[0] - b[0]) * 111320 * Math.cos((a[1] * Math.PI) / 180),
+      (a[1] - b[1]) * 111320,
+    );
+  for (const line of paired) {
+    const partner = byId.get(line.alignmentOf);
+    const partnerPoints = partner.segments.flatMap((segment) => segment[2]);
+    const own = line.segments.flatMap((segment) => segment[2]);
+    for (const [label, end] of [
+      ["start", own[0]],
+      ["end", own.at(-1)],
+    ]) {
+      const gap = Math.min(...partnerPoints.map((point) => metres(end, point)));
+      assert.ok(
+        gap < 1,
+        `${line.id} ${label}s ${gap.toFixed(0)} m from ${partner.id}, joined to nothing`,
+      );
+    }
+  }
 });

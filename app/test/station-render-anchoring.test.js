@@ -326,9 +326,12 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
   assert.deepEqual(reachedByCountry, [
     // Every package platform is now an exact vertex of its own drawn railway;
     // branch splitting restores the tiny overlap anchors it used to discard.
-    // 10196 after the 2026-08-15 rebuild: the drawn set grew from 607 lines to
+    // 10197 after the 2026-08-15 rebuild: the drawn set grew from 607 lines to
     // 652, and a junction shared by two strokes is a platform row on each.
-    ["jp", 10196],
+    // +1 on 2026-08-16: 上越線's up bore now starts at 水上, the last station it
+    // shares with the down bore, so that it joins the railway instead of
+    // ending in mid-air at its own 湯檜曽 platform.
+    ["jp", 10197],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],
