@@ -146,6 +146,69 @@ test("上越線's two bores are drawn separately, with the sourced direction", (
   assert.equal(record.to, "土樽");
 });
 
+test("上越線's spirals are on the up line, which is how the bores tell apart", () => {
+  // The strongest check available, because it reads a property of the track
+  // rather than a number that drifts: a spiral turns a full circle, and
+  // ja.wikipedia's ループ線 article states that BOTH 上越線 spirals — 湯檜曽ループ
+  // and 松川ループ — are 上り線のみ. The down bore has no spiral at all; it goes
+  // under the ridge in 新清水トンネル and takes a horseshoe past 土樽.
+  //
+  // So if the two bores are ever drawn as each other again — which is exactly
+  // what happened when the main stroke was anchored on the up line's platform
+  // and climbed the loop for 7.5 km against an audited 3.5 — the circle shows
+  // up on the wrong stroke and this fails, saying so in one line.
+  const down = byId.get("jp-東日本旅客鉄道-上越線");
+  const names = down.stations.map((station) => station[1]);
+
+  const turning = (points) => {
+    let total = 0;
+    for (let i = 2; i < points.length; i += 1) {
+      const [a, b, c] = [points[i - 2], points[i - 1], points[i]];
+      const bearing = (from, to) =>
+        Math.atan2(
+          to[1] - from[1],
+          (to[0] - from[0]) * Math.cos((from[1] * Math.PI) / 180),
+        );
+      // Wrap to (-pi, pi]. NOT with `%`: JavaScript's remainder keeps the
+      // sign of the dividend, so a vertex that turns past -180 degrees — the
+      // down bore has one — leaks a whole -360 into the total and reports a
+      // straight run through 新清水トンネル as a spiral.
+      const delta = bearing(b, c) - bearing(a, b);
+      total += delta - 2 * Math.PI * Math.round(delta / (2 * Math.PI));
+    }
+    return (total * 180) / Math.PI;
+  };
+
+  for (const [from, to] of [
+    ["湯檜曽", "土樽"],
+    ["土樽", "越後中里"],
+  ]) {
+    const up = paired.find(
+      (line) =>
+        line.alignmentOf === down.id &&
+        line.stations[0][1] === from &&
+        line.stations.at(-1)[1] === to,
+    );
+    assert.ok(up, `上越線 ${from}–${to} is not drawn as a pair`);
+
+    const downTrack = down.segments
+      .slice(names.indexOf(from), names.indexOf(to))
+      .flatMap((segment) => segment[2]);
+    const upTrack = up.segments.flatMap((segment) => segment[2]);
+
+    assert.ok(
+      Math.abs(turning(upTrack)) > 250,
+      `${from}–${to}: the up line should carry the spiral, but turns only ` +
+        `${Math.round(turning(upTrack))}°`,
+    );
+    assert.ok(
+      Math.abs(turning(downTrack)) < 180,
+      `${from}–${to}: the down line should have no spiral, but turns ` +
+        `${Math.round(turning(downTrack))}°`,
+    );
+  }
+});
+
 test("no alignment is drawn as a pair without a source saying it is one", () => {
   // The builder finds more candidates than this by geometry alone: 大阪上本町's
   // underground 難波線 platform is 180 m off the 大阪線 and looks identical to a
