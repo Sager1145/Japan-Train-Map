@@ -1612,6 +1612,7 @@ def build_lines(
         else:
             lines.extend(built_parts)
 
+    share_junction_anchors(lines)
     context = {
         "classification": classification,
         "station_by_uid": station_by_uid,
@@ -1734,6 +1735,78 @@ def structure_on_cut(pieces, measure, structure_by_section):
             out.append((begin, finish, kind, int(interval.get("layer") or 0)))
         offset += span
     return out
+
+
+def share_junction_anchors(lines):
+    """One station, one dot — even where two sibling strokes anchor it apart.
+
+    A junction station belongs to both strokes that meet there, and across jp
+    that is already how it looks: 44 such stations carry the SAME coordinate in
+    every stroke. Seven did not, because each stroke anchored the station on its
+    own track group and those groups stand apart — 札幌 by 208 m, which drew the
+    city's main station as two dots with a hole between them instead of one point
+    the lines meet at.
+
+    The shared point is the MEAN of the disagreeing anchors, so each stroke's
+    approach is equally short. At 札幌 that is 58 m from the real station where
+    the two anchors were 48 and 161 m from it, i.e. it is nearer the truth than
+    the anchor it replaces on one side and barely worse on the other.
+
+    A paired alignment is exempt: its whole point is that the two directions
+    stop in DIFFERENT places, so 湯檜曽's two platforms 73 m apart are the fact
+    being drawn, not a disagreement to average away.
+
+    Interval ends are rewritten with the station rows, because the renderer pins
+    each interval to its station row anyway (`rail-network.js:734`) and a package
+    whose own two copies differ would drift.
+    """
+    families = collections.defaultdict(list)
+    for line in lines:
+        if line.get("alignmentRole"):
+            continue
+        families[re.sub(r"(-p?\d+)+$", "", line["id"])].append(line)
+    for members in families.values():
+        if len(members) < 2:
+            continue
+        seats = collections.defaultdict(list)
+        for line in members:
+            for index, station in enumerate(line["stations"]):
+                seats[station[0]].append((line, index))
+        for group, places in seats.items():
+            if len(places) < 2:
+                continue
+            points = [
+                (line["stations"][index][2], line["stations"][index][3])
+                for line, index in places
+            ]
+            if max(
+                math.hypot(
+                    (a[0] - b[0]) * 111_320 * math.cos(math.radians(a[1])),
+                    (a[1] - b[1]) * 111_320,
+                )
+                for a in points
+                for b in points
+            ) <= 1.0:
+                continue
+            shared = [
+                round(sum(point[0] for point in points) / len(points), 6),
+                round(sum(point[1] for point in points) / len(points), 6),
+            ]
+            for line, index in places:
+                line["stations"][index][2] = shared[0]
+                line["stations"][index][3] = shared[1]
+                segments = line["segments"]
+                if index < len(segments):
+                    # A flag=1 interval dropped the vertex it shares with its
+                    # predecessor, so its first point IS the previous station.
+                    target = segments[index]
+                    if target[1]:
+                        if index:
+                            segments[index - 1][2][-1] = list(shared)
+                    else:
+                        target[2][0] = list(shared)
+                if index and index - 1 < len(segments):
+                    segments[index - 1][2][-1] = list(shared)
 
 
 def split_by_track_group(order, points, graph, keep_within_m=250.0):

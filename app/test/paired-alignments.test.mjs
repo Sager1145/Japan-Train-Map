@@ -323,3 +323,43 @@ test("a link across a track-group boundary is drawn, not dropped", () => {
     );
   }
 });
+
+// One station, one dot. A junction between two sibling strokes is drawn 44 times
+// over with a single shared coordinate, and the seven that disagreed made the
+// station read as two dots with a hole between them — 札幌 by 208 m, in the
+// middle of the city. Paired alignments are exempt by design: 湯檜曽's two
+// platforms 73 m apart ARE the fact being drawn.
+test("a junction shared by two sibling strokes is one point, not two", () => {
+  const metres = (a, b) =>
+    Math.hypot(
+      (a[0] - b[0]) * 111320 * Math.cos((a[1] * Math.PI) / 180),
+      (a[1] - b[1]) * 111320,
+    );
+  const families = new Map();
+  for (const line of pkg.lines) {
+    if (line.alignmentRole) continue;
+    const base = line.id.replace(/(-p?\d+)+$/, "");
+    if (!families.has(base)) families.set(base, []);
+    families.get(base).push(line);
+  }
+  for (const [base, members] of families) {
+    if (members.length < 2) continue;
+    const seats = new Map();
+    for (const line of members)
+      for (const station of line.stations) {
+        if (!seats.has(station[0])) seats.set(station[0], []);
+        seats.get(station[0]).push({ id: line.id, at: [station[2], station[3]] });
+      }
+    for (const [group, places] of seats) {
+      if (places.length < 2) continue;
+      for (const other of places.slice(1)) {
+        const gap = metres(places[0].at, other.at);
+        assert.ok(
+          gap <= 1,
+          `${base} station group ${group} sits ${gap.toFixed(0)} m apart between ` +
+            `${places[0].id} and ${other.id}`,
+        );
+      }
+    }
+  }
+});
