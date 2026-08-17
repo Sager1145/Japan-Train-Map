@@ -1883,8 +1883,12 @@
         // through to an operator mark those railways do not have.
         // `-p1` is the same story for a paired alignment: 北陸線's 鳩原 loop is
         // the same railway as 北陸線 and wears the same badge.
+        //
+        // Both suffixes can stack — 日豊線's 立石 pair is a paired alignment OF a
+        // split part, `日豊線-2-p1` — so this strips them repeatedly. Peeling one
+        // left `日豊線-2`, a badge that was never drawn either.
         logo: compactLine.logo
-          ? `/rail/logos/${lineId.replace(/-p?\d+$/, "")}.png`
+          ? `/rail/logos/${lineId.replace(/(?:-p?\d+)+$/, "")}.png`
           : null,
         stationOrder: stationIds,
         km: totalKm,
