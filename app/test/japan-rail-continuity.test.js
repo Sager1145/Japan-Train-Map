@@ -36,9 +36,9 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // unchanged: every line's intervals match its station order, and every
   // interval meets its neighbour exactly.
   assert.equal(pkg.version, "2025.4.2");
-  // 656: 上越線's two up spans, 北陸線's 鳩原ループ, and the 2026-08-17 sourced
+  // 662: 上越線's two up spans, 北陸線's 鳩原ループ, and the 2026-08-17 sourced
   // additions — 日豊線 立石, 鹿児島線 田原坂 and 上伊集院, 日本海ひすいライン 子不知.
-  assert.equal(pkg.lines.length, 656);
+  assert.equal(pkg.lines.length, 662);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

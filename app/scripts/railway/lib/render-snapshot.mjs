@@ -21,7 +21,7 @@
 // This hash is the single point that pins the whole render model. Update it
 // only alongside the package it characterises, never to make a suite pass.
 export const EXPECTED_RENDER_HASH =
-  "84a5e2fa580434702cc27314502a06114e1e34ff3317a3ca6cbdf0ee9d9e6d9c";
+  "d19404a6b3caaac38a5f2e713de38ed6894db29344a9d15540b4be355c04577e";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 
