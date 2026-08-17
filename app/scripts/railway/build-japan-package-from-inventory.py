@@ -166,10 +166,17 @@ ALTERNATE_MAX_RATIO = 4.0
 ALTERNATE_TOLERANCE = 0.25
 
 # How far apart two alignments must get before they are a directional split
-# rather than double track. 上越線's bores are kilometres apart; 中央本線's 笹子
-# and 新笹子 tunnels are 25 m apart and are ordinary double track bored twice;
-# two tram stops across a street are a few metres. 150 m clears all three.
-SEPARATED_MIN_M = 150.0
+# rather than double track. Measured segment to segment (see max_separation_m —
+# the vertex-to-vertex version inflated every tunnel pair). Known distances:
+#
+#   中央本線 笹子 / 新笹子      25 m   twin bores, ordinary double track
+#   北陸本線 倶利伽羅          40 m   twin bores of the SAME tunnel
+#   日本海ひすいライン 新子不知  124 m   a real 別線: 上り built inland, 下り the old coast line
+#   上越線 清水 / 新清水      840 m   the flagship case
+#
+# 100 m sits between the widest twin-bore pair and the narrowest real 別線. It
+# is only a pre-filter: nothing is drawn as a pair without a source either way.
+SEPARATED_MIN_M = 100.0
 
 # A separated alignment has two ends, and both have to be closed. The far end
 # closes on the rejoin station's shared platform. The near end has no station to
@@ -1559,7 +1566,18 @@ def build_lines(
                 # evidence file or stays unassigned — never guessed here.
                 source_url = sourced.get("source") or sourced["sources"][0]
                 paired["alignmentDirection"] = sourced["paired_direction"]
-                paired["alignmentSource"] = source_url
+                # Two different claims, two different sources. That the bores
+                # exist can be sourced while WHICH carries 上り is not — 上伊集院
+                # is stated by ja.wikipedia to run its directions on separate
+                # track, but the only statement about which is which is a blog
+                # contradicting itself. Recording one source for both would make
+                # the map assert a direction nobody stands behind, and the ride
+                # importer would then bias every ride onto a guess instead of
+                # falling back to geometric fit.
+                if paired["alignmentDirection"] == "unassigned":
+                    paired["alignmentSplitSource"] = source_url
+                else:
+                    paired["alignmentSource"] = source_url
                 entry.setdefault("alignmentPairs", []).append(
                     {
                         "with": paired["id"],
@@ -2052,11 +2070,21 @@ def max_separation_m(alternate, primary):
     widest = 0.0
     for point in alternate:
         scale = 111_320 * math.cos(math.radians(point[1]))
+        px, py = point[0] * scale, point[1] * 111_320
         best = math.inf
-        for other in primary:
-            dx = (other[0] - point[0]) * scale
-            dy = (other[1] - point[1]) * 111_320
-            best = min(best, math.hypot(dx, dy))
+        for start, end in zip(primary, primary[1:]):
+            # Distance to the SEGMENT, not to its nearer endpoint. N02 files
+            # tunnel centre-lines with roughly 270 m between vertices, so
+            # measuring vertex to vertex inflates every tunnel pair by about
+            # half that: 倶利伽羅's twin bores measured 180 m apart this way and
+            # are 40 m apart in fact, which is ordinary double track wearing a
+            # separated alignment's clothes.
+            ax, ay = start[0] * scale, start[1] * 111_320
+            bx, by = end[0] * scale, end[1] * 111_320
+            dx, dy = bx - ax, by - ay
+            span = dx * dx + dy * dy
+            t = 0.0 if span == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / span))
+            best = min(best, math.hypot(px - (ax + t * dx), py - (ay + t * dy)))
             if best <= widest:
                 break
         if best is not math.inf:
