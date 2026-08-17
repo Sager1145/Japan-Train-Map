@@ -1232,6 +1232,7 @@ def build_lines(
     structure_by_section = load_structure()
     pair_directions = load_pair_directions()
     pair_geometry = load_pair_geometry()
+    pair_bypasses = load_pair_bypasses()
 
     # adjacency and per-line membership, keyed the way the batch table is
     adjacency = collections.defaultdict(set)
@@ -1427,6 +1428,7 @@ def build_lines(
                 structure_by_section=structure_by_section,
                 platforms_by_group=all_platforms.get((name, operator), {}),
                 surveyed=pair_geometry,
+                bypasses=pair_bypasses,
             )
             entry, problem, mismatched, alternates = attempt
             if problem and "several tracks share" in problem:
@@ -1465,6 +1467,7 @@ def build_lines(
                         normalise_line_name=n02_source.normalise_line_name,
                         structure_by_section=structure_by_section,
                         surveyed=pair_geometry,
+                bypasses=pair_bypasses,
                     )
                     if not problem:
                         notes.append(
@@ -1632,7 +1635,27 @@ def load_pair_directions():
     path = RAW / "evidence" / "paired-alignment-directions.json"
     if not path.exists():
         return {}
-    rows = json.loads(path.read_text("utf-8")).get("pairs", [])
+    payload = json.loads(path.read_text("utf-8"))
+    # A bypass is a pair as far as the DIRECTION gate is concerned — it is only
+    # found differently — so its rows answer here too. Without this the bypass
+    # geometry is built and then dropped for having no source behind it.
+    rows = payload.get("pairs", []) + payload.get("bypasses", [])
+    return {
+        (row["line"], row["from_station"], row["to_station"]): row for row in rows
+    }
+
+
+def load_pair_bypasses():
+    """Sourced 別線 that skip a station, keyed like any other pair row.
+
+    Separate from `pairs` because the geometry is found a different way: by
+    excluding the skipped station's own track rather than by following second
+    platform features. The direction rules are identical.
+    """
+    path = RAW / "evidence" / "paired-alignment-directions.json"
+    if not path.exists():
+        return {}
+    rows = json.loads(path.read_text("utf-8")).get("bypasses", [])
     return {
         (row["line"], row["from_station"], row["to_station"]): row for row in rows
     }
@@ -1973,6 +1996,75 @@ def choose_platform_by_audit(
         chosen = best[1]
         chosen["platform_len_m"] = anchors[uid].get("platform_len_m", 0.0)
         anchors[uid] = chosen
+
+
+def declared_bypasses(
+    graph,
+    geometry_lib,
+    order,
+    anchors,
+    station_by_uid,
+    key,
+    bypasses,
+    primary_coords=(),
+):
+    """A sourced 別線 that SKIPS a station, so no platform test can find it.
+
+    上越線's shape is two platforms at one station; 函館線's 藤城線 is the other
+    shape entirely — 「当駅と大沼駅の間には下り線専用の別線（通称：藤城線）が
+    設置されている。」 It leaves 七飯, bypasses 新函館北斗 and 仁山 altogether, and
+    rejoins at 大沼, so both its endpoints have one platform each and the
+    stations that WOULD have two are simply not on it.
+
+    It cannot be found by asking for the shortest path either, because the route
+    through the skipped station is the shorter of the two (13.285 km against
+    13.309). That is also what defeated the skip-station test: it cuts a
+    candidate edge along the shortest path, gets the route through 新函館北斗,
+    and concludes the edge "runs past" a station its own track misses by 2.9 km.
+
+    So the skipped station is named in the evidence file and excluded from the
+    search outright. What comes back is verified before it is drawn: it must
+    clear the same separation gate as any other pair, which is what stops this
+    from becoming a way to declare track into existence.
+    """
+    out = []
+    by_name = {station_by_uid[uid]["station_name"]: uid for uid in order}
+    for (line, first, last), row in bypasses.items():
+        if line != key or first not in by_name or last not in by_name:
+            continue
+        start_uid, end_uid = by_name[first], by_name[last]
+        if start_uid not in anchors or end_uid not in anchors:
+            continue
+        skipped = set()
+        for name in row.get("skips", []):
+            uid = by_name.get(name)
+            if uid is None or uid not in anchors:
+                continue
+            skipped.add(anchors[uid]["section"])
+        if not skipped:
+            continue
+        cut = graph.path_between(anchors[start_uid], anchors[end_uid], exclude=skipped)
+        if cut is None:
+            continue
+        coords = dedupe_points(cut[0])
+        if len(coords) < 2:
+            continue
+        coords[0] = anchor_point(anchors[start_uid])
+        coords[-1] = anchor_point(anchors[end_uid])
+        separation = max_separation_m(coords, primary_coords)
+        if separation < SEPARATED_MIN_M:
+            continue
+        out.append(
+            {
+                "separation_m": separation,
+                "uids": [start_uid, end_uid],
+                "points": [anchor_point(anchors[start_uid]), anchor_point(anchors[end_uid])],
+                "coords": coords,
+                "km": round(geometry_lib.polyline_km(coords), 3),
+                "length_m": cut[1],
+            }
+        )
+    return out
 
 
 def separated_direction_runs(order, platforms_by_group, station_by_uid):
@@ -2323,6 +2415,7 @@ def build_display_line(
     structure_by_section=None,
     platforms_by_group=None,
     surveyed=None,
+    bypasses=None,
 ):
     """One ordered station list -> one compact-v1 display line.
 
@@ -2531,6 +2624,18 @@ def build_display_line(
             )
             if found is not None and found["separation_m"] >= SEPARATED_MIN_M:
                 alternates.append(found)
+        alternates.extend(
+            declared_bypasses(
+                graph,
+                geometry_lib,
+                order,
+                anchors,
+                station_by_uid,
+                key,
+                bypasses or {},
+                primary_coords=[point for segment in segments for point in segment[2]],
+            )
+        )
 
     if structure:
         total_m = sum(segment[0] for segment in segments) * 1000
