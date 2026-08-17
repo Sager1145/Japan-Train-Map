@@ -164,8 +164,16 @@ test("上越線's spirals are on the up line, which is how the bores tell apart"
   const down = byId.get("jp-東日本旅客鉄道-上越線");
   const names = down.stations.map((station) => station[1]);
 
+  // The largest continuous turn ANYWHERE along the stroke, not the net turn of
+  // the whole span. Net turning cancels: 上越線's up bore climbs the 湯檜曽
+  // spiral one way and then swings back through 清水トンネル's horseshoe the
+  // other, which nets to -120° and hides a spiral that is plainly there. The
+  // running sum's peak-to-trough swing is what "contains a full circle" means.
   const turning = (points) => {
-    let total = 0;
+    let running = 0;
+    let low = 0;
+    let high = 0;
+    let swing = 0;
     for (let i = 2; i < points.length; i += 1) {
       const [a, b, c] = [points[i - 2], points[i - 1], points[i]];
       const bearing = (from, to) =>
@@ -178,9 +186,12 @@ test("上越線's spirals are on the up line, which is how the bores tell apart"
       // down bore has one — leaks a whole -360 into the total and reports a
       // straight run through 新清水トンネル as a spiral.
       const delta = bearing(b, c) - bearing(a, b);
-      total += delta - 2 * Math.PI * Math.round(delta / (2 * Math.PI));
+      running += delta - 2 * Math.PI * Math.round(delta / (2 * Math.PI));
+      low = Math.min(low, running);
+      high = Math.max(high, running);
+      swing = Math.max(swing, running - low, high - running);
     }
-    return (total * 180) / Math.PI;
+    return (swing * 180) / Math.PI;
   };
 
   for (const [from, to] of [
@@ -201,12 +212,12 @@ test("上越線's spirals are on the up line, which is how the bores tell apart"
     const upTrack = up.segments.flatMap((segment) => segment[2]);
 
     assert.ok(
-      Math.abs(turning(upTrack)) > 250,
-      `${from}–${to}: the up line should carry the spiral, but turns only ` +
-        `${Math.round(turning(upTrack))}°`,
+      turning(upTrack) > 300,
+      `${from}–${to}: the up line should carry the spiral, but its largest ` +
+        `continuous turn is only ${Math.round(turning(upTrack))}°`,
     );
     assert.ok(
-      Math.abs(turning(downTrack)) < 180,
+      turning(downTrack) < 250,
       `${from}–${to}: the down line should have no spiral, but turns ` +
         `${Math.round(turning(downTrack))}°`,
     );
