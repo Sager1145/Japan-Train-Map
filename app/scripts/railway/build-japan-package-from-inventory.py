@@ -908,9 +908,19 @@ def longest_path(edges, weight):
         seen = {start}
         while stack:
             node, distance = stack.pop()
-            if distance > best[0]:
+            # Tie-break on the station uid, not on arrival order. Two leaves the
+            # same distance away are a real occurrence on a symmetric branch, and
+            # `distance > best[0]` silently kept whichever the walk reached
+            # first — which depended on set iteration order and so on the
+            # interpreter's per-process string hashing.
+            if (distance, node) > best:
                 best = (distance, node)
-            for other in near[node]:
+            # `near[node]` is a set, so iterating it raw let the SAME input
+            # produce different parentage from one run to the next: 東海道線 and
+            # its sibling traded 15 km of track between rebuilds, and 成田線-3/-4
+            # swapped their mileage outright. Sorting makes the trunk, and every
+            # part split that follows from it, a function of the data alone.
+            for other in sorted(near[node]):
                 if other in seen:
                     continue
                 seen.add(other)
@@ -918,7 +928,7 @@ def longest_path(edges, weight):
                 stack.append((other, distance + weight(node, other)))
         return best[0], best[1], parents
 
-    _first, far_node, _parents = farthest(next(iter(near)))
+    _first, far_node, _parents = farthest(min(near))
     _second, end, parents = farthest(far_node)
     path = [end]
     while parents[path[-1]] is not None:
