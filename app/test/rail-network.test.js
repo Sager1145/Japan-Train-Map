@@ -47,7 +47,7 @@ const EXPECTED_COUNTS = Object.freeze({
   // a railway drawn as several strokes shares one lane, so the split-at-lane-
   // boundary features it used to generate collapse.
   segments: 922,
-  stations: 10217,
+  stations: 10221,
   lines: 662,
   groups: 9039,
 });

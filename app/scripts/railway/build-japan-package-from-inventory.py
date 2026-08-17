@@ -1738,7 +1738,23 @@ def split_by_track_group(order, points, graph, keep_within_m=250.0):
         if runs and runs[-1][0] == group:
             runs[-1][1].append(uid)
         else:
-            runs.append((group, [uid]))
+            # A run boundary is a junction, and a junction station belongs to
+            # BOTH strokes — the same contract a branch already has, where the
+            # branch keeps the station it leaves from so the two meet there.
+            #
+            # Without this the line lost the interval ACROSS the boundary. 函館線
+            # is filed as two track groups either side of 札幌; 札幌's chosen
+            # platform sits in the 旭川-side group while it also anchors 33 m
+            # from the 桑園-side one, so the 桑園–札幌 main line — 1.314 km by the
+            # audit, active, and plainly there on the ground — was drawn by
+            # neither stroke and left a hole at Sapporo's own station.
+            carry = []
+            if runs and group is not None:
+                previous = runs[-1][1][-1]
+                shared = graph.project(points[previous], component=group)
+                if shared is not None and shared["distance_m"] <= keep_within_m:
+                    carry = [previous]
+            runs.append((group, carry + [uid]))
     return [members for _group, members in runs]
 
 
