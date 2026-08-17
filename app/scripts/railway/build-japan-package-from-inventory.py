@@ -1416,6 +1416,7 @@ def build_lines(
                 normalise_line_name=n02_source.normalise_line_name,
                 structure_by_section=structure_by_section,
                 platforms_by_group=all_platforms.get((name, operator), {}),
+                surveyed=pair_geometry,
             )
             entry, problem, mismatched, alternates = attempt
             if problem and "several tracks share" in problem:
@@ -1453,6 +1454,7 @@ def build_lines(
                         geometry_lib=geometry_lib,
                         normalise_line_name=n02_source.normalise_line_name,
                         structure_by_section=structure_by_section,
+                        surveyed=pair_geometry,
                     )
                     if not problem:
                         notes.append(
@@ -1645,7 +1647,12 @@ def load_pair_geometry():
         return {}
     rows = json.loads(path.read_text("utf-8")).get("intervals", [])
     return {
-        (row["line"], row["from_station"], row["to_station"]): row["coordinates"]
+        (
+            row.get("role", "paired"),
+            row["line"],
+            row["from_station"],
+            row["to_station"],
+        ): row["coordinates"]
         for row in rows
     }
 
@@ -2190,7 +2197,9 @@ def split_alternate_segments(
         target = points[index]
         replacement = None
         if surveyed and line_key and len(names) > index:
-            replacement = surveyed.get((line_key, names[index - 1], names[index]))
+            replacement = surveyed.get(
+                ("paired", line_key, names[index - 1], names[index])
+            )
         if replacement:
             piece = [list(point) for point in replacement]
             piece[0] = list(points[index - 1])
@@ -2287,6 +2296,7 @@ def build_display_line(
     normalise_line_name,
     structure_by_section=None,
     platforms_by_group=None,
+    surveyed=None,
 ):
     """One ordered station list -> one compact-v1 display line.
 
@@ -2399,6 +2409,28 @@ def build_display_line(
         # renderer puts it back from the previous interval's last point. Storing
         # it twice is not merely larger — the two copies can drift, and then the
         # stroke opens at a station.
+        # Both bores of a separated span need surveyed track, not just the
+        # sibling stroke. N02 carries ONE coarse centre-line per bore, so the
+        # down line stood up to 656 m off 新清水トンネル while the up line was
+        # already on OSM's: on the map that read as one straight line ignoring
+        # the railway, beside another one following it.
+        #
+        # Only the drawn geometry is replaced. `measure` and the structure rows
+        # keep the N02 walk's own kilometrage, because a tunnel's position was
+        # surveyed against THAT and re-basing it here would move every structure
+        # on the line to fix a stroke.
+        surveyed_primary = (surveyed or {}).get(
+            (
+                "primary",
+                key,
+                station_by_uid[start_uid]["station_name"],
+                station_by_uid[end_uid]["station_name"],
+            )
+        )
+        if surveyed_primary:
+            coords = [list(point) for point in surveyed_primary]
+            coords[0] = anchor_point(anchors[start_uid])
+            coords[-1] = anchor_point(anchors[end_uid])
         kilometres = round(geometry_lib.polyline_km(coords), 3)
         if segments:
             segments.append([kilometres, 1, coords[1:]])
