@@ -1214,6 +1214,7 @@ def build_lines(
     carried = carried_display_attributes()
     structure_by_section = load_structure()
     pair_directions = load_pair_directions()
+    pair_geometry = load_pair_geometry()
 
     # adjacency and per-line membership, keyed the way the batch table is
     adjacency = collections.defaultdict(set)
@@ -1540,7 +1541,14 @@ def build_lines(
                 ]
                 # One interval per station pair, same as any other stroke.
                 paired["segments"] = split_alternate_segments(
-                    alternate, geometry_lib
+                    alternate,
+                    geometry_lib,
+                    line_key=key,
+                    names=[
+                        station_by_uid[uid]["station_name"]
+                        for uid in alternate["uids"]
+                    ],
+                    surveyed=pair_geometry,
                 )
                 paired.pop("structure", None)
                 paired.pop("isLoop", None)
@@ -1597,6 +1605,30 @@ def load_pair_directions():
     rows = json.loads(path.read_text("utf-8")).get("pairs", [])
     return {
         (row["line"], row["from_station"], row["to_station"]): row for row in rows
+    }
+
+
+def load_pair_geometry():
+    """OSM track for the bores of a paired alignment, keyed by line and stations.
+
+    N02-25 carries one coarse centre-line for a second bore. On 上越線's
+    湯檜曽ループ it stands up to 222 m off the track OSM and the basemap both
+    draw, which reads on the map as a stroke that does not follow the railway.
+    OSM keeps the bores as separate named ways, so the loop can be taken from it
+    way by way.
+
+    Only intervals listed in the file are replaced. The lead-in from the last
+    shared station is deliberately absent: there N02 has a single centre-line
+    for both directions and the paired stroke has to stay EXACTLY coincident
+    with the primary, which a second survey's geometry would break.
+    """
+    path = RAW / "evidence" / "paired-alignment-geometry.json"
+    if not path.exists():
+        return {}
+    rows = json.loads(path.read_text("utf-8")).get("intervals", [])
+    return {
+        (row["line"], row["from_station"], row["to_station"]): row["coordinates"]
+        for row in rows
     }
 
 
@@ -2113,14 +2145,41 @@ def separated_alignment(
     }
 
 
-def split_alternate_segments(alternate, geometry_lib):
-    """Cut a separated alignment into one interval per station pair."""
+def split_alternate_segments(
+    alternate, geometry_lib, line_key=None, names=(), surveyed=None
+):
+    """Cut a separated alignment into one interval per station pair.
+
+    An interval the evidence file has OSM track for is taken from there instead
+    of from the N02 walk, with both ends still pinned to the package's own
+    station anchors so the stroke meets its neighbours to the vertex.
+    """
     coords = alternate["coords"]
     points = alternate["points"]
     segments = []
     cursor = 0
     for index in range(1, len(points)):
         target = points[index]
+        replacement = None
+        if surveyed and line_key and len(names) > index:
+            replacement = surveyed.get((line_key, names[index - 1], names[index]))
+        if replacement:
+            piece = [list(point) for point in replacement]
+            piece[0] = list(points[index - 1])
+            piece[-1] = list(target)
+            kilometres = round(geometry_lib.polyline_km(piece), 3)
+            segments.append(
+                [kilometres, 0, piece] if not segments else [kilometres, 1, piece[1:]]
+            )
+            # The walk's own cursor still has to advance past this interval so
+            # the next one starts in the right place.
+            for position in range(cursor + 1, len(coords)):
+                if coords[position] == target:
+                    cursor = position
+                    break
+            else:
+                cursor = len(coords) - 1
+            continue
         at = cursor
         for position in range(cursor + 1, len(coords)):
             if coords[position] == target:
