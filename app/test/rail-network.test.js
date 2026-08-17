@@ -46,9 +46,9 @@ const EXPECTED_COUNTS = Object.freeze({
   // 907 once lanes became a property of the RAILWAY rather than the stroke:
   // a railway drawn as several strokes shares one lane, so the split-at-lane-
   // boundary features it used to generate collapse.
-  segments: 911,
-  stations: 10197,
-  lines: 652,
+  segments: 915,
+  stations: 10205,
+  lines: 656,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

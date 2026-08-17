@@ -229,15 +229,30 @@ test("no alignment is drawn as a pair without a source saying it is one", () => 
   // underground 難波線 platform is 180 m off the 大阪線 and looks identical to a
   // split. Drawing those would invent second directions that do not exist, so
   // the evidence file is the gate and every drawn pair carries its source.
+  //
+  // Two separate claims, so two separate sources. THAT the bores exist can be
+  // sourced while WHICH of them carries 上り is not: ja.wikipedia states plainly
+  // that 上伊集院–広木 runs its directions on separate track, but the only
+  // statement about which is which is a blog that contradicts itself. Such a
+  // pair is drawn — the track is real — and says `unassigned` rather than
+  // asserting a direction nobody stands behind, which would make the ride
+  // importer bias every ride onto a guess instead of falling back to geometry.
   for (const line of paired) {
     assert.ok(
-      line.alignmentSource,
+      line.alignmentSource || line.alignmentSplitSource,
       `${line.id} is drawn as a pair with no source behind it`,
     );
-    assert.ok(
-      line.alignmentDirection === "up" || line.alignmentDirection === "down",
-      `${line.id} is sourced but claims no direction`,
-    );
+    if (line.alignmentSource)
+      assert.ok(
+        line.alignmentDirection === "up" || line.alignmentDirection === "down",
+        `${line.id} names a direction source but claims no direction`,
+      );
+    else
+      assert.equal(
+        line.alignmentDirection,
+        "unassigned",
+        `${line.id} claims a direction its split source does not establish`,
+      );
   }
 });
 
