@@ -293,3 +293,33 @@ test("a paired alignment meets the primary stroke at both of its ends", () => {
     }
   }
 });
+
+// A run boundary is a junction, and the interval ACROSS it is the one that goes
+// missing when the boundary station belongs to only one of the two strokes. Each
+// link below was absent from the drawn network until 2026-08-17 and each is an
+// active `main` edge in the audit, so losing one again is a silent regression of
+// real main line — 桑園–札幌 is Sapporo's own station approach.
+test("a link across a track-group boundary is drawn, not dropped", () => {
+  const expected = [
+    ["jp-北海道旅客鉄道-函館線", "桑園", "札幌", 1.314],
+    ["jp-南海電気鉄道-高野線", "岸里玉出", "帝塚山", 0.652],
+    ["jp-西日本旅客鉄道-山陽線", "兵庫", "新長田", 1.859],
+    ["jp-阪急電鉄-今津線-2", "西宮北口", "阪神国道", 0.884],
+  ];
+  for (const [id, from, to, auditKm] of expected) {
+    const line = byId.get(id);
+    assert.ok(line, `${id} is not in the package`);
+    const names = line.stations.map((station) => station[1]);
+    const at = names.indexOf(from);
+    assert.ok(at >= 0, `${id} has lost ${from}`);
+    assert.equal(names[at + 1], to, `${id}: ${from} is no longer followed by ${to}`);
+    // Drawn geometry runs 15-25% long against the operator's kilometrage here,
+    // because anchors sit at platform midpoints and the track really curves. A
+    // factor of two would mean the interval took a different route entirely.
+    const km = line.segments[at][0];
+    assert.ok(
+      km > auditKm * 0.9 && km < auditKm * 1.5,
+      `${id} ${from}–${to} is ${km} km against an audited ${auditKm}`,
+    );
+  }
+});
