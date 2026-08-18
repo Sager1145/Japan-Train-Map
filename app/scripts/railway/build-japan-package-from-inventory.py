@@ -289,6 +289,15 @@ def extract_n02(destination: Path) -> Path:
     return destination / "N02-25_GML"
 
 
+class _SplitSection:
+    """One piece of an N02 section, cut at a T-junction node (see TrackGraph)."""
+
+    __slots__ = ("coords",)
+
+    def __init__(self, coords):
+        self.coords = coords
+
+
 class TrackGraph:
     """One railway's own track, as a graph its stations can be routed over.
 
@@ -299,7 +308,9 @@ class TrackGraph:
     """
 
     def __init__(self, sections, indices, geometry_lib):
-        self.sections = sections
+        # A local copy: T-junction splits append pieces, and those pieces
+        # belong to THIS railway's graph, not to the shared national list.
+        self.sections = list(sections)
         self.geometry_lib = geometry_lib
         self.indices = []
         seen_geometry = set()
@@ -309,15 +320,16 @@ class TrackGraph:
                 continue
             seen_geometry.add(key)
             self.indices.append(index)
+        self._split_t_junctions()
         self.measures = {
             index: geometry_lib.route_measures(
-                [list(point) for point in sections[index].coords]
+                [list(point) for point in self.sections[index].coords]
             )
             for index in self.indices
         }
         self.adjacency = collections.defaultdict(list)
         for index in self.indices:
-            coords = sections[index].coords
+            coords = self.sections[index].coords
             a, b = nkey(coords[0]), nkey(coords[-1])
             self.adjacency[a].append((b, index))
             if a != b:
@@ -328,8 +340,8 @@ class TrackGraph:
         # the projection alone is the whole build's runtime.
         self.boxes = {}
         for index in self.indices:
-            xs = [point[0] for point in sections[index].coords]
-            ys = [point[1] for point in sections[index].coords]
+            xs = [point[0] for point in self.sections[index].coords]
+            ys = [point[1] for point in self.sections[index].coords]
             self.boxes[index] = (min(xs), min(ys), max(xs), max(ys))
         self.component = self._components()
 
@@ -363,6 +375,83 @@ class TrackGraph:
             index: find(nkey(self.sections[index].coords[0]))
             for index in self.indices
         }
+
+    def _split_t_junctions(self):
+        """Make a node where one section ENDS on another's interior vertex.
+
+        Node identity above is a section's first and last vertex, and that is a
+        blind spot for the survey's T-junctions: at 常紋信号場 the 石北線's old
+        crossing-loop leg (section 21167) ends exactly ON an interior vertex of
+        each through section — the vertices are digit-for-digit equal — yet the
+        endpoint-only graph keeps them strangers, and the whole railway east of
+        the loop became an unreachable second component. 生田原–西留辺蘂 was
+        drawn as two strokes with a 19 km hole between them because of it.
+
+        So any section carrying another section's endpoint as an interior
+        vertex is split there, making the junction a real node. Splitting
+        changes no geometry — the pieces cover the parent vertex for vertex —
+        and a nationwide scan (2026-08-18) finds such touches on twelve
+        railways. Six become a single connected track (石北線, 常磐線,
+        武蔵野線, 日豊線, 肥薩線, 東武伊勢崎線), 山陽線 goes from three
+        groups to two, 長崎線 stays one group but its 旧線 dead-end becomes
+        routable, and on the rest (鹿児島線, 上越線, JR東 東海道線,
+        ポートアイランド線) the new node only lets a cut cross the junction
+        at the junction instead of via the nearest section seam.
+
+        A vertex that shares the section's OWN endpoint key is left alone: the
+        union-find above already knows those touch, and cutting there would
+        only manufacture degenerate slivers out of near-coincident vertices.
+        `self.source` remembers each piece's parent and measure offset so a
+        cut can still be reported against the ORIGINAL section's measures,
+        which is the space OSM structure was surveyed in.
+        """
+        ends = set()
+        for index in self.indices:
+            coords = self.sections[index].coords
+            ends.add(nkey(coords[0]))
+            ends.add(nkey(coords[-1]))
+        self.source = {}
+        rebuilt = []
+        for index in self.indices:
+            coords = self.sections[index].coords
+            own = {nkey(coords[0]), nkey(coords[-1])}
+            cuts = []
+            for at in range(1, len(coords) - 1):
+                key = nkey(coords[at])
+                if key not in ends or key in own:
+                    continue
+                if cuts and nkey(coords[cuts[-1]]) == key:
+                    continue
+                cuts.append(at)
+            if not cuts:
+                rebuilt.append(index)
+                continue
+            measures = self.geometry_lib.route_measures(
+                [list(point) for point in coords]
+            )
+            for start, stop in zip([0, *cuts], [*cuts, len(coords) - 1]):
+                piece = len(self.sections)
+                self.sections.append(
+                    _SplitSection([list(point) for point in coords[start : stop + 1]])
+                )
+                self.source[piece] = (index, measures[start])
+                rebuilt.append(piece)
+        self.indices = rebuilt
+
+    def to_source_pieces(self, pieces):
+        """Translate cut pieces back into ORIGINAL section measure space.
+
+        Cuts and exclusions speak this graph's own indices — including the
+        pieces T-junction splitting created — but OSM structure is keyed by
+        the N02 section it was matched to, at measures along THAT section. A
+        split piece's measures are its parent's shifted by where the piece
+        starts, so shifting back is exact.
+        """
+        out = []
+        for index, start_m, end_m in pieces:
+            source, offset = self.source.get(index, (index, 0.0))
+            out.append((source, offset + start_m, offset + end_m))
+        return out
 
     def length_m(self, index) -> float:
         return self.measures[index][-1]
@@ -988,7 +1077,7 @@ def stations_passed_by_cut(graph, points, a, b, others, tolerance_m=SKIP_PASSES_
     return passed
 
 
-def drop_skip_station_edges(edges, passes=None):
+def drop_skip_station_edges(edges, passes=None, keep=frozenset()):
     """Remove service edges that run over track the drawn order already covers.
 
     An express that does not call at 武蔵白石 still runs over the 大川支線's only
@@ -1005,6 +1094,19 @@ def drop_skip_station_edges(edges, passes=None):
     earns its own stroke, passes no station it does not stop at: 函館線's 藤城線
     bypasses 七飯 rather than running through it.
 
+    `keep` names the hops the audit's own partition rides — consecutive station
+    pairs of an audited branch part — and they are never candidates here. The
+    geometric test cannot be trusted with them: 東海道線's 大垣–垂井 is the main
+    line itself, but it passes 121 m from 荒尾 — a branch-only station whose
+    platform sits up its own stub near 南荒尾信号場 — so the test read the
+    trunk's own hop as a duplicate of 大垣–荒尾–垂井. That verdict assumes the
+    covering hops end up drawn TOGETHER, and the audited partition then put
+    大垣 on the trunk and 垂井 on the branch part, so the 南荒尾–垂井 track was
+    drawn by neither stroke. A hop the audit's partition names is an interval
+    that WILL be drawn; dropping it is never this test's call. (On every other
+    jp line this is inert: no audited part names a consecutive pair this test
+    currently drops.)
+
     An edge is only dropped while the rest of the graph still connects its two
     ends, so nothing is ever severed from the line.
     """
@@ -1014,6 +1116,8 @@ def drop_skip_station_edges(edges, passes=None):
     for pair in order:
         if passes is None:
             break
+        if pair in keep:
+            continue
         skipped = passes(pair[0], pair[1])
         if not skipped:
             continue
@@ -1063,9 +1167,30 @@ def plan_parts(
             )
         return None, "no adjacency rows for this line"
 
+    # The audit's partition outranks the skip-edge test, so the hops it rides
+    # are settled before the test runs: an edge between CONSECUTIVE stations of
+    # an audited branch part is that part's own interval, already decided to be
+    # drawn. Non-consecutive members stay fair game — 大垣–関ヶ原 spans the same
+    # part and really is a chord (the 新垂井線, drawn from its evidence row).
+    audited_hops = set()
+    try:
+        for part in json.loads(row.get("branch_parts_json") or "[]"):
+            members = [
+                uid_by_name[name]
+                for name in part.get("stations", [])
+                if name in uid_by_name
+            ]
+            audited_hops |= {
+                tuple(sorted(pair)) for pair in zip(members, members[1:])
+            }
+    except json.JSONDecodeError:
+        pass
+
     prefix = []
     if passes is not None:
-        edges, dropped = drop_skip_station_edges(edges, passes=passes)
+        edges, dropped = drop_skip_station_edges(
+            edges, passes=passes, keep=audited_hops
+        )
         for (a, b), skipped in dropped:
             name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
             over = (
@@ -2593,7 +2718,9 @@ def build_display_line(
             divergent["uids"] = [start_uid, end_uid]
             alternates.append(divergent)
         structure.extend(
-            structure_on_cut(pieces, measure, structure_by_section or {})
+            structure_on_cut(
+                graph.to_source_pieces(pieces), measure, structure_by_section or {}
+            )
         )
         measure += length_m
         # compact-v1's seam encoding: every interval after the first drops the

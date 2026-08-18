@@ -93,6 +93,20 @@ SUBWAY_OPERATOR_EXCEPTIONS = {
 # 路線名 and 運営会社 in the wrong columns.
 SWAPPED_ROW_FIX = {("えちぜん鉄道", "三国芦原線"): ("三国芦原線", "えちぜん鉄道")}
 
+# No known geometry defect in N02-25 needs a registered patch. The 2026-08-18
+# live-line gap audit found five drawn gaps (石北線 生田原—西留辺蘂, 常磐線
+# 広野—Jヴィレッジ, 日豊線 中山香—杵築, 山陽線 富海—戸田, 長崎線 喜々津—東園)
+# and every one is a T-junction blind spot, not missing track: a section ends
+# digit-for-digit ON another section's INTERIOR vertex, which endpoint-only
+# node building cannot see. Even 常磐線's supposed "218 m hole" south of
+# Jヴィレッジ is covered — section 14782 is a three-vertex hairpin whose middle
+# vertex IS section 14820's north end. All five are healed with zero geometry
+# change by the package builder's TrackGraph node splitting
+# (build-japan-package-from-inventory.py), not by touching the survey; the
+# station-adjacency side of the same audit lives in the corrections ledger
+# (data/raw/railway/jp/rebuild-inventory/evidence/network-corrections-2026-08-13.json,
+# block `n02_gap_corrections_2026_08_18`).
+
 WGS84_A = 6378137.0
 WGS84_F = 1 / 298.257223563
 
@@ -177,6 +191,14 @@ def _round_key(coords, dp: int = 5):
     return tuple((round(x, dp), round(y, dp)) for x, y in coords)
 
 
+def _geom_key(coords) -> str:
+    """Canonical direction-insensitive hash of a section's geometry."""
+    fwd = _round_key(coords, 7)
+    rev = tuple(reversed(fwd))
+    canon = fwd if fwd <= rev else rev
+    return hashlib.blake2b(repr(canon).encode(), digest_size=16).hexdigest()
+
+
 @dataclass
 class Section:
     index: int
@@ -256,10 +278,7 @@ def load(root: Path, verbose: bool = True) -> Network:
         s = Section(index=i, cls=rec["N02_001"], inst=rec["N02_002"],
                     line=line, operator=operator, coords=coords)
         s.length_m = polyline_length_m(coords)
-        fwd = _round_key(coords, 7)
-        rev = tuple(reversed(fwd))
-        canon = fwd if fwd <= rev else rev
-        s.geom_key = hashlib.blake2b(repr(canon).encode(), digest_size=16).hexdigest()
+        s.geom_key = _geom_key(coords)
         net.sections.append(s)
     if verbose:
         print(f"  applied {fixes} swapped-column fix(es)")
