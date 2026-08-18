@@ -36,9 +36,17 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // unchanged: every line's intervals match its station order, and every
   // interval meets its neighbour exactly.
   assert.equal(pkg.version, "2025.4.2");
-  // 663: 上越線's two up spans, 函館線's 藤城線,, 北陸線's 鳩原ループ, and the 2026-08-17 sourced
-  // additions — 日豊線 立石, 鹿児島線 田原坂 and 上伊集院, 日本海ひすいライン 子不知.
-  assert.equal(pkg.lines.length, 663);
+  // 661: down from 664 with the 2026-08-18 live-line gap repairs. Five severed
+  // sibling strokes rejoined their railways — 石北線-2 (生田原–西留辺蘂 T-junction
+  // blind spot), 常磐線-2 (広野–Jヴィレッジ, N02's missing 218 m approach),
+  // 日豊線-2/-2-p1 (中山香–杵築) and 山陽線-4 with the old 山陽線-2 (戸田–富海) —
+  // while 日豊線's 立石 paired stroke re-emerged as 日豊線-p1 and 長崎線 gained a
+  // -3 as its 旧線/新線 ring split out of the trunk: −5 strokes, +2.
+  // 660: the 2026-08-18 audit pseudo-edge removals deleted the three
+  // 成田-skipping edges of the 成田線 K4 clique, so 成田線-4 (久住–成田–下総松崎)
+  // is no longer produced — the trunk itself runs through 成田 now and the
+  // 佐倉/成田空港 branches join it there.
+  assert.equal(pkg.lines.length, 660);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

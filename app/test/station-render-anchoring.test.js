@@ -331,7 +331,10 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // +1 on 2026-08-16: 上越線's up bore now starts at 水上, the last station it
     // shares with the down bore, so that it joins the railway instead of
     // ending in mid-air at its own 湯檜曽 platform.
-    ["jp", 10223],
+    // −6 on 2026-08-18: the pseudo-edge removals reseated the 東海道線(JR東日本)
+    // family (29+8+3+2 → 22+9+7+2 platform rows) and folded 成田線 to three
+    // strokes through 成田 (22+5+3+3 → 23+3+3).
+    ["jp", 10222],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

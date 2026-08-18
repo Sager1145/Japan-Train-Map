@@ -47,14 +47,17 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
     }),
   );
 
-  // 390/325, up from 349/284 with the 2026-08-15 rebuild and the 2026-08-17
-  // paired alignments: the drawn set grew from 607 lines to 656 as each
-  // railway's separate alignments became their own strokes, and a split part
-  // carries its parent railway's badge. The
+  // 389/324, down from 391/326 with the 2026-08-18 gap repairs: five severed
+  // sibling strokes (石北線-2, 常磐線-2, 日豊線-2/-2-p1, 山陽線-4 and the old
+  // 山陽線-2 span) folded back into their trunks while 日豊線-p1 and 長崎線-3
+  // appeared, and a split part carries its parent railway's badge. The
   // difference below is unchanged at 65, and the loop still proves every badge
   // it claims is a real PNG.
-  assert.equal(packageImages.length, 390);
-  assert.equal(linesWithBadges.length, 325);
+  // 388/323 with the 2026-08-18 pseudo-edge removals: 成田線-4 (the stroke the
+  // three 成田-skipping audit edges produced) is no longer drawn, and it
+  // carried its railway's badge like every split part.
+  assert.equal(packageImages.length, 388);
+  assert.equal(linesWithBadges.length, 323);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -144,14 +147,15 @@ test("every non-line image falls back to the exact operator, never a parent or p
       !unresolvedOperators.has(line.operator) && !lineSymbolOverrides.has(line.id),
   );
 
-  // 338/331, moved by the 2026-08-15 rebuild and the 2026-08-17 paired alignments. The rule is
+  // 337/330, moved by the 2026-08-15 rebuild, the 2026-08-17 paired alignments
+  // and the 2026-08-18 gap repairs (−3 strokes net). The rule is
   // unchanged and the loop below is what enforces it: every line without a
   // package badge must resolve to its OWN operator's mark. That is why a split
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
-  assert.equal(missingBadgeLines.length, 338);
+  assert.equal(missingBadgeLines.length, 337);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 331);
+  assert.equal(coveredLines.length, 330);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

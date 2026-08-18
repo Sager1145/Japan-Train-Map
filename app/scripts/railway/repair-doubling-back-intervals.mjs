@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, '..', '..');
 const PACKAGE_PATH = path.join(APP_DIR, 'public', 'rail', 'jp-2025.json');
-const PACKAGE_VERSION = '2025.3.3';
+const PACKAGE_VERSION = '2025.4.2';
 
 const CASES = [
   {
@@ -42,13 +42,48 @@ const CASES = [
     officialKm: 4.5,
   },
   {
-    // 常磐線 取手 → 藤代 6.0 km. 取手 is where the 緩行線 from 綾瀬 terminates,
-    // so the platform's nearest N02 node sits on that alignment and the path
-    // had to run 2.5 km back towards 天王台 to reach the through track.
+    // 常磐線 藤代 → 取手 6.0 km. 取手 is where the 緩行線 from 綾瀬 terminates,
+    // so the platform's nearest N02 node sat on that alignment and the path
+    // had to run 2.5 km back towards 天王台 to reach the through track. The
+    // 2026-08-18 rebuild reversed the line to run 岩沼 → 日暮里 (hence
+    // 藤代 → 取手 now) and its T-junction node splitting already yields a clean
+    // 5.87 km interval; the case stays listed so a regression re-trims it.
     lineId: 'jp-東日本旅客鉄道-常磐線',
-    from: '取手',
-    to: '藤代',
+    from: '藤代',
+    to: '取手',
     officialKm: 6.0,
+  },
+  {
+    // 中央線 中野 → 東中野 1.9 km (営業キロ). 中野's platform anchors on a
+    // degree-1 dead-end platform section at the station's east end, so the
+    // path first runs 493 m back WEST to the nearest through-track node and
+    // returns past the platform in a 173° jag. The neighbouring 高円寺 → 中野
+    // interval is clean and is not listed.
+    lineId: 'jp-東日本旅客鉄道-中央線',
+    from: '中野',
+    to: '東中野',
+    officialKm: 1.9,
+  },
+  {
+    // 奥羽線 秋田 → 四ツ小屋 6.4 km (営業キロ). Same shape as 中野: 秋田
+    // anchors on a dead-end platform section at the station's south end, and
+    // the southbound interval first runs 446 m NORTH before folding back.
+    lineId: 'jp-東日本旅客鉄道-奥羽線',
+    from: '秋田',
+    to: '四ツ小屋',
+    officialKm: 6.4,
+  },
+  {
+    // 京王線 幡ヶ谷 → 新宿 2.6 km (京王新線の営業キロ — the interval rides the
+    // 新線 tracks, where 幡ヶ谷's only platforms are). 幡ヶ谷 anchors on a 新線
+    // platform section, so the path first runs 400 m back down the 新線 to the
+    // west node and folds 154° up onto the 本線. This trim is palliative:
+    // splitting the 京王新線 into its own line (and drawing 初台) is batch 5c's
+    // separate project.
+    lineId: 'jp-京王電鉄-京王線',
+    from: '幡ヶ谷',
+    to: '新宿',
+    officialKm: 2.6,
   },
 ];
 
@@ -93,6 +128,48 @@ function trimFold(coordinates) {
       folded = i;
   }
   return folded > 0 ? [coordinates[0], ...coordinates.slice(folded)] : coordinates;
+}
+
+// Piecewise-linear measure map from a trimmed interval's BEFORE geometry to
+// its AFTER geometry, anchored on the vertices the trim kept. Measures before
+// the interval are identities, the dropped fold compresses onto its replacing
+// chord, and everything past the interval shifts back by the removed length.
+// `structure` rows are metre measures over the whole line, so a trim that
+// leaves them untouched would strand every tunnel and bridge behind the fold
+// beyond the end of the line.
+function measureRemap(before, after, priorMeters) {
+  const cums = (coords) => {
+    const out = [0];
+    for (let i = 1; i < coords.length; i += 1)
+      out.push(out[i - 1] + metres(coords[i - 1], coords[i]));
+    return out;
+  };
+  const bc = cums(before);
+  const ac = cums(after);
+  const anchors = [];
+  let bi = 0;
+  for (let ai = 0; ai < after.length; ai += 1) {
+    while (bi < before.length && !same(before[bi], after[ai])) bi += 1;
+    if (bi === before.length)
+      throw new Error('trimmed interval is not a subsequence of its source');
+    anchors.push([priorMeters + bc[bi], priorMeters + ac[ai]]);
+    bi += 1;
+  }
+  const beforeEnd = priorMeters + bc[bc.length - 1];
+  const delta = bc[bc.length - 1] - ac[ac.length - 1];
+  return (m) => {
+    if (m <= anchors[0][0]) return m;
+    if (m >= beforeEnd) return m - delta;
+    for (let i = 1; i < anchors.length; i += 1) {
+      if (m <= anchors[i][0]) {
+        const [b0, a0] = anchors[i - 1];
+        const [b1, a1] = anchors[i];
+        if (b1 === b0) return a1;
+        return a0 + ((m - b0) / (b1 - b0)) * (a1 - a0);
+      }
+    }
+    return m - delta;
+  };
 }
 
 function decodeIntervals(line) {
@@ -149,6 +226,14 @@ for (const plan of CASES) {
   if (!same(after[0], before[0]) || !same(after[after.length - 1], before[before.length - 1]))
     throw new Error(`${plan.lineId} ${plan.from} → ${plan.to}: endpoints moved`);
 
+  // Restate the tunnel/bridge measures BEFORE the segment table changes, so
+  // the prior-interval offset still describes the geometry the rows were
+  // measured against.
+  const priorMeters = line.segments
+    .slice(0, index)
+    .reduce((sum, row) => sum + row[0] * 1000, 0);
+  const remap = measureRemap(before, after, priorMeters);
+
   // Re-encode in place. The row keeps its shared-seam flag, so the first
   // vertex stays implicit exactly as the reader expects.
   const shared = line.segments[index][1] === 1;
@@ -157,6 +242,32 @@ for (const plan of CASES) {
     shared ? 1 : 0,
     shared ? after.slice(1) : after,
   ];
+
+  if (Array.isArray(line.structure) && line.structure.length) {
+    // Clamp to the stored total: rows are integer metres checked against the
+    // sum of per-interval km that are themselves rounded to the metre.
+    const totalMeters = line.segments.reduce((sum, row) => sum + row[0] * 1000, 0);
+    const mapped = [];
+    let shifted = 0;
+    let collapsed = 0;
+    for (const row of line.structure) {
+      const a = Math.max(0, Math.min(totalMeters, Math.round(remap(row[0]))));
+      const b = Math.max(0, Math.min(totalMeters, Math.round(remap(row[1]))));
+      if (b - a >= 1) {
+        if (a !== row[0] || b !== row[1]) shifted += 1;
+        mapped.push([a, b, ...row.slice(2)]);
+      } else {
+        // A structure entirely inside the dropped fold compresses to nothing.
+        collapsed += 1;
+      }
+    }
+    line.structure = mapped;
+    if (shifted || collapsed)
+      console.log(
+        `  structure restated: ${shifted} row(s) remapped` +
+          (collapsed ? `, ${collapsed} collapsed inside the fold` : ''),
+      );
+  }
   console.log(
     `${plan.lineId} ${plan.from} → ${plan.to}: ${beforeKm.toFixed(2)} → ${afterKm.toFixed(2)} km ` +
       `(official ${plan.officialKm} km), ${before.length - after.length} lead-in vertices dropped`,

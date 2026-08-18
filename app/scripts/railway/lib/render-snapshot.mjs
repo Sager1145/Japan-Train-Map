@@ -20,8 +20,14 @@
 //
 // This hash is the single point that pins the whole render model. Update it
 // only alongside the package it characterises, never to make a suite pass.
+//
+// 2026-08-18 batch 5 — 914 / 10222 / 660 / 9039: four audit pseudo-edges
+// deleted (大井町—西大井 蛇窪 V; the three 成田-skipping edges of the 成田線
+// K4 clique), so the 東海道線(JR東日本) family re-settled around its real
+// 品川–鶴見 ring and 成田線 folded to three strokes sharing 成田 (成田線-4
+// gone), plus three doubling-back lead-ins trimmed at 中野, 秋田 and 幡ヶ谷.
 export const EXPECTED_RENDER_HASH =
-  "fd68dd3310993fbbd3974e667056cd44cdfa22e180a65b267fa179a3c1948e45";
+  "fb7f4956f9a2a4878b5c1668fd4dda8158373f9720dad0f94cfe9c63fe71cac4";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

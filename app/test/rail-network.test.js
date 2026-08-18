@@ -46,9 +46,28 @@ const EXPECTED_COUNTS = Object.freeze({
   // 907 once lanes became a property of the RAILWAY rather than the stroke:
   // a railway drawn as several strokes shares one lane, so the split-at-lane-
   // boundary features it used to generate collapse.
-  segments: 923,
-  stations: 10223,
-  lines: 663,
+  // +1 line / +1 segment / +3 platforms (2026-08-18): 東海道線's 新垂井線 —
+  // 東海道線-2 now starts at 大垣 (closing the undrawn 大垣–垂井 main line)
+  // and the 下り-only bypass of 垂井 is its own -2-p1 stroke.
+  // −3 lines / −3 segments / +2 platforms (2026-08-18, gap repairs): five
+  // severed strokes rejoined their railways (石北線-2, 常磐線-2, 日豊線-2 and
+  // its -2-p1, 山陽線-4 plus the old 山陽線-2 span) while 日豊線-p1 and
+  // 長崎線-3 appeared; the platform rows the removed strokes carried moved
+  // onto the merged trunks, and the two new junction seats (喜々津 and 西浦上
+  // on the 長崎線 ring) account for the net +2. Groups are unchanged — no
+  // station appeared or vanished, only strokes.
+  // −1 line / −7 segments / −6 platforms (2026-08-18, pseudo-edge removals):
+  // deleting the 大井町—西大井 蛇窪 V edge let the 東海道線(JR東日本) family
+  // settle around its real 品川–鶴見 ring (main 29→22 stations shed five
+  // lane-split features; the ring -2 gained one), and deleting the three
+  // 成田-skipping edges folded 成田線 to three strokes sharing 成田, removing
+  // 成田線-4. The trimmed 中野 lead-in also dissolved 国分寺線's marginal
+  // corridor stretch (one feature fewer) while 京成成田空港線's airport
+  // corridor re-paired against the new 成田線-3 (one fewer). Groups are
+  // unchanged — no station appeared or vanished, only strokes.
+  segments: 914,
+  stations: 10222,
+  lines: 660,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {
