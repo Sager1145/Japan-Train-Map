@@ -334,7 +334,11 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // −6 on 2026-08-18: the pseudo-edge removals reseated the 東海道線(JR東日本)
     // family (29+8+3+2 → 22+9+7+2 platform rows) and folded 成田線 to three
     // strokes through 成田 (22+5+3+3 → 23+3+3).
-    ["jp", 10222],
+    // +1 on 2026-08-18 (京王新線 split): 京王線 33+2 platform rows become
+    // 京王線 32 + 京王新線 4 — 新宿 now seats a 新線新宿 row of its own.
+    // +2 for 総武線-3's underground 新橋・品川 rows on the extended 東京—
+    // 西大井 stroke; the shared 東京 and existing 西大井 rows were retained.
+    ["jp", 10223],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

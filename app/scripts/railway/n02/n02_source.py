@@ -93,15 +93,22 @@ SUBWAY_OPERATOR_EXCEPTIONS = {
 # 路線名 and 運営会社 in the wrong columns.
 SWAPPED_ROW_FIX = {("えちぜん鉄道", "三国芦原線"): ("三国芦原線", "えちぜん鉄道")}
 
-# No known geometry defect in N02-25 needs a registered patch. The 2026-08-18
-# live-line gap audit found five drawn gaps (石北線 生田原—西留辺蘂, 常磐線
-# 広野—Jヴィレッジ, 日豊線 中山香—杵築, 山陽線 富海—戸田, 長崎線 喜々津—東園)
-# and every one is a T-junction blind spot, not missing track: a section ends
-# digit-for-digit ON another section's INTERIOR vertex, which endpoint-only
-# node building cannot see. Even 常磐線's supposed "218 m hole" south of
-# Jヴィレッジ is covered — section 14782 is a three-vertex hairpin whose middle
-# vertex IS section 14820's north end. All five are healed with zero geometry
-# change by the package builder's TrackGraph node splitting
+# ONE geometry defect in N02-25 carries a registered patch: at 東京 the survey
+# digitises 東北新幹線's station track AND its station feature as vertex-for-
+# vertex copies of the 東海道新幹線 platform polyline, which anchored both
+# Shinkansen on one dot. The patch (evidence/tokyo-station-platforms.json,
+# applied by build-japan-package-from-inventory.py, rule R13) swaps in the
+# OSM-surveyed centreline of the JR East 20-23 tracks; it matches the copied
+# vertex string exactly and stops the build if the survey moves under it.
+# Everything else needs none: the 2026-08-18 live-line gap audit found five
+# drawn gaps (石北線 生田原—西留辺蘂, 常磐線 広野—Jヴィレッジ, 日豊線
+# 中山香—杵築, 山陽線 富海—戸田, 長崎線 喜々津—東園) and every one is a
+# T-junction blind spot, not missing track: a section ends digit-for-digit ON
+# another section's INTERIOR vertex, which endpoint-only node building cannot
+# see. Even 常磐線's supposed "218 m hole" south of Jヴィレッジ is covered —
+# section 14782 is a three-vertex hairpin whose middle vertex IS section
+# 14820's north end. All five are healed with zero geometry change by the
+# package builder's TrackGraph node splitting
 # (build-japan-package-from-inventory.py), not by touching the survey; the
 # station-adjacency side of the same audit lives in the corrections ledger
 # (data/raw/railway/jp/rebuild-inventory/evidence/network-corrections-2026-08-13.json,

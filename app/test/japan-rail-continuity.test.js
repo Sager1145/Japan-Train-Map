@@ -52,7 +52,15 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // 東京–熱海 via 品川・川崎・横浜 with the 品鶴線 as its own 品川–鶴見 stroke,
   // so the old 東京–品川 tail and 品川–鶴見 ring dissolve and the 相鉄連絡線
   // renumbers -4 → -3.
-  assert.equal(pkg.lines.length, 658);
+  // Still 658 after the 2026-08-18 京王新線 split: the 新線 (新線新宿–初台–
+  // 幡ヶ谷–笹塚, carved from the「京王線」N02 key) arrives as its own line
+  // exactly as the 初台–幡ヶ谷 orphan 京王線-2 folds away — 京王線 itself now
+  // runs 新宿–笹塚 direct, the way its trains do.
+  // 657 after the whole-country multi-line-station rebuild: the current
+  // inventory no longer emits 函館線-4 (鹿部–大沼), because that interval is
+  // already the final arm of 函館線-3. Full-staging prune removes the stale
+  // duplicate instead of letting an unreproducible stroke survive promotion.
+  assert.equal(pkg.lines.length, 657);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {
@@ -109,6 +117,178 @@ test("Tokyo and Osaka metro lines use verified official line colours", () => {
     assert.equal(line.color, color, id);
     assert.match(line.colorSource, /^https:\/\//, id);
   }
+});
+
+test("Tokyo Station dots follow their line-matched platforms", () => {
+  const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+  const tokyo = (id) => {
+    const line = pkg.lines.find((candidate) => candidate.id === id);
+    assert.ok(line, `missing ${id}`);
+    const station = line.stations.find((candidate) => candidate[1] === "東京");
+    assert.ok(station, `${id} is missing 東京`);
+    return [station[2], station[3]];
+  };
+
+  const sobu = tokyo("jp-東日本旅客鉄道-総武線");
+  const jrEastShinkansen = tokyo("jp-東日本旅客鉄道-東北新幹線");
+  const jrSurfaceNorth = tokyo("jp-東日本旅客鉄道-東北線-2");
+  const jrSurfaceSouth = tokyo("jp-東日本旅客鉄道-東海道線");
+  const jrCentralShinkansen = tokyo("jp-東海旅客鉄道-東海道新幹線");
+
+  // West → east follows the requested platform layout: 総武 underground,
+  // shared middle surface, JR East 20-23, then JR Central 14-19.
+  assert.ok(sobu[0] < jrSurfaceNorth[0]);
+  assert.ok(jrSurfaceNorth[0] < jrEastShinkansen[0]);
+  assert.ok(jrSurfaceNorth[0] < jrCentralShinkansen[0]);
+
+  // The conventional JR through lines elect the same, direction-matched
+  // surface platform and are welded to one physical track junction, instead of
+  // being two merely coincident station records.
+  assert.deepEqual(jrSurfaceNorth, jrSurfaceSouth);
+  assert.deepEqual(jrSurfaceNorth, [139.7671827, 35.6811274]);
+
+  // The two Shinkansen must never collapse back onto one copied N02 feature.
+  assert.notDeepEqual(jrEastShinkansen, jrCentralShinkansen);
+
+  // 総武's following interval must leave from its own underground marker;
+  // moving only the dot while leaving the line behind would still look broken.
+  const sobuLine = pkg.lines.find(
+    (candidate) => candidate.id === "jp-東日本旅客鉄道-総武線",
+  );
+  const firstInterval = decodedIntervals(sobuLine)[0];
+  assert.deepEqual(firstInterval[0], sobu);
+  assert.equal(sobuLine.stations[1][1], "新日本橋");
+  assert.deepEqual(firstInterval.at(-1), [
+    sobuLine.stations[1][2],
+    sobuLine.stations[1][3],
+  ]);
+  assert.ok(
+    firstInterval.some(([lon, lat]) => lon === 139.7668911 && lat === 35.6832467),
+    "総武線 東京–新日本橋 must follow the west tunnel bore",
+  );
+
+  // All four visible Tokyo approaches use registered physical rails instead
+  // of N02's coarse station-to-station chords.  The surface north/south pair
+  // also meets the same track-10 node immediately beside its one shared dot.
+  const physicalInterval = (id, from, to) => {
+    const line = pkg.lines.find((candidate) => candidate.id === id);
+    assert.ok(line, `missing ${id}`);
+    const index = line.stations.findIndex(
+      (station, stationIndex) =>
+        station[1] === from && line.stations[stationIndex + 1]?.[1] === to,
+    );
+    assert.ok(index >= 0, `${id} is missing ${from}–${to}`);
+    return decodedIntervals(line)[index];
+  };
+  const surfaceNorth = physicalInterval(
+    "jp-東日本旅客鉄道-東北線-2",
+    "神田",
+    "東京",
+  );
+  const surfaceSouth = physicalInterval(
+    "jp-東日本旅客鉄道-東海道線",
+    "東京",
+    "有楽町",
+  );
+  assert.deepEqual(surfaceNorth.at(-1), [139.7671827, 35.6811274]);
+  assert.deepEqual(surfaceSouth[0], surfaceNorth.at(-1));
+  const northLine = pkg.lines.find(
+    (candidate) => candidate.id === "jp-東日本旅客鉄道-東北線-2",
+  );
+  const southLine = pkg.lines.find(
+    (candidate) => candidate.id === "jp-東日本旅客鉄道-東海道線",
+  );
+  assert.equal(northLine.railwayIdentity, "jp-jr-east-ueno-tokyo-through");
+  assert.equal(southLine.railwayIdentity, northLine.railwayIdentity);
+  const tohokuFamily = pkg.lines.filter((candidate) =>
+    /^jp-東日本旅客鉄道-東北線(?:-|$)/.test(candidate.id),
+  );
+  assert.ok(tohokuFamily.length > 2, "the split Tohoku family is missing");
+  assert.deepEqual(
+    new Set(tohokuFamily.map((candidate) => candidate.railwayIdentity)),
+    new Set([northLine.railwayIdentity]),
+    "every Tohoku display stroke must inherit the registered through-rail identity",
+  );
+  const bearing = (a, b) =>
+    (Math.atan2(
+      (b[0] - a[0]) * Math.cos((a[1] * Math.PI) / 180),
+      b[1] - a[1],
+    ) *
+      180) /
+    Math.PI;
+  const northBearing = bearing(surfaceNorth.at(-2), surfaceNorth.at(-1));
+  const southBearing = bearing(surfaceSouth[0], surfaceSouth[1]);
+  const junctionTurn = Math.abs(((southBearing - northBearing + 540) % 360) - 180);
+  assert.ok(junctionTurn < 5, `Tokyo through rail turns ${junctionTurn.toFixed(1)}°`);
+  const northTotalMeters = northLine.segments.reduce(
+    (sum, segment) => sum + segment[0] * 1000,
+    0,
+  );
+  const northLane = pkg.lanes.find(
+    (row) => row[0] === northLine.id && row[3] >= northTotalMeters - 1,
+  );
+  const southLane = pkg.lanes.find(
+    (row) => row[0] === southLine.id && row[2] === 0,
+  );
+  assert.ok(northLane && southLane, "Tokyo through rail is missing its shared lane");
+  assert.equal(northLane[4], southLane[4]);
+  const rendered = RailNetwork.buildNetworkFromCompactPackage(pkg);
+  const renderedJunctions = rendered.stationLanes.features.filter(
+    (feature) =>
+      feature.properties.stationGroupId === "003766" &&
+      [northLine.id, southLine.id].includes(feature.properties.lineId),
+  );
+  assert.equal(renderedJunctions.length, 2);
+  assert.deepEqual(
+    renderedJunctions[0].geometry.coordinates,
+    renderedJunctions[1].geometry.coordinates,
+  );
+  assert.equal(
+    renderedJunctions[0].properties.lane,
+    renderedJunctions[1].properties.lane,
+  );
+  assert.ok(
+    Math.abs(
+      renderedJunctions[0].properties.bearing -
+        renderedJunctions[1].properties.bearing,
+    ) < 5,
+    "rendered Tokyo junction must keep one smooth tangent",
+  );
+  assert.ok(
+    physicalInterval("jp-東日本旅客鉄道-東北新幹線", "上野", "東京").some(
+      ([lon, lat]) => lon === 139.7678569 && lat === 35.6816523,
+    ),
+  );
+  assert.ok(
+    physicalInterval("jp-東海旅客鉄道-東海道新幹線", "品川", "東京").some(
+      ([lon, lat]) => lon === 139.7677665 && lat === 35.6801443,
+    ),
+  );
+
+  // N02 files the south half of the 総武快速/横須賀 tunnel under 東海道線.
+  // Its 品鶴 stroke must therefore start at the SAME underground Tokyo dot,
+  // then follow the underground 新橋・品川 platforms before 西大井.
+  const southContinuation = pkg.lines.find((candidate) =>
+    candidate.id.startsWith("jp-東日本旅客鉄道-総武線-") &&
+    candidate.stations.slice(0, 4).map((station) => station[1]).join("/") ===
+      "東京/新橋/品川/西大井",
+  );
+  assert.ok(southContinuation, "missing the underground south continuation");
+  assert.equal(southContinuation.color, sobuLine.color);
+  assert.deepEqual(
+    [southContinuation.stations[0][2], southContinuation.stations[0][3]],
+    sobu,
+  );
+  const southIntervals = decodedIntervals(southContinuation);
+  assert.deepEqual(southIntervals[0][0], sobu);
+  assert.ok(
+    southIntervals[0].at(-1)[1] < sobu[1],
+    "the continuation must leave 東京 southbound",
+  );
+  assert.deepEqual(southIntervals[0].at(-1), [
+    southContinuation.stations[1][2],
+    southContinuation.stations[1][3],
+  ]);
 });
 
 test("Japanese tunnel and bridge measures remain valid after branch splitting", () => {

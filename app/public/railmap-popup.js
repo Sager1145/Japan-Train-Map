@@ -46,12 +46,20 @@
     const groupKey = st && st.stationGroupId ? st.stationGroupId : "solo:" + stationId;
     const members = network.groupMembers.get(groupKey) || [];
     const rows = [];
+    // A canonical railway can be stored as several drawable strokes (main,
+    // branch, rejoin or paired alignment). At a shared station those records
+    // are still one passenger-facing line, so key the popup by its displayed
+    // operator + name instead of by the internal stroke id. Railway identity
+    // is deliberately not used here: it may join differently named through
+    // railways for lane continuity (東北線 → 東海道線 at 東京), and both names
+    // must remain visible to passengers.
     const seen = new Set();
     const add = (lineId) => {
-      if (seen.has(lineId)) return;
       const line = network.lineById.get(lineId);
       if (!line) return;
-      seen.add(lineId);
+      const displayKey = `${line.operator || ""}\u0000${line.name || ""}`;
+      if (seen.has(displayKey)) return;
+      seen.add(displayKey);
       const logo = global.RailOperatorBranding.logoForLine(line);
       rows.push({
         lineId: line.lineId,

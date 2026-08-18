@@ -97,7 +97,7 @@ PACKAGE_VERSION = (
     if PUBLISHED.exists()
     else "2025.4.2"
 )
-GENERATED_AT = "2026-08-14T00:00:00.000Z"
+GENERATED_AT = "2026-08-18T00:00:00.000Z"
 
 # The batch table writes canonical jp keys as `operator␟line` (U+241F, the
 # visible symbol for UNIT SEPARATOR); U+001F is accepted too. Same rule as
@@ -1319,26 +1319,86 @@ def orient(order, names, main_path):
 
 
 def carried_display_attributes():
-    """rank / nameRoma / logo from the archived package, by (operator, name)."""
-    archive = RAW / "packages" / "jp-2025-pre-rebuild-25031fbc.json.gz"
-    if not archive.exists():
-        return {}
-    with gzip.open(archive, "rt", encoding="utf-8") as handle:
-        package = json.load(handle)
+    """rank / nameRoma / logo from the archived package, by (operator, name).
+
+    A canonical line the archive NEVER carried — it did not exist as its own
+    line then — states the same three attributes in INTRODUCED_DISPLAY below,
+    decided against its family rather than re-derived. 京王新線 is the first:
+    born of batch 7's split of the「京王線」N02 key, it wears the 京王
+    corporate mark every KO-family line wears (the badge PNG is published
+    beside theirs), ranks with 京王線 — it is the same trunk corridor's second
+    pair of tracks, not a spur — and takes OSM's name:en for its relation
+    (10056074) as the roma name, the same source the family's names came from.
+    """
     carried = {}
-    for line in package.get("lines", []):
-        key = identity_key(line.get("operator", ""), line.get("name", ""))
-        # A canonical line that the old package split into siblings resolves to
-        # several entries; the first (longest-lived id) carries the attributes.
-        carried.setdefault(
-            key,
-            {
-                "rank": line.get("rank"),
-                "nameRoma": line.get("nameRoma"),
-                "logo": line.get("logo"),
-            },
-        )
+    archive = RAW / "packages" / "jp-2025-pre-rebuild-25031fbc.json.gz"
+    if archive.exists():
+        with gzip.open(archive, "rt", encoding="utf-8") as handle:
+            package = json.load(handle)
+        for line in package.get("lines", []):
+            key = identity_key(line.get("operator", ""), line.get("name", ""))
+            # A canonical line that the old package split into siblings resolves to
+            # several entries; the first (longest-lived id) carries the attributes.
+            carried.setdefault(
+                key,
+                {
+                    "rank": line.get("rank"),
+                    "nameRoma": line.get("nameRoma"),
+                    "logo": line.get("logo"),
+                },
+            )
+    for key, attributes in INTRODUCED_DISPLAY.items():
+        carried.setdefault(key, dict(attributes))
     return carried
+
+
+INTRODUCED_DISPLAY = {
+    identity_key("京王電鉄", "京王新線"): {
+        "rank": 2,
+        "nameRoma": "Keio New Line",
+        "logo": 1,
+    },
+}
+
+
+def split_source_line_keys(net):
+    """canonical_key -> (source line_key, [section idx…]) for split N02 keys.
+
+    n02-source-line-keys.csv holds one row per (raw N02 key, canonical line)
+    mapping, and `source_section_indices` names the exact RailroadSection
+    features that mapping claims. For the ordinary key the mapping is identity
+    on a single row, and this function ignores it — `net.line_sections` is
+    already the answer. A key that appears on SEVERAL rows is a real split:
+    N02 files the 京王新線 under「京王線」because the operator's 路線名称 does,
+    while 1978's platform moves made 初台・幡ヶ谷 新線-only stations and the
+    two corridors separate railways to draw. For a split key every row becomes
+    authoritative: each canonical draws exactly the sections its row lists.
+    Shared approach track may be listed by both sides — the 新線 rides the
+    本線's centre-line from their junction into 笹塚, and shared track must
+    stay point-identical — but the union has to reproduce the source key's
+    full section list: a split may reapportion track, never invent or lose it.
+    """
+    rows_by_source = collections.defaultdict(list)
+    for row in read_csv(INVENTORY / "lines" / "n02-source-line-keys.csv"):
+        rows_by_source[(row["source_line"], row["source_operator"])].append(row)
+
+    splits = {}
+    for source_key, rows in sorted(rows_by_source.items()):
+        if len(rows) < 2:
+            continue
+        full = set(net.line_sections.get(source_key, []))
+        union = set()
+        for row in rows:
+            indices = json.loads(row["source_section_indices"])
+            union.update(indices)
+            splits[row["canonical_key"]] = (source_key, sorted(indices))
+        if union != full:
+            raise SystemExit(
+                f"n02-source-line-keys.csv splits {source_key} but its rows do not "
+                f"reproduce that key's sections: missing {sorted(full - union)[:8]}, "
+                f"invented {sorted(union - full)[:8]}"
+            )
+    return splits
 
 
 def selected_keys(args) -> set[str] | None:
@@ -1379,7 +1439,9 @@ def build_lines(
     with tempfile.TemporaryDirectory(prefix="n02-") as scratch:
         root = Path(n02_root) if n02_root else extract_n02(Path(scratch))
         net = n02_source.load(root, verbose=verbose)
+    apply_station_geometry_patches(net, n02_source)
 
+    source_splits = split_source_line_keys(net)
     classification = {
         row["canonical_key"]: row
         for row in read_csv(INVENTORY / "lines" / "n02-line-shape-classification.csv")
@@ -1400,6 +1462,15 @@ def build_lines(
     structure_by_section = load_structure()
     pair_directions = load_pair_directions()
     pair_geometry = load_pair_geometry()
+    for interval in load_station_platform_corrections()["surveyed_intervals"]:
+        pair_geometry[
+            (
+                interval.get("role", "primary"),
+                interval["line"],
+                interval["from_station"],
+                interval["to_station"],
+            )
+        ] = interval["coordinates"]
     pair_bypasses = load_pair_bypasses()
 
     # adjacency and per-line membership, keyed the way the batch table is
@@ -1424,6 +1495,10 @@ def build_lines(
     for station in net.stations:
         platforms[station.line_key].setdefault(station.group, station)
         all_platforms[station.line_key][station.group].append(station)
+    assign_station_platforms(platforms, all_platforms, geometry_lib)
+    exact_platform_groups = collections.defaultdict(set)
+    for assignment in load_station_platform_corrections()["platform_assignments"]:
+        exact_platform_groups[assignment["line"]].add(assignment["station_group"])
 
     lines, skipped, notes = [], [], []
 
@@ -1439,7 +1514,14 @@ def build_lines(
             continue
         operator, name = parts
         row = classification[key]
-        section_indices = net.line_sections.get((name, operator))
+        # A canonical line normally IS its N02 key. A split canonical draws the
+        # listed subset of ANOTHER key's sections instead — 京王新線 lives under
+        # N02's「京王線」— and its platform features are filed under that source
+        # key too, so every platform lookup below asks with `source_key`.
+        source_key, section_indices = source_splits.get(key, (None, None))
+        if section_indices is None:
+            source_key = (name, operator)
+            section_indices = net.line_sections.get(source_key)
         if not section_indices:
             skipped.append((key, "no N02 RailroadSection carries this (line, operator)"))
             continue
@@ -1454,7 +1536,7 @@ def build_lines(
         points = {}
         for uid in uids:
             record = station_by_uid[uid]
-            platform = platforms.get((name, operator), {}).get(
+            platform = platforms.get(source_key, {}).get(
                 record["physical_station_group"]
             )
             points[uid] = (
@@ -1536,6 +1618,26 @@ def build_lines(
         built_parts = []
         failed_trunk = False
         for suffix, order, is_loop in parts:
+            (
+                order,
+                part_points,
+                part_platforms,
+                extension_reason,
+                extension_display_as,
+            ) = (
+                extend_display_part_at_platforms(
+                    key,
+                    order,
+                    points,
+                    platforms.get(source_key, {}),
+                    all_platforms.get(source_key, {}),
+                    uid_by_name,
+                    station_by_uid,
+                    geometry_lib,
+                )
+            )
+            if extension_reason:
+                notes.append((f"{key}{suffix}", extension_reason))
             # Anchor PER PART, not per railway. A part is one continuous stroke,
             # so its stations have to sit on one connected track group — and the
             # part's own stations are the ones entitled to choose which. Picking
@@ -1546,8 +1648,17 @@ def build_lines(
             # stations land on track that never touches, and no interval between
             # them can be cut.
             anchors, stranded, far = anchor_part(
-                order, points, graph, platforms.get((name, operator), {}), station_by_uid
+                order, part_points, graph, part_platforms, station_by_uid
             )
+
+            def pin_registered_platform_points(anchor_map):
+                for uid in order:
+                    group = station_by_uid[uid]["physical_station_group"]
+                    if group in exact_platform_groups.get(key, set()):
+                        anchor_map[uid]["point"] = list(points[uid])
+                    if extension_reason and part_points.get(uid) != points.get(uid):
+                        anchor_map[uid]["point"] = list(part_points[uid])
+
             if stranded:
                 groups = len(set(graph.component.values()))
                 skipped.append(
@@ -1562,6 +1673,10 @@ def build_lines(
                     failed_trunk = True
                     break
                 continue
+            # The registered geometry supplies the stroke shape; keep its ends
+            # exactly on the selected platforms instead of exposing N02's
+            # 20-90 m projection offsets as station dots.
+            pin_registered_platform_points(anchors)
             if far:
                 notes.append(
                     (
@@ -1594,7 +1709,7 @@ def build_lines(
                 geometry_lib=geometry_lib,
                 normalise_line_name=n02_source.normalise_line_name,
                 structure_by_section=structure_by_section,
-                platforms_by_group=all_platforms.get((name, operator), {}),
+                platforms_by_group=all_platforms.get(source_key, {}),
                 surveyed=pair_geometry,
                 bypasses=pair_bypasses,
             )
@@ -1606,7 +1721,7 @@ def build_lines(
                 # refusal below stands.
                 refined = refine_anchors_by_distance(
                     order,
-                    points,
+                    part_points,
                     graph,
                     anchors,
                     {
@@ -1615,6 +1730,7 @@ def build_lines(
                     },
                 )
                 if refined:
+                    pin_registered_platform_points(refined)
                     entry, problem, mismatched, alternates = build_display_line(
                         suffix=suffix,
                         order=order,
@@ -1663,6 +1779,8 @@ def build_lines(
                         f"{mismatched[:3]}",
                     )
                 )
+            if extension_display_as:
+                entry["_displayAsLine"] = extension_display_as
             built_parts.append(entry)
             # A paired alignment is its OWN stroke with its own platforms — the
             # two bores of 上越線 put 湯檜曽 and 土合 in different places — so it
@@ -1780,6 +1898,8 @@ def build_lines(
         else:
             lines.extend(built_parts)
 
+    apply_display_line_reassignments(lines)
+    apply_registered_shared_junctions(lines)
     share_junction_anchors(lines)
     context = {
         "classification": classification,
@@ -1859,6 +1979,247 @@ def load_pair_geometry():
     }
 
 
+def load_station_platform_corrections():
+    """東京駅 per-line platform truth (R13), including its underground through track.
+
+    N02-25 digitises 東北新幹線's station track AND its station feature at 東京
+    as vertex-for-vertex copies of the 東海道新幹線 platform polyline, so both
+    Shinkansen anchored ONE dot on the JR Central platforms. The evidence file
+    carries the surveyed centreline of the JR East 20-23 tracks (OSM, ODbL),
+    names which platform feature each surface line's dot stands on, and joins
+    the 品鶴線 stroke to the 総武地下ホーム so the underground alignment does
+    not stop at 東京. Same ODbL-for-geometry precedent as
+    paired-alignment-geometry.json.
+    """
+    path = RAW / "evidence" / "tokyo-station-platforms.json"
+    if not path.exists():
+        return {
+            "geometry_patches": [],
+            "platform_assignments": [],
+            "display_part_extensions": [],
+            "shared_junctions": [],
+            "surveyed_intervals": [],
+        }
+    payload = json.loads(path.read_text("utf-8"))
+    return {
+        "geometry_patches": payload.get("geometry_patches", []),
+        "platform_assignments": payload.get("platform_assignments", []),
+        "display_part_extensions": payload.get("display_part_extensions", []),
+        "shared_junctions": payload.get("shared_junctions", []),
+        "surveyed_intervals": payload.get("surveyed_intervals", []),
+    }
+
+
+def _coords_key(coords):
+    return tuple((round(x, NODE_DP), round(y, NODE_DP)) for x, y in coords)
+
+
+def apply_station_geometry_patches(net, n02_source):
+    """Swap a registered N02 station-track copy for the railway's own track.
+
+    A patch names the line, the station, and the EXACT vertex string it
+    replaces; a survey update that redraws that feature makes the match fail
+    and the build stop, so a patch can never silently rewrite track it was not
+    written against. Both the RailroadSection and the Station feature carrying
+    the copied geometry are replaced, because anchoring reads the platform and
+    path cutting reads the track — patching only one would put the dot off the
+    stroke or the stroke off the dot.
+    """
+    corrections = load_station_platform_corrections()
+    for patch in corrections["geometry_patches"]:
+        operator, _, line = patch["line"].partition("␟")
+        key = (line, operator)
+        wanted = _coords_key(patch["n02_coords"])
+
+        sections = [
+            net.sections[index]
+            for index in net.line_sections.get(key, [])
+            if _coords_key(net.sections[index].coords) == wanted
+        ]
+        stations = [
+            row
+            for row in net.stations
+            if row.line_key == key
+            and row.name == patch["station"]
+            and _coords_key(row.coords) == wanted
+        ]
+        if len(sections) != 1 or len(stations) != 1:
+            raise SystemExit(
+                f"tokyo-station-platforms.json patch for {patch['line']} expects "
+                f"exactly one section and one station feature matching its "
+                f"n02_coords, found {len(sections)} section(s) and "
+                f"{len(stations)} station feature(s) — the survey moved under it"
+            )
+        for record, coords in (
+            (sections[0], patch["section_coords"]),
+            (stations[0], patch["platform_coords"]),
+        ):
+            record.coords = [list(point) for point in coords]
+            record.length_m = n02_source.polyline_length_m(record.coords)
+            if hasattr(record, "geom_key"):
+                record.geom_key = n02_source._geom_key(record.coords)
+
+
+def assign_station_platforms(platforms, all_platforms, geometry_lib):
+    """Pin a station's platform pick where file order is not the right chooser.
+
+    `platforms` keeps the FIRST feature per (line, group), which is right when
+    a group has one feature and arbitrary when it has four. At 東京 the 東北線
+    group carries the west 304 m feature first while 上野東京ライン's trains
+    stand at the east 398 m one — the same feature 東海道線 anchors — so the
+    two strokes drew two dots 100 m apart. Each assignment row names both the
+    local axis of the line and the midpoint of the feature it really serves.
+    Candidates that do not run with that axis are rejected first; the nearest
+    eligible midpoint then wins. A group the inventory no longer carries, or
+    whose platforms no longer match the registered direction, stops the build.
+
+    Bearings are platform AXES rather than directed travel bearings: 9 degrees
+    northbound is the same physical platform as 189 degrees southbound. This
+    lets 東北線 and 東海道線 select the same 7-10 surface feature while their
+    trains leave 東京 in opposite directions.
+    """
+
+    def axis_bearing(platform):
+        coords = [list(point) for point in platform.coords]
+        if len(coords) < 2:
+            return None
+        first = coords[0]
+        last = next(
+            (point for point in reversed(coords[1:]) if point != first),
+            None,
+        )
+        if last is None:
+            return None
+        latitude = (first[1] + last[1]) / 2
+        east = (last[0] - first[0]) * math.cos(math.radians(latitude))
+        north = last[1] - first[1]
+        return math.degrees(math.atan2(east, north)) % 180
+
+    def axis_error(first, second):
+        return abs((first - second + 90) % 180 - 90)
+
+    corrections = load_station_platform_corrections()
+    for row in corrections["platform_assignments"]:
+        operator, _, line = row["line"].partition("␟")
+        key = (line, operator)
+        group = row["station_group"]
+        candidates = all_platforms.get(key, {}).get(group)
+        if not candidates:
+            raise SystemExit(
+                f"tokyo-station-platforms.json assigns a platform for "
+                f"{row['line']} group {group}, but that line carries no such "
+                f"station group"
+            )
+        indexed = list(enumerate(candidates))
+        expected_axis = row.get("line_axis_bearing_degrees")
+        if expected_axis is not None:
+            max_error = float(row.get("max_axis_bearing_error_degrees", 5.0))
+            aligned = [
+                (index, candidate)
+                for index, candidate in indexed
+                if (bearing := axis_bearing(candidate)) is not None
+                and axis_error(bearing, float(expected_axis)) <= max_error
+            ]
+            if not aligned:
+                actual = [
+                    None
+                    if axis_bearing(candidate) is None
+                    else round(axis_bearing(candidate), 1)
+                    for candidate in candidates
+                ]
+                raise SystemExit(
+                    f"tokyo-station-platforms.json assigns {row['line']} group "
+                    f"{group} along axis {expected_axis}° (+/-{max_error}°), but "
+                    f"its candidate platform axes are {actual}"
+                )
+            indexed = aligned
+        target = row["prefer_midpoint_near"]
+        chosen = min(
+            indexed,
+            key=lambda item: (
+                geometry_lib.metres(
+                    platform_midpoint(item[1], geometry_lib), target
+                ),
+                item[0],
+            ),
+        )[1]
+        platforms[key][group] = chosen
+
+
+def extend_display_part_at_platforms(
+    key,
+    order,
+    points,
+    selected_platforms_by_group,
+    platforms_by_group,
+    uid_by_name,
+    station_by_uid,
+    geometry_lib,
+):
+    """Apply a registered continuation that uses another platform in one part.
+
+    東京's underground southbound track is filed under 東海道線 in N02 while
+    its northbound continuation is 総武線. The 東海道 main stroke must use the
+    shared middle surface platform, but its 品鶴線 sibling must start on the
+    総武地下ホーム and follow the tunnel south. That cannot be represented by
+    one global platform choice per railway, so the evidence may extend exactly
+    one matching part and override only that part's platform features.
+    """
+    names = [station_by_uid[uid]["station_name"] for uid in order]
+    for row in load_station_platform_corrections()["display_part_extensions"]:
+        if row["line"] != key:
+            continue
+        existing = row["existing_edge"]
+        before = row["prepend_stations"]
+        if names[: len(existing)] == existing:
+            additions = [uid_by_name[name] for name in before]
+            extended = additions + list(order)
+        elif names[-len(existing) :] == list(reversed(existing)):
+            additions = [uid_by_name[name] for name in reversed(before)]
+            extended = list(order) + additions
+        else:
+            continue
+
+        part_points = dict(points)
+        part_platforms = dict(selected_platforms_by_group)
+        for station_name, target in row["platform_midpoints"].items():
+            uid = uid_by_name.get(station_name)
+            if uid is None:
+                raise SystemExit(
+                    f"tokyo-station-platforms.json extends {key} through "
+                    f"{station_name}, but that station is absent from the line"
+                )
+            group = station_by_uid[uid]["physical_station_group"]
+            candidates = platforms_by_group.get(group) or []
+            if not candidates:
+                raise SystemExit(
+                    f"tokyo-station-platforms.json extends {key} through "
+                    f"{station_name}, but group {group} has no platform feature"
+                )
+            platform = min(
+                candidates,
+                key=lambda candidate: geometry_lib.metres(
+                    platform_midpoint(candidate, geometry_lib), target
+                ),
+            )
+            midpoint = platform_midpoint(platform, geometry_lib)
+            if geometry_lib.metres(midpoint, target) > 25:
+                raise SystemExit(
+                    f"tokyo-station-platforms.json target for {key} {station_name} "
+                    f"is no longer within 25 m of an N02 platform feature"
+                )
+            part_points[uid] = midpoint
+            part_platforms[group] = platform
+        return (
+            extended,
+            part_points,
+            part_platforms,
+            row.get("reason", ""),
+            row.get("display_as_line", ""),
+        )
+    return list(order), points, selected_platforms_by_group, "", ""
+
+
 def load_structure():
     """OSM tunnel/bridge intervals, keyed by the N02 section they were matched to.
 
@@ -1905,6 +2266,122 @@ def structure_on_cut(pieces, measure, structure_by_section):
     return out
 
 
+def apply_display_line_reassignments(lines):
+    """Style a cross-source through stroke as the service shown on the map.
+
+    N02 inventories 東京's southbound 総武快速/横須賀 track as a branch of
+    東海道線. Apple Maps shows that underground continuation with the blue
+    総武 stroke, not with the orange surface 東海道 main line, so registered
+    evidence may reassign only the display identity after the source geometry
+    has built. The original source remains explicit in the evidence record.
+    """
+    occupied = {line["id"] for line in lines}
+    style_keys = {
+        "name",
+        "operator",
+        "rank",
+        "color",
+        "nameRoma",
+        "colorDark",
+        "colorSource",
+        "kind",
+        "colorPolicy",
+        "labelPolicy",
+        "nameNorm",
+        "operatorShort",
+        "logo",
+        "lineCode",
+        "isHSR",
+        "serviceStatus",
+    }
+    for line in lines:
+        target = line.pop("_displayAsLine", "")
+        if not target:
+            continue
+        operator, _, name = target.partition("␟")
+        base = line_id_for(operator, name)
+        parent = next((candidate for candidate in lines if candidate["id"] == base), None)
+        if parent is None:
+            raise SystemExit(
+                f"tokyo-station-platforms.json displays a stroke as {target}, "
+                "but that display line was not built"
+            )
+        suffix = 2
+        while f"{base}-{suffix}" in occupied:
+            suffix += 1
+        occupied.discard(line["id"])
+        line["id"] = f"{base}-{suffix}"
+        occupied.add(line["id"])
+        for key in style_keys:
+            if key in parent:
+                line[key] = parent[key]
+            else:
+                line.pop(key, None)
+
+
+def pin_compact_station(line, index, point):
+    """Rewrite one compact station and every interval end encoded for it."""
+    shared = [round(float(point[0]), 7), round(float(point[1]), 7)]
+    line["stations"][index][2] = shared[0]
+    line["stations"][index][3] = shared[1]
+    segments = line["segments"]
+    if index < len(segments):
+        # A flag=1 interval dropped the vertex it shares with its predecessor,
+        # so its first point IS the previous interval's last point.
+        target = segments[index]
+        if target[1]:
+            if index:
+                segments[index - 1][2][-1] = list(shared)
+        else:
+            target[2][0] = list(shared)
+    if index and index - 1 < len(segments):
+        segments[index - 1][2][-1] = list(shared)
+
+
+def apply_registered_shared_junctions(lines):
+    """Weld named cross-line continuations to one physical rail junction.
+
+    Sapporo's two 函館線 strokes already get this contract from
+    `share_junction_anchors`: separate compact strokes, one exact endpoint and
+    one railway identity, so the renderer cannot assign different lanes at the
+    seam. Tokyo's 東北線 and 東海道線 are different canonical names despite being
+    the two halves of the same Ueno–Tokyo through rail, so their cross-family
+    weld is explicit evidence rather than inferred from a shared station name.
+    """
+    by_id = {line["id"]: line for line in lines}
+    for row in load_station_platform_corrections()["shared_junctions"]:
+        targets = []
+        for line_id in row["line_ids"]:
+            line = by_id.get(line_id)
+            if line is None:
+                # Targeted builds may intentionally omit the other half. The
+                # full/package build must still find at least two below.
+                continue
+            index = next(
+                (
+                    at
+                    for at, station in enumerate(line["stations"])
+                    if station[0] == row["station_group"]
+                    and station[1] == row["station"]
+                ),
+                None,
+            )
+            if index is None:
+                raise SystemExit(
+                    f"{line_id} lacks registered shared junction "
+                    f"{row['station']} ({row['station_group']})"
+                )
+            targets.append((line, index))
+        if len(targets) == 1 and len(lines) > 1:
+            raise SystemExit(
+                f"registered shared junction {row['station']} built only one of "
+                f"{row['line_ids']}"
+            )
+        for line, index in targets:
+            pin_compact_station(line, index, row["point"])
+            line["railwayIdentity"] = row["railway_identity"]
+
+
 def share_junction_anchors(lines):
     """One station, one dot — even where two sibling strokes anchor it apart.
 
@@ -1915,10 +2392,11 @@ def share_junction_anchors(lines):
     city's main station as two dots with a hole between them instead of one point
     the lines meet at.
 
-    The shared point is the MEAN of the disagreeing anchors, so each stroke's
-    approach is equally short. At 札幌 that is 58 m from the real station where
-    the two anchors were 48 and 161 m from it, i.e. it is nearer the truth than
-    the anchor it replaces on one side and barely worse on the other.
+    The shared point is an EXISTING anchor on the canonical/main stroke, never
+    an average invented between tracks.  A sibling branch is led over its real
+    approach to that already surveyed platform point.  If a family has no
+    unsuffixed stroke, the longest member elects the point; this is still a
+    source vertex and keeps the main physical railway stable.
 
     A paired alignment is exempt: its whole point is that the two directions
     stop in DIFFERENT places, so 湯檜曽's two platforms 73 m apart are the fact
@@ -1930,14 +2408,44 @@ def share_junction_anchors(lines):
     """
     families = collections.defaultdict(list)
     for line in lines:
-        if line.get("alignmentRole"):
-            continue
         families[re.sub(r"(-p?\d+)+$", "", line["id"])].append(line)
-    for members in families.values():
+    for railway_identity, members in families.items():
+        # The family name is not merely a convenient grouping key.  Every
+        # sibling display stroke, including a separately surveyed up/down
+        # alignment, is one physical railway for lane computation.  Persist
+        # that fact in the package so a rebuild, the browser and an external
+        # audit all reach the same answer without re-inferring it from an id
+        # suffix.
+        #
+        # An explicit cross-canonical identity (Tokyo's Ueno–Tokyo through
+        # rail) belongs to the WHOLE canonical family, not only to the one
+        # stroke named by the registered junction.  Leaving 東北線-2 on the
+        # through identity while 東北線/-3/-4 kept the family default made the
+        # parallel-corridor pass call sibling strokes independent railways.
+        # Around 日暮里 that turned one 東北線 into several side-by-side lines.
+        explicit_identities = {
+            line["railwayIdentity"]
+            for line in members
+            if line.get("railwayIdentity")
+        }
+        if len(explicit_identities) > 1:
+            raise SystemExit(
+                f"{railway_identity} sibling strokes carry conflicting railway "
+                f"identities: {sorted(explicit_identities)}"
+            )
+        family_identity = next(iter(explicit_identities), railway_identity)
+        for line in members:
+            line["railwayIdentity"] = family_identity
         if len(members) < 2:
             continue
+        # A paired alignment exists precisely because its station/track points
+        # may differ from the primary.  It shares railway identity but never
+        # participates in the junction-coordinate weld below.
+        weldable = [line for line in members if not line.get("alignmentRole")]
+        if len(weldable) < 2:
+            continue
         seats = collections.defaultdict(list)
-        for line in members:
+        for line in weldable:
             for index, station in enumerate(line["stations"]):
                 seats[station[0]].append((line, index))
         for group, places in seats.items():
@@ -1947,34 +2455,27 @@ def share_junction_anchors(lines):
                 (line["stations"][index][2], line["stations"][index][3])
                 for line, index in places
             ]
-            if max(
-                math.hypot(
-                    (a[0] - b[0]) * 111_320 * math.cos(math.radians(a[1])),
-                    (a[1] - b[1]) * 111_320,
-                )
-                for a in points
-                for b in points
-            ) <= 1.0:
+            if len(set(points)) == 1:
                 continue
+            elected_line, elected_index = next(
+                (
+                    place
+                    for place in places
+                    if place[0]["id"] == railway_identity
+                ),
+                max(
+                    places,
+                    key=lambda place: sum(
+                        float(segment[0]) for segment in place[0]["segments"]
+                    ),
+                ),
+            )
             shared = [
-                round(sum(point[0] for point in points) / len(points), 6),
-                round(sum(point[1] for point in points) / len(points), 6),
+                elected_line["stations"][elected_index][2],
+                elected_line["stations"][elected_index][3],
             ]
             for line, index in places:
-                line["stations"][index][2] = shared[0]
-                line["stations"][index][3] = shared[1]
-                segments = line["segments"]
-                if index < len(segments):
-                    # A flag=1 interval dropped the vertex it shares with its
-                    # predecessor, so its first point IS the previous station.
-                    target = segments[index]
-                    if target[1]:
-                        if index:
-                            segments[index - 1][2][-1] = list(shared)
-                    else:
-                        target[2][0] = list(shared)
-                if index and index - 1 < len(segments):
-                    segments[index - 1][2][-1] = list(shared)
+                pin_compact_station(line, index, shared)
 
 
 def split_by_track_group(order, points, graph, keep_within_m=250.0):
@@ -2781,14 +3282,22 @@ def build_display_line(
         # keep the N02 walk's own kilometrage, because a tunnel's position was
         # surveyed against THAT and re-basing it here would move every structure
         # on the line to fix a stroke.
+        start_name = station_by_uid[start_uid]["station_name"]
+        end_name = station_by_uid[end_uid]["station_name"]
         surveyed_primary = (surveyed or {}).get(
-            (
-                "primary",
-                key,
-                station_by_uid[start_uid]["station_name"],
-                station_by_uid[end_uid]["station_name"],
-            )
+            ("primary", key, start_name, end_name)
         )
+        if not surveyed_primary:
+            # Evidence is recorded in the geographically useful direction
+            # (for Tokyo, outwards from the selected platform).  The audited
+            # station order is allowed to run the other way — both Shinkansen
+            # terminate at Tokyo — without forcing a second, reversed copy of
+            # the same registered track into the evidence file.
+            reverse_survey = (surveyed or {}).get(
+                ("primary", key, end_name, start_name)
+            )
+            if reverse_survey:
+                surveyed_primary = list(reversed(reverse_survey))
         if surveyed_primary:
             coords = [list(point) for point in surveyed_primary]
             coords[0] = anchor_point(anchors[start_uid])
@@ -2916,8 +3425,24 @@ def build(args) -> None:
                 "Station order walked from the corrected directed adjacency graph; each "
                 "interval cut as the shortest path over that line's own N02 sections "
                 "between two platform-midpoint anchors, and checked against the audited "
-                "distance for the same pair."
+                "distance for the same pair. Tokyo Station's copied Tohoku Shinkansen "
+                "platform section and every Tokyo-adjacent interval selected for the two "
+                "Shinkansen, shared surface through line, and Sobu/Yokosuka tunnel are "
+                "replaced by registered OSM physical-track geometry; the two named "
+                "halves of the Ueno–Tokyo surface rail share one junction and render lane."
             ),
+            "osmGeometry": {
+                "lines": [
+                    "jp-東日本旅客鉄道-東北新幹線",
+                    "jp-東日本旅客鉄道-東北線-2",
+                    "jp-東日本旅客鉄道-東海道線",
+                    "jp-東日本旅客鉄道-総武線",
+                    "jp-東日本旅客鉄道-総武線-3",
+                    "jp-東海旅客鉄道-東海道新幹線",
+                ],
+                "evidence": "data/raw/railway/jp/evidence/tokyo-station-platforms.json",
+                "license": "OpenStreetMap contributors, ODbL 1.0",
+            },
         },
         "attributeSources": {
             "stationNames": (

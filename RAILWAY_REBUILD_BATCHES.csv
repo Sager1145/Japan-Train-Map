@@ -329,7 +329,8 @@ session,batch_code,country,group,line_id,operator,line,render_kind,shape_class,s
 38,J07-4,jp,関東大手私鉄,東急電鉄␟東急新横浜線,東急電鉄,東急新横浜線,private,ordinary_linear,3,6.1,,unverified
 38,J07-4,jp,関東大手私鉄,東急電鉄␟東急多摩川線,東急電鉄,東急多摩川線,private,ordinary_linear,7,5.7,,unverified
 38,J07-4,jp,関東大手私鉄,東急電鉄␟こどもの国線,東急電鉄,こどもの国線,private,ordinary_linear,3,3.4,,unverified
-38,J07-4,jp,関東大手私鉄,京王電鉄␟京王線,京王電鉄,京王線,private,loop_with_tail,35,40.7,,unverified
+38,J07-4,jp,関東大手私鉄,京王電鉄␟京王線,京王電鉄,京王線,private,ordinary_linear,32,37.9,,unverified
+38,J07-4,jp,関東大手私鉄,京王電鉄␟京王新線,京王電鉄,京王新線,private,ordinary_linear,4,3.5,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟相模原線,京王電鉄,相模原線,private,ordinary_linear,12,22.8,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟井の頭線,京王電鉄,井の頭線,private,ordinary_linear,17,12.9,,unverified
 38,J07-4,jp,関東大手私鉄,京王電鉄␟高尾線,京王電鉄,高尾線,private,ordinary_linear,7,8.8,,unverified

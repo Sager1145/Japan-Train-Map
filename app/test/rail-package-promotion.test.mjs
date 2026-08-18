@@ -153,17 +153,23 @@ test("a fully promoted package matches the reference package line for line", () 
 
 test("every batch-table row resolves against its reference package", () => {
   const table = readBatchTable();
-  assert.equal(table.length, 662, "batch table row count");
+  // 663 with the 2026-08-18 京王新線 split: the new canonical joins 京王線's
+  // own session row (38 / J07-4).
+  assert.equal(table.length, 663, "batch table row count");
 
   const expected = {
     // The 2026-08-13 network corrections: these three canonical lines are in
     // the corrected inventory but not in the package built before it. They are
     // rebuild work, not table errors, and are named so a future unresolved row
     // cannot hide among them.
+    // 京王新線 joined the inventory with the 2026-08-18 split of the「京王線」
+    // N02 key; the pre-rebuild reference package never drew it as its own
+    // line, so its row resolves only against the rebuilt package.
     jp: new Set([
       "広島電鉄␟循環線",
       "三岐鉄道␟近鉄連絡線",
       "富山地方鉄道␟富山駅南北接続線",
+      "京王電鉄␟京王新線",
     ]),
     tw: new Set(),
     hk: new Set(),

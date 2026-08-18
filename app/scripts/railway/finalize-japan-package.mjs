@@ -94,14 +94,30 @@ for (const line of pkg.lines) {
 }
 
 pkg.version = "2025.4.2";
-pkg.generatedAt = "2026-08-13T00:00:00.000Z";
+pkg.generatedAt = "2026-08-18T00:00:00.000Z";
 pkg.geometrySource = {
-  officialOnly: 1,
-  providers: ["国土交通省 国土数値情報 鉄道データ N02-25"],
-  license: "国土数値情報ダウンロードサービス 利用約款 (CC BY 4.0 相当)",
+  officialOnly: 0,
+  providers: [
+    "国土交通省 国土数値情報 鉄道データ N02-25",
+    "OpenStreetMap contributors (東京駅の両新幹線・地上共用線・総武快速／横須賀線の実軌道)",
+  ],
+  license:
+    "国土数値情報ダウンロードサービス 利用約款 (CC BY 4.0 相当); OpenStreetMap ODbL 1.0",
   method:
-    "Station intervals cut from N02 RailroadSection geometry; branch services are split at their surveyed junctions, repeat-coordinate spiral loops are retained, and station anchors are welded before display grooming.",
+    "Station intervals cut from N02 RailroadSection geometry; branch services are split at surveyed junctions, repeat-coordinate spiral loops are retained, sibling families persist one railwayIdentity, and junction anchors are welded to an existing canonical platform point before display grooming. Final lanes are a pure recomputation: two-stroke continuations keep one screen-side lane through the exact station node and true branches ramp to lane 0 there. At 東京, both Shinkansen, the shared 東北・東海道 surface stroke, and both directions of the 総武快速・横須賀 underground stroke use registered OSM physical-track geometry through the adjacent interval.",
   sections: "data/rail-sections.json (N02-25)",
+  osmGeometry: {
+    lines: [
+      "jp-東日本旅客鉄道-東北新幹線",
+      "jp-東日本旅客鉄道-東北線-2",
+      "jp-東日本旅客鉄道-東海道線",
+      "jp-東日本旅客鉄道-総武線",
+      "jp-東日本旅客鉄道-総武線-3",
+      "jp-東海旅客鉄道-東海道新幹線",
+    ],
+    evidence: "data/raw/railway/jp/evidence/tokyo-station-platforms.json",
+    license: "OpenStreetMap contributors, ODbL 1.0",
+  },
 };
 pkg.attributeSources = {
   stationNames:
@@ -109,6 +125,8 @@ pkg.attributeSources = {
   structure:
     "OpenStreetMap tunnel/bridge/layer tags conflated to N02 at <=25 m and <=35 degrees bearing, ODbL 1.0",
   colours: "data/raw/railway/jp/colours/sources.md (per-value provenance)",
+  multiLineStationAudit:
+    "data/raw/railway/jp/evidence/multi-line-station-audit-rules.json; outputs/railway-audit/multi-line-stations/audit.json",
 };
 pkg.stats = {
   lines: pkg.lines.length,

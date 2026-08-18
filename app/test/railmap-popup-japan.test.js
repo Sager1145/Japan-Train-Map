@@ -59,8 +59,11 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   // 386/321 with the 2026-08-18 official shapes: 長崎線-3 folded into the
   // 市布新線 trunk and 東海道線(JR東日本)-4 renumbered to -3, so each family
   // shows one badge-carrying stroke fewer.
-  assert.equal(packageImages.length, 386);
-  assert.equal(linesWithBadges.length, 321);
+  // 385/320 after the 東京 Apple-layout correction: the former 東海道線-2
+  // display stroke is now 総武線-3. 総武線 has no audited package badge, so
+  // the stroke correctly uses the exact JR East operator fallback instead.
+  assert.equal(packageImages.length, 385);
+  assert.equal(linesWithBadges.length, 320);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -151,11 +154,13 @@ test("every non-line image falls back to the exact operator, never a parent or p
   );
 
   // 337/330, moved by the 2026-08-15 rebuild, the 2026-08-17 paired alignments
-  // and the 2026-08-18 gap repairs (−3 strokes net). The rule is
+  // and the 2026-08-18 gap repairs (−4 strokes net, including the stale
+  // 函館線-4 duplicate). The rule is
   // unchanged and the loop below is what enforces it: every line without a
   // package badge must resolve to its OWN operator's mark. That is why a split
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
+  // 総武線-3 adds one operator-fallback stroke without adding an operator.
   assert.equal(missingBadgeLines.length, 337);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
   assert.equal(coveredLines.length, 330);
@@ -411,4 +416,40 @@ test("official light-on-dark Japanese marks receive a readable popup matte", () 
   const model = popup.buildPopupModel(network, stationId);
   assert.equal(model.lines[0].logoNeedsDarkMatte, true);
   assert.match(popup.stationPopupHtml(model), /rp-line-logo--dark-matte/);
+});
+
+test("Nippori lists the split Tohoku railway once", () => {
+  const { popup } = loadPopup();
+  const nipporiStrokes = JAPAN_NETWORK.lines.filter(
+    (line) =>
+      line.operator === "東日本旅客鉄道" &&
+      line.name === "東北線" &&
+      line.stations.some((station) => station[1] === "日暮里"),
+  );
+  assert.ok(nipporiStrokes.length >= 3, "fixture no longer exercises split strokes");
+
+  const stationId = `${nipporiStrokes[0].id}:nippori`;
+  const lineById = new Map(
+    nipporiStrokes.map((line) => [
+      line.id,
+      {
+        ...line,
+        lineId: line.id,
+        logo: line.logo ? `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png` : null,
+      },
+    ]),
+  );
+  const network = {
+    lineById,
+    stationById: new Map([
+      [stationId, { stationId, stationGroupId: "nippori", name: "日暮里" }],
+    ]),
+    groupMembers: new Map([
+      ["nippori", nipporiStrokes.map((line) => ({ lineId: line.id }))],
+    ]),
+  };
+
+  const model = popup.buildPopupModel(network, stationId);
+  assert.equal(model.lines.length, 1);
+  assert.equal(model.lines[0].label, "東北線");
 });

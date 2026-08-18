@@ -30,6 +30,7 @@
  *   node scripts/railway/promote-lines.mjs --country hk --lines hk-mtr-isl,hk-mtr-twl
  *   node scripts/railway/promote-lines.mjs --country jp --session 16 --dry-run
  *   node scripts/railway/promote-lines.mjs --country jp --session 18 --prune
+ *   node scripts/railway/promote-lines.mjs --country jp --all
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -132,6 +133,7 @@ function parseArgs(argv) {
     into: at("--into"),
     dryRun: argv.includes("--dry-run"),
     prune: argv.includes("--prune"),
+    all: argv.includes("--all"),
   };
 }
 
@@ -139,8 +141,8 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.country || !COUNTRIES.has(args.country))
     throw new Error("--country must be one of jp, tw, hk, mo, kr");
-  if (!args.session && !args.lines)
-    throw new Error("pass --session <n> or --lines <id,id,...>");
+  if (!args.session && !args.lines && !args.all)
+    throw new Error("pass --session <n>, --lines <id,id,...>, or --all");
 
   const targetPath = args.into || publishedPath(args.country);
   const sourcePath = args.from || stagingPath(args.country);
@@ -155,7 +157,9 @@ function main() {
 
   let ids;
   let unresolved = [];
-  if (args.lines) {
+  if (args.all) {
+    ids = source.lines.map((line) => line.id);
+  } else if (args.lines) {
     ids = args.lines
       .split(",")
       .map((id) => id.trim())
@@ -196,11 +200,11 @@ function main() {
   // touch a line another session owns.
   let pruned = [];
   if (args.prune) {
-    if (!args.session)
-      throw new Error("--prune needs --session, so the removal stays scoped to one batch");
-    const owned = new Set(
-      resolveRowsAgainstPackage(rowsForSession(args.session), target).ids,
-    );
+    if (!args.session && !args.all)
+      throw new Error("--prune needs --session or --all, so the removal scope is explicit");
+    const owned = args.all
+      ? new Set((target.lines || []).map((line) => line.id))
+      : new Set(resolveRowsAgainstPackage(rowsForSession(args.session), target).ids);
     const keep = new Set(ids);
     pruned = result.package.lines
       .map((line) => line.id)

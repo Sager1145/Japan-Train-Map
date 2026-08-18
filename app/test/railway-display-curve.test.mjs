@@ -12,7 +12,17 @@ const pkg = JSON.parse(
 test("Japan display package advertises the current reproducible contract", () => {
   assert.equal(pkg.format, "compact-v1");
   assert.equal(pkg.version, "2025.4.2");
-  assert.equal(pkg.geometrySource.officialOnly, 1);
+  assert.equal(pkg.geometrySource.officialOnly, 0);
+  assert.deepEqual(pkg.geometrySource.osmGeometry.lines, [
+    "jp-東日本旅客鉄道-東北新幹線",
+    "jp-東日本旅客鉄道-東北線-2",
+    "jp-東日本旅客鉄道-東海道線",
+    "jp-東日本旅客鉄道-総武線",
+    "jp-東日本旅客鉄道-総武線-3",
+    "jp-東海旅客鉄道-東海道新幹線",
+  ]);
+  assert.match(pkg.geometrySource.osmGeometry.evidence, /tokyo-station-platforms\.json$/);
+  assert.match(pkg.geometrySource.osmGeometry.license, /ODbL/);
   assert.match(pkg.attributeSources.structure, /OpenStreetMap/);
   assert.match(pkg.attributeSources.colours, /sources\.md/);
 });

@@ -73,18 +73,10 @@ const CASES = [
     to: '四ツ小屋',
     officialKm: 6.4,
   },
-  {
-    // 京王線 幡ヶ谷 → 新宿 2.6 km (京王新線の営業キロ — the interval rides the
-    // 新線 tracks, where 幡ヶ谷's only platforms are). 幡ヶ谷 anchors on a 新線
-    // platform section, so the path first runs 400 m back down the 新線 to the
-    // west node and folds 154° up onto the 本線. This trim is palliative:
-    // splitting the 京王新線 into its own line (and drawing 初台) is batch 5c's
-    // separate project.
-    lineId: 'jp-京王電鉄-京王線',
-    from: '幡ヶ谷',
-    to: '新宿',
-    officialKm: 2.6,
-  },
+  // 京王線 幡ヶ谷 → 新宿 was listed here as a palliative trim while the 京王新線
+  // was still drawn as part of 京王線. Batch 7 split the 新線 into its own line
+  // (初台・幡ヶ谷 belong to it, 京王線 runs 新宿—笹塚 direct), so that interval
+  // no longer exists to trim and the case is retired.
 ];
 
 // How far into an interval to look for a lead-in that folds back, and how

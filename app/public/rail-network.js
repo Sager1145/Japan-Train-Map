@@ -1801,7 +1801,15 @@
   // neighbouring lanes.
 
   function railwayIdentityFor(lineId, compactLine) {
-    return RAILWAY_IDENTITY[lineId] || visibilityGroupKey(compactLine);
+    // A geometry build can register a cross-name through railway at one exact
+    // junction (Tokyo's 東北線→東海道線, the same display contract as 函館線's
+    // two Sapporo strokes). Package evidence wins over the small static table:
+    // it is tied to the surveyed geometry that makes the continuation true.
+    return (
+      compactLine.railwayIdentity ||
+      RAILWAY_IDENTITY[lineId] ||
+      visibilityGroupKey(compactLine)
+    );
   }
 
   function visibilityGroupKey(compactLine) {

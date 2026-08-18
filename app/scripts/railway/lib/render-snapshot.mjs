@@ -33,8 +33,53 @@
 // 長崎線-3 folds in. 東海道線's trunk runs 東京–熱海 via 品川・川崎・横浜, the
 // 品鶴線 is its own 品川–鶴見 stroke (whose 新幹線-corridor lane pairing
 // re-solved, 2→5 features) and the 相鉄連絡線 renumbers -4 → -3.
+// 2026-08-18 batch 7 — 916 / 10223 / 658 / 9039: 京王新線 becomes its own
+// line (新線新宿–初台–幡ヶ谷–笹塚, carved from the「京王線」N02 key), 京王線
+// runs 新宿–笹塚 direct and the 初台–幡ヶ谷 orphan 京王線-2 folds away, so
+// the line count holds still while the 新宿–笹塚 corridor gains the 新線's
+// lane feature and 新宿 gains its 新線 platform row.
+// 2026-08-18 batch 8 — 916 / 10223 / 658 / 9039, all counts still: 東京駅
+// takes its per-line platform dots (R13). 東北新幹線 leaves the 東海道新幹線
+// platforms N02 copied it onto and stands on its own 20-23 group 48 m west
+// (registered geometry patch, OSM centreline); 東北線-2 and 東海道線 share
+// one surface dot; 総武線's rapid
+// takes its own 馬喰町 tunnel with 両国 handed back to the 御茶ノ水 local
+// stroke (one station row each way, so the totals hold).
+// 2026-08-18 batch 9 — 916 / 10225 / 658 / 9039: the shared conventional dot
+// moves to the middle platform feature; the 総武快速 stroke continues from its
+// underground 東京 dot southwest along OSM's 東京トンネル through underground
+// 新橋・品川 to 西大井. Its existing 品鶴 display part becomes blue 総武線-3,
+// adding the two intermediate platform rows without adding a line or feature.
+// 2026-08-18 batch 10 — 918 / 10225 / 658 / 9039: both Shinkansen, the shared
+// 東北線–東海道線 surface stroke and the north half of the 総武 underground
+// stroke follow their selected OSM physical rails through Tokyo's adjacent
+// intervals. Two display features are added where the registered corridors now
+// enter/leave the existing screen-space lane stretches at their real junctions.
+// 2026-08-18 batch 11 — 916 / 10225 / 658 / 9039: Tokyo's 東北線 and
+// 東海道線 are welded at track 10's exact OSM node and registered as one
+// Ueno–Tokyo through railway. Both halves now take the same -0.5 render lane,
+// removing the two lane-transition features that batch 10 introduced and
+// making the station one smooth Sapporo-style junction rather than two dots.
+// 2026-08-18 batch 12 — 910 / 10223 / 657 / 9039: the whole-country
+// multi-line-station audit removes the stale 函館線-4 鹿部–大沼 duplicate that
+// the current inventory no longer emits, records railwayIdentity on every
+// sibling family, and derives junction-aware lane ramps. Two-stroke
+// continuations carry one screen-side lane through their shared platform;
+// true branches return to lane 0 at the physical junction, so no offset tears
+// one railway into two visible station points.
+// 2026-08-18 batch 13 — 918 / 10223 / 657 / 9039: propagate Tokyo's explicit
+// Ueno–Tokyo identity from the registered 東北線-2 / 東海道線 junction to every
+// sibling display stroke in both canonical families. This removes the false
+// independent-railway split around 日暮里; the eight extra render pieces are
+// the resulting lane-profile boundaries against genuinely separate railways.
+// 2026-08-18 close-out — 918 / 10223 / 657 / 9039, counts still: the standing
+// doubling-back repairs re-applied after the day's promotes. 中央線 中野→東中野
+// (2.75 → 1.76 km) and 奥羽線 秋田→四ツ小屋 (7.26 → 6.37 km) had shipped
+// untrimmed when their staging strokes were promoted wholesale; the CASES
+// script re-cut both against their official mileages and remapped 128
+// structure rows, exactly as the batch-5 landing first did.
 export const EXPECTED_RENDER_HASH =
-  "7ad5a247cbf9d027450e765e24bfd90e53a296168f97b330ab775f327c4d3941";
+  "41a09696cc2f48dcef4bbc786e6c3a37d1b534a73bf696ef61aa458188c4b91e";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

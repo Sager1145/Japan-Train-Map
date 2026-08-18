@@ -73,9 +73,25 @@ const EXPECTED_COUNTS = Object.freeze({
   // before and after), so stations and groups hold still; the +1 feature is
   // the 品鶴線's lane split — its 新幹線-corridor pairing re-solved from the
   // old ring's 2 features into 5 on the open stroke.
-  segments: 915,
-  stations: 10222,
-  lines: 658,
+  // ±0 lines / +1 segment / +1 station (2026-08-18, 京王新線 split): the 新線
+  // (新線新宿–初台–幡ヶ谷–笹塚) is its own railway carved from the「京王線」
+  // N02 key, so the 初台–幡ヶ谷 orphan 京王線-2 folds away as the new line
+  // appears; its whole 3.4 km rides the 新宿–笹塚 corridor in its own lane
+  // (+1 feature) and 新宿 gains the 新線新宿 platform row (+1 station: 京王線
+  // sheds 初台/幡ヶ谷's rows while 京王新線 seats all four of its stations).
+  // Groups hold still — 新線新宿 is the same physical 新宿 group.
+  // ±0 lines / ±0 features / +2 platforms (2026-08-18, 東京駅 Apple layout):
+  // the 総武快速 stroke now continues south from its underground 東京 dot
+  // through underground 新橋・品川 before 西大井. The stroke already existed
+  // as the 品鶴線 display part, so only the two intermediate platform rows are
+  // new; its display identity and colour move from 東海道線 to 総武線.
+  // +8 render pieces after the registered Ueno–Tokyo identity is propagated
+  // to every 東北線/東海道線 sibling stroke. Their lane profiles now enter and
+  // leave neighbouring independent railways as one family instead of changing
+  // identity at an internal display-part seam.
+  segments: 918,
+  stations: 10223,
+  lines: 657,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {
