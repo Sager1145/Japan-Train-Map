@@ -56,8 +56,11 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   // 388/323 with the 2026-08-18 pseudo-edge removals: 成田線-4 (the stroke the
   // three 成田-skipping audit edges produced) is no longer drawn, and it
   // carried its railway's badge like every split part.
-  assert.equal(packageImages.length, 388);
-  assert.equal(linesWithBadges.length, 323);
+  // 386/321 with the 2026-08-18 official shapes: 長崎線-3 folded into the
+  // 市布新線 trunk and 東海道線(JR東日本)-4 renumbered to -3, so each family
+  // shows one badge-carrying stroke fewer.
+  assert.equal(packageImages.length, 386);
+  assert.equal(linesWithBadges.length, 321);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));

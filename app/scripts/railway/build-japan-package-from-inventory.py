@@ -1077,7 +1077,7 @@ def stations_passed_by_cut(graph, points, a, b, others, tolerance_m=SKIP_PASSES_
     return passed
 
 
-def drop_skip_station_edges(edges, passes=None, keep=frozenset()):
+def drop_skip_station_edges(edges, passes=None, keep=frozenset(), shield=frozenset()):
     """Remove service edges that run over track the drawn order already covers.
 
     An express that does not call at 武蔵白石 still runs over the 大川支線's only
@@ -1107,6 +1107,21 @@ def drop_skip_station_edges(edges, passes=None, keep=frozenset()):
     jp line this is inert: no audited part names a consecutive pair this test
     currently drops.)
 
+    `shield` is the same trust boundary approached from the skipped station's
+    side: the branch-only members of the audited parts. `keep` protects the
+    hops a part RIDES; it cannot protect the main line where the main line is
+    not a hop of any part. 長崎線's 現川–浦上 is the 市布新線 itself, but the
+    new line passes inside the 400 m window of 西浦上 — a station of the
+    audited 旧線 part — so the test read the trunk's own hop as a duplicate of
+    現川–西浦上–浦上 and cut the main line at its own junction. 西浦上's track
+    is the audited part's to draw, on its own stroke; an edge is not covering
+    ground already covered just because it runs past a station whose hops live
+    on a DIFFERENT stroke. So: an edge whose skipped stations include a
+    shielded one is not cut — unless the edge itself ends at a shielded
+    station, because then it runs INTO the part it would have to duplicate
+    (東海道線's 大垣–関ヶ原 ends at 関ヶ原, a member of the audited 垂井経由
+    part, and really is the 新垂井線 chord the test should go on dropping).
+
     An edge is only dropped while the rest of the graph still connects its two
     ends, so nothing is ever severed from the line.
     """
@@ -1120,6 +1135,12 @@ def drop_skip_station_edges(edges, passes=None, keep=frozenset()):
             continue
         skipped = passes(pair[0], pair[1])
         if not skipped:
+            continue
+        if (
+            any(uid in shield for uid in skipped)
+            and pair[0] not in shield
+            and pair[1] not in shield
+        ):
             continue
         remaining = [edge for edge in working if edge != pair]
         near = neighbour_map(remaining)
@@ -1172,16 +1193,38 @@ def plan_parts(
     # an audited branch part is that part's own interval, already decided to be
     # drawn. Non-consecutive members stay fair game — 大垣–関ヶ原 spans the same
     # part and really is a chord (the 新垂井線, drawn from its evidence row).
+    #
+    # The branch-only members of those parts shield the OTHER side of the same
+    # decision: an edge is not "already covered" merely because it runs past a
+    # station whose hops the partition draws on a different stroke (長崎線's
+    # 現川–浦上 passes 西浦上, a 旧線-part station). Only parts whose junctions
+    # resolve to real stations of this line can vouch for that — a rejoin
+    # variant leaves and rejoins at stations (two), a terminal branch leaves at
+    # one. 山手線's auto part hangs off 新宿 and a bare coordinate, so it names
+    # no drawable partition and must not shield 代々木; shielding it would
+    # reroute the main line over its own skip edge.
     audited_hops = set()
+    audited_interiors = set()
     try:
         for part in json.loads(row.get("branch_parts_json") or "[]"):
-            members = [
-                uid_by_name[name]
-                for name in part.get("stations", [])
-                if name in uid_by_name
+            names = [
+                name for name in part.get("stations", []) if name in uid_by_name
             ]
+            members = [uid_by_name[name] for name in names]
             audited_hops |= {
                 tuple(sorted(pair)) for pair in zip(members, members[1:])
+            }
+            if part.get("type") not in ("rejoin_variant", "terminal_branch"):
+                continue
+            if len(members) < 2:
+                continue
+            junctions = {
+                name for name in part.get("junctions", []) if name in uid_by_name
+            }
+            if len(junctions) < (2 if part["type"] == "rejoin_variant" else 1):
+                continue
+            audited_interiors |= {
+                uid_by_name[name] for name in names if name not in junctions
             }
     except json.JSONDecodeError:
         pass
@@ -1189,7 +1232,7 @@ def plan_parts(
     prefix = []
     if passes is not None:
         edges, dropped = drop_skip_station_edges(
-            edges, passes=passes, keep=audited_hops
+            edges, passes=passes, keep=audited_hops, shield=audited_interiors
         )
         for (a, b), skipped in dropped:
             name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str

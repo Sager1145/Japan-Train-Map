@@ -65,9 +65,17 @@ const EXPECTED_COUNTS = Object.freeze({
   // corridor stretch (one feature fewer) while 京成成田空港線's airport
   // corridor re-paired against the new 成田線-3 (one fewer). Groups are
   // unchanged — no station appeared or vanished, only strokes.
-  segments: 914,
+  // −2 lines / +1 segment (2026-08-18, official shapes): 長崎線's trunk now
+  // runs 鳥栖–長崎 via the 市布新線 with the 旧線 as a rejoining 喜々津–浦上
+  // branch (長崎線-3 folded in), and 東海道線(JR東日本)'s trunk runs 東京–熱海
+  // via 品川・川崎・横浜 with the 品鶴線 as its own 品川–鶴見 stroke (相鉄連絡線
+  // renumbers -4 → -3). Platform rows balance exactly (43 and 40 per family,
+  // before and after), so stations and groups hold still; the +1 feature is
+  // the 品鶴線's lane split — its 新幹線-corridor pairing re-solved from the
+  // old ring's 2 features into 5 on the open stroke.
+  segments: 915,
   stations: 10222,
-  lines: 660,
+  lines: 658,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

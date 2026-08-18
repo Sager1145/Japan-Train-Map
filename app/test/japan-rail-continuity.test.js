@@ -46,7 +46,13 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // 成田-skipping edges of the 成田線 K4 clique, so 成田線-4 (久住–成田–下総松崎)
   // is no longer produced — the trunk itself runs through 成田 now and the
   // 佐倉/成田空港 branches join it there.
-  assert.equal(pkg.lines.length, 660);
+  // 658: the 2026-08-18 official-shape batch. 長崎線's trunk runs 鳥栖–長崎 via
+  // the 市布新線 and the 旧線 via 長与 is a rejoining 喜々津–浦上 branch, so
+  // 長崎線-3 (西浦上–長崎) folds into the trunk; 東海道線(JR東日本)'s trunk runs
+  // 東京–熱海 via 品川・川崎・横浜 with the 品鶴線 as its own 品川–鶴見 stroke,
+  // so the old 東京–品川 tail and 品川–鶴見 ring dissolve and the 相鉄連絡線
+  // renumbers -4 → -3.
+  assert.equal(pkg.lines.length, 658);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

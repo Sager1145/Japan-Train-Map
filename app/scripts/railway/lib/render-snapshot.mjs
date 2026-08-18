@@ -26,8 +26,15 @@
 // K4 clique), so the 東海道線(JR東日本) family re-settled around its real
 // 品川–鶴見 ring and 成田線 folded to three strokes sharing 成田 (成田線-4
 // gone), plus three doubling-back lead-ins trimmed at 中野, 秋田 and 幡ヶ谷.
+// 2026-08-18 batch 6 — 915 / 10222 / 658 / 9039: 長崎線 and 東海道線(JR東日本)
+// take their official shapes. 長崎線's trunk runs 鳥栖–長崎 via the 市布新線
+// (the shield generalisation stops the skip-edge test cutting 現川–浦上 at its
+// own junction) and the 旧線 via 長与 is a rejoining branch 喜々津–浦上, so
+// 長崎線-3 folds in. 東海道線's trunk runs 東京–熱海 via 品川・川崎・横浜, the
+// 品鶴線 is its own 品川–鶴見 stroke (whose 新幹線-corridor lane pairing
+// re-solved, 2→5 features) and the 相鉄連絡線 renumbers -4 → -3.
 export const EXPECTED_RENDER_HASH =
-  "fb7f4956f9a2a4878b5c1668fd4dda8158373f9720dad0f94cfe9c63fe71cac4";
+  "7ad5a247cbf9d027450e765e24bfd90e53a296168f97b330ab775f327c4d3941";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 
