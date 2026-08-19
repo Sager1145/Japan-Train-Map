@@ -54,11 +54,14 @@ const CASES = [
     officialKm: 6.0,
   },
   {
-    // 中央線 中野 → 東中野 1.9 km (営業キロ). 中野's platform anchors on a
+    // 中央線 中野 → 東中野 1.9 km (営業キロ). 中野's platform anchored on a
     // degree-1 dead-end platform section at the station's east end, so the
-    // path first runs 493 m back WEST to the nearest through-track node and
-    // returns past the platform in a 173° jag. The neighbouring 高円寺 → 中野
-    // interval is clean and is not listed.
+    // path first ran 493 m back WEST to the nearest through-track node and
+    // returned past the platform in a 173° jag. The 2026-08-18 threshold
+    // relaxation (REANCHOR_DETOUR_FACTOR in the package builder) re-anchors
+    // 中野 onto the through platform at rebuild time, so the built interval
+    // is already a clean 1.76 km; the case stays listed so a regression
+    // re-trims it, same as 藤代 → 取手 above.
     lineId: 'jp-東日本旅客鉄道-中央線',
     from: '中野',
     to: '東中野',
@@ -68,6 +71,10 @@ const CASES = [
     // 奥羽線 秋田 → 四ツ小屋 6.4 km (営業キロ). Same shape as 中野: 秋田
     // anchors on a dead-end platform section at the station's south end, and
     // the southbound interval first runs 446 m NORTH before folding back.
+    // Still a live trim: the fold is 18 % over the audited 6.143 km, under
+    // the builder's 30 %+300 m re-anchor band — widening that band for one
+    // 446 m fold would put every honest platform offset in play, so this one
+    // stays repaired here rather than re-anchored there.
     lineId: 'jp-東日本旅客鉄道-奥羽線',
     from: '秋田',
     to: '四ツ小屋',
