@@ -123,7 +123,88 @@ export function loadOsmTrackIndex(options = {}) {
 
 const PLATFORM_DIR = "platforms";
 
+function metresBetween(a, b) {
+  return Math.hypot(
+    (a[0] - b[0]) * 111320 * Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180),
+    (a[1] - b[1]) * 111320,
+  );
+}
+
+/** The point half way along an open polyline, by arc length. */
+function arcMidpoint(coordinates) {
+  const measures = [0];
+  for (let index = 1; index < coordinates.length; index += 1)
+    measures.push(
+      measures[index - 1] + metresBetween(coordinates[index - 1], coordinates[index]),
+    );
+  const half = measures.at(-1) / 2;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    if (measures[index] < half) continue;
+    const span = measures[index] - measures[index - 1];
+    const ratio = span ? (half - measures[index - 1]) / span : 0;
+    return [
+      coordinates[index - 1][0] +
+        ratio * (coordinates[index][0] - coordinates[index - 1][0]),
+      coordinates[index - 1][1] +
+        ratio * (coordinates[index][1] - coordinates[index - 1][1]),
+    ];
+  }
+  return coordinates.at(-1);
+}
+
+/**
+ * The centre of a platform element.
+ *
+ * A platform mapped as an AREA closes on itself, and a closed way is a path
+ * AROUND the platform rather than along it, so neither the mean of its vertices
+ * nor half its perimeter is its middle. The mean leans on where the ring
+ * happens to close and on how densely each end was drawn (和歌山市's ring
+ * counts one corner twice out of five, which pulls the centre 16 m towards it);
+ * half the perimeter lands on the far END.
+ *
+ * So a ring is split at its two farthest-apart vertices — the platform's two
+ * ends — and the arc midpoints of the two sides are averaged, which is the
+ * middle of the outline's own medial axis. This is the same rule
+ * build-japan-package-from-inventory.py applies when it turns a registered
+ * platform into a station anchor, and it has to be: an override's safety gate
+ * measures the platform this function reports, and the package then draws the
+ * dot where the builder puts it. Two different centres and the gate is checking
+ * a point nothing uses.
+ */
 function midpointOf(coordinates) {
+  const closed =
+    coordinates.length > 3 &&
+    coordinates[0][0] === coordinates.at(-1)[0] &&
+    coordinates[0][1] === coordinates.at(-1)[1];
+  if (closed) {
+    const ring = coordinates.slice(0, -1);
+    let first = 0;
+    let second = 0;
+    let span = -1;
+    for (let index = 0; index < ring.length; index += 1)
+      for (let other = index + 1; other < ring.length; other += 1) {
+        const gap = metresBetween(ring[index], ring[other]);
+        if (gap > span) {
+          span = gap;
+          first = index;
+          second = other;
+        }
+      }
+    const side = (start, end) => {
+      const chain = [];
+      for (let cursor = start; ; cursor = (cursor + 1) % ring.length) {
+        chain.push(ring[cursor]);
+        if (cursor === end) return chain;
+      }
+    };
+    const middles = [side(first, second), side(second, first)].map((chain) =>
+      chain.length === 1 ? chain[0] : arcMidpoint(chain),
+    );
+    return [
+      (middles[0][0] + middles[1][0]) / 2,
+      (middles[0][1] + middles[1][1]) / 2,
+    ];
+  }
   let x = 0;
   let y = 0;
   for (const point of coordinates) {

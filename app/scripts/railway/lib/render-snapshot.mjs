@@ -229,8 +229,41 @@
 // The lead-in and run-out of every replaced interval keep N02 vertex for vertex,
 // so 福知山線 still shares the 尼崎 throat with 東海道線 and 奥羽線-p1 still
 // merges into its trunk, both vertex for vertex. jp basemap audit ERROR 6 → 0.
+// 2026-08-19 platform outlines and the end of the track — counts unchanged
+// (654 / 10220 / 654 / 9039), thirteen station dots moved and five approaches
+// stopped being reshaped, which is the whole of this digest's move.
+//   * Every platform registered in station-anchor-overrides.json is a closed
+//     OSM way, and the builder was reading each one as an open polyline: half
+//     the perimeter of an outline is its far END, not its middle, so twelve
+//     dots stood 15.1 m to 187.5 m past the platform they mark. Measured
+//     against the track each line CLAIMS: 和歌山市 116.1 → 20.7 m, 橿原神宮前
+//     108.3 → 24.8, 糸魚川 90.3 → 24.2, 宮古 32.1 → 6.0, 京成高砂 9.3 → 0.1,
+//     横浜 5.8 → 2.4. The remaining metres at the first three are longitudinal
+//     — those named ways STOP at the buffer, and the distance is to their last
+//     vertex, not across the rails.
+//   * The thirteenth, 東武日光, is withdrawn rather than re-measured. Its N02
+//     feature was already 0.2 m from way 24403347 (東武日光線, 東武鉄道); the
+//     80.7 m that condemned it was the distance to a JR East siding whose name
+//     survives normalisation as 日光線, and the platform the row then picked is
+//     JR日光駅's. The dot had landed 81.8 m from its own line, and the stroke
+//     stopped short of the real terminus; it is back on its own metals and the
+//     line regains 220 m.
+//   * The approach rebuild and its audit both used to ask "is the platform
+//     beyond the end of the track" structurally — is the nearest point on the
+//     path the last vertex — which is blind wherever the survey wobbles in the
+//     final metres. 亀山's 紀勢線 stops on 5-7 m of jitter, so a platform 171 m
+//     beyond the end read as a sideways displacement and the line was drawn up
+//     to 78.2 m off its own survey, while the two 関西線 strokes at the same
+//     coordinate tripped the structural test and were left exact. Both now
+//     also read the terminal's own outbound heading, and a platform within 45°
+//     of it is beyond the end. Five approaches stand aside: 亀山/紀勢線 78.2 m
+//     → 0.0, 二俣新町 58.1 → 0.0, 東武日光 80.0 → 0.0, 上越線-p1 土樽 12.2 →
+//     0.0, 羽後本荘 6.0 → 0.0, all now drawn exactly on the package's own
+//     coordinates. jp station anchoring 5 WARNING → 0, and the sideways case
+//     is still measured: 東武日光's misplaced dot read 93° off axis and would
+//     have been reported.
 export const EXPECTED_RENDER_HASH =
-  "4b2945e6590532b7a1737d6f7441efce1de1bedf2696598d48e31acd1bfa0938";
+  "ebea72e47b8e518569c0e5a3e751249e240d47e8b9c21b736e8aa054133bfa22";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

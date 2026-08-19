@@ -71,9 +71,27 @@ function platformGeometry(kind, id) {
   return null;
 }
 
+/**
+ * Rows a human has already thrown out, keyed line␟station.
+ *
+ * A revert is a JUDGEMENT — 名古屋's pick measured worse after it was applied,
+ * 東武日光's claim was another railway's line of the same name — and the
+ * evidence that produced the row is unchanged, so the generator would propose
+ * it again on the next run and quietly undo the decision. It is read back and
+ * honoured instead, and the verdicts are carried into the file it rewrites.
+ */
+function revertedRows() {
+  if (!fs.existsSync(EVIDENCE)) return [];
+  const previous = JSON.parse(fs.readFileSync(EVIDENCE, "utf8"));
+  return Array.isArray(previous.reverted) ? previous.reverted : [];
+}
+
 export function buildRows(options = {}) {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE, "utf8"));
   const audit = JSON.parse(fs.readFileSync(AUDIT, "utf8"));
+  const reverted = new Map(
+    revertedRows().map((row) => [`${row.line}␟${row.station}`, row]),
+  );
   const { index: trackIndex } = loadOsmTrackIndex();
   const platforms = loadOsmPlatformIndex();
   const byId = new Map(pkg.lines.map((line) => [line.id, line]));
@@ -97,6 +115,11 @@ export function buildRows(options = {}) {
       });
       const reject = (why) =>
         refused.push({ station: group.station_name, line: row.display_line_id, why });
+      const withdrawn = reverted.get(`${line.operator}␟${line.name}␟${station[1]}`);
+      if (withdrawn) {
+        reject(`reverted by hand and not re-proposed — ${withdrawn.why}`);
+        continue;
+      }
       if (!pick) {
         reject("no platform candidate within 250 m");
         continue;
@@ -156,13 +179,17 @@ export function buildRows(options = {}) {
       });
     }
   rows.sort((a, b) => b.measured.dot_moves_m - a.measured.dot_moves_m);
-  return { rows: options.limit ? rows.slice(0, options.limit) : rows, refused };
+  return {
+    rows: options.limit ? rows.slice(0, options.limit) : rows,
+    refused,
+    reverted: revertedRows(),
+  };
 }
 
 function main() {
   const argv = process.argv.slice(2);
   const limit = argv.includes("--limit") ? Number(argv[argv.indexOf("--limit") + 1]) : 0;
-  const { rows, refused } = buildRows({ limit });
+  const { rows, refused, reverted } = buildRows({ limit });
   for (const row of rows)
     process.stdout.write(
       `  ${row.station.padEnd(10)} ${row.line.padEnd(28)} moves ${String(row.measured.dot_moves_m).padStart(6)} m  ` +
@@ -182,15 +209,18 @@ function main() {
       "touched by this block.",
     generator: "scripts/railway/build-station-anchor-evidence.mjs",
     safety:
-      `A row exists only when the target platform is within ${ANCHOR_ON_TRACK_M} m of a way named ` +
-      "for the line itself; the builder additionally refuses to apply a row whose N02 feature has " +
-      "moved more than 1 m from the recorded midpoint.",
+      `A row exists only when the target platform is within ${ANCHOR_ON_TRACK_M} m of a way the ` +
+      "line can claim — named for the line itself, and carrying no operator tag that names " +
+      "somebody else; the builder additionally refuses to apply a row whose N02 feature has " +
+      "moved more than 1 m from the recorded midpoint. A platform mapped as an area is measured " +
+      "at the centre of its outline, which is where the builder puts the dot.",
     retrieved: new Date().toISOString().slice(0, 10),
     source:
       "OpenStreetMap (ODbL) platform elements from outputs/osm-basemap-cache/platforms; " +
       "verdicts from outputs/railway-audit/multi-line-stations/audit.json",
     refused,
     station_anchor_overrides: rows,
+    reverted,
   };
   fs.writeFileSync(EVIDENCE, `${JSON.stringify(payload, null, 1)}\n`);
   process.stdout.write(`\nwrote ${rows.length} override(s) to ${path.relative(REPO_DIR, EVIDENCE)}\n`);

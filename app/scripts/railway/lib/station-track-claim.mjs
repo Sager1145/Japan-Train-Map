@@ -67,8 +67,12 @@ function textMatches(candidate, forms) {
  *
  * `strength`:
  *   operator_and_name  both agree — the strongest claim the cache can support
- *   name               the name agrees, the operator tag is missing/different
+ *   name               the name agrees and the way names NO operator to
+ *                      disagree with
  *   operator           the operator agrees, no named way in reach
+ *   name_other_operator  only the name agrees, and the way says somebody else
+ *                      runs it — last, because two railways can share a line
+ *                      name
  *   none               nothing identifies a way here; the caller must report
  *                      `undecidable`, never fall back to the nearest rail
  */
@@ -111,6 +115,27 @@ export function claimFilterFor(line) {
   };
   const operatorOk = (meta) =>
     textMatches(meta.operatorJa, operators) || textMatches(meta.operator, operators);
+  // A name-only claim belongs to a way that says NOTHING about who runs it —
+  // and there are thousands of those. A way that says outright that somebody
+  // else runs it is a different, much weaker thing, because two railways can
+  // share a line name: 東武鉄道 and JR East both run a 日光線 into 日光, 300 m
+  // apart, and the normalisation that makes OSM's spellings comparable is
+  // exactly what brings them together — "JR日光線" loses its JR and equals
+  // 東武鉄道's 日光線, while 東武's own metals, filed as 東武日光線, keep the
+  // brand prefix and do NOT. Ranked equal, the claim measured 東武日光 against
+  // a JR East siding, called an N02 feature 0.2 m from its own line 80.7 m
+  // adrift, and an override moved the dot onto JR日光駅's platform.
+  //
+  // It is still worth something, though, and dropping it outright cost eight
+  // stations their claim: where two companies run over one railway, OSM tags
+  // the owner and the package files the service — 神戸高速線's metals say
+  // 神戸高速鉄道 while 阪神 and 阪急 both run them, and 亀山, 上越妙高, 児島 and
+  // 関西空港 are all company boundaries where the way carries the neighbour's
+  // name. So it goes LAST instead: a way the line's own operator runs is always
+  // preferred, and a way named for the line under somebody else's name is
+  // taken only when nothing else here identifies itself at all.
+  const operatorDisowns = (meta) =>
+    Boolean(meta.operatorJa || meta.operator) && !operatorOk(meta);
   return {
     name,
     operators,
@@ -119,8 +144,15 @@ export function claimFilterFor(line) {
         strength: "operator_and_name",
         accept: (m) => namedPlatformRoad(m) && operatorOk(m) && nameOk(m),
       },
-      { strength: "name", accept: (m) => namedPlatformRoad(m) && nameOk(m) },
+      {
+        strength: "name",
+        accept: (m) => namedPlatformRoad(m) && nameOk(m) && !operatorDisowns(m),
+      },
       { strength: "operator", accept: (m) => running(m) && operatorOk(m) },
+      {
+        strength: "name_other_operator",
+        accept: (m) => namedPlatformRoad(m) && nameOk(m),
+      },
     ],
   };
 }

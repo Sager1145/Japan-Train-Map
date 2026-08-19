@@ -269,6 +269,55 @@ function foldsAtPlatform(head, tail, cut) {
   return turnDegrees(before, seam, after) >= REVERSAL_MIN_TURN_DEGREES;
 }
 
+// A platform beyond the end of its track is offset from the last surveyed
+// vertex mostly ALONG the rail; one that is merely misplaced is offset mostly
+// ACROSS it. Read as a ratio rather than a distance, because the two grow
+// together: 札幌's 函館線 platform stands 279 m past the last vertex, and 40 m
+// of that measured sideways is what a gentle curve looks like when you
+// extrapolate a heading over 279 m — not a defect.
+const BEYOND_END_MAX_ACROSS_RATIO = 1;
+
+/**
+ * Is the platform past the end of the track its line surveyed?
+ *
+ * Two ways to say the same thing, and the audit takes either: the nearest
+ * point on the path IS the terminal vertex (exact, but blind if anything at
+ * all lies between — 亀山's 紀勢線 has 5-7 m of survey jitter before its final
+ * vertex, and its platform 171 m beyond the end therefore measured as a 78 m
+ * sideways displacement while the two 関西線 platforms at the same coordinate
+ * measured nothing), or the platform lies ahead of that vertex along the
+ * heading the final run of track is on.
+ *
+ * Computed here from the vector between the two, decomposed against the run;
+ * the renderer reaches the same criterion through the corner angle at the
+ * vertex. The point of a second opinion is that it agrees for its own reasons.
+ */
+function beyondSurveyedEnd(path, anchor, atStart) {
+  const endIndex = atStart ? 0 : path.length - 1;
+  const end = path[endIndex];
+  const back = windowedPoint(
+    path,
+    endIndex,
+    atStart ? +1 : -1,
+    REVERSAL_RUN_METERS,
+  );
+  if (!back) return false;
+  const scale = Math.cos((end[1] * Math.PI) / 180) || 1;
+  const metric = (row) => [row[0] * 111320 * scale, row[1] * 111320];
+  const [endX, endY] = metric(end);
+  const [backX, backY] = metric(back);
+  const [anchorX, anchorY] = metric(anchor);
+  const runX = endX - backX;
+  const runY = endY - backY;
+  const run = Math.hypot(runX, runY);
+  if (!run) return false;
+  const offsetX = anchorX - endX;
+  const offsetY = anchorY - endY;
+  const along = (offsetX * runX + offsetY * runY) / run;
+  const across = Math.abs(offsetX * runY - offsetY * runX) / run;
+  return along > 0 && across <= along * BEYOND_END_MAX_ACROSS_RATIO;
+}
+
 /**
  * How far the approach pass had to move the alignment to reach this platform.
  *
@@ -281,8 +330,10 @@ function foldsAtPlatform(head, tail, cut) {
  * `beyondEnd` says the platform lies past the last surveyed vertex its line
  * has, so there is no track there to be off and no displacement to report —
  * the renderer draws the package's own final edge and this audit says so
- * rather than inventing a number. A terminal is the one-sided case. The
- * two-sided one is `folded`: where a branch leaves its trunk the two intervals
+ * rather than inventing a number. It is read two ways (see
+ * `beyondSurveyedEnd`), because the structural one alone misses every terminal
+ * whose survey wobbles in the last few metres. A terminal is the one-sided
+ * case. The two-sided one is `folded`: where a branch leaves its trunk the two intervals
  * SHARE the rail between platform and switch, so read straight through they
  * double back instead of running on, and the nearest point on that fold is its
  * own apex — the last surveyed vertex before the about-face, a LONGITUDINAL
@@ -315,8 +366,12 @@ function anchorDisplacement(compactLine, intervals, stationIndex) {
   if (foldsAtPlatform(head, tail, cut))
     return { meters: null, beyondEnd: true, folded: true };
   const beyondEnd =
-    (!incoming && cut.index === 0 && cut.ratio <= 0) ||
-    (!outgoing && cut.index === path.length - 2 && cut.ratio >= 1);
+    (!incoming &&
+      ((cut.index === 0 && cut.ratio <= 0) ||
+        beyondSurveyedEnd(path, anchor, true))) ||
+    (!outgoing &&
+      ((cut.index === path.length - 2 && cut.ratio >= 1) ||
+        beyondSurveyedEnd(path, anchor, false)));
   return { meters: cut.distance, beyondEnd, folded: false };
 }
 

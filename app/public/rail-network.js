@@ -68,6 +68,10 @@
   // sides are surveyed geometry, where consecutive vertices can be a metre
   // apart and say nothing about which way the rail runs.
   const TURN_RUN_METERS = 60;
+  // How far off a terminal's own outbound heading a platform may sit and still
+  // count as lying BEYOND the end of the track rather than beside it. Under
+  // 45° the offset is mostly along the rail; over it, mostly across.
+  const ANCHOR_OFF_AXIS_DEGREES = 45;
 
   function sameCoordinate(left, right) {
     return Boolean(
@@ -629,6 +633,39 @@
     return turnDegrees(before, seam, after) >= 180 - REVERSAL_MAX_DEGREES;
   }
 
+  // Does this platform lie PAST the end of the track its line surveyed?
+  //
+  // Asking it structurally — is the nearest point on the path its own last
+  // vertex — is exact when the platform sits straight off the end and blind the
+  // moment anything at all lies in between. At 亀山 the 紀勢線 approach carries
+  // 5-7 m of surveyed jitter before its final vertex, so the nearest point
+  // landed mid-edge and the platform 171 m beyond the end read as a sideways
+  // displacement: the line was rebuilt through 800 m of approach and drawn up
+  // to 78 m off its own survey. The two 関西線 platforms are the same
+  // coordinate on the same track, and they tripped the structural test and were
+  // left alone. One station, one geometry, opposite verdicts.
+  //
+  // So ask the rail instead. From the last surveyed vertex, along the heading
+  // its final run of track is on, is the platform AHEAD? Within 45° of that
+  // heading the gap up to it is LONGITUDINAL — there is no rail between the two
+  // to be off — and the package's own final edge is the only evidence of where
+  // the track goes, which is the same argument the terminal rule below rests
+  // on. Past 45° the platform is BESIDE the line rather than beyond it, which
+  // is a displacement and is rebuilt as one (東武日光's dot on JR日光駅's
+  // platform read 93°).
+  function beyondSurveyedEnd(coordinates, anchor, atStart) {
+    const endIndex = atStart ? 0 : coordinates.length - 1;
+    const end = coordinates[endIndex];
+    const back = windowedPoint(
+      coordinates,
+      endIndex,
+      atStart ? +1 : -1,
+      TURN_RUN_METERS,
+    );
+    if (!back) return false;
+    return turnDegrees(back, end, anchor) < ANCHOR_OFF_AXIS_DEGREES;
+  }
+
   // Rebuild the drawn approach on both sides of ONE platform.
   //
   // `incoming` arrives at the station and `outgoing` leaves it; either is null
@@ -670,8 +707,18 @@
     // a curve, which is exactly where extrapolating is wrong. So the approach
     // is left as drawn, and only a platform the track OVERSHOOTS — the drive
     // past the buffer and back that ends 90 Japanese strokes — is rebuilt.
-    if (!outgoing && cut.index === path.length - 2 && cut.ratio >= 1) return null;
-    if (!incoming && cut.index === 0 && cut.ratio <= 0) return null;
+    if (
+      !outgoing &&
+      ((cut.index === path.length - 2 && cut.ratio >= 1) ||
+        beyondSurveyedEnd(path, anchor, false))
+    )
+      return null;
+    if (
+      !incoming &&
+      ((cut.index === 0 && cut.ratio <= 0) ||
+        beyondSurveyedEnd(path, anchor, true))
+    )
+      return null;
 
     if (cut.distance > ANCHOR_MAX_DISPLACEMENT_METERS) return null;
 

@@ -3897,18 +3897,86 @@ def build(args) -> None:
     print(f"built {len(lines)}, skipped {len(skipped)}, notes {len(notes)}")
 
 
+def arc_midpoint(coords, geometry_lib):
+    """The point half way along an open polyline, by arc length."""
+    measures = geometry_lib.route_measures(coords)
+    return list(geometry_lib.point_at(coords, measures, measures[-1] / 2))
+
+
+def outline_midpoint(coords, geometry_lib):
+    """The centre of a CLOSED platform outline.
+
+    An outline is not a path along the platform, it is a path AROUND it — out
+    along one side and back along the other — so half its perimeter is not its
+    middle, it is the far END. That is the whole of the defect this fixes: every
+    one of the thirteen platforms registered in station-anchor-overrides.json is
+    a closed OSM way, and reading each as an open polyline put its dot 15.1 m to
+    187.5 m past the centre (糸魚川 landed on the buffer-stop end of a 313 m
+    platform, 和歌山市 121.8 m out, 橿原神宮前 90.6 m).
+
+    So the ring is split at its two farthest-apart vertices — the platform's two
+    ends — and the arc midpoints of the two sides averaged. That is the middle
+    of the outline's own medial axis, and on all thirteen it is the only
+    estimator that lands INSIDE the platform it marks:
+
+      * the vertex mean falls outside at 横浜 and 伊予立川, and it leans on an
+        accident of the data — where the ring happens to close. At 和歌山市 the
+        duplicated closing corner drags it 16 m off centre, because that corner
+        is counted twice out of five.
+      * the midpoint of the long axis is a CHORD midpoint, so it cuts the corner
+        of every curved platform: outside at 横浜, 伊予立川 and 橿原神宮前.
+      * the shoelace centroid is unusable here. These outlines are slivers — 3
+        to 10 m wide over 30 to 313 m — so the signed area is near zero and the
+        centroid is numerically meaningless: it lands 295 m from 宮古's platform
+        and 65 m from 東武日光's.
+
+    A ring has no orientation and no start, and neither does this: the two ends
+    are a property of the shape, and averaging the two sides cancels the half
+    width of the end caps, which is why it agrees with the vertex mean wherever
+    the vertex mean is sound (within 3.4 m on ten of the thirteen).
+    """
+    ring = coords[:-1]
+    first, second, span = 0, 0, -1.0
+    for index, point in enumerate(ring):
+        for other in range(index + 1, len(ring)):
+            gap = geometry_lib_metres(point, ring[other])
+            if gap > span:
+                span, first, second = gap, index, other
+
+    def side(start, end):
+        chain, cursor = [], start
+        while True:
+            chain.append(ring[cursor])
+            if cursor == end:
+                return chain
+            cursor = (cursor + 1) % len(ring)
+
+    middles = [
+        chain[0] if len(chain) == 1 else arc_midpoint(chain, geometry_lib)
+        for chain in (side(first, second), side(second, first))
+    ]
+    return [
+        (middles[0][0] + middles[1][0]) / 2,
+        (middles[0][1] + middles[1][1]) / 2,
+    ]
+
+
 def platform_midpoint(platform, geometry_lib):
-    """A platform polyline's along-line midpoint.
+    """A platform feature's centre.
 
     N02 files a station as a COPY of the track it sits on, so the centroid of a
     curved platform drifts off the track it is meant to mark — by up to ~139 m on
-    the worst of them. The midpoint by arc length stays on it.
+    the worst of them. The midpoint by arc length stays on it. No N02 station
+    feature is closed (checked: 0 of 10,234), so that is the whole of the survey;
+    a ring can only arrive through station_anchor_overrides, where the source is
+    an OSM platform AREA, and it is measured as an outline instead.
     """
     coords = [list(point) for point in platform.coords]
     if len(coords) == 1:
         return coords[0]
-    measures = geometry_lib.route_measures(coords)
-    return list(geometry_lib.point_at(coords, measures, measures[-1] / 2))
+    if len(coords) > 3 and coords[0] == coords[-1]:
+        return outline_midpoint(coords, geometry_lib)
+    return arc_midpoint(coords, geometry_lib)
 
 
 def main() -> None:
