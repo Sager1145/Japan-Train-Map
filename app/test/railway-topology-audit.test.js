@@ -163,6 +163,62 @@ test("a stroke never opens by folding back over itself", async () => {
   );
 });
 
+test("a reversal is judged by the track either side, not the two edges touching it", async () => {
+  const { straightRunMeters } = await topologyPromise;
+  // The audit's sharp-turn gate used to ask that BOTH edges meeting the corner
+  // be at least 60 m long. Every fold fails that by construction — the vertex
+  // a stroke turns round on is flanked by whatever the digitiser put there —
+  // and so the audit read "0 ERROR" over real reversals. 東海道線
+  // 高輪ゲートウェイ→品川 is the case that proved it: a 167° turn between a
+  // 69.9 m and a 35.7 m edge, +695 m (+116 %) on the interval, not reported.
+  //
+  // Rebuilt from those numbers: 200 m in, turn 167°, 200 m back out, with the
+  // corner's own two edges at 69.9 m and 35.7 m.
+  const metresEast = 1 / (111320 * Math.cos((35.63 * Math.PI) / 180));
+  const metresNorth = 1 / 111320;
+  const along = (east, north) => [139.74 + east * metresEast, 35.63 + north * metresNorth];
+  const bearing = (167 * Math.PI) / 180; // deflection at the corner
+  const fold = [
+    along(-200, 0),
+    along(-69.9, 0),
+    along(0, 0),
+    along(35.7 * -Math.cos(Math.PI - bearing), 35.7 * Math.sin(Math.PI - bearing)),
+    along(200 * -Math.cos(Math.PI - bearing), 200 * Math.sin(Math.PI - bearing)),
+  ];
+  const { distanceMeters: metres, turnDegrees } = await topologyPromise;
+  assert.equal(Math.round(turnDegrees(fold[1], fold[2], fold[3])), 167);
+  assert.equal(metres(fold[1], fold[2]).toFixed(1), "69.9");
+  assert.equal(metres(fold[2], fold[3]).toFixed(1), "35.7");
+  // The old gate: min(edge) >= 60. This corner never reached the angle test.
+  assert.ok(metres(fold[2], fold[3]) < 60, "one edge is under the old two-sided gate");
+  assert.ok(straightRunMeters(fold, 2, -1) >= 60, "track runs on behind the corner");
+  assert.ok(straightRunMeters(fold, 2, +1) >= 60, "and on past it");
+
+  // …while the noise the 60 m was there to reject still measures as noise: two
+  // survey vertices a few metres apart swing wildly and lead nowhere. This is
+  // 東海道新幹線's barb at 品川 and 高野線's at 木津川, in miniature.
+  const barb = [along(-200, 0), along(-3, 0), along(0, 0), along(-1.5, 2.6), along(-3, 0)];
+  assert.ok(
+    straightRunMeters(barb, 2, +1) < 60,
+    "a three-metre barb has no track leaving it",
+  );
+});
+
+test("no interval spends its kilometres going the wrong way", async () => {
+  const report = await japanReport();
+  // The other half of the reversal story, and the half no corner test can see:
+  // a fold drawn as a smooth hairpin has no cusp at all, but it still costs
+  // metres. The bands are the package builder's own (REANCHOR_DETOUR_* and
+  // GROSS_DETOUR_* in build-japan-package-from-inventory.py), so a hit here
+  // means an interval shipped that the builder would have re-anchored or
+  // refused outright.
+  assert.equal(
+    codeCount(report, "interval_overshoots_audit"),
+    0,
+    detailsFor(report, "interval_overshoots_audit"),
+  );
+});
+
 test("the official network is drawn, and what is not is accounted for", async () => {
   const report = await japanReport();
   assert.ok(report.n02, "N02 sections must be available to the audit");

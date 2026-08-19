@@ -16,7 +16,8 @@
  *   wrong_branch_direction     a branch that leaves its junction by turning back
  *   disconnected_geometry      a jump inside one stroke
  *   duplicate_segment          repeated vertices inside one stroke
- *   sharp_artificial_turn      a corner too tight to be track (survey noise)
+ *   sharp_artificial_turn      a corner too tight to be track (fold or switchback)
+ *   interval_overshoots_audit  an interval drawn far past the distance it was audited to
  *   parallel_spacing_*         independent railways sharing a corridor
  *
  * Usage:
@@ -42,6 +43,7 @@ import {
   pathLengthMeters,
   resample,
   sharedTrackPrefix,
+  straightRunMeters,
   turnDegrees,
 } from "../railway/lib/railway-topology.mjs";
 // The very rule the renderer decides lanes by, so the audit cannot drift into
@@ -111,7 +113,47 @@ const BRANCH_TURN_WRONG_DEGREES = 135;
 const SHARED_TRACK_OVERLAP_METERS = 2;
 // A corner this tight, with real track either side, is not a curve.
 const SHARP_TURN_DEGREES = 110;
-const SHARP_TURN_EDGE_METERS = 60;
+// …and "real track either side" is measured as a RUN, not as the two edges
+// that happen to touch the corner.
+//
+// The edge form of this test was the audit's reversal blind spot. A stroke
+// that doubles back turns round at ONE vertex, and the digitiser decides where
+// the neighbouring vertices fall: 東海道線 高輪ゲートウェイ→品川 folded 167°
+// between a 70 m and a 36 m edge, so the 36 m side failed a two-sided 60 m
+// gate and the whole corner was skipped — the audit read 0 ERROR over a fold
+// that added 116 % to the interval. Every fold is shaped that way, so the gate
+// was excluding exactly the defect it was written to find.
+//
+// straightRunMeters walks outward instead and stops at the next corner, so a
+// cusp is kept when real track leaves it BOTH ways and dropped when one side
+// is a couple of jitter vertices (東海道新幹線's 5 m barb at 品川, 高野線's
+// 3 m one at 木津川). 60 m is unchanged: it is still "more track than any
+// survey wobble", only now measured over the run that carries it.
+const SHARP_TURN_RUN_METERS = 60;
+// Stop walking well past the point the answer is settled — a cusp on a 280 km
+// trunk must not walk the trunk. Reported as "≥600 m" when it bites.
+const SHARP_TURN_RUN_CAP_METERS = 600;
+// An interval drawn this much past the distance it was audited to has left
+// its station the wrong way and come back — the other half of the reversal
+// story, and the half a corner test cannot see when the fold is drawn as a
+// smooth hairpin rather than a cusp.
+//
+// Both bands are the package builder's own, restated as a standing gate
+// (build-japan-package-from-inventory.py: REANCHOR_DETOUR_FACTOR / FLOOR and
+// GROSS_DETOUR_FACTOR / FLOOR). The builder re-anchors a station whose
+// interval overshoots the first band and refuses one that overshoots the
+// second; a package that ships either has bypassed that guard.
+//
+// Both arms must be exceeded, so neither a long interval's ordinary slack nor
+// a 100 m platform link's percentage counts. Real reversals are safe: a
+// switchback's 営業キロ includes the switchback, so 出雲坂根, 姨捨 and 真幸
+// all draw SHORTER than they are audited at. Measured over the shipped
+// packages, the worst honest interval is 大阪→福島 at 1.20× (+177 m) and
+// 苗穂→札幌 at +182 m (1.11×) — each fails the other arm with room to spare.
+const INTERVAL_DETOUR_FACTOR = 1.3;
+const INTERVAL_DETOUR_FLOOR_METERS = 300;
+const INTERVAL_GROSS_FACTOR = 3.0;
+const INTERVAL_GROSS_FLOOR_METERS = 2000;
 // A single edge longer than this is worth checking. Most are legitimate: a
 // Shinkansen tunnel is digitised as one long gentle chord. It is only a hole
 // when the chord leaves the official alignment, which needs a reference
@@ -144,6 +186,14 @@ function loadNetwork(country) {
   const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   if (network) network.packageVersion = pkg.version;
+  // The built network keeps a line's TOTAL kilometres, not the audited figure
+  // each interval was cut to. checkIntervalDistances needs the per-interval
+  // one, so hand the compact row back to its line.
+  if (network)
+    for (const compactLine of pkg.lines || []) {
+      const line = network.lineById.get(compactLine.id);
+      if (line) line.compactLine = compactLine;
+    }
   return network;
 }
 
@@ -243,24 +293,47 @@ function checkPartsAndStations(line, problems, referenceIndex) {
         detail: `${duplicates} repeated vertices in part ${partIndex}`,
       });
 
-    // sharp_artificial_turn — a corner too tight for track, both edges real.
+    // sharp_artificial_turn — a corner too tight for track, real track both
+    // ways out of it. Judge the angle first: cusps are rare, and only a cusp
+    // is worth walking the runs for.
     for (let index = 1; index < coordinates.length - 1; index += 1) {
-      const before = distanceMeters(coordinates[index - 1], coordinates[index]);
-      const after = distanceMeters(coordinates[index], coordinates[index + 1]);
-      if (before < SHARP_TURN_EDGE_METERS || after < SHARP_TURN_EDGE_METERS) continue;
       const deflection = turnDegrees(
         coordinates[index - 1],
         coordinates[index],
         coordinates[index + 1],
       );
-      if (deflection >= SHARP_TURN_DEGREES)
-        problems.push({
-          code: "sharp_artificial_turn",
-          severity: "WARNING",
-          partIndex,
-          detail: `${deflection.toFixed(0)}° corner between ${before.toFixed(0)} m and ${after.toFixed(0)} m edges`,
-          at: coordinates[index],
-        });
+      if (deflection < SHARP_TURN_DEGREES) continue;
+      const back = straightRunMeters(coordinates, index, -1, {
+        maxMeters: SHARP_TURN_RUN_CAP_METERS,
+      });
+      const forward = straightRunMeters(coordinates, index, +1, {
+        maxMeters: SHARP_TURN_RUN_CAP_METERS,
+      });
+      if (back < SHARP_TURN_RUN_METERS || forward < SHARP_TURN_RUN_METERS) continue;
+      // A cusp is a place before it is a number: name the platform it is
+      // nearest, because triaging fourteen of these means knowing at a glance
+      // which are 姨捨 and 出雲坂根 and which are somewhere no train reverses.
+      let nearestStation = null;
+      let nearestMeters = Infinity;
+      for (const station of stationPoints) {
+        const distance = distanceMeters(coordinates[index], station.point);
+        if (distance < nearestMeters) {
+          nearestMeters = distance;
+          nearestStation = station.name;
+        }
+      }
+      const run = (meters) =>
+        meters >= SHARP_TURN_RUN_CAP_METERS ? `≥${meters.toFixed(0)}` : meters.toFixed(0);
+      problems.push({
+        code: "sharp_artificial_turn",
+        severity: "WARNING",
+        partIndex,
+        detail:
+          `${deflection.toFixed(0)}° corner with ${run(back)} m and ${run(forward)} m of track either side` +
+          (nearestStation ? `, ${(nearestMeters / 1000).toFixed(2)} km from ${nearestStation}` : "") +
+          ` — a real switchback or a fold, and only a human can tell which`,
+        at: coordinates[index],
+      });
     }
   });
 
@@ -278,6 +351,53 @@ function checkPartsAndStations(line, problems, referenceIndex) {
       });
   }
   return { stations, parts };
+}
+
+/**
+ * Every station-to-station interval, measured against the distance it was
+ * audited to.
+ *
+ * A fold is the one defect that survives every shape test: the track it draws
+ * is real track, it starts and ends on real platforms, and where the turn is
+ * digitised as a hairpin rather than a cusp no corner test sees it at all.
+ * What it cannot hide is the metres. 東海道線 尾頭橋→名古屋 drew 3.594 km
+ * against an audited 2.583 because 名古屋's nearest platform section dead-ends
+ * south of the station and the path folded back past its own platform; the
+ * shape was defensible, the +39 % was not.
+ *
+ * So this measures nothing about shape and asks only whether the drawn
+ * interval spent its kilometres going somewhere.
+ */
+function checkIntervalDistances(line, problems) {
+  const segments = line.compactLine?.segments;
+  const stations = line.compactLine?.stations;
+  if (!Array.isArray(segments) || !Array.isArray(stations)) return;
+  segments.forEach((segment, index) => {
+    const auditKm = segment?.[0];
+    const coordinates = segment?.[2];
+    if (!(auditKm > 0) || !Array.isArray(coordinates) || coordinates.length < 2) return;
+    const drawnMeters = pathLengthMeters(coordinates);
+    const auditMeters = auditKm * 1000;
+    const overshoot = drawnMeters - auditMeters;
+    const ratio = drawnMeters / auditMeters;
+    const gross =
+      ratio >= INTERVAL_GROSS_FACTOR && overshoot >= INTERVAL_GROSS_FLOOR_METERS;
+    if (
+      !gross &&
+      !(ratio >= INTERVAL_DETOUR_FACTOR && overshoot >= INTERVAL_DETOUR_FLOOR_METERS)
+    )
+      return;
+    const hop = `${stations[index]?.[1] ?? "?"}→${stations[index + 1]?.[1] ?? "?"}`;
+    problems.push({
+      code: "interval_overshoots_audit",
+      severity: gross ? "ERROR" : "WARNING",
+      detail:
+        `${hop} draws ${(drawnMeters / 1000).toFixed(3)} km against an audited ` +
+        `${auditKm.toFixed(3)} km (+${overshoot.toFixed(0)} m, +${((ratio - 1) * 100).toFixed(0)} %) — ` +
+        `the interval leaves its station the wrong way and comes back`,
+      at: coordinates[Math.floor(coordinates.length / 2)],
+    });
+  });
 }
 
 /**
@@ -857,6 +977,7 @@ export function auditCountry(country, options = {}) {
     if (lineFilter && !lineFilter.has(line.name) && !lineFilter.has(line.lineId)) continue;
     const problems = [];
     checkPartsAndStations(line, problems, referenceIndex);
+    checkIntervalDistances(line, problems);
     const branches = checkBranches(line, problems);
     lineReports.push({
       lineId: line.lineId,
@@ -981,7 +1102,12 @@ const TOPOLOGY_CODES = [
   "wrong_terminus",
   "station_not_on_line",
 ];
-const GEOMETRY_CODES = ["disconnected_geometry", "duplicate_segment", "sharp_artificial_turn"];
+const GEOMETRY_CODES = [
+  "disconnected_geometry",
+  "duplicate_segment",
+  "sharp_artificial_turn",
+  "interval_overshoots_audit",
+];
 
 function renderLine(line) {
   const rows = [];

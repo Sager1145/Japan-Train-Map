@@ -99,6 +99,45 @@ export function localHeading(coordinates, index, direction, spanMeters = 250) {
     : headingDegrees(coordinates[cursor], origin);
 }
 
+/**
+ * How much continuous track leaves `coordinates[index]` in `direction`.
+ *
+ * "Is this corner real, or two survey vertices a metre apart?" used to be
+ * asked of the single adjoining EDGE, which a reversal fails by construction:
+ * where a stroke turns round, the vertex the cusp sits on need not be flanked
+ * by two long edges — one side is whatever the digitiser happened to place
+ * next. Measuring the RUN instead asks the honest question, because the track
+ * either side of a genuine cusp carries on for hundreds of metres while
+ * digitisation jitter measures the metre it actually spans.
+ *
+ * The walk stops at the next corner: a vertex that bends the polyline by more
+ * than `bendDegrees` is itself a corner, not this one's track. Curvature never
+ * reaches that — a 100 m radius tram curve digitised every 25 m bends ~14° per
+ * vertex — so the run follows the line around a curve and halts at a cusp.
+ *
+ * Returns path length, capped at `maxMeters` so a cusp on a 280 km trunk does
+ * not walk the trunk.
+ */
+export function straightRunMeters(coordinates, index, direction, options = {}) {
+  const bendDegrees = options.bendDegrees ?? 45;
+  const maxMeters = options.maxMeters ?? 600;
+  let cursor = index;
+  let meters = 0;
+  while (meters < maxMeters) {
+    const next = cursor + direction;
+    if (next < 0 || next >= coordinates.length) break;
+    if (
+      cursor !== index &&
+      turnDegrees(coordinates[cursor - direction], coordinates[cursor], coordinates[next]) >
+        bendDegrees
+    )
+      break;
+    meters += distanceMeters(coordinates[cursor], coordinates[next]);
+    cursor = next;
+  }
+  return Math.min(meters, maxMeters);
+}
+
 export function angleBetweenHeadings(a, b) {
   if (a == null || b == null) return null;
   let delta = Math.abs(a - b) % 360;
