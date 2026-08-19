@@ -43,7 +43,6 @@ function stationLayers() {
   return {
     built,
     plain: byId.get(style.STATIONS_LAYER),
-    laned: byId.get(style.STATION_LANES_LAYER),
   };
 }
 
@@ -54,22 +53,15 @@ function stringsIn(value, found = []) {
 }
 
 test("station_glyph_is_circle_at_all_zooms", () => {
-  const { plain, laned } = stationLayers();
+  const { plain } = stationLayers();
   assert.equal(plain.type, "circle");
-  assert.equal(laned.type, "symbol");
   for (const zoom of ZOOMS) {
     const radius = style.evaluateScreenValue(
       plain.paint["circle-radius"],
       zoom,
       {},
     );
-    const iconSize = style.evaluateScreenValue(
-      laned.layout["icon-size"],
-      zoom,
-      {},
-    );
     assert.ok(radius > 0, `z${zoom} circle radius is not positive`);
-    assert.ok(iconSize > 0, `z${zoom} laned circle size is not positive`);
     assert.ok(
       Math.abs(
         radius / style.railwayScaleAt(zoom) -
@@ -145,19 +137,13 @@ test("apple_maps_selected_route_casing_is_restrained", () => {
 });
 
 test("station_glyph_never_morphs_to_logo", () => {
-  const { plain, laned } = stationLayers();
+  const { plain } = stationLayers();
   assert.equal(plain.layout["icon-image"], undefined);
-  const images = stringsIn(laned.layout["icon-image"]).filter((value) =>
-    value.startsWith("rn-station-"),
-  );
-  assert.deepEqual(images, ["rn-station-light-"]);
-  for (const value of stringsIn(laned.layout["icon-image"]))
-    assert.doesNotMatch(value, /logo|badge|operator|jr/i);
 });
 
 test("station_source_has_no_clustering", () => {
   const { built } = stationLayers();
-  for (const sourceId of [style.STATIONS_SOURCE, style.STATION_LANES_SOURCE]) {
+  for (const sourceId of [style.STATIONS_SOURCE]) {
     const source = built.sources[sourceId];
     assert.equal(source.type, "geojson");
     assert.equal(source.cluster, undefined);
@@ -185,41 +171,12 @@ test("station_minz_is_independent_lod", () => {
   );
 });
 
-test("visible_station_center_matches_rendered_lane", () => {
-  for (const country of COUNTRIES) {
-    const { network } = packageAndNetwork(country);
-    const lanedByStation = new Map(
-      network.stationLanes.features.map((feature) => [
-        feature.properties.stationId,
-        feature,
-      ]),
-    );
-    for (const feature of network.stations.features) {
-      if (!feature.properties.lane) continue;
-      const marker = lanedByStation.get(feature.properties.stationId);
-      assert.ok(marker, `${country}:${feature.properties.stationId} lost its lane marker`);
-      assert.equal(marker.properties.lineId, feature.properties.lineId);
-      assert.equal(marker.properties.lane, feature.properties.lane);
-      assert.ok(Number.isFinite(marker.properties.bearing));
-    }
-  }
-});
-
 test("interchange_is_open_circle", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(style.stationFill("light"))), [
     "case",
     ["==", ["get", "interchange"], 1],
     "#FFFFFF",
     ["coalesce", ["get", "color"], "#7C8A82"],
-  ]);
-  const { laned } = stationLayers();
-  const image = JSON.parse(JSON.stringify(laned.layout["icon-image"]));
-  assert.equal(image[0], "concat");
-  assert.deepEqual(image[3], [
-    "case",
-    ["==", ["get", "interchange"], 1],
-    "-interchange",
-    "",
   ]);
 });
 
@@ -230,8 +187,6 @@ test("single_line_station_is_solid_circle", () => {
     ["get", "color"],
     "#7C8A82",
   ]);
-  const { laned } = stationLayers();
-  assert.equal(laned.layout["icon-image"].at(-1).at(-1), "");
 });
 
 test("labels_may_dedupe_without_merging_markers", () => {
@@ -322,10 +277,6 @@ test("station_label_dedupes_by_group_without_merging_markers", () => {
   assert.notEqual(style.STATION_LABELS_SOURCE, style.STATIONS_SOURCE);
   // …and the mark layers keep reading the untouched platform source.
   assert.equal(byId.get(style.STATIONS_LAYER).source, style.STATIONS_SOURCE);
-  assert.equal(
-    byId.get(style.STATION_LANES_LAYER).source,
-    style.STATION_LANES_SOURCE,
-  );
   for (const country of COUNTRIES) {
     const { pkg, network } = packageAndNetwork(country);
     const features = network.stations.features;
@@ -405,7 +356,6 @@ test("network_labels_are_absent_without_glyphs", () => {
   assert.equal(ids.has(style.SEGMENTS_LABEL_LAYER), false);
   // …and the dots are still there, unlabelled.
   assert.equal(ids.has(style.STATIONS_LAYER), true);
-  assert.equal(ids.has(style.STATION_LANES_LAYER), true);
 });
 
 test("station_glyph_follows_the_boot_theme", () => {
@@ -423,11 +373,6 @@ test("station_glyph_follows_the_boot_theme", () => {
     assert.equal(
       JSON.stringify(dot.paint["circle-stroke-color"]),
       JSON.stringify(style.stationStroke(theme)),
-    );
-    const laned = byId.get(style.STATION_LANES_LAYER);
-    assert.equal(
-      JSON.stringify(laned.layout["icon-image"]),
-      JSON.stringify(style.stationIconImage(theme)),
     );
   }
 });

@@ -75,21 +75,17 @@
     SELECT_DIM,
     SEGMENTS_SOURCE,
     STATIONS_SOURCE,
-    STATION_LANES_SOURCE,
     STATION_LABELS_SOURCE,
     SEGMENTS_LAYER,
     SEGMENTS_CASING_LAYER,
     STATIONS_LAYER,
-    STATION_LANES_LAYER,
     STATIONS_LABEL_LAYER,
     SEGMENTS_LABEL_LAYER,
     networkLabelTextColor,
     networkLabelHaloColor,
     networkLineLabelColor,
-    STATION_ICON_BASE_PX,
     RAILWAY_STYLE,
     stationIconId,
-    stationIconImage,
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
@@ -290,15 +286,12 @@
       // frames. Pin every animated opacity prop to zero so the rAF loop is
       // the single source of animation truth.
       this._ensureXDayIcon();
-      this._ensureStationIcons();
       // A basemap/theme swap installs a fresh style, which drops runtime
       // images; MapLibre asks for the missing one instead of silently drawing
       // nothing, so re-rasterize on demand.
       map.on("styleimagemissing", (e) => {
         if (!e) return;
         if (e.id === XDAY_ICON_ID) this._ensureXDayIcon();
-        else if (String(e.id).startsWith("rn-station-"))
-          this._ensureStationIcons(String(e.id));
       });
       const ZERO_T = { duration: 0, delay: 0 };
       [
@@ -560,94 +553,6 @@
         // A concurrent styleimagemissing can add it first; that is fine.
       }
     },
-    // The coloured platform markers a laned station can be drawn with: solid
-    // and open, in each theme. Rasterized rather than drawn as a circle layer
-    // because only an ICON can be pushed into a parallel lane per feature
-    // (railmap-style.js STATION_LANES_LAYER) — and rasterized from the very
-    // constants the circle layer paints with, so an ordinary platform and a
-    // laned one are the same mark drawn twice, never two marks that resemble
-    // each other.
-    //
-    // The current network palette is rasterized ahead of time so a theme
-    // switch is a layout swap rather than work on the interaction path.
-    _ensureStationIcons(requestedId) {
-      const m = this._map;
-      if (!m || typeof m.addImage !== "function") return;
-      const base = STATION_ICON_BASE_PX;
-      const ring =
-        (base * RAILWAY_STYLE.stationRingPx) / RAILWAY_STYLE.stationDiameterPx;
-      const ratio = 2;
-      // The bitmap is the dot PLUS its ring, and icon-size scales the dot part
-      // to stationDiameterPx — so the image is drawn oversized by exactly the
-      // ring, on both sides.
-      const span = base + 2 * ring;
-      const size = Math.round(span * ratio);
-      const requested = String(requestedId || "").match(
-        /^rn-station-(light|dark)-([0-9a-f]{6})(-interchange)?$/i,
-      );
-      const colorKeys = new Set();
-      if (requested) colorKeys.add(requested[2].toLowerCase());
-      else if (this._network && this._network.stations)
-        for (const feature of this._network.stations.features || []) {
-          const key = feature.properties && feature.properties.colorKey;
-          if (/^[0-9a-f]{6}$/i.test(String(key || "")))
-            colorKeys.add(String(key).toLowerCase());
-        }
-      if (!colorKeys.size) colorKeys.add("7c8a82");
-      const themes = requested
-        ? [requested[1].toLowerCase()]
-        : ["light", "dark"];
-      const interchangeStates = requested
-        ? [Boolean(requested[3])]
-        : [false, true];
-      for (const theme of themes)
-        for (const colorKey of colorKeys)
-          for (const interchange of interchangeStates) {
-            const id = stationIconId(theme, interchange, colorKey);
-            if (m.hasImage && m.hasImage(id)) continue;
-            const canvas =
-              typeof document !== "undefined"
-                ? document.createElement("canvas")
-                : null;
-            if (!canvas) return;
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) return;
-            const colors =
-              MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
-            // Exactly stationFill/stationStroke, read as colours rather than
-            // as expressions. Ordinary dots use their own line colour;
-            // interchanges turn that colour into a ring.
-            const lineColor = `#${colorKey}`;
-            const fill = interchange ? colors.stationRing : lineColor;
-            const stroke = interchange
-              ? lineColor
-              : networkCasingColor(theme);
-            const centre = size / 2;
-            const ringPx = ring * ratio;
-            // Stroke straddles the path, so the path runs half a ring outside
-            // the dot: that puts the ring wholly outside it, where
-            // circle-stroke draws it too.
-            const radius = (base * ratio) / 2;
-            ctx.beginPath();
-            ctx.arc(centre, centre, radius + ringPx / 2, 0, Math.PI * 2);
-            ctx.lineWidth = ringPx;
-            ctx.strokeStyle = stroke;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.arc(centre, centre, radius, 0, Math.PI * 2);
-            ctx.fillStyle = fill;
-            ctx.fill();
-            try {
-              m.addImage(id, ctx.getImageData(0, 0, size, size), {
-                pixelRatio: ratio,
-              });
-            } catch (e) {
-              // A concurrent styleimagemissing can add it first; that is fine.
-            }
-          }
-    },
     // Re-assert every railway weight and lane offset from the ONE table in
     // railmap-style.js. There is nothing to re-anchor: the scale ramp those
     // values ride is a pure function of zoom (see the screen-space weight
@@ -837,16 +742,9 @@
     setNetworkStationsVisible(v) {
       this._networkStationsVisibleWanted = Boolean(v);
       const visibility = this._networkStationsVisibleWanted ? "visible" : "none";
-      // Two layers, one switch: an ordinary platform is a circle, a platform
-      // on a laned stretch is an icon that can follow its railway into the
-      // lane (railmap-style.js STATION_LANES_LAYER).
-      // …and the station names ride with the station dots, for the same
-      // reason. A name without its bead would be a place, not a station.
-      for (const layer of [
-        STATIONS_LAYER,
-        STATION_LANES_LAYER,
-        STATIONS_LABEL_LAYER,
-      ])
+      // The station names ride with the station dots. A name without its
+      // bead would be a place, not a station.
+      for (const layer of [STATIONS_LAYER, STATIONS_LABEL_LAYER])
         this._setVisibility(layer, visibility);
     },
     // Fetch + build + upload the active country's network package when it was
@@ -875,11 +773,9 @@
               if (generation !== this._networkGeneration) return false;
               const seg = m.getSource(SEGMENTS_SOURCE);
               const sta = m.getSource(STATIONS_SOURCE);
-              const lanes = m.getSource(STATION_LANES_SOURCE);
               const labels = m.getSource(STATION_LABELS_SOURCE);
               if (seg) seg.setData(network.segments);
               if (sta) sta.setData(network.stations);
-              if (lanes) lanes.setData(network.stationLanes || EMPTY_FC);
               if (labels) labels.setData(network.stationLabels || EMPTY_FC);
               // Re-assert the recorded visibility intent: a toggle made while
               // the style was still loading hit _setVisibility before the
@@ -931,14 +827,12 @@
       if (this._stationPopup) this._stationPopup.remove();
       const seg = this._src(SEGMENTS_SOURCE);
       const sta = this._src(STATIONS_SOURCE);
-      const staLanes = this._src(STATION_LANES_SOURCE);
       const staLabels = this._src(STATION_LABELS_SOURCE);
       if (seg) {
         seg.setData(EMPTY_FC);
         if (country) seg.attribution = railAttributionForCountry(country);
       }
       if (sta) sta.setData(EMPTY_FC);
-      if (staLanes) staLanes.setData(EMPTY_FC);
       if (staLabels) staLabels.setData(EMPTY_FC);
       if (!shouldReload) return Promise.resolve(null);
       return this.ensureNetwork().then((network) => {
@@ -1065,18 +959,6 @@
           stationStroke(theme),
         );
       }
-      // The laned platforms are the same two rules, rasterized. An icon
-      // carries its own colours, so the switch is a change of BITMAP rather
-      // than of paint — which also means it lands at once instead of easing
-      // across with the surfaces around it. At a 7 px dot on the platforms of
-      // one shared corridor that is not a thing the eye follows.
-      this._ensureStationIcons();
-      if (m.getLayer(STATION_LANES_LAYER))
-        m.setLayoutProperty(
-          STATION_LANES_LAYER,
-          "icon-image",
-          stationIconImage(theme),
-        );
       // Names: ink and halo are both surface-derived, so both flip with the
       // theme. The line name keeps its hue and only re-anchors the contrast
       // half of its blend (networkLineLabelColor).

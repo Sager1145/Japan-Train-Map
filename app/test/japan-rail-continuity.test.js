@@ -224,16 +224,8 @@ test("Tokyo Station dots follow their line-matched platforms", () => {
     (sum, segment) => sum + segment[0] * 1000,
     0,
   );
-  const northLane = pkg.lanes.find(
-    (row) => row[0] === northLine.id && row[3] >= northTotalMeters - 1,
-  );
-  const southLane = pkg.lanes.find(
-    (row) => row[0] === southLine.id && row[2] === 0,
-  );
-  assert.ok(northLane && southLane, "Tokyo through rail is missing its shared lane");
-  assert.equal(northLane[4], southLane[4]);
   const rendered = RailNetwork.buildNetworkFromCompactPackage(pkg);
-  const renderedJunctions = rendered.stationLanes.features.filter(
+  const renderedJunctions = rendered.stations.features.filter(
     (feature) =>
       feature.properties.stationGroupId === "003766" &&
       [northLine.id, southLine.id].includes(feature.properties.lineId),
@@ -243,17 +235,8 @@ test("Tokyo Station dots follow their line-matched platforms", () => {
     renderedJunctions[0].geometry.coordinates,
     renderedJunctions[1].geometry.coordinates,
   );
-  assert.equal(
-    renderedJunctions[0].properties.lane,
-    renderedJunctions[1].properties.lane,
-  );
-  assert.ok(
-    Math.abs(
-      renderedJunctions[0].properties.bearing -
-        renderedJunctions[1].properties.bearing,
-    ) < 5,
-    "rendered Tokyo junction must keep one smooth tangent",
-  );
+  // The tangent itself is checked on the source geometry above (junctionTurn);
+  // the render just has to keep both dots on that one node.
   assert.ok(
     physicalInterval("jp-東日本旅客鉄道-東北新幹線", "上野", "東京").some(
       ([lon, lat]) => lon === 139.7678569 && lat === 35.6816523,
@@ -337,27 +320,19 @@ test("Japan renders one complete feature per line, never one per station interva
     network.segments.features.length <= pkg.lines.length + 4 * lanedPairs.size,
     `${network.segments.features.length} features for ${pkg.lines.length} lines and ${lanedPairs.size} laned pairs`,
   );
+  // Exactly one render feature per package line: a railway is drawn on its
+  // own surveyed geometry, never split into a feature per screen offset.
   for (const line of pkg.lines) {
-    const values = new Set(
-      network.segments.features
-        .filter((feature) => feature.properties.lineId === line.id)
-        .map((feature) => feature.properties.lane),
-    );
     assert.equal(
-      values.size,
       network.segments.features.filter(
         (feature) => feature.properties.lineId === line.id,
       ).length,
-      `${line.id} emits two features for one lane`,
+      1,
+      `${line.id} emits more than one feature`,
     );
   }
-  const laneValues = new Set(
-    network.segments.features.map((feature) => feature.properties.lane),
-  );
-  assert.ok(laneValues.has(0), "the un-offset alignment must still be drawn");
-  for (const lane of laneValues) assert.equal(typeof lane, "number");
   // Lines that carry a branch under one id — a TOPOLOGY property, so it is
-  // counted from the strokes, not from the lane-split render features.
+  // counted from the strokes.
   const multiPart = [...network.lineById.values()].filter(
     (line) => line.parts.length > 1,
   ).length;

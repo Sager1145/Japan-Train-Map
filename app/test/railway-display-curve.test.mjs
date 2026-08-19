@@ -27,17 +27,6 @@ test("Japan display package advertises the current reproducible contract", () =>
   assert.match(pkg.attributeSources.colours, /sources\.md/);
 });
 
-test("every stored parallel lane is represented by final display geometry", () => {
-  const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
-  const displayed = new Set(
-    network.segments.features.map(
-      (feature) => `${feature.properties.lineId}\u0000${feature.properties.lane}`,
-    ),
-  );
-  for (const row of pkg.lanes || [])
-    assert.ok(displayed.has(`${row[0]}\u0000${row[4]}`), `${row[0]} lane ${row[4]}`);
-});
-
 test("station points and line intervals stay one-for-one after display grooming", () => {
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   assert.equal(network.stations.features.length, pkg.stats.stations);
@@ -45,5 +34,4 @@ test("station points and line intervals stay one-for-one after display grooming"
     pkg.lines.reduce((sum, line) => sum + line.segments.length, 0),
     pkg.stats.intervals,
   );
-  assert.ok(network.stationLanes.features.length > 0);
 });

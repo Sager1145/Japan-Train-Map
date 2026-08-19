@@ -5,7 +5,7 @@
  * The report is deliberately built from the compact package AND the final
  * render model.  Coincident source rows are not accepted as continuity: an
  * A/B relationship passes only when the two interval ends, railway identity,
- * rendered lane and station feature agree at one node.
+ * rendered station feature agree at one node.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -16,7 +16,62 @@ import { laneRowsForPackage } from "../railway/build-parallel-corridors.mjs";
 import {
   distanceMeters,
   pointSegmentDistanceMeters,
+  resample,
 } from "../railway/lib/railway-topology.mjs";
+import {
+  loadOsmPlatformIndex,
+  loadOsmTrackIndex,
+} from "../railway/lib/osm-basemap-cache.mjs";
+import {
+  anyRunningTrackAt,
+  claimFilterFor,
+  claimedTrackAt,
+  pickPlatform,
+} from "../railway/lib/station-track-claim.mjs";
+import { findDuplicateStrokes } from "../railway/lib/duplicate-strokes.mjs";
+
+// ── station-zone basemap gate ────────────────────────────────────────────────
+//
+// The corridor audit (validate-basemap-alignment.mjs) measures every sample to
+// the NEAREST active rail way with a 50 m gate sustained over 150 m. Inside a
+// station a dozen roads sit 5-15 m apart, so a line drawn on the wrong one is
+// still metres from something and that gate can never fire. Here the distance
+// is to the line's OWN claimed track (station-track-claim.mjs) instead, which
+// lets the gate be much tighter.
+//
+// Calibrated 2026-08-19 on lines whose alignment is not in question, station
+// by station (median / p90 / max):
+//   ゆいレール    3.1 / 5.0 / 5.5 m      東海道新幹線  2.4 / 17.1 / 91.9 m
+//   山手線        3.8 / 12.2 / 13.3 m    函館線        3.0 / 18.1 / 27.7 m
+// so 25 m clears ordinary platform anchoring (p90 tops out at 18 m) while
+// still catching 大平台's 33 m and the 新幹線's 92 m outlier. The prompt's
+// provisional 10 m was too tight — it would have reported the anchoring model
+// itself, which is the failure mode 2.5 warns about.
+const STATION_CLAIM_GATE_METERS = 25;
+// The approach is a whole stretch of track rather than one point, so its
+// MEDIAN is gated tighter. Same calibration lines, per-station approach median
+// (median / p90 / max):
+//   ゆいレール 1.7 / 3.9 / 6.6 m    山手線 2.7 / 5.9 / 8.7 m
+//   新幹線     2.4 / 9.2 / 9.3 m    函館線 2.7 / 13.0 / 22.7 m
+// 20 m clears every p90. 函館線's two outliers (27.7 m station, 22.7 m
+// approach) DO report, deliberately: they are the first review items, not
+// noise to be tuned away.
+const APPROACH_MEDIAN_GATE_METERS = 20;
+const APPROACH_WINDOW_METERS = 500;
+const APPROACH_STEP_METERS = 30;
+// Two candidate platforms closer together than this are the two faces of one
+// island (or two islands of one group); the cache cannot separate them, so the
+// pick goes to review instead of being trusted (prompt 2.4).
+const PLATFORM_MARGIN_GATE_METERS = 30;
+// How far a station dot may sit from the midpoint of the platform its own
+// trains use. Japanese platforms run 100-300 m, so half a long platform.
+const PLATFORM_DOT_GATE_METERS = 120;
+// Below this an approach is simply accurate, and a station standing off it is
+// station-specific whatever the ratio says.
+const SYSTEMATIC_OFFSET_FLOOR_METERS = 15;
+// How much further than its line's own offset a dot may sit before it stops
+// being explained by that offset.
+const SYSTEMATIC_OFFSET_MARGIN_METERS = 15;
 
 const require = createRequire(import.meta.url);
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -29,6 +84,14 @@ const NETWORK_PATH = path.join(
 const RULES_PATH = path.join(
   APP_DIR,
   "data/raw/railway/jp/evidence/multi-line-station-audit-rules.json",
+);
+const BASEMAP_EXCLUSIONS_PATH = path.join(
+  APP_DIR,
+  "data/raw/railway/jp/evidence/station-basemap-exclusions.json",
+);
+const N02_FEATURES_PATH = path.join(
+  APP_DIR,
+  "data/raw/railway/jp/rebuild-inventory/stations/n02-platform-features.json",
 );
 const TOKYO_PATH = path.join(
   APP_DIR,
@@ -114,6 +177,28 @@ function stationGeometry(line, stationIndex) {
     return false;
   });
 
+  // Sharpest corner in the intervals either side, with NO edge-length floor.
+  //
+  // validate-railway-topology's sharp_artificial_turn requires BOTH edges at a
+  // corner to be >=60 m, so it cannot see a fold whose short side is shorter
+  // than that. 品川 folded 169 deg between a 70 m and a 36 m edge after a
+  // registered platform pick, passed topology 654/3/0, and was only caught by
+  // a parallel session's isolation build. Any anchor the evidence moves has to
+  // be measured against this before it is promoted.
+  const foldDegrees = (coordinates) => {
+    let worst = 0;
+    for (let index = 1; index < (coordinates?.length || 0) - 1; index += 1) {
+      const before = bearing(coordinates[index - 1], coordinates[index]);
+      const after = bearing(coordinates[index], coordinates[index + 1]);
+      worst = Math.max(worst, angularDifference(before, after));
+    }
+    return worst;
+  };
+  const adjacentFold = Math.max(
+    foldDegrees(incoming),
+    foldDegrees(outgoing),
+  );
+
   let measure = line.segments
     .slice(0, stationIndex)
     .reduce((sum, row) => sum + Number(row[0]) * 1000, 0);
@@ -136,6 +221,7 @@ function stationGeometry(line, stationIndex) {
     immediateReturn,
     outwardBearings,
     stationTurn: rounded(stationTurn),
+    adjacentFold: rounded(adjacentFold, 1),
     vertical,
     structure: structure.map((row) => ({
       kind: Number(row[2]) === 1 ? "tunnel" : Number(row[2]) === 2 ? "bridge" : "unknown",
@@ -200,19 +286,6 @@ function bestContinuationTurn(a, b) {
   return rounded(best);
 }
 
-function sameVisibleLane(a, b) {
-  if (a.render.lane === 0 || b.render.lane === 0)
-    return a.render.lane === 0 && b.render.lane === 0;
-  if (a.render.bearing == null || b.render.bearing == null) return false;
-  const vector = (row) => {
-    const angle = ((row.render.bearing + 90) * Math.PI) / 180;
-    return [Math.sin(angle) * row.render.lane, Math.cos(angle) * row.render.lane];
-  };
-  const one = vector(a);
-  const two = vector(b);
-  return Math.hypot(one[0] - two[0], one[1] - two[1]) < 0.05;
-}
-
 function classifyPair(a, b, occurrences) {
   const paired =
     a.line.alignmentRole === "paired_alignment" ||
@@ -243,8 +316,266 @@ function electedJunction(occurrences, railwayIdentity) {
   return elected?.geometry.point || null;
 }
 
-export function buildAudit() {
+/** Points along the intervals either side of a station, out to the window. */
+function approachSamples(geometry, stationIndex) {
+  const points = [];
+  const take = (coordinates, fromStart) => {
+    if (!coordinates || coordinates.length < 2) return;
+    const ordered = fromStart ? coordinates : coordinates.slice().reverse();
+    let walked = 0;
+    for (const sample of resample(ordered, APPROACH_STEP_METERS)) {
+      walked = sample.measure;
+      if (walked > APPROACH_WINDOW_METERS) break;
+      points.push(sample.point);
+    }
+  };
+  take(geometry.intervals[stationIndex - 1], false);
+  take(geometry.intervals[stationIndex], true);
+  return points;
+}
+
+function medianOf(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/**
+ * Measure one drawn station and its approaches against the line's OWN track.
+ *
+ * Returns null when the cache holds no claimable way here — an honest "not
+ * measured", never a fallback to the nearest rail of any kind.
+ */
+/**
+ * How a finding would have to be fixed — which is not a matter of taste.
+ *
+ * N02 offers more than one platform feature for only 66 of 10,153 (line,
+ * group) keys nationwide. Where it does, a dot on the wrong one is fixed by a
+ * `platform_assignments` row: the build still picks an OFFICIAL feature, so
+ * nothing is overridden. Where it does not, N02 simply puts the station where
+ * it puts it, and moving the dot means registering a measured geometry patch
+ * over official survey — the 東京 precedent, which required a provable N02
+ * source defect and explicit direction. Batching those would be overriding
+ * the official dataset by majority vote of a script.
+ */
+function fixClassFor(features, claim, currentPoint) {
+  if (!features || features.length < 2)
+    return { fix_class: "registered_geometry_patch", n02_platform_features: features?.length ?? null };
+  const current = claim.trackDistanceAt(currentPoint);
+  let best = null;
+  for (const feature of features) {
+    const distance = claim.trackDistanceAt(feature.midpoint);
+    if (best == null || distance < best) best = distance;
+  }
+  // "Closer" is not enough: at 東武日光 the other feature is 100 m from the
+  // line's own track instead of 139 m, so re-picking would move the dot
+  // without landing it anywhere real. The alternative has to clear the station
+  // gate outright before an assignment can claim to fix anything.
+  return {
+    n02_platform_features: features.length,
+    fix_class:
+      best != null && best <= STATION_CLAIM_GATE_METERS && best + 1 < current
+        ? "platform_assignment"
+        : "registered_geometry_patch",
+    best_alternative_to_claimed_track_m: rounded(best, 1),
+  };
+}
+
+function basemapCheck(line, geometry, stationIndex, osmIndex, filterCache, platformIndex, n02Features) {
+  if (!osmIndex) return null;
+  let filter = filterCache.get(line.id);
+  if (!filter) filterCache.set(line.id, (filter = claimFilterFor(line)));
+  const claim = claimedTrackAt(geometry.point, filter, osmIndex, 200);
+  if (!claim) return { verdict: "undecidable", reason: "no_claimable_osm_track" };
+  claim.trackDistanceAt = (point) => {
+    const hit = claimedTrackAt(point, filter, osmIndex, 200);
+    return hit ? hit.distance : Infinity;
+  };
+  const offsets = [];
+  for (const point of approachSamples(geometry, stationIndex)) {
+    const hit = claimedTrackAt(point, filter, osmIndex, 200);
+    if (hit) offsets.push(hit.distance);
+  }
+  const approachMedian = medianOf(offsets);
+  const stationOff = claim.distance > STATION_CLAIM_GATE_METERS;
+  const approachOff =
+    approachMedian != null && approachMedian > APPROACH_MEDIAN_GATE_METERS;
+  // Being far from the claimed track has two very different causes, and the
+  // corridor cache alone cannot separate them:
+  //
+  //   the dot floats with no rail near it at all        → package_wrong
+  //   the dot is ON a rail, just not a NAMED one of its
+  //   own line (unnamed platform road, or the platform
+  //   of the line it terminates into: 日吉 sits on 東急
+  //   目黒線's rails because 新横浜線 starts underground) → possible_wrong_platform
+  //
+  // The second needs railway=platform / stop_area, which the corridor cache
+  // does not carry (prompt 2.2's narrow second fetch). Calling it "wrong"
+  // here would invent a defect out of a missing tag.
+  const onSomeTrack = stationOff
+    ? anyRunningTrackAt(geometry.point, osmIndex, STATION_CLAIM_GATE_METERS)
+    : null;
+  // Underground is where the basemap is the approximate one. The 2026-08-18
+  // corridor audit already adjudicated 55 Shinkansen/long-tunnel stretches at
+  // 50-120 m as "OSM digitises tunnels by eye, N02 is the survey — the BASEMAP
+  // is wrong, do not follow it". The same holds inside a station: 初台 sits
+  // 27.9 m from the 京王線 tunnel and 75.3 m from the 京王新線 tunnel it
+  // actually uses, and treating that as a misplaced dot would move an official
+  // survey point to match a hand-drawn tunnel.
+  const underground =
+    geometry.vertical === "underground" || Boolean(claim.way && claim.way.tunnel);
+  // A line's own named way routinely stops short of the buffer stop: the last
+  // few tens of metres into a terminal platform are unnamed, or belong to the
+  // host operator at a shared station. Measured over the flagged rows, a
+  // terminus approaches its track at a median of 7.8 m while a mid-line
+  // station manages 22.2 m — the line IS on its metals, the NAME just runs
+  // out. Calling that a misplaced dot would move an official survey point to
+  // match where a volunteer stopped typing a name.
+  const terminusShortfall =
+    geometry.endpoint && !approachOff && stationOff;
+  // A dot that is no further from the track than its own line generally is
+  // has not been misplaced: N02 and OSM simply surveyed that railway a little
+  // differently, which the corridor audit already records as an INFO-level
+  // systematic offset rather than a defect. Measured here as station ≈
+  // approach — 清和学園前 36.5/29.4, 三ツ屋 30.7/31.5, 長町 42.9/45.0 — as
+  // against the genuinely station-specific 伊万里 28.0/1.2 or 田崎橋 53.0/21.9,
+  // where the line runs clean and only the dot is out.
+  const systematicOffset =
+    approachMedian != null &&
+    approachMedian > SYSTEMATIC_OFFSET_FLOOR_METERS &&
+    claim.distance <= approachMedian + SYSTEMATIC_OFFSET_MARGIN_METERS;
+  let verdict = "agrees";
+  if ((stationOff || approachOff) && underground) verdict = "tunnel_basemap_approximate";
+  else if (stationOff && onSomeTrack) verdict = "possible_wrong_platform";
+  else if (stationOff || approachOff) verdict = "package_wrong";
+
+  // With platforms cached, "standing on somebody's rails" can be decided:
+  // name the platform this line's own trains use, and see whether the dot is
+  // on it. Without them the verdict stays `possible_wrong_platform`.
+  const pick = platformIndex
+    ? pickPlatform(geometry.point, geometry.outwardBearings, claim, platformIndex)
+    : null;
+  const dotToPlatform = pick
+    ? distanceMeters(geometry.point, pick.platform.midpoint)
+    : null;
+  // Adjacency is measured in PLAN, so at a stacked station it cannot tell a
+  // Shinkansen viaduct platform from the 在来線 platform underneath it: at
+  // 新大阪 the pick came back as ref "1;2", which is the 在来線 island. Any
+  // line that is not at grade here therefore needs the platform's own level to
+  // agree before the pick may be trusted.
+  const stacked = geometry.vertical !== "surface";
+  const levelAgrees =
+    !stacked ||
+    (pick && Number.isFinite(pick.platform.layer) && pick.platform.layer !== 0);
+  if (verdict === "possible_wrong_platform" && pick) {
+    if (
+      pick.marginMeters != null &&
+      pick.marginMeters < PLATFORM_MARGIN_GATE_METERS &&
+      pick.decisionChanges
+    )
+      verdict = "platform_pick_ambiguous";
+    else if (!pick.adjacentToClaimedTrack) verdict = "platform_not_on_claimed_track";
+    else if (!levelAgrees) verdict = "platform_level_unverified";
+    else verdict = dotToPlatform > PLATFORM_DOT_GATE_METERS ? "wrong_platform" : "agrees_on_platform";
+  }
+  // The terminus explanation is a FALLBACK, never a pre-emption: platform
+  // evidence is stronger, so a dot that we can positively place on the wrong
+  // platform stays `wrong_platform` even at a buffer stop. Only the outcomes
+  // that amount to "we cannot tell" are downgraded.
+  if (
+    systematicOffset &&
+    ["package_wrong", "possible_wrong_platform", "platform_not_on_claimed_track"].includes(
+      verdict,
+    )
+  )
+    verdict = "systematic_line_offset";
+  if (
+    terminusShortfall &&
+    ["package_wrong", "possible_wrong_platform", "platform_not_on_claimed_track"].includes(
+      verdict,
+    )
+  )
+    verdict = "terminus_track_starts_beyond_platform";
+  const fix =
+    verdict === "agrees" || verdict === "agrees_on_platform"
+      ? null
+      : fixClassFor(n02Features, claim, geometry.point);
+  return {
+    verdict,
+    ...(fix || {}),
+    platform: pick
+      ? {
+          osm: `${pick.platform.kind}/${pick.platform.id}`,
+          ref: pick.platform.ref,
+          name: pick.platform.name,
+          midpoint: pick.platform.midpoint,
+          dot_to_platform_m: rounded(dotToPlatform, 1),
+          margin_m: rounded(pick.marginMeters, 1),
+          runner_up_changes_decision: pick.decisionChanges,
+          alignment_degrees: rounded(pick.alignmentDegrees, 1),
+          adjacent_to_claimed_track: pick.adjacentToClaimedTrack,
+          candidates: pick.candidates,
+        }
+      : null,
+    nearest_running_track_m: onSomeTrack ? rounded(onSomeTrack.distance, 1) : null,
+    claim_strength: claim.strength,
+    claimed_osm_way_ids: claim.wayIds.slice(0, 12),
+    claimed_way_name: claim.way.name,
+    point_to_claimed_track_m: rounded(claim.distance, 1),
+    approach_median_offset_m: rounded(approachMedian, 1),
+    approach_samples: offsets.length,
+    // The projection of the dot onto its own track is the interim suggestion:
+    // a platform-level pick needs railway=platform, which the corridor cache
+    // does not carry (prompt 2.2 — a second, narrower fetch).
+    suggestion_basis: stationOff ? "osm_claimed_track_projection" : null,
+  };
+}
+
+export function buildAudit(options = {}) {
   const pkg = readJson(PACKAGE_PATH);
+  // Machine-local and optional: without the cache every basemap field reports
+  // "not measured" and nothing is inferred (npm test must not need a download).
+  const osm = options.osm === false ? { ways: 0 } : loadOsmTrackIndex();
+  const osmIndex = osm.ways ? osm.index : null;
+  const basemapExclusions = fs.existsSync(BASEMAP_EXCLUSIONS_PATH)
+    ? readJson(BASEMAP_EXCLUSIONS_PATH).excluded_lines || []
+    : [];
+  const excludedReason = (line) => {
+    const hit = basemapExclusions.find(
+      (row) => row.match.operator === line.operator && row.match.line === line.name,
+    );
+    return hit ? hit.reason : null;
+  };
+  const n02Features = fs.existsSync(N02_FEATURES_PATH)
+    ? readJson(N02_FEATURES_PATH).features
+    : {};
+  const platformCache = options.osm === false ? { platforms: 0 } : loadOsmPlatformIndex();
+  const platformIndex = platformCache.platforms ? platformCache.index : null;
+  const filterCache = new Map();
+  const duplicateRows = osmIndex
+    ? findDuplicateStrokes(pkg, { osmIndex, claimFilterFor })
+    : [];
+  // A duplicate is a STRETCH, not a property of a whole line: 東北線-2 is
+  // 16 km long and duplicated for 2.3 km of it, so only the stations inside
+  // that stretch are in scope.
+  const duplicateStretches = new Map();
+  for (const row of duplicateRows) {
+    if (row.duplicate_verdict !== "duplicate") continue;
+    for (const lineId of row.lines) {
+      const list = duplicateStretches.get(lineId) || [];
+      list.push(...row.duplicate_points);
+      duplicateStretches.set(lineId, list);
+    }
+  }
+  const DUPLICATE_STATION_RADIUS_METERS = 600;
+  const drawnTwiceAt = (lineId, point) => {
+    const points = duplicateStretches.get(lineId);
+    if (!points) return false;
+    return points.some(
+      (sample) => distanceMeters(point, sample) <= DUPLICATE_STATION_RADIUS_METERS,
+    );
+  };
   const stationNetwork = readJson(NETWORK_PATH);
   const rules = readJson(RULES_PATH);
   const tokyo = readJson(TOKYO_PATH);
@@ -266,12 +597,6 @@ export function buildAudit() {
       `${feature.properties.lineId}\0${feature.properties.stationGroupId}`,
       feature,
     );
-  const renderedLanes = new Map();
-  for (const feature of network.stationLanes.features)
-    renderedLanes.set(
-      `${feature.properties.lineId}\0${feature.properties.stationGroupId}`,
-      feature,
-    );
 
   const occurrencesByGroup = new Map();
   for (const line of pkg.lines) {
@@ -281,9 +606,7 @@ export function buildAudit() {
       const group = station[0];
       const geometry = stationGeometry(line, stationIndex);
       const key = `${line.id}\0${group}`;
-      const laneFeature = renderedLanes.get(key);
-      const baseFeature = renderedStations.get(key);
-      const rendered = laneFeature || baseFeature;
+      const rendered = renderedStations.get(key);
       const operatorForEvidence = line.operator === "東京メトロ" ? "東京地下鉄" : line.operator;
       const evidence = exactSources.get(
         `${operatorForEvidence}\0${line.name}\0${station[1]}`,
@@ -297,10 +620,19 @@ export function buildAudit() {
         railwayIdentity: line.railwayIdentity || familyId(line.id),
         render: {
           coordinate: rendered?.geometry.coordinates || geometry.point,
-          lane: Number(rendered?.properties.lane || 0),
           bearing: rounded(rendered?.properties.bearing),
         },
         pointToTrackMeters: rounded(distanceToParts(geometry.point, display?.parts), 6),
+        basemapExcluded: excludedReason(line),
+        basemap: basemapCheck(
+          line,
+          geometry,
+          stationIndex,
+          osmIndex,
+          filterCache,
+          platformIndex,
+          n02Features[`${line.operator}\u241F${line.name}\u241F${station[0]}`],
+        ),
         evidence: evidence
           ? {
               osm_way_ids: [...evidence.osm_ways].sort((a, b) => a - b),
@@ -319,24 +651,44 @@ export function buildAudit() {
     });
   }
 
-  const freshLanes = laneRowsForPackage(pkg);
-  const storedLanes = pkg.lanes || [];
-  const lanesPure = JSON.stringify(freshLanes) === JSON.stringify(storedLanes);
   const groups = [];
 
   for (const [stationGroup, occurrences] of occurrencesByGroup) {
     const distinctLines = new Set(occurrences.map((row) => row.line.id));
     const siblingCount = new Set(occurrences.map((row) => familyId(row.line.id))).size;
     const hasSibling = siblingCount < distinctLines.size;
-    const hasLane = occurrences.some((row) => row.render.lane !== 0);
     const hasOffset = occurrences.some((row) => row.pointToTrackMeters > 0.5);
-    if (distinctLines.size < 2 && !hasSibling && !hasLane && !hasOffset) continue;
+    const hasBasemapDisagreement = occurrences.some((row) =>
+      row.basemapExcluded
+        ? false
+        :
+      [
+        "package_wrong",
+        "possible_wrong_platform",
+        "wrong_platform",
+        "platform_pick_ambiguous",
+        "platform_not_on_claimed_track",
+        "platform_level_unverified",
+      ].includes(row.basemap?.verdict),
+    );
+    const hasDuplicate = occurrences.some((row) =>
+      drawnTwiceAt(row.line.id, row.geometry.point),
+    );
+    if (
+      distinctLines.size < 2 &&
+      !hasSibling &&
+      !hasOffset &&
+      !hasBasemapDisagreement &&
+      !hasDuplicate
+    )
+      continue;
 
     const scopeReasons = [];
     if (distinctLines.size >= 2) scopeReasons.push("physical_station_group_on_multiple_display_lines");
     if (hasSibling) scopeReasons.push("sibling_display_strokes_meet_here");
-    if (hasLane) scopeReasons.push("final_parallel_lane_applies_at_station");
     if (hasOffset) scopeReasons.push("station_point_to_track_offset");
+    if (hasBasemapDisagreement) scopeReasons.push("station_zone_basemap_disagreement");
+    if (hasDuplicate) scopeReasons.push("same_railway_drawn_twice");
     const stationFacts = networkByGroup.get(stationGroup) || [];
     const roles = new Set(
       stationFacts.flatMap((row) => [row.station_style, ...(row.station_style_tags || [])]),
@@ -359,13 +711,11 @@ export function buildAudit() {
         const coordinateEqual = samePoint(a.geometry.point, b.geometry.point);
         const renderedCoordinateEqual = samePoint(a.render.coordinate, b.render.coordinate);
         const identityEqual = a.railwayIdentity === b.railwayIdentity;
-        const laneEqual = sameVisibleLane(a, b);
         const tangent = bestContinuationTurn(a, b);
         const problems = [];
         if (shouldShare && !coordinateEqual) problems.push("junction_coordinate_mismatch");
         if (shouldShare && !renderedCoordinateEqual) problems.push("rendered_junction_coordinate_mismatch");
         if (shouldShare && !identityEqual) problems.push("railway_identity_mismatch");
-        if (shouldShare && !laneEqual) problems.push("junction_lane_mismatch");
         if (classification === "A" && (tangent == null || tangent >= 5))
           problems.push("continuation_tangent_not_under_5_degrees");
         if (shouldShare && (a.geometry.immediateReturn || b.geometry.immediateReturn))
@@ -398,7 +748,6 @@ export function buildAudit() {
           exact_source_coordinate_equal: coordinateEqual,
           exact_render_coordinate_equal: renderedCoordinateEqual,
           railway_identity_equal: identityEqual,
-          lane_equal: laneEqual,
           continuation_tangent_difference_degrees: tangent,
           problems,
         });
@@ -406,6 +755,21 @@ export function buildAudit() {
     }
 
     for (const occurrence of occurrences) {
+      // A railway that really does reverse or spiral here folds by design, and
+      // a paired-alignment stroke folds where it rejoins its main line. The
+      // station network already tags both (出雲坂根 and 大平台 reversing_station,
+      // 土樽/土合/越後中里 loop_station), so the scan reports the folds nobody
+      // has accounted for rather than every fold.
+      const foldExpected =
+        roles.has("reversing_station") ||
+        roles.has("loop_station") ||
+        occurrence.line.alignmentRole === "paired_alignment";
+      if (occurrence.geometry.adjacentFold > 120 && !foldExpected)
+        manualReasons.add(
+          `${occurrence.line.id}: an adjacent interval folds back ` +
+            `${occurrence.geometry.adjacentFold}° — sharper than any railway, and below ` +
+            `validate-railway-topology's 60 m edge floor it is invisible there`,
+        );
       if (!occurrence.geometry.endpointExact)
         errors.add(`${occurrence.line.id}: station is not the exact adjacent-interval endpoint`);
       if (occurrence.geometry.immediateReturn)
@@ -413,8 +777,49 @@ export function buildAudit() {
       if (occurrence.pointToTrackMeters > 0.5)
         errors.add(`${occurrence.line.id}: point-to-track ${occurrence.pointToTrackMeters} m`);
     }
-    if (!lanesPure) errors.add("package lanes are not the pure recomputation of final geometry");
 
+    for (const occurrence of occurrences) {
+      if (occurrence.basemapExcluded) continue;
+      const check = occurrence.basemap;
+      if (check?.verdict === "package_wrong")
+        manualReasons.add(
+          `${occurrence.line.id}: drawn ${check.point_to_claimed_track_m} m from its own ` +
+            `OSM track with no running rail within ${STATION_CLAIM_GATE_METERS} m ` +
+            `(approach median ${check.approach_median_offset_m} m)`,
+        );
+      if (check?.verdict === "wrong_platform")
+        manualReasons.add(
+          `${occurrence.line.id}: its own trains use platform ` +
+            `${check.platform.ref || check.platform.name || check.platform.osm}, whose midpoint ` +
+            `is ${check.platform.dot_to_platform_m} m from the drawn dot`,
+        );
+      if (check?.verdict === "platform_pick_ambiguous")
+        manualReasons.add(
+          `${occurrence.line.id}: two candidate platforms only ${check.platform.margin_m} m ` +
+            `apart — the cache cannot say which face this line uses`,
+        );
+      if (check?.verdict === "platform_level_unverified")
+        manualReasons.add(
+          `${occurrence.line.id}: runs ${occurrence.geometry.vertical} here, and the candidate ` +
+            `platform carries no level tag — a plan-view pick cannot separate stacked platforms`,
+        );
+      if (check?.verdict === "platform_not_on_claimed_track")
+        manualReasons.add(
+          `${occurrence.line.id}: no platform near the dot is adjacent to a named track of ` +
+            `its own line`,
+        );
+      if (check?.verdict === "possible_wrong_platform")
+        manualReasons.add(
+          `${occurrence.line.id}: sits ${check.nearest_running_track_m} m from a running rail ` +
+            `but ${check.point_to_claimed_track_m} m from a NAMED track of its own line; ` +
+            `railway=platform evidence is required to decide`,
+        );
+      if (drawnTwiceAt(occurrence.line.id, occurrence.geometry.point))
+        manualReasons.add(
+          `${occurrence.line.id}: shares one alignment with a sibling stroke inside a ` +
+            `multi-track corridor — see outputs/railway-audit/duplicate-strokes`,
+        );
+    }
     const explicit = explicitByGroup.get(stationGroup);
     const classes = [...new Set(relationships.map((row) => row.classification))].sort();
     const status = errors.size
@@ -438,12 +843,38 @@ export function buildAudit() {
         structures: row.geometry.structure,
       },
       railwayIdentity: row.railwayIdentity,
-      lane: row.render.lane,
       render_point: row.render.coordinate,
       render_bearing_degrees: row.render.bearing,
       station_turn_degrees: row.geometry.stationTurn,
+      adjacent_interval_fold_degrees: row.geometry.adjacentFold,
       exact_adjacent_interval_endpoint: row.geometry.endpointExact,
       point_to_track_meters: row.pointToTrackMeters,
+      // The ledger suppresses a DISAGREEMENT, never a passing row: a station
+      // on a suspended line that still measures clean should read as clean.
+      basemap_verdict:
+        row.basemapExcluded &&
+        !["agrees", "agrees_on_platform", "not_measured"].includes(
+          row.basemap?.verdict,
+        )
+          ? "excluded_by_ledger"
+          : row.basemap?.verdict || "not_measured",
+      basemap_excluded_reason: row.basemapExcluded || null,
+      fix_class: row.basemap?.fix_class || null,
+      n02_platform_features: row.basemap?.n02_platform_features ?? null,
+      platform_osm: row.basemap?.platform?.osm || null,
+      platform_ref: row.basemap?.platform?.ref || null,
+      platform_pick_margin_m: row.basemap?.platform?.margin_m ?? null,
+      dot_to_platform_m: row.basemap?.platform?.dot_to_platform_m ?? null,
+      claim_basis: row.basemap?.claim_strength || null,
+      claimed_osm_way_ids: row.basemap?.claimed_osm_way_ids || [],
+      claimed_way_name: row.basemap?.claimed_way_name || null,
+      point_to_claimed_track_m: row.basemap?.point_to_claimed_track_m ?? null,
+      approach_median_offset_m: row.basemap?.approach_median_offset_m ?? null,
+      suggested_point_basis:
+        suggestedByLine.get(row.line.id) && suggestedByLine.get(row.line.id) !== row.geometry.point
+          ? "elected_junction_of_same_railway"
+          : row.basemap?.suggestion_basis || "none",
+      drawn_twice: drawnTwiceAt(row.line.id, row.geometry.point),
       immediate_leave_and_return: row.geometry.immediateReturn,
       osm_way_ids: row.evidence.osm_way_ids,
       source_refs: row.evidence.sources,
@@ -501,9 +932,41 @@ export function buildAudit() {
       verified_no_change: verified.length,
       needs_human_platform_review: manual.length,
       fix_required: failed.length,
-      stored_lanes_equal_pure_recomputation: lanesPure,
-      stored_lane_rows: storedLanes.length,
-      recomputed_lane_rows: freshLanes.length,
+      basemap: {
+        cache_cells: osm.cells?.length || 0,
+        cache_ways: osm.ways || 0,
+        platform_cells: platformCache.cells?.length || 0,
+        platforms: platformCache.platforms || 0,
+        verdicts: groups
+          .flatMap((row) => row.lines)
+          .reduce((counts, line) => {
+            counts[line.basemap_verdict] = (counts[line.basemap_verdict] || 0) + 1;
+            return counts;
+          }, {}),
+        measured_occurrences: groups.reduce(
+          (sum, row) =>
+            sum + row.lines.filter((line) => line.basemap_verdict !== "not_measured").length,
+          0,
+        ),
+      },
+      unexplained_fold_backs_over_120_degrees: groups.reduce(
+        (sum, row) =>
+          sum +
+          row.unresolved_reasons.filter((reason) => reason.includes("folds back")).length,
+        0,
+      ),
+      fold_backs_over_120_degrees: groups.reduce(
+        (sum, row) =>
+          sum + row.lines.filter((line) => (line.adjacent_interval_fold_degrees || 0) > 120).length,
+        0,
+      ),
+      duplicate_strokes: {
+        relationships: duplicateRows.length,
+        adjudicated_duplicate: duplicateRows.filter(
+          (row) => row.duplicate_verdict === "duplicate",
+        ).length,
+        lines_involved: duplicateStretches.size,
+      },
     },
     fixed_station_groups: fixed.map((row) => ({ station_group: row.station_group, station_name: row.station_name })),
     verified_no_change_station_groups: verified.map((row) => ({ station_group: row.station_group, station_name: row.station_name })),
@@ -534,9 +997,22 @@ function csvRows(audit) {
     "classifications",
     "should_share_junction",
     "railwayIdentity",
-    "lane",
     "tangent_differences_degrees",
     "point_to_track_meters",
+    "adjacent_interval_fold_degrees",
+    "point_to_claimed_track_m",
+    "approach_median_offset_m",
+    "basemap_verdict",
+    "fix_class",
+    "n02_platform_features",
+    "platform_osm",
+    "platform_ref",
+    "platform_pick_margin_m",
+    "dot_to_platform_m",
+    "claim_basis",
+    "claimed_osm_way_ids",
+    "suggested_point_basis",
+    "drawn_twice",
     "osm_way_ids",
     "apple_maps_result",
     "repair_status",
@@ -559,9 +1035,22 @@ function csvRows(audit) {
         [...new Set(relationships.map((row) => row.classification))],
         relationships.some((row) => row.should_share_junction),
         line.railwayIdentity,
-        line.lane,
         relationships.map((row) => ({ with: row.lines.find((id) => id !== line.display_line_id), value: row.continuation_tangent_difference_degrees })),
         line.point_to_track_meters,
+        line.adjacent_interval_fold_degrees,
+        line.point_to_claimed_track_m,
+        line.approach_median_offset_m,
+        line.basemap_verdict,
+        line.fix_class,
+        line.n02_platform_features,
+        line.platform_osm,
+        line.platform_ref,
+        line.platform_pick_margin_m,
+        line.dot_to_platform_m,
+        line.claim_basis,
+        line.claimed_osm_way_ids,
+        line.suggested_point_basis,
+        line.drawn_twice,
         line.osm_way_ids,
         group.apple_maps_result,
         group.repair_status,
@@ -580,7 +1069,7 @@ function markdown(audit) {
     "",
     `生成时间：${audit.generated_at}`,
     "",
-    "本报告的连续性判定使用相邻区间端点、`railwayIdentity`、最终 render lane、最终站点 feature 和切线；不把同名或同坐标本身视为通过。逐站逐线明细见 `audit.csv`，完整关系和证据字段见 `audit.json`。",
+    "本报告的连续性判定使用相邻区间端点、`railwayIdentity`、最终站点 feature 和切线；不把同名或同坐标本身视为通过。逐站逐线明细见 `audit.csv`，完整关系和证据字段见 `audit.json`。",
     "",
     "## 汇总",
     "",
@@ -595,11 +1084,53 @@ function markdown(audit) {
     `| 无需修改并验证 | ${s.verified_no_change} |`,
     `| 仍需人工站台判断 | ${s.needs_human_platform_review} |`,
     `| 自动验收失败 | ${s.fix_required} |`,
-    `| lanes 纯函数重算 | ${s.stored_lanes_equal_pure_recomputation ? "PASS" : "FAIL"} (${s.stored_lane_rows}/${s.recomputed_lane_rows}) |`,
+    "",
+    "## 站域底图对照",
+    "",
+    s.basemap.cache_ways
+      ? [
+          `OSM 缓存 ${s.basemap.cache_cells} cell / ${s.basemap.cache_ways} way；` +
+            `站台缓存 ${s.basemap.platform_cells} cell / ${s.basemap.platforms} 个站台。`,
+          "距离量的是**该线自己认领的轨道**（operator+name，见 station-track-claim.mjs），",
+          "不是最近的任意铁轨——大站里十几股道彼此 5–15 m，按最近量恒等于通过。",
+          "门槛按已知正确的线实测校准：站点 25 m、进站中位 20 m（见脚本注释）。",
+          "「疑似落在别人的站台」需要 railway=platform 才能定案，语料缓存里没有，",
+          "所以只报不判——不拿缺标签当缺陷。",
+          "",
+          "| 指标 | 数量 |",
+          "| --- | ---: |",
+          `| 已测量 line×station | ${s.basemap.measured_occurrences} |`,
+          [
+            ["agrees", "与底图一致"],
+            ["agrees_on_platform", "落在本线自己的站台上"],
+            ["wrong_platform", "**落在别的站台上**（已指出应在哪个）"],
+            ["platform_pick_ambiguous", "两个候选站台相距 <30 m，缓存判不出"],
+            ["platform_not_on_claimed_track", "附近没有贴着本线具名轨道的站台"],
+            ["platform_level_unverified", "立体叠置站：候选站台无层级标签，平面判据不足"],
+            ["tunnel_basemap_approximate", "地下段：OSM 隧道是近似连线，**底图错，不迁就**"],
+            ["terminus_track_starts_beyond_platform", "终点站：本线具名轨道未延伸到车挡，进站几何合格"],
+            ["systematic_line_offset", "整条线的系统性测绘差：站点偏移不超过该线自身偏移"],
+            ["excluded_by_ledger", "已裁决豁免（水害休止等产品决策）"],
+            ["possible_wrong_platform", "踩着轨道但不是本线具名轨道，尚无站台数据"],
+            ["package_wrong", "站点悬空：25 m 内没有任何运行轨道"],
+            ["undecidable", "无可认领轨道，不做结论"],
+          ]
+            .filter(([key]) => s.basemap.verdicts[key])
+            .map(([key, label]) => `| ${label} | ${s.basemap.verdicts[key]} |`)
+            .join("\n"),
+        ].join("\n")
+      : "OSM 缓存不存在，本次未做站域底图对照（全部记为 not_measured，不做任何推断）。",
+    "",
+    "## 重复绘制",
+    "",
+    `扫描 ${s.duplicate_strokes.relationships} 组同铁路/同名笔画关系，其中 ` +
+      `${s.duplicate_strokes.adjudicated_duplicate} 组判定为真重复，涉及 ` +
+      `${s.duplicate_strokes.lines_involved} 条线。明细见 ` +
+      "`outputs/railway-audit/duplicate-strokes/jp-README.md`。",
     "",
     "## 交付物与验收",
     "",
-    "- `audit.csv`：逐站逐 display line 全量表，包含点位、站台/轨道/层级、A–E、junction、identity、lane、切线、point-to-track、OSM/Apple 状态和未解决原因。",
+    "- `audit.csv`：逐站逐 display line 全量表，包含点位、站台/轨道/层级、A–E、junction、identity、切线、point-to-track、OSM/Apple 状态和未解决原因。",
     "- `audit.json`：保留每个 station group 的线路对关系、证据和自动验收细节。",
     "- `screenshots/tokyo-before-after.png` 与 `screenshots/sapporo-before-after.png`：直接由重建前归档包和最终包渲染的局部拓扑对照。",
     "- `screenshots/tokyo-final-ui.png`：现行应用、最终 render model 与在线底图的东京站 UI 核对。",
@@ -655,7 +1186,7 @@ function main() {
   process.stdout.write(
     `jp multi-line stations: ${audit.summary.audited_station_groups} groups, ` +
       `${audit.summary.fix_required} failures, ${audit.summary.needs_human_platform_review} manual, ` +
-      `lanes ${audit.summary.stored_lanes_equal_pure_recomputation ? "pure" : "STALE"}\n`,
+      "\n",
   );
   if (process.argv.includes("--strict") && audit.summary.fix_required) process.exitCode = 1;
 }

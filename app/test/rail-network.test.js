@@ -89,7 +89,15 @@ const EXPECTED_COUNTS = Object.freeze({
   // to every 東北線/東海道線 sibling stroke. Their lane profiles now enter and
   // leave neighbouring independent railways as one family instead of changing
   // identity at an internal display-part seam.
-  segments: 918,
+  // ±0 everything (2026-08-18, fold-back re-anchoring): five parts whose
+  // intervals ran 30 %+300 m past their audited distances re-anchored onto
+  // their through platforms (名古屋, 中野, 岸里玉出, the 広島 area, 東羽衣).
+  // Dots moved onto sibling platform features and folds disappeared, but no
+  // stroke, station row or lane stretch changed count. The sixth staging fix
+  // (東北線-3 西日暮里–日暮里) is deferred: straightened, it re-pairs with the
+  // 山手線/新幹線 corridor and the lane solver would seat one railway in two
+  // lanes — see render-snapshot.mjs, batch 14.
+  segments: 657,
   stations: 10223,
   lines: 657,
   groups: 9039,
@@ -247,18 +255,12 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
 
   // The LOD gate is the point: it may never be a FILTER, because geojson
   // filters are evaluated per tile-parse and neighbouring tiles can disagree
-  // about the zoom. A filter on a static per-feature property is fine — the
-  // stations layer uses one to hand laned platforms to the stub layers that
-  // can follow their railway into its lane.
+  // about the zoom.
   const mentionsZoom = (value) =>
     JSON.stringify(value ?? null).includes('["zoom"]');
   assert.equal(lines.filter, undefined);
   assert.ok(!mentionsZoom(stations.filter));
-  assert.deepEqual(JSON.parse(JSON.stringify(stations.filter)), [
-    "==",
-    ["coalesce", ["get", "lane"], 0],
-    0,
-  ]);
+  assert.equal(stations.filter, undefined);
   assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0.5);
   assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0.5);
   assert.equal(lines.paint["line-opacity"][0], "step");

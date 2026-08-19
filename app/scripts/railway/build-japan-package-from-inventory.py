@@ -146,6 +146,21 @@ ANCHOR_MAX_M = 1500.0
 GROSS_DETOUR_FACTOR = 3.0
 GROSS_DETOUR_FLOOR_M = 2000.0
 
+# Well inside the gross-detour refusal sits the fold-back band: the interval
+# BUILDS, but only by leaving the station the wrong way and coming back past
+# its own platform. 尾頭橋 → 名古屋 drew 3.594 km against an audited 2.583
+# (+39 %) because 名古屋's nearest N02 platform section dead-ends south of the
+# station, so the path had to run to the station's north node and fold 373 m
+# back. That never reaches the 3×/+2 km gross check, so the re-anchoring pass
+# below (refine_anchors_by_distance) also gets a shot at any interval drawn
+# 30 % AND 300 m past its audited distance — big enough that no honest
+# platform-projection slack reaches it, small enough to catch the folds. Real
+# reversals (出雲坂根, 姨捨) are safe twice over: their 営業キロ includes the
+# switchback, so the drawn length matches the audit and never trips this; and
+# a retry is only KEPT when it measurably closes the gap to the audit.
+REANCHOR_DETOUR_FACTOR = 1.30
+REANCHOR_DETOUR_FLOOR_M = 300.0
+
 # A loop line has more than three stations. Three mutually adjacent stations mean
 # one of those edges skips the station between the other two — a survey error of
 # the same kind the 2026-08-13 audit deleted twelve of, not a loop to draw.
@@ -1440,6 +1455,7 @@ def build_lines(
         root = Path(n02_root) if n02_root else extract_n02(Path(scratch))
         net = n02_source.load(root, verbose=verbose)
     apply_station_geometry_patches(net, n02_source)
+    apply_station_anchor_overrides(net, n02_source)
 
     source_splits = split_source_line_keys(net)
     classification = {
@@ -1499,6 +1515,12 @@ def build_lines(
     exact_platform_groups = collections.defaultdict(set)
     for assignment in load_station_platform_corrections()["platform_assignments"]:
         exact_platform_groups[assignment["line"]].add(assignment["station_group"])
+    # An anchor override has to pin its dot for the same reason an assignment
+    # does: without it the anchoring pass re-projects the moved feature onto
+    # whatever track is nearest along the part and undoes most of the move
+    # (measured: 名古屋 came back 107 m, 和歌山市 113 m).
+    for override in load_station_platform_corrections()["station_anchor_overrides"]:
+        exact_platform_groups[override["line"]].add(override["station_group"])
 
     lines, skipped, notes = [], [], []
 
@@ -1636,8 +1658,22 @@ def build_lines(
                     geometry_lib,
                 )
             )
+            part_points, part_platforms, part_platform_reason = (
+                apply_display_part_platforms(
+                    key,
+                    order,
+                    dict(part_points),
+                    dict(part_platforms),
+                    all_platforms.get(source_key, {}),
+                    uid_by_name,
+                    station_by_uid,
+                    geometry_lib,
+                )
+            )
             if extension_reason:
                 notes.append((f"{key}{suffix}", extension_reason))
+            if part_platform_reason:
+                notes.append((f"{key}{suffix}", part_platform_reason))
             # Anchor PER PART, not per railway. A part is one continuous stroke,
             # so its stations have to sit on one connected track group — and the
             # part's own stations are the ones entitled to choose which. Picking
@@ -1656,7 +1692,7 @@ def build_lines(
                     group = station_by_uid[uid]["physical_station_group"]
                     if group in exact_platform_groups.get(key, set()):
                         anchor_map[uid]["point"] = list(points[uid])
-                    if extension_reason and part_points.get(uid) != points.get(uid):
+                    if part_points.get(uid) != points.get(uid):
                         anchor_map[uid]["point"] = list(part_points[uid])
 
             if stranded:
@@ -1714,6 +1750,16 @@ def build_lines(
                 bypasses=pair_bypasses,
             )
             entry, problem, mismatched, alternates = attempt
+            pinned_uids = {
+                uid
+                for uid in order
+                if station_by_uid[uid]["physical_station_group"]
+                in exact_platform_groups.get(key, set())
+            }
+            audited_m_by_pair = {
+                pair: (audited_distance.get((key, pair)) or 0) * 1000
+                for pair in adjacency.get(key, set())
+            }
             if problem and "several tracks share" in problem:
                 # The nearest section is not always the track the service runs
                 # on. Re-anchor the whole chain against the audited distances
@@ -1724,10 +1770,8 @@ def build_lines(
                     part_points,
                     graph,
                     anchors,
-                    {
-                        pair: (audited_distance.get((key, pair)) or 0) * 1000
-                        for pair in adjacency.get(key, set())
-                    },
+                    audited_m_by_pair,
+                    pinned=pinned_uids,
                 )
                 if refined:
                     pin_registered_platform_points(refined)
@@ -1759,6 +1803,66 @@ def build_lines(
                                 f"{key}{suffix}",
                                 "anchors re-chosen against the audited distances "
                                 "— several tracks share this line's N02 key",
+                            )
+                        )
+            elif not problem and fold_back_intervals(mismatched):
+                # The part BUILT, but an interval got its length by leaving a
+                # station the wrong way and folding back past its own platform:
+                # 名古屋's nearest platform section dead-ends south of the
+                # station, so 尾頭橋 → 名古屋 drew 3.594 km against an audited
+                # 2.583 by running through the station and 373 m back. Same
+                # cure as the refusal above — re-anchor the chain against the
+                # audited distances — but this retry would REPLACE a working
+                # part, so it is only kept when it provably improves: it must
+                # build, it must resolve at least one fold, and the part as a
+                # whole must land closer to the audit than it stood.
+                folds = fold_back_intervals(mismatched)
+                refined = refine_anchors_by_distance(
+                    order,
+                    part_points,
+                    graph,
+                    anchors,
+                    audited_m_by_pair,
+                    pinned=pinned_uids,
+                )
+                if refined:
+                    pin_registered_platform_points(refined)
+                    retry = build_display_line(
+                        suffix=suffix,
+                        order=order,
+                        is_loop=is_loop,
+                        key=key,
+                        name=name,
+                        operator=operator,
+                        row=row,
+                        info=info,
+                        display=display,
+                        graph=graph,
+                        anchors=refined,
+                        station_by_uid=station_by_uid,
+                        audited_distance=audited_distance,
+                        english=english,
+                        operator_short=operator_short,
+                        geometry_lib=geometry_lib,
+                        normalise_line_name=n02_source.normalise_line_name,
+                        structure_by_section=structure_by_section,
+                        platforms_by_group=all_platforms.get(source_key, {}),
+                        surveyed=pair_geometry,
+                        bypasses=pair_bypasses,
+                    )
+                    _, retry_problem, retry_mismatched, _ = retry
+                    if (
+                        not retry_problem
+                        and len(fold_back_intervals(retry_mismatched)) < len(folds)
+                        and sum(abs(row[2] - row[3]) for row in retry_mismatched)
+                        < sum(abs(row[2] - row[3]) for row in mismatched)
+                    ):
+                        entry, problem, mismatched, alternates = retry
+                        notes.append(
+                            (
+                                f"{key}{suffix}",
+                                f"anchors re-chosen against the audited distances — "
+                                f"{len(folds)} interval(s) drew a fold-back past a station",
                             )
                         )
             if problem:
@@ -1980,7 +2084,7 @@ def load_pair_geometry():
 
 
 def load_station_platform_corrections():
-    """東京駅 per-line platform truth (R13), including its underground through track.
+    """Registered per-line platform truth (R13), merged over every evidence file.
 
     N02-25 digitises 東北新幹線's station track AND its station feature at 東京
     as vertex-for-vertex copies of the 東海道新幹線 platform polyline, so both
@@ -1991,23 +2095,33 @@ def load_station_platform_corrections():
     not stop at 東京. Same ODbL-for-geometry precedent as
     paired-alignment-geometry.json.
     """
-    path = RAW / "evidence" / "tokyo-station-platforms.json"
-    if not path.exists():
-        return {
-            "geometry_patches": [],
-            "platform_assignments": [],
-            "display_part_extensions": [],
-            "shared_junctions": [],
-            "surveyed_intervals": [],
-        }
-    payload = json.loads(path.read_text("utf-8"))
-    return {
-        "geometry_patches": payload.get("geometry_patches", []),
-        "platform_assignments": payload.get("platform_assignments", []),
-        "display_part_extensions": payload.get("display_part_extensions", []),
-        "shared_junctions": payload.get("shared_junctions", []),
-        "surveyed_intervals": payload.get("surveyed_intervals", []),
-    }
+    blocks = (
+        "station_anchor_overrides",
+        "geometry_patches",
+        "platform_assignments",
+        "display_part_platforms",
+        "display_part_extensions",
+        "shared_junctions",
+        "surveyed_intervals",
+    )
+    merged = {block: [] for block in blocks}
+    # 東京 first (it is the precedent and carries the geometry patches), then
+    # every other station-platform evidence file in name order. One schema, one
+    # consumer: a new batch adds a FILE, never a second code path.
+    directory = RAW / "evidence"
+    paths = [directory / "tokyo-station-platforms.json"] + sorted(
+        path
+        for pattern in ("station-platform-*.json", "station-anchor-*.json")
+        for path in directory.glob(pattern)
+        if path.name != "tokyo-station-platforms.json"
+    )
+    for path in paths:
+        if not path.exists():
+            continue
+        payload = json.loads(path.read_text("utf-8"))
+        for block in blocks:
+            merged[block].extend(payload.get(block, []))
+    return merged
 
 
 def _coords_key(coords):
@@ -2045,7 +2159,7 @@ def apply_station_geometry_patches(net, n02_source):
         ]
         if len(sections) != 1 or len(stations) != 1:
             raise SystemExit(
-                f"tokyo-station-platforms.json patch for {patch['line']} expects "
+                f"station platform evidence patch for {patch['line']} expects "
                 f"exactly one section and one station feature matching its "
                 f"n02_coords, found {len(sections)} section(s) and "
                 f"{len(stations)} station feature(s) — the survey moved under it"
@@ -2058,6 +2172,64 @@ def apply_station_geometry_patches(net, n02_source):
             record.length_m = n02_source.polyline_length_m(record.coords)
             if hasattr(record, "geom_key"):
                 record.geom_key = n02_source._geom_key(record.coords)
+
+
+def apply_station_anchor_overrides(net, n02_source):
+    """Move ONE station feature onto its surveyed platform. Never moves track.
+
+    `geometry_patches` replaces a RailroadSection *and* its station feature,
+    because 東京's defect was a copied TRACK. The defect here is different and
+    much commoner: N02 puts a line's station feature on the wrong platform of a
+    shared station — 京成高砂's 北総線 dot 169 m from platform 5, 宮古's 山田線
+    dot 156 m from platform 0 — while the track itself is fine. Reusing
+    geometry_patches would force us to invent replacement track we have not
+    surveyed, so this block exists to do the smaller, safer thing.
+
+    Two guards, both stop the build rather than guessing:
+      * the current feature must still be where the evidence says it is
+        (midpoint within 1 m), so a survey update cannot be silently overwritten;
+      * exactly one feature may match, so an ambiguous key is never patched.
+    The generator additionally refuses to write a row whose target does not sit
+    on a section the line already rides (build-station-anchor-evidence.mjs), so
+    a moved dot cannot leave its own stroke.
+    """
+    corrections = load_station_platform_corrections()
+    for row in corrections["station_anchor_overrides"]:
+        operator, _, line = row["line"].partition("␟")
+        key = (line, operator)
+        target = row["n02_midpoint"]
+        matches = [
+            station
+            for station in net.stations
+            if station.line_key == key
+            and station.name == row["station"]
+            and geometry_lib_metres(platform_midpoint_coords(station.coords), target) <= 1.0
+        ]
+        if len(matches) != 1:
+            raise SystemExit(
+                f"station_anchor_overrides for {row['line']} {row['station']} expects "
+                f"exactly one N02 feature within 1 m of {target}, found {len(matches)} "
+                f"— the survey moved under it"
+            )
+        record = matches[0]
+        record.coords = [list(point) for point in row["platform_coords"]]
+        record.length_m = n02_source.polyline_length_m(record.coords)
+        if hasattr(record, "geom_key"):
+            record.geom_key = n02_source._geom_key(record.coords)
+
+
+def platform_midpoint_coords(coords):
+    return [
+        sum(point[0] for point in coords) / len(coords),
+        sum(point[1] for point in coords) / len(coords),
+    ]
+
+
+def geometry_lib_metres(a, b):
+    return math.hypot(
+        (a[0] - b[0]) * 111320 * math.cos(math.radians((a[1] + b[1]) / 2)),
+        (a[1] - b[1]) * 111320,
+    )
 
 
 def assign_station_platforms(platforms, all_platforms, geometry_lib):
@@ -2106,7 +2278,7 @@ def assign_station_platforms(platforms, all_platforms, geometry_lib):
         candidates = all_platforms.get(key, {}).get(group)
         if not candidates:
             raise SystemExit(
-                f"tokyo-station-platforms.json assigns a platform for "
+                f"station platform evidence assigns a platform for "
                 f"{row['line']} group {group}, but that line carries no such "
                 f"station group"
             )
@@ -2128,7 +2300,7 @@ def assign_station_platforms(platforms, all_platforms, geometry_lib):
                     for candidate in candidates
                 ]
                 raise SystemExit(
-                    f"tokyo-station-platforms.json assigns {row['line']} group "
+                    f"station platform evidence assigns {row['line']} group "
                     f"{group} along axis {expected_axis}° (+/-{max_error}°), but "
                     f"its candidate platform axes are {actual}"
                 )
@@ -2218,6 +2390,78 @@ def extend_display_part_at_platforms(
             row.get("display_as_line", ""),
         )
     return list(order), points, selected_platforms_by_group, "", ""
+
+
+def apply_display_part_platforms(
+    key,
+    order,
+    part_points,
+    part_platforms,
+    platforms_by_group,
+    uid_by_name,
+    station_by_uid,
+    geometry_lib,
+):
+    """Give ONE display stroke its own platform picks, without extending it.
+
+    `platform_assignments` chooses one platform per (source line, station
+    group), which is the right grain for a railway drawn as one stroke and the
+    wrong grain for a 複々線. 東北線 is drawn as several strokes from ONE N02
+    source line: the 列車線 (上野東京ライン) and the 電車線 both call at 日暮里
+    and 上野, so a single pick puts both on the same platform, their shortest
+    paths ride the same N02 sections, and the map paints one corridor twice
+    (measured: 2,240 m of shared sections per pair, audit-section-usage.py).
+
+    `display_part_extensions` already overrides platforms for one part, but only
+    as part of extending it through extra stations. This is the same override
+    without the extension: match the part by its own station sequence — in
+    either direction, since a part's order is a drawing direction and not a
+    fact — and repoint the named stations.
+
+    A row whose sequence no longer matches simply does not apply; a row that
+    matches but names a station the part does not carry, or a target no longer
+    within 25 m of an N02 feature, stops the build. Same safety property as
+    every other registered mechanism here: the survey may move under us, and
+    when it does we want to hear about it.
+    """
+    names = [station_by_uid[uid]["station_name"] for uid in order]
+    reasons = []
+    for row in load_station_platform_corrections()["display_part_platforms"]:
+        if row["line"] != key:
+            continue
+        wanted = list(row["match_stations"])
+        if names != wanted and names != list(reversed(wanted)):
+            continue
+        for station_name, target in row["platform_midpoints"].items():
+            uid = uid_by_name.get(station_name)
+            if uid is None or uid not in order:
+                raise SystemExit(
+                    f"display_part_platforms for {key} names {station_name}, "
+                    f"which this part does not carry"
+                )
+            group = station_by_uid[uid]["physical_station_group"]
+            candidates = platforms_by_group.get(group) or []
+            if not candidates:
+                raise SystemExit(
+                    f"display_part_platforms for {key} {station_name}: group "
+                    f"{group} has no platform feature"
+                )
+            platform = min(
+                candidates,
+                key=lambda candidate: geometry_lib.metres(
+                    platform_midpoint(candidate, geometry_lib), target
+                ),
+            )
+            midpoint = platform_midpoint(platform, geometry_lib)
+            if geometry_lib.metres(midpoint, target) > 25:
+                raise SystemExit(
+                    f"display_part_platforms target for {key} {station_name} is "
+                    f"no longer within 25 m of an N02 platform feature"
+                )
+            part_points[uid] = midpoint
+            part_platforms[group] = platform
+        reasons.append(row.get("reason", ""))
+    return part_points, part_platforms, "; ".join(filter(None, reasons))
 
 
 def load_structure():
@@ -2554,7 +2798,27 @@ def anchor_candidates(point, graph, component, limit=ANCHOR_CANDIDATE_M):
     return out[:ANCHOR_CANDIDATES]
 
 
-def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
+def fold_back_intervals(mismatched):
+    """The mismatched intervals long enough to be lead-in folds, not slack.
+
+    `mismatched` rows are (from_name, to_name, drawn_km, audited_km). An
+    interval qualifies when it is drawn PAST its audited distance by both
+    REANCHOR_DETOUR_FACTOR and REANCHOR_DETOUR_FLOOR_M — the shape of a path
+    that left the station the wrong way, not of a platform-projection offset.
+    """
+    return [
+        row
+        for row in mismatched
+        if row[3]
+        and row[2] * 1000
+        > max(
+            row[3] * 1000 * REANCHOR_DETOUR_FACTOR,
+            row[3] * 1000 + REANCHOR_DETOUR_FLOOR_M,
+        )
+    ]
+
+
+def refine_anchors_by_distance(order, points, graph, anchors, audited_m, pinned=frozenset()):
     """Choose which of several parallel tracks each station stands on.
 
     In a multi-track corridor a platform is metres from more than one N02
@@ -2572,12 +2836,21 @@ def refine_anchors_by_distance(order, points, graph, anchors, audited_m):
 
     Returns new anchors, or None when nothing better than the current ones
     exists — in which case the caller refuses the part exactly as before.
+
+    `pinned` stations keep their standing anchor as their ONLY candidate. A
+    registered platform assignment (tokyo-station-platforms.json) is a stronger
+    statement than any kilometrage inference — it names the physical platform —
+    so the Viterbi may route around it but never move it.
     """
     if len(order) < 2:
         return None
     component = graph.component[anchors[order[0]]["section"]]
     candidates = {
-        uid: anchor_candidates(points[uid], graph, component) or [anchors[uid]]
+        uid: (
+            [anchors[uid]]
+            if uid in pinned
+            else anchor_candidates(points[uid], graph, component) or [anchors[uid]]
+        )
         for uid in order
     }
 

@@ -327,28 +327,12 @@ test("every railway weight rides the one shared scale ramp", () => {
     const label = `${entry.layer} ${entry.property}`;
     // icon-offset is the ONE value that must NOT carry the ramp: MapLibre
     // multiplies it by icon-size, which does, so ramping it too would apply
-    // the factor twice and drag a laned platform out of its lane.
-    if (entry.property === "icon-offset") {
-      assert.ok(
-        !JSON.stringify(entry.value).includes('["zoom"]'),
-        `${label} is scaled twice — icon-size already ramps it`,
-      );
-      continue;
-    }
     assert.equal(
       floorScaleOf(entry.value, label),
       style.RAILWAY_MIN_WEIGHT_SCALE,
       label,
     );
   }
-  // …and every lane offset is the identical expression, whichever layer draws
-  // it: one railway, one sideways step.
-  const offsets = new Set(
-    entries
-      .filter((entry) => entry.property === "line-offset")
-      .map((entry) => JSON.stringify(entry.value)),
-  );
-  assert.equal(offsets.size, 1, [...offsets].join(" / "));
 });
 
 // The ramp itself, as a reader meets it: full token weight from the anchor in,

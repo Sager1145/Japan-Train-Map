@@ -184,36 +184,6 @@ test("test_terminal_line_ends_at_dot_center", async () => {
   }
 });
 
-test("test_terminal_parallel_lane_ends_at_station_center", () => {
-  // A stroke in a parallel lane is offset in SCREEN space at paint time, and
-  // its platform marker ships as a stub that takes the identical offset. So the
-  // pairing is tested where it is decided: the lane's last coordinate is the
-  // platform's own coordinate, and both are then moved by one rule.
-  const network = loadNetwork("jp");
-  const laned = new Set(
-    network.stationLanes.features.map(
-      (feature) => feature.properties.stationId,
-    ),
-  );
-  assert.ok(laned.size > 0, "the package must have laned platforms");
-  let checked = 0;
-  for (const line of network.lineById.values()) {
-    for (const row of platformsOnDrawnLine(network, line)) {
-      if (!laned.has(row.station.stationId)) continue;
-      const atEnd =
-        row.index === 0 || row.index === row.coordinates.length - 1;
-      if (!atEnd) continue;
-      const endpoint = row.coordinates[row.index];
-      assert.equal(endpoint[0], row.anchor[0]);
-      assert.equal(endpoint[1], row.anchor[1]);
-      checked += 1;
-    }
-  }
-  assert.ok(checked > 0, "no laned terminal found to check");
-});
-
-// ── the approach itself ─────────────────────────────────────────────────────
-
 test("test_station_approach_has_no_large_artificial_turn", async () => {
   // Judged against the curvature of the approach around it, never on the angle
   // alone: 阿里山線 spirals through 神木 at 109° and the 香港電車 rounds street
@@ -431,41 +401,6 @@ test("test_station_approach_leaves_correct_geometry_alone", () => {
 });
 
 // ── parallel lanes ──────────────────────────────────────────────────────────
-
-test("test_parallel_single_stop_lane_passes_through_station_dot", () => {
-  // Where one member of a corridor calls and the other runs past, the calling
-  // line's own lane carries both the railway and the dot, so the dot is on the
-  // rail that stops there rather than floating between two. The marker is a
-  // point ON the platform which the style then pushes into the lane, so what
-  // is pinned here is that the point IS the platform and the platform is on
-  // the geometry — the offset is the style's to apply.
-  const network = loadNetwork("jp");
-  const stubs = network.stationLanes.features;
-  assert.ok(stubs.length > 0);
-  let onLine = 0;
-  for (const feature of stubs) {
-    const station = network.stationById.get(feature.properties.stationId);
-    assert.ok(station);
-    assert.equal(feature.geometry.type, "Point");
-    assert.deepEqual(feature.geometry.coordinates, [station.lon, station.lat]);
-    const line = network.lineById.get(feature.properties.lineId);
-    if (
-      (line.parts || []).some((part) =>
-        part.some(
-          (coordinate) => key(coordinate) === key([station.lon, station.lat]),
-        ),
-      )
-    )
-      onLine += 1;
-  }
-  assert.equal(
-    stubs.length - onLine,
-    0,
-    "every laned platform must be a vertex of its own railway",
-  );
-});
-
-// ── ridden routes ───────────────────────────────────────────────────────────
 
 test("test_ridden_route_uses_station_anchored_render_geometry", () => {
   // A ride is an exact slice of the SAME geometry, so a rebuilt approach can

@@ -340,97 +340,6 @@
     ];
   }
 
-  // Where two INDEPENDENT railways share one corridor they draw as two lanes
-  // instead of one stroke: rail-network.js gives every render feature a signed
-  // `lane`, and a trunk over its own branch stays lane 0 on both so it goes on
-  // being exactly coincident. This turns that lane into pixels.
-  //
-  // Spacing is centre-to-centre and defined as ONE stroke width plus the gap,
-  // so what the reader actually sees between two lanes is the edge-to-edge
-  // RAILWAY_STYLE.parallelGapPx whatever the stroke width happens to be, and
-  // two lanes can never overlap each other. The centre distance goes through
-  // railwayScale() because the stroke it is built from does: a lane that held
-  // its width while the strokes inside it thinned would open the bundle into a
-  // ladder (see the screen-space contract above).
-  //
-  // line-offset is signed against the feature's OWN direction of travel, and
-  // nothing says two railways sharing a corridor were digitised the same way
-  // round — the lane values in the package are already corrected for that
-  // (scripts/railway/lib/parallel-corridors.mjs corridorHeadingSign).
-  function parallelLaneCentreDistancePx() {
-    return RAILWAY_STYLE.railWidthPx + RAILWAY_STYLE.parallelGapPx;
-  }
-  // The ramp wraps the WHOLE offset rather than just the distance in it,
-  // because MapLibre accepts ["zoom"] only as the input of a top-level
-  // step/interpolate: lane × ramp(distance) is a camera expression buried
-  // inside an arithmetic one, and the style validator rejects the layer
-  // outright. ramp(lane × distance) is the same number with the two
-  // expressions the other way round, and is legal.
-  function parallelLaneOffset() {
-    return railwayScale([
-      "*",
-      ["coalesce", ["get", "lane"], 0],
-      parallelLaneCentreDistancePx(),
-    ]);
-  }
-
-  // The same offset for the ICON that draws a laned platform.
-  //
-  // It has to be spelled out lane by lane, because icon-offset is an ARRAY and
-  // MapLibre expressions have no way to build one: `["literal", …]` takes
-  // constants only, so `[lane * step, 0]` cannot be computed at paint time the
-  // way line-offset's single number can. A `case` over the lane multipliers a
-  // bundle can produce is the whole of the difference — the DISTANCE is still
-  // this file's one lane constant, evaluated here rather than in the data.
-  //
-  // Divided by the icon size because MapLibre multiplies icon-offset by it, so
-  // what the two of them produce together is the offset in screen pixels.
-  //
-  // That multiplication is also why this is the one lane offset with no
-  // railwayScale() on it, and why it must STAY that way: the divisor here is
-  // the icon's UNRAMPED base size, while the layer's icon-size carries the
-  // ramp, so the product is already the scaled offset. Scaling it here too
-  // would apply the ramp twice and pull a laned platform out of its lane at
-  // every zoom below the anchor. (icon-offset could not carry a ramp anyway —
-  // it is an array, and MapLibre will not interpolate one.)
-  const LANE_OFFSET_STEPS = 6;
-
-  function parallelLaneIconOffset() {
-    const size = stationIconSize();
-    const step = parallelLaneCentreDistancePx();
-    const expression = ["case"];
-    for (let index = -LANE_OFFSET_STEPS; index <= LANE_OFFSET_STEPS; index += 1) {
-      const lane = index / 2;
-      if (!lane) continue;
-      expression.push(["==", ["coalesce", ["get", "lane"], 0], lane]);
-      expression.push(["literal", [(lane * step) / size, 0]]);
-    }
-    expression.push(["literal", [0, 0]]);
-    return expression;
-  }
-
-  // The widest a bundle of `laneCount` independent railways can draw: the
-  // outermost lane centres plus half a stroke either side. Diagnostics and the
-  // zoom-stability check measure against this; nothing paints from it.
-  function parallelBundleWidthPx(laneCount) {
-    const count = Math.max(1, Math.floor(Number(laneCount) || 1));
-    return (
-      (count - 1) * parallelLaneCentreDistancePx() + RAILWAY_STYLE.railWidthPx
-    );
-  }
-
-  // The lane multipliers a corridor of `laneCount` independent railways takes,
-  // in drawing order: symmetric about the alignment they share, so the station
-  // markers on it stay in the middle (scripts/railway/lib/parallel-corridors.mjs
-  // assigns exactly these).
-  function parallelLaneMultipliers(laneCount) {
-    const count = Math.max(1, Math.floor(Number(laneCount) || 1));
-    return Array.from(
-      { length: count },
-      (unused, index) => index - (count - 1) / 2,
-    );
-  }
-
   // The two ridden weights. Every consumer — the layers below, the pooled fan
   // lanes railmap.js adds on demand, and the screen-weight table — builds from
   // these, so no two of them can drift apart. A ride is drawn INSIDE a lane,
@@ -526,7 +435,6 @@
   // ───────────────────────────── source / layer ids ─────────────────────────────
   const SEGMENTS_SOURCE = "rn-segments";
   const STATIONS_SOURCE = "rn-stations";
-  const STATION_LANES_SOURCE = "rn-station-lanes";
   // The elected station names — the same platform features `rn-stations`
   // carries, minus the ones whose complex is already named. A source of its
   // own rather than a filter, so the render model that feeds the DOTS is
@@ -547,7 +455,6 @@
   // zoom — 0.3 px long at z16, 20 px at z22 — and a platform that read as a
   // dot when the country was on screen read as a capsule once you were down at
   // a single station. An icon has no length to grow.
-  const STATION_LANES_LAYER = "rn-station-lanes-dot";
   // Names. Both are text-only symbol layers with no icon of any kind: a
   // station is named beside its bead, never replaced by one (see the station
   // glyph contract — no logo, no badge, at any zoom).
@@ -632,9 +539,7 @@
   const RAILWAY_SCREEN_PAINT = [
     // the "all railway lines" field
     [SEGMENTS_CASING_LAYER, "line-width", networkCasingWidth],
-    [SEGMENTS_CASING_LAYER, "line-offset", parallelLaneOffset],
     [SEGMENTS_LAYER, "line-width", () => railwayScale(RAILWAY_STYLE.railWidthPx)],
-    [SEGMENTS_LAYER, "line-offset", parallelLaneOffset],
     [
       STATIONS_LAYER,
       "circle-radius",
@@ -645,21 +550,6 @@
       "circle-stroke-width",
       () => railwayScale(RAILWAY_STYLE.stationRingPx),
     ],
-    // A laned platform's marker. Its two screen weights are LAYOUT properties:
-    // the size that scales the base bitmap to the dot's real diameter, and the
-    // lane offset. Only the SIZE carries the ramp — MapLibre multiplies the
-    // offset by it, so the offset is scaled by construction (see
-    // parallelLaneIconOffset). The ring is the one weight here that the style
-    // cannot state, because it is drawn into the bitmap — railmap.js
-    // rasterizes it from RAILWAY_STYLE.stationRingPx in proportion to the dot,
-    // so icon-size thins the ring with everything else.
-    [
-      STATION_LANES_LAYER,
-      "icon-size",
-      () => railwayScale(stationIconSize()),
-      "layout",
-    ],
-    [STATION_LANES_LAYER, "icon-offset", parallelLaneIconOffset, "layout"],
     // the ridden routes
     [TRAIN_ROUTES_LAYER, "line-width", riddenLineWidth],
     [TRAIN_XDAY_LAYER, "line-width", riddenLineWidth],
@@ -667,14 +557,6 @@
     [TRAIN_EXPAND_LAYER, "line-width", riddenLineWidth],
     [TRAIN_HOVER_LAYER, "line-width", riddenHoverLineWidth],
     [TRAIN_EXPAND_HOVER_LAYER, "line-width", riddenHoverLineWidth],
-    // …and the lane those rides take, which is the railway's own, by the
-    // identical expression.
-    [TRAIN_ROUTES_LAYER, "line-offset", parallelLaneOffset],
-    [TRAIN_XDAY_LAYER, "line-offset", parallelLaneOffset],
-    [TRAIN_SEL_LAYER, "line-offset", parallelLaneOffset],
-    [TRAIN_SEL_CASING_LAYER, "line-offset", parallelLaneOffset],
-    [TRAIN_HOVER_LAYER, "line-offset", parallelLaneOffset],
-    [TRAIN_PICK_LAYER, "line-offset", parallelLaneOffset],
     [
       TRAIN_SEL_CASING_LAYER,
       "line-width",
@@ -848,10 +730,6 @@
       type: "geojson",
       data: network ? network.stations : EMPTY_FC,
     };
-    sources[STATION_LANES_SOURCE] = {
-      type: "geojson",
-      data: network ? network.stationLanes || EMPTY_FC : EMPTY_FC,
-    };
     sources[STATION_LABELS_SOURCE] = {
       type: "geojson",
       data: network ? network.stationLabels || EMPTY_FC : EMPTY_FC,
@@ -931,7 +809,6 @@
         "line-color": networkCasingColor(theme),
         "line-opacity": lineLengthVisibilityOpacity(0.88),
         "line-width": networkCasingWidth(),
-        "line-offset": parallelLaneOffset(),
       },
     });
     layers.push({
@@ -950,18 +827,12 @@
         // Screen-space: half a station circle, at every zoom — the scale ramp
         // moves the two of them together, never one without the other.
         "line-width": railwayScale(RAILWAY_STYLE.railWidthPx),
-        // Independent railways sharing a corridor take neighbouring lanes;
-        // everything else is lane 0 and draws on its own alignment.
-        "line-offset": parallelLaneOffset(),
       },
     });
     layers.push({
       id: STATIONS_LAYER,
       type: "circle",
       source: STATIONS_SOURCE,
-      // Platforms on a laned stretch draw from STATION_LANES_SOURCE instead,
-      // so that they move into the lane with the railway that calls there.
-      filter: ["==", ["coalesce", ["get", "lane"], 0], 0],
       layout: { visibility: "none" },
       paint: {
         // Theme-dependent: _applyThemePaint rewrites both colors on switch,
@@ -979,41 +850,6 @@
         "circle-stroke-color": stationStroke(theme),
         "circle-stroke-opacity": lineLengthVisibilityOpacity(1),
         "circle-stroke-width": railwayScale(RAILWAY_STYLE.stationRingPx),
-      },
-    });
-    // The same dot, for a platform whose railway runs in a parallel lane.
-    //
-    // This is what stops a shared corridor from claiming a stop it does not
-    // have. Left on the centre-line, one railway's station dot sits exactly
-    // between the two lanes and reads as belonging to both.
-    //
-    // An icon rather than a circle, because a circle cannot be offset per
-    // feature; rotated to the bearing of its own track so that icon-offset —
-    // which is applied in the icon's rotated frame — pushes it to the side
-    // line-offset would have put it on. Overlap is always allowed: a platform
-    // is a mark on the map, not a label competing for space, and letting the
-    // collision pass drop one would silently delete a station.
-    layers.push({
-      id: STATION_LANES_LAYER,
-      type: "symbol",
-      source: STATION_LANES_SOURCE,
-      layout: {
-        visibility: "none",
-        // Theme-dependent: _applyThemePaint swaps the pair on a switch, and
-        // buildBaseStyle stamps the BOOT theme (see STATIONS_LAYER above).
-        "icon-image": stationIconImage(theme),
-        "icon-size": railwayScale(stationIconSize()),
-        "icon-offset": parallelLaneIconOffset(),
-        "icon-rotate": ["coalesce", ["get", "bearing"], 0],
-        // Bearings are compass degrees, so the rotation must be measured
-        // against the map's north rather than the viewport's up.
-        "icon-rotation-alignment": "map",
-        "icon-allow-overlap": true,
-        "icon-ignore-placement": true,
-        "icon-padding": 0,
-      },
-      paint: {
-        "icon-opacity": lineLengthVisibilityOpacity(1),
       },
     });
 
@@ -1145,10 +981,6 @@
         "line-color": ["get", "color"],
         "line-opacity": ["get", "alpha"],
         "line-width": riddenLineWidth(),
-        // A ride sits on the railway it rode. Where that railway steps into a
-        // parallel lane the ride steps with it, by the identical expression —
-        // anything else would draw the journey beside its own track.
-        "line-offset": parallelLaneOffset(),
       },
     });
     // Cross-day continuation of an overnight train, dashed. Filter-driven and
@@ -1171,8 +1003,6 @@
         "line-opacity": ["get", "alpha"],
         "line-width": riddenLineWidth(),
         "line-dasharray": [1.6, 1.4],
-        // Same source, same records — so the same lane as the solid layer.
-        "line-offset": parallelLaneOffset(),
       },
     });
     // Invisible true-track PICK layer used while the fan is collapsed. Zero
@@ -1189,9 +1019,6 @@
         "line-color": "#000",
         "line-opacity": 0,
         "line-width": ["get", "pickWidth"],
-        // Hover must trigger ON the visible line, so the invisible hit target
-        // rides into the lane with it.
-        "line-offset": parallelLaneOffset(),
       },
     });
     // FAN-SCOPED pick lanes: while a hover fan is open, only the open group's
@@ -1226,8 +1053,6 @@
         "line-color": ["get", "color"],
         "line-opacity": 0,
         "line-width": riddenHoverLineWidth(),
-        // Highlights the route where it is drawn, lane and all.
-        "line-offset": parallelLaneOffset(),
       },
     });
     // Other trains' station dots sit UNDER the selected route. ONE marker
@@ -1298,8 +1123,6 @@
         // is only 1.4 px per side at full scale, matching Apple's restrained
         // selected-transit outline instead of the old oversized white ribbon.
         "line-width": riddenSelectionCasingWidth(),
-        // The halo tracks the line it marks into its lane.
-        "line-offset": parallelLaneOffset(),
       },
     });
     layers.push({
@@ -1312,7 +1135,6 @@
         "line-color": ["get", "color"],
         "line-opacity": 1,
         "line-width": riddenLineWidth(),
-        "line-offset": parallelLaneOffset(),
       },
     });
     // HOVER-EXPAND: while the pointer is on an overlapped stretch, that
@@ -1630,220 +1452,6 @@
     }
   }
 
-  // Every layer that draws something belonging to a bundled railway, and so
-  // must take the identical lane offset: the field itself, the platform stubs
-  // that sit in its lane, and every layer that draws a ride over it — solid,
-  // cross-day dashes, selected, its casing, hovered, and the hit target.
-  const PARALLEL_LANE_LAYERS = Object.freeze([
-    SEGMENTS_CASING_LAYER,
-    SEGMENTS_LAYER,
-    STATION_LANES_LAYER,
-    TRAIN_ROUTES_LAYER,
-    TRAIN_XDAY_LAYER,
-    TRAIN_SEL_LAYER,
-    TRAIN_SEL_CASING_LAYER,
-    TRAIN_HOVER_LAYER,
-    TRAIN_PICK_LAYER,
-  ]);
-
-  function validateParallelZoomStability(options) {
-    const opts = options || {};
-    const zooms = (
-      opts.zooms && opts.zooms.length ? opts.zooms : ZOOM_STABILITY_ZOOMS
-    ).map(Number);
-    // Three lanes by default: the widest bundle the packages produce, and the
-    // only count at which a middle lane can be caught drifting off centre.
-    const laneCount = Math.max(2, Math.floor(Number(opts.laneCount) || 3));
-    const tolerance =
-      opts.tolerancePx == null
-        ? ZOOM_STABILITY_TOLERANCE_PX
-        : Number(opts.tolerancePx);
-    // A per-feature ride width, so the ride layers can be measured at all.
-    const rideWidth = Number(opts.rideWidth) || 4;
-    const style = buildBaseStyle({
-      country: opts.country || "jp",
-      theme: opts.theme === "dark" ? "dark" : "light",
-    });
-    const byId = new Map(style.layers.map((layer) => [layer.id, layer]));
-    const paintOf = (id, property) => {
-      const layer = byId.get(id);
-      return layer && layer.paint ? layer.paint[property] : undefined;
-    };
-    // How far into its lane one layer pushes a feature, in screen pixels.
-    //
-    // A line says it in `line-offset` and an icon in `icon-offset` × icon-size,
-    // and the point of reading BOTH off the built style — rather than trusting
-    // the table that wrote them — is that a platform drawn by a different
-    // MapLibre property than its railway is exactly the case that could drift
-    // apart unnoticed.
-    const laneOffsetPx = (id, zoom, lane) => {
-      const layer = byId.get(id);
-      if (!layer) return NaN;
-      if (layer.type !== "symbol")
-        return evaluateScreenValue(paintOf(id, "line-offset"), zoom, { lane });
-      const layout = layer.layout || {};
-      // icon-size carries the ramp, so it has to be evaluated at this zoom —
-      // and evaluating it is exactly what proves the icon's unramped offset
-      // still lands in the same lane as the lines around it.
-      const size = evaluateScreenValue(layout["icon-size"], zoom, {});
-      const offset = layout["icon-offset"];
-      if (!Array.isArray(offset) || offset[0] !== "case") return NaN;
-      // ["case", test, ["literal", [x, y]], …, ["literal", [0, 0]]]
-      for (let index = 1; index < offset.length - 1; index += 2) {
-        const test = offset[index];
-        const value = offset[index + 1];
-        if (!Array.isArray(test) || test[0] !== "==") continue;
-        if (Number(test[2]) !== lane) continue;
-        return Number(value[1][0]) * size;
-      }
-      const fallback = offset[offset.length - 1];
-      return Number(fallback[1][0]) * size;
-    };
-    const lanes = parallelLaneMultipliers(laneCount);
-
-    const samples = zooms.map((zoom) => {
-      const railWidthPx = evaluateScreenValue(
-        paintOf(SEGMENTS_LAYER, "line-width"),
-        zoom,
-        {},
-      );
-      const centresPx = lanes.map((lane) =>
-        evaluateScreenValue(paintOf(SEGMENTS_LAYER, "line-offset"), zoom, {
-          lane,
-        }),
-      );
-      const spacings = centresPx
-        .slice(1)
-        .map((centre, index) => centre - centresPx[index]);
-      const centreSpacingPx = spacings.length ? spacings[0] : 0;
-      // A bundle is only symmetric if every neighbouring pair is one lane
-      // apart; report the worst disagreement rather than averaging it away.
-      const spacingSpreadPx = spacings.length
-        ? Math.max(...spacings) - Math.min(...spacings)
-        : 0;
-      // The marker's drawn diameter, read back through the size that scales
-      // its bitmap, plus the ring the bitmap carries outside it. The ring is
-      // drawn INTO the bitmap in proportion to the dot, so icon-size scales it
-      // along with the dot rather than leaving it at its token width.
-      const markerLayer = byId.get(STATION_LANES_LAYER);
-      const slotThicknessPx =
-        evaluateScreenValue(
-          markerLayer && markerLayer.layout["icon-size"],
-          zoom,
-          {},
-        ) * STATION_ICON_BASE_PX;
-      const slotRingPx =
-        slotThicknessPx *
-        (1 +
-          (2 * RAILWAY_STYLE.stationRingPx) / RAILWAY_STYLE.stationDiameterPx);
-      const span = Math.max(...centresPx) - Math.min(...centresPx);
-      // The lane a ride is drawn in has to be the railway's own, at every
-      // zoom AND in every lane: the worst disagreement over the whole cross
-      // product is the number that matters.
-      let routeAlignmentPx = 0;
-      for (const id of PARALLEL_LANE_LAYERS)
-        for (let index = 0; index < lanes.length; index += 1) {
-          const offset = laneOffsetPx(id, zoom, lanes[index]);
-          routeAlignmentPx = Math.max(
-            routeAlignmentPx,
-            Math.abs(offset - centresPx[index]),
-          );
-        }
-      return {
-        zoom,
-        // The shared factor every number below is drawn at, reported so a
-        // console run reads as "this is the weight, and this is why".
-        scale: railwayScaleAt(zoom),
-        railWidthPx,
-        centreSpacingPx,
-        spacingSpreadPx,
-        parallelGapPx: centreSpacingPx - railWidthPx,
-        bundleWidthPx: span + railWidthPx,
-        riddenWidthPx: evaluateScreenValue(
-          paintOf(TRAIN_ROUTES_LAYER, "line-width"),
-          zoom,
-          { width: rideWidth },
-        ),
-        slotThicknessPx,
-        routeAlignmentPx,
-        // How far a platform marker reaches across the RENDERED lanes: the
-        // outer lane centres plus the ring that outlines the outermost stub.
-        // (There is no separate slot padding or corner radius to pin — a stub
-        // is a round-capped line, so its cap radius is half its own width.)
-        slotSpanPx: span + slotRingPx,
-        // Lane identities in drawn left-to-right order. Two railways that
-        // swapped sides, or a lane that crossed its neighbour, changes this
-        // string; a pure scale change never can.
-        laneOrder: lanes
-          .map((lane, index) => ({ lane, centre: centresPx[index] }))
-          .sort((a, b) => a.centre - b.centre)
-          .map((row) => row.lane)
-          .join(","),
-      };
-    });
-
-    const METRICS = [
-      "railWidthPx",
-      "centreSpacingPx",
-      "parallelGapPx",
-      "bundleWidthPx",
-      "riddenWidthPx",
-      "slotThicknessPx",
-      "slotSpanPx",
-    ];
-    const spreadPx = {};
-    const failures = [];
-    for (const metric of METRICS) {
-      // Divide out the one shared ramp: what has to hold still is the weight
-      // at FULL scale, which is the number the tokens actually state.
-      const values = samples.map(
-        (sample) => sample[metric] / railwayScaleAt(sample.zoom),
-      );
-      if (values.some((value) => !isFinite(value))) {
-        spreadPx[metric] = NaN;
-        failures.push(`${metric} did not evaluate to a pixel size at every zoom`);
-        continue;
-      }
-      const spread = Math.max(...values) - Math.min(...values);
-      spreadPx[metric] = spread;
-      if (spread > tolerance)
-        failures.push(
-          `${metric} moves ${spread.toFixed(4)} px out of proportion between z${
-            zooms[0]
-          } and z${zooms[zooms.length - 1]}`,
-        );
-    }
-    spreadPx.routeAlignmentPx = Math.max(
-      ...samples.map((sample) => sample.routeAlignmentPx || 0),
-    );
-    if (spreadPx.routeAlignmentPx > tolerance)
-      failures.push(
-        `a ride drifts ${spreadPx.routeAlignmentPx.toFixed(4)} px off the railway's own lane`,
-      );
-    const worstSpacingSpread = Math.max(
-      ...samples.map((sample) => sample.spacingSpreadPx || 0),
-    );
-    if (worstSpacingSpread > tolerance)
-      failures.push(
-        `lanes are unevenly spaced by ${worstSpacingSpread.toFixed(4)} px`,
-      );
-    const laneOrders = [...new Set(samples.map((sample) => sample.laneOrder))];
-    if (laneOrders.length !== 1)
-      failures.push(`lane order changes with zoom: ${laneOrders.join(" / ")}`);
-
-    return {
-      zooms,
-      laneCount,
-      lanes,
-      tolerancePx: tolerance,
-      samples,
-      spreadPx,
-      laneOrder: laneOrders.length === 1 ? laneOrders[0] : null,
-      laneOrderStable: laneOrders.length === 1,
-      failures,
-      ok: failures.length === 0,
-    };
-  }
 
   global.RailMapStyle = {
     buildBaseStyle,
@@ -1859,15 +1467,7 @@
     railwayScaleAt,
     railwayScreenPaintEntries,
     RAILWAY_STYLE,
-    parallelLaneCentreDistancePx,
-    parallelLaneMultipliers,
-    parallelBundleWidthPx,
-    parallelLaneOffset,
-    validateParallelZoomStability,
     evaluateScreenValue,
-    PARALLEL_LANE_LAYERS,
-    ZOOM_STABILITY_ZOOMS,
-    ZOOM_STABILITY_TOLERANCE_PX,
     stationFill,
     stationStroke,
     RAILWAY_FULL_WEIGHT_METERS_PER_PIXEL,
@@ -1892,8 +1492,6 @@
     SEGMENTS_LAYER,
     SEGMENTS_CASING_LAYER,
     STATIONS_LAYER,
-    STATION_LANES_SOURCE,
-    STATION_LANES_LAYER,
     STATION_LABELS_SOURCE,
     STATIONS_LABEL_LAYER,
     SEGMENTS_LABEL_LAYER,

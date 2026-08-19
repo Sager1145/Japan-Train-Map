@@ -26,7 +26,7 @@ auditable
 
 1. 先判定问题属于哪一层；
 2. 再使用该层适用的证据和不变量；
-3. 优先复用当前 compact package、`parts`、`segments`、`railwayId`、`lane`、`stationLanes`、`line-offset` 和现有验证器；
+3. 优先复用当前 compact package、`parts`、`segments`、`railwayId` 和现有验证器；
 4. 概念分层和正确性不变量必须成立，但不强制一次性改写全部存储结构；
 5. 只有当前结构无法表达已证明的正确结果时，才增加最小字段、适配层或中间产物；
 6. 不得用通过旧验证器作为拒绝正确性修复的依据。
@@ -343,7 +343,6 @@ CanonicalDisplayEdge {
   id
   source_physical_edge_ids[]
   canonical_display_geometry_by_lod
-  resolved_signed_lane
   resolved_line_offset_by_zoom
   from_display_node
   to_display_node
@@ -366,7 +365,7 @@ DisplayEdgeRef {
 
 ### 3.7 Rendered Feature Layer
 
-最终 MapLibre 图层、圆点、线宽、casing、label、`line-offset` 和 LOD。该层只能从 DisplayPath 和站点显示锚点派生。
+最终 MapLibre 图层、圆点、线宽、casing、label 和 LOD。该层只能从 DisplayPath 和站点显示锚点派生。
 
 不同渲染层允许使用不同 filter、颜色、透明度、宽度、casing、排序和显隐，但同一个 `canonical_display_edge_id` 在相同 zoom/LOD 下必须解析为完全相同的：
 
@@ -375,8 +374,6 @@ display geometry
 segment boundaries
 junction coordinates
 traversal alignment
-signed lane
-line-offset
 LOD selection
 ```
 
@@ -389,11 +386,11 @@ LOD selection
 - 用 Apple Maps 彩色服务线定义物理股道；
 - 用 RailwayIdentity 终点代替 ServicePath 的下一事件；
 - 用换乘 connector 作为列车轨道；
-- 用 lane 偏移后的坐标覆盖 PhysicalEdge 或站点 routable anchor；
+- 用任何显示期位移后的坐标覆盖 PhysicalEdge 或站点 routable anchor；
 - 因显示线重合就断言物理共轨；
 - 因物理共轨就强制所有显示身份完全重合；
 - 为了让圆点“看起来在线上”创建 stub、引线或伪造短轨道。
-- 为全部线路和已乘坐线路分别执行 map matching、拼接、snap、简化、平滑或 lane 计算；
+- 为全部线路和已乘坐线路分别执行 map matching、拼接、snap、简化或平滑；
 - 在已乘坐记录中保存可独立漂移的完整坐标副本，而不是引用 CanonicalDisplayEdge。
 
 ---
@@ -721,19 +718,21 @@ UNKNOWN
 - 不分别拟合漂移的近似线；
 - 允许不同方向和不同显示样式。
 
-### 7.2 Display Lane
+### 7.2 共享走廊按实测几何绘制（**2026-08-18 起：不做屏幕平移**）
 
-独立 DisplayIdentity 共享走廊时可以获得有符号 `signed_lane`，通过 MapLibre `line-offset` 分离。
+独立 DisplayIdentity 共享走廊时，**各自按自己实测到的几何绘制，不做任何屏幕空间平移**。
 
-- lane 是屏幕空间显示语义；
-- 同一对线路不得在走廊中无故换边；
-- 反向数字化必须在计算 lane 顺序前校正；
-- station display marker 必须使用同一显示路径和 lane；
-- lane 不得写回 PhysicalEdge、routable anchor 或原始 source geometry。
+- 曾经的 `signed_lane` / MapLibre `line-offset` 分道机制**已整体移除**（渲染、包表、样式契约、
+  专属测试一并删除）；不得再引入「为了让两条线看得见而把其中一条推向一侧」的方案；
+- 两条铁路在图上分不分得开，取决于**它们的实测轨道本身分不分得开**——分不开就说明几何该修，
+  或该走廊本来就只有一条实体轨道；
+- station display marker 落在它自己那条线的几何上，不再有第二套「车道站台」标记；
+- 由此，显示坐标恒等于实测坐标：不存在只在渲染期产生、需要反算回源几何的位移。
 
-### 7.3 route 数不等于 lane 数
+### 7.3 route 数不等于绘制次数
 
-同一物理铁路上的多个 route/service 默认复用一个 DisplayIdentity，不得仅因 route 数量机械展开 lane。屯门轻铁等多 route 共用轨道的网络继续按经验证的 collapse 逻辑处理。
+同一物理铁路上的多个 route/service 默认复用一个 DisplayIdentity，**不得仅因 route 数量把同一条
+轨道画很多遍**。屯门轻铁等多 route 共用轨道的网络继续按经验证的 collapse 逻辑处理。
 
 但这是一项显示产品策略，不是物理事实：若明确产品需求或可读性证据要求区分服务，可以建立额外 DisplayIdentity；仍不得复制 PhysicalEdge。
 
@@ -834,7 +833,6 @@ path coordinates
 junction position
 segment boundary
 branch choice
-lane and line-offset
 LOD geometry
 station display anchoring
 ```
@@ -989,13 +987,13 @@ N02 的稀疏站间直线连接正确点位。登记几何可按审计站序自�
 像札幌的函館線两笔画一样共享 railway identity 与 lane：北段 → 同一实体节点 → 南段的切线
 转角应小于 5°，不能因轨道吸附或屏幕车道偏移而拆成两个点。
 
-**R14 junction lane 是最终 render model 的拓扑约束。** `lanes[]` 仍是最终几何的纯函数，
-但 corridor 检测结束后必须按 `railwayIdentity + station point` 做 junction pass：只有两笔、
-且双方都以该站为端点的 A 类连续线，将同一个 screen-side lane 穿过节点（若登记方向相反，
-stored signed lane 反号）；三臂或更多的 B 类分岔在站前退出 lane，并以正常 ramp 回到 lane 0。
-因此 station feature、线路和乘车切片仍用同一 lane profile，且分支角度不会把两个 lane icon
-推向不同屏幕位置。验收不比较源坐标而已：必须从 `buildNetworkFromCompactPackage()` 读取
-最终 station/stationLane feature，再核对可见 lane、坐标和切线。
+**R14（2026-08-18 废止）屏幕空间车道已整体移除。** 原 R14 要求共享走廊的独立铁路取得
+signed lane、并让 station feature 与乘车切片跟随同一 lane profile。该机制（包 `lanes` 表的渲染
+消费、`line-offset`/`icon-offset`、车道站台标记层、车道诊断与其专属测试）已按用户指令删除：
+每条线一律画在**自己的实测几何**上，渲染坐标恒等于源坐标。连续性验收因此只看
+「两侧区间共享同一个实体 junction point、`railwayIdentity` 相同、切线差 <5°」，
+不再有 lane 一项。两条线在图上叠住时，判据是**它们是不是同一条轨道被画了两次**，
+而不是该把谁推开。
 
 ---
 
@@ -1612,7 +1610,7 @@ Apple 可能在高缩放以 logo 替代圆点、显示蓝灰站区面，并按�
 每个可见圆点必须：
 
 - 中心落在对应最终绘制 DisplayPath 的中心线上；
-- 使用与该线相同的 signed lane、方向和 offset 公式；
+- 使用与该线相同的显示几何与方向；
 - 多线换乘时分别锚定各自显示线；
 - 不使用 stub、引线或伪造 segment 接回；
 - 不因 LOD 改变站点身份；
@@ -1644,15 +1642,15 @@ Apple 可能在高缩放以 logo 替代圆点、显示蓝灰站区面，并按�
 
 测试必须区分 `independent_lod_omission` 与 `station_merge`。
 
-### 16.5 平行显示走廊
+### 16.5 平行显示走廊（**不做屏幕平移**）
 
 - `displayRailwayId` 表示需要独立显示的铁路身份；
-- route/service 数不自动增加 lane；
-- 独立显示身份共享走廊时可使用 signed lane；
-- 点和线必须共享 lane 计算；
-- 支线离开共享走廊后回到正确中心线；
-- 保留跨 zoom 归一化稳定和不换边契约；
-- 不为复制 Apple 的低缩放粘连而删除本项目的可读性分道。
+- route/service 数不改变同一条轨道被画的次数；
+- 独立显示身份共享走廊时，**各画各的实测几何，不做屏幕空间平移**；
+- 点和线同源：站点圆点落在它自己那条线的几何上；
+- 支线离开共享走廊后回到自己的实测中心线；
+- 两条线在图上重叠到看不清时，先查是不是**同一条轨道被画了两次**（见重复绘制检测），
+  而不是把其中一条推开。
 
 ### 16.6 密集分支网络与交叉口
 
@@ -2036,7 +2034,7 @@ outputs/railway-audit/railway-audit.txt
 outputs/railway-audit/railway-audit.json
 ```
 
-并查找五国 compact package、station layer、`minz`、`stationLanes`、`line-offset`、`line-dasharray`、line labels、route graph 和 transfer connector。
+并查找五国 compact package、station layer、`minz`、`line-dasharray`、line labels、route graph 和 transfer connector。
 
 ### 21.2 修改前验证
 

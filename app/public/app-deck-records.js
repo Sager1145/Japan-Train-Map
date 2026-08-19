@@ -406,20 +406,6 @@ function buildDeckOverlapMap(items) {
   };
 }
 
-// Merge the simplified vertex subset with the exact run-boundary vertices
-// (both ascending original indices), so lane transitions bend precisely where
-// the overlap membership changes — never displaced by the simplification.
-// Every vertex at which the lane value changes. These are the ride's own
-// ramp steps: dropping one to simplification would move the sideways step off
-// the metre its railway takes it on.
-function laneChangeIndices(vertexLanes) {
-  if (!vertexLanes) return null;
-  const out = [];
-  for (let i = 1; i < vertexLanes.length; i += 1)
-    if (vertexLanes[i] !== vertexLanes[i - 1]) out.push(i);
-  return out.length ? out : null;
-}
-
 function mergeDrawnIndices(keepIdx, runs, nSeg, extraIdx) {
   if (!keepIdx) {
     const all = new Array(nSeg + 1);
@@ -537,15 +523,6 @@ function buildDeckRouteRecords(items) {
     getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }, lineIdx) => {
       if (!orig || orig.length < 2) return;
       const nSeg = orig.length - 1;
-      // The lane this ride sits in, vertex by vertex — stamped on the feature
-      // by canonicalizeRouteFeature from the very profile its railway is drawn
-      // with. Absent (the overwhelmingly common case) the ride is on the
-      // centre-line and nothing below changes.
-      const vertexLanes =
-        (feature.properties &&
-          feature.properties.display_lanes &&
-          feature.properties.display_lanes[lineIdx]) ||
-        null;
       // Per ORIGINAL segment: sharing-train set, this train's lane slot and
       // the signed lane multiplier (slots centered around the true track).
       const segIds = new Array(nSeg);
@@ -620,16 +597,8 @@ function buildDeckRouteRecords(items) {
         }
       }
       runs.push({ a, b: nSeg }); // each run spans original vertices [a .. b]
-      // Drawn vertices: the simplified subset + the exact run boundaries + the
-      // vertices where the lane changes, so a ride eases into its lane on the
-      // same vertices its railway does instead of on whichever ones survived
-      // simplification.
-      const drawnIdx = mergeDrawnIndices(
-        keepIdx,
-        runs,
-        nSeg,
-        laneChangeIndices(vertexLanes),
-      );
+      // Drawn vertices: the simplified subset plus the exact run boundaries.
+      const drawnIdx = mergeDrawnIndices(keepIdx, runs, nSeg, null);
       const drawn = new Array(drawnIdx.length);
       const posOf = new Map(); // original index -> position in drawn
       for (let k = 0; k < drawnIdx.length; k += 1) {
@@ -788,30 +757,7 @@ function buildDeckRouteRecords(items) {
           edate,
           dspan: daySpan.key,
         };
-        if (!vertexLanes) {
-          records.push({ ...base, path: runLine, lane: 0 });
-          return;
-        }
-        // Consecutive pieces SHARE their boundary vertex, so the round caps
-        // overlap and the eased step never opens a hairline in the ride.
-        let pieceStart = 0;
-        let pieceLane = vertexLanes[drawnIdx[ka]] || 0;
-        for (let k = 1; k < runLine.length; k += 1) {
-          const lane = vertexLanes[drawnIdx[ka + k]] || 0;
-          if (lane === pieceLane) continue;
-          records.push({
-            ...base,
-            path: runLine.slice(pieceStart, k + 1),
-            lane: pieceLane,
-          });
-          pieceStart = k;
-          pieceLane = lane;
-        }
-        records.push({
-          ...base,
-          path: runLine.slice(pieceStart),
-          lane: pieceLane,
-        });
+        records.push({ ...base, path: runLine, lane: 0 });
       });
 
       // ── one expand record for the whole line (true-track geometry) ──

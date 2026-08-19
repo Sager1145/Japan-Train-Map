@@ -3,8 +3,15 @@ import test from "node:test";
 
 import { buildAudit } from "../scripts/validation/audit-japan-multiline-stations.mjs";
 
+// osm: false on purpose. The station-zone basemap comparison and the
+// duplicate-stroke adjudication both read the machine-local OSM cell cache
+// that validate-basemap-alignment.mjs --fetch downloads; CI has no cache, and
+// a contract test that changes its scope depending on whether a 118 MB
+// download happened is not a contract. Those two live in their own audits
+// (audit-duplicate-strokes.mjs, and the basemap columns of audit.csv).
 let auditPromise;
-const audit = () => (auditPromise ||= Promise.resolve().then(() => buildAudit()));
+const audit = () =>
+  (auditPromise ||= Promise.resolve().then(() => buildAudit({ osm: false })));
 
 test("every discovered Japanese multi-line station satisfies the render-junction contract", async () => {
   const report = await audit();
@@ -12,11 +19,6 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   assert.equal(report.summary.multi_display_line_groups, 880);
   assert.ok(report.summary.audited_station_groups >= report.summary.multi_display_line_groups);
   assert.equal(report.summary.fix_required, 0);
-  assert.equal(report.summary.stored_lanes_equal_pure_recomputation, true);
-  assert.equal(
-    report.summary.stored_lane_rows,
-    report.summary.recomputed_lane_rows,
-  );
 
   for (const station of report.station_groups) {
     assert.deepEqual(station.validation_errors, [], station.station_name);
@@ -41,7 +43,6 @@ test("every discovered Japanese multi-line station satisfies the render-junction
       assert.equal(relationship.exact_source_coordinate_equal, true);
       assert.equal(relationship.exact_render_coordinate_equal, true);
       assert.equal(relationship.railway_identity_equal, true);
-      assert.equal(relationship.lane_equal, true);
       if (relationship.classification === "A")
         assert.ok(
           relationship.continuation_tangent_difference_degrees < 5,
