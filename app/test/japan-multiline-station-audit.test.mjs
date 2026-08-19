@@ -16,7 +16,13 @@ const audit = () =>
 test("every discovered Japanese multi-line station satisfies the render-junction contract", async () => {
   const report = await audit();
   assert.equal(report.summary.physical_station_groups_in_package, 9039);
-  assert.equal(report.summary.multi_display_line_groups, 880);
+  // 881 since 2026-08-19: ユーカリが丘線's 公園 is drawn by two strokes now
+  // (the residential ring and the ユーカリが丘 tail meet there), so it enters
+  // the multi-line set. 塩尻 was already in it — its count went 3 strokes to 4.
+  // 876 on 2026-08-19: 大垣, 伊万里 and 赤羽 are drawn by one stroke each now
+  // that the trunks run through them, and 室/西大垣/川東/東山代 lose the
+  // sibling stroke that used to double them.
+  assert.equal(report.summary.multi_display_line_groups, 876);
   assert.ok(report.summary.audited_station_groups >= report.summary.multi_display_line_groups);
   assert.equal(report.summary.fix_required, 0);
 

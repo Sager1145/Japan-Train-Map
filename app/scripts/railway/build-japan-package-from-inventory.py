@@ -166,6 +166,31 @@ REANCHOR_DETOUR_FLOOR_M = 300.0
 # the same kind the 2026-08-13 audit deleted twelve of, not a loop to draw.
 MIN_RING_STATIONS = 4
 
+# An interval that comes this close to the platform it is heading for and then
+# travels this many times that distance to finish has run PAST its own station
+# and come back. 東北線-4's 王子 → 日暮里 passed 52 m from the 日暮里 anchor,
+# carried on 247 m down a parallel alignment, turned 168° and came back — 512 m
+# of movement no train makes, bought because it brought the interval nearer the
+# 6.282 km the audit states (a 26 % shortfall either way).
+#
+# The two numbers are the renderer's own fold test (rail-network.js
+# FOLD_RETURN_METERS / FOLD_RATIO), so the builder refuses to draw the shape the
+# renderer would have to trim.
+#
+# This can only PREFER a fold-free path over a folding one at the same two
+# anchors, never invent one, which is what keeps real reversals intact: at 真幸
+# and 新改 the switchback IS the only track, every candidate folds, and the
+# choice is unchanged. Geometry alone cannot separate the two — 真幸's return
+# leg runs 20 m from its outbound one and 日暮里's runs 35 m — so the test is
+# never asked to; it only asks whether the same journey can be made without the
+# fold.
+PLATFORM_FOLD_NEAR_M = 250.0
+PLATFORM_FOLD_RATIO = 2.0
+# Candidates the fold test is worth assembling, best distance match first. The
+# walk finds one route per way round a corridor, so the honest alternative to a
+# fold is always among the first few.
+PLATFORM_FOLD_CANDIDATES = 24
+
 # How badly a station's own anchor has to disagree with the measured
 # kilometrage before another of its platforms may be tried instead. Small
 # disagreements are normal — the audit measures a route, this draws track — and
@@ -602,7 +627,12 @@ class TrackGraph:
             nkey(end_coords[0]): end["measure_m"],
             nkey(end_coords[-1]): self.length_m(end["section"]) - end["measure_m"],
         }
-        best = None
+        # The closest PLATFORM_FOLD_CANDIDATES matches, kept as a bounded
+        # max-heap on the distance miss so a corridor with thousands of routes
+        # costs the same as one with three. `rank` breaks ties without ever
+        # comparing the walks themselves.
+        scored = []
+        rank = 0
         seen = 0
         for head_node, head_len in (
             (nkey(start_coords[0]), start["measure_m"]),
@@ -614,8 +644,13 @@ class TrackGraph:
                 node, length, walked, visited = stack.pop()
                 if node in end_ends and walked:
                     total = length + end_ends[node]
-                    if best is None or abs(total - target_m) < abs(best[0] - target_m):
-                        best = (total, walked, head_node, node)
+                    miss = abs(total - target_m)
+                    entry = (-miss, rank, total, walked, head_node, node)
+                    rank += 1
+                    if len(scored) < PLATFORM_FOLD_CANDIDATES:
+                        heapq.heappush(scored, entry)
+                    elif miss < -scored[0][0]:
+                        heapq.heapreplace(scored, entry)
                 if length > limit:
                     continue
                 for other, index in self.adjacency[node]:
@@ -629,9 +664,33 @@ class TrackGraph:
                             visited | {other},
                         )
                     )
-        if best is None:
+        if not scored:
             return None
-        total, walked, head_node, end_node = best
+        candidates = [
+            (total, walked, head, node)
+            for _miss, _rank, total, walked, head, node in sorted(
+                scored, key=lambda item: -item[0]
+            )
+        ]
+
+        # Best distance match first, but a path that runs PAST the platform it
+        # is heading for and comes back is not track a service uses, so it may
+        # not win on distance. Try the closest matches in turn and take the
+        # first that reaches the station without folding.
+        end_point = self.geometry_lib.point_at(
+            [list(point) for point in end_coords],
+            self.measures[end["section"]],
+            end["measure_m"],
+        )
+        for total, walked, head_node, end_node in candidates:
+            assembled = self._assemble(
+                start, end, list(walked), head_node, end_node, total
+            )
+            if not folds_past_point(assembled[0], end_point):
+                return assembled
+        # Every route here folds, so the track itself reverses into this
+        # station — 真幸, 新改, 出雲坂根. Draw the best match, as before.
+        total, walked, head_node, end_node = candidates[0]
         return self._assemble(start, end, list(walked), head_node, end_node, total)
 
     def path_between(self, start, end, exclude=()):
@@ -694,6 +753,35 @@ class TrackGraph:
             cursor = parent
         walked.reverse()
         return self._assemble(start, end, walked, cursor, node, total)
+
+
+def folds_past_point(coords, point):
+    """Does this path reach `point`, carry on, and come back to it?
+
+    Walked from the far end: a vertex within PLATFORM_FOLD_NEAR_M of the target
+    that still costs PLATFORM_FOLD_RATIO times its own distance to finish from
+    is a vertex the path had already arrived at and then left. An honest
+    approach spends its last metres getting closer, so its run and its distance
+    stay in step and the ratio is never reached.
+    """
+    if len(coords) < 3:
+        return False
+    scale = 111_320 * math.cos(math.radians(point[1]))
+    run = 0.0
+    for index in range(len(coords) - 2, -1, -1):
+        nxt = coords[index + 1]
+        run += math.hypot(
+            (coords[index][0] - nxt[0]) * scale, (coords[index][1] - nxt[1]) * 111_320
+        )
+        if run > PLATFORM_FOLD_NEAR_M * 8:
+            return False
+        gap = math.hypot(
+            (coords[index][0] - point[0]) * scale,
+            (coords[index][1] - point[1]) * 111_320,
+        )
+        if gap <= PLATFORM_FOLD_NEAR_M and run >= PLATFORM_FOLD_RATIO * max(gap, 1.0):
+            return True
+    return False
 
 
 def join(coords, piece):
@@ -833,6 +921,7 @@ def partition_by_audit(row, edges, uid_by_name):
 
     branches = []
     undrawable = []
+    junctions = set()
     for part in branch_parts:
         members = [uid_by_name[name] for name in part.get("stations", []) if name in uid_by_name]
         if len(members) < 2:
@@ -843,6 +932,11 @@ def partition_by_audit(row, edges, uid_by_name):
             undrawable.append(part.get("type", "part"))
             continue
         branches.append((part.get("type", "branch"), set(members)))
+        junctions |= {
+            uid_by_name[name]
+            for name in part.get("junctions", [])
+            if name in uid_by_name
+        }
 
     if not branches:
         return None, (
@@ -862,10 +956,23 @@ def partition_by_audit(row, edges, uid_by_name):
     # ran out onto the branch and back — 上菅谷 → 南酒出 → 常陸鴻巣 cut 4.9 km
     # over a 2.8 km gap and the topology validator caught it as a 140° branch
     # doubling back.
+    #
+    # A junction the audit NAMES is never an interior, however few neighbours it
+    # has outside the part. Two outside neighbours is what a station the trunk
+    # PASSES THROUGH has; a junction the trunk ENDS AT has one, and the test
+    # cannot tell that apart from a branch station. ユーカリが丘線 is the case:
+    # 公園 is where the ユーカリが丘 tail meets the residential ring, so peeling
+    # it left the trunk as 地区センター–ユーカリが丘 and the 449 m 公園–地区セン
+    # ター interval drawn by nobody — a visible break between the two strokes.
+    # 中央線's 塩尻, where the 辰野支線 leaves, lost みどり湖–塩尻 the same way.
+    # Which stations join a part to the rest of the line is not a question to
+    # re-derive from degree: the audit states it per part, in `junctions`.
     interiors = set()
     for _kind, members in branches:
         interiors |= {
-            uid for uid in members if len(neighbours[uid] - members) < 2
+            uid
+            for uid in members - junctions
+            if len(neighbours[uid] - members) < 2
         }
 
     main_nodes = {uid for pair in edges for uid in pair} - interiors
@@ -878,9 +985,25 @@ def partition_by_audit(row, edges, uid_by_name):
 
     parts = [("", main_order, bool(main_flag))]
     for index, (kind, members) in enumerate(branches, start=2):
+        # A hop between two junctions is not this part's to draw. Both of them
+        # stay on the trunk, so the trunk already holds that pair — and the cut
+        # is a shortest path between two station anchors, which returns the SAME
+        # track for the same pair however many alignments really run between
+        # them. 上越線's 湯檜曽–土合 variant is the whole of the 下り線 新清水
+        # トンネル and would have come out as a second copy of the 上り線 stroke;
+        # 東海道線's 梅田貨物線 the same over 新大阪–大阪. compact-v1 addresses
+        # geometry by station pair and so cannot hold a second alignment between
+        # one pair: that corridor is reported uncovered, not drawn twice.
         branch_edges = sorted(
-            pair for pair in edges if pair[0] in members and pair[1] in members
+            pair
+            for pair in edges
+            if pair[0] in members
+            and pair[1] in members
+            and not (pair[0] in junctions and pair[1] in junctions)
         )
+        if not branch_edges:
+            undrawable.append(kind)
+            continue
         order, flag = station_order(branch_edges)
         if order is None:
             return None, f"audited {kind} part is not a simple chain: {flag}"

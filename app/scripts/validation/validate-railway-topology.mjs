@@ -18,6 +18,8 @@
  *   duplicate_segment          repeated vertices inside one stroke
  *   sharp_artificial_turn      a corner too tight to be track (fold or switchback)
  *   interval_overshoots_audit  an interval drawn far past the distance it was audited to
+ *   interval_doubles_back_at_station  an interval that reaches its own platform and carries on
+ *   reversal_joint_redraws_track      a reversal that leaves along the interval it arrived on
  *   parallel_spacing_*         independent railways sharing a corridor
  *
  * Usage:
@@ -36,6 +38,7 @@ import { createRequire } from "node:module";
 
 import {
   angleBetweenHeadings,
+  coincidentRunMeters,
   createEdgeIndex,
   displayParts,
   distanceMeters,
@@ -43,6 +46,7 @@ import {
   pathLengthMeters,
   resample,
   sharedTrackPrefix,
+  stationApproachFold,
   straightRunMeters,
   turnDegrees,
 } from "../railway/lib/railway-topology.mjs";
@@ -154,6 +158,27 @@ const INTERVAL_DETOUR_FACTOR = 1.3;
 const INTERVAL_DETOUR_FLOOR_METERS = 300;
 const INTERVAL_GROSS_FACTOR = 3.0;
 const INTERVAL_GROSS_FLOOR_METERS = 2000;
+// ── the renderer's own numbers, mirrored ──────────────────────────────────
+// rail-network.js decides what counts as track re-used rather than track
+// newly laid, and the audit must not hold a second opinion: a reversal it
+// calls a defect while the renderer calls it a branch would be the audit
+// grading its own guess. test/railway-topology-audit.test.js reads both out of
+// rail-network.js, so the mirror cannot drift.
+//
+//   RETRACE_MIN_TAIL_METERS  what is left of an interval after its retraced
+//                            head is trimmed has to be REAL RAILWAY, not a
+//                            stub of rounding noise.
+//   RETRACE_MIN_RUN_METERS   only a SUSTAINED run of re-used track is a
+//                            retrace; a few metres at a station boundary are
+//                            unavoidable.
+const RENDERER_REAL_TRACK_METERS = 150;
+const RENDERER_RETRACE_RUN_METERS = 600;
+// A fold at a platform is an excursion out and the same excursion back, so its
+// surplus is twice the arm. One arm has to be real railway by the renderer's
+// own floor before the audit calls it anything — under that it is a survey
+// wobble in a station throat, and the packages carry a handful (東日本 京葉線
+// at 二俣新町 wanders 70 m; 上越線's tunnel mouth at 土樽, 40 m).
+const APPROACH_FOLD_METERS = 2 * RENDERER_REAL_TRACK_METERS;
 // A single edge longer than this is worth checking. Most are legitimate: a
 // Shinkansen tunnel is digitised as one long gentle chord. It is only a hole
 // when the chord leaves the official alignment, which needs a reference
@@ -398,6 +423,153 @@ function checkIntervalDistances(line, problems) {
       at: coordinates[Math.floor(coordinates.length / 2)],
     });
   });
+}
+
+/**
+ * Every reversal in the line's own interval geometry — the audit's one
+ * remaining blind spot until now.
+ *
+ * The drawn map cannot show these. Where the line turns back on itself BETWEEN
+ * two intervals, the renderer breaks the stroke there (rail-network.js
+ * isReversalJoint → flush, and the retrace split beside it), so the reversal
+ * leaves no corner in the drawn geometry for sharp_artificial_turn to find; a
+ * fold that turns round INSIDE an interval is trimmed by the stroke-end guard
+ * or smoothed out by the groomer. Measured over the shipped packages, the
+ * drawn network keeps 14 of the 48 corners the interval chain has: 34 of them
+ * are invisible, and the great majority are perfectly correct — Japan reverses
+ * trains at 藤沢, 柏, 飯能, 早岐, 遠軽, 会津若松, 十和田南 and a dozen more,
+ * and breaking the stroke there is the right drawing.
+ *
+ * So this does not report reversals. It reports the two shapes a reversal
+ * takes when it is NOT one, both measured on the package's own intervals:
+ *
+ *   interval_doubles_back_at_station  the interval reaches its own platform
+ *                                     and then lays hundreds more metres
+ *                                     before ending there. A terminal reversal
+ *                                     does not do this — the two legs meet
+ *                                     their platform end-on and stop, which is
+ *                                     what makes 藤沢 and 柏 silent here. A
+ *                                     switchback does, and says so: it is the
+ *                                     same shape, and only a human can tell
+ *                                     which, exactly as sharp_artificial_turn
+ *                                     has to.
+ *
+ *   reversal_joint_redraws_track      the interval leaving the reversal is
+ *                                     drawn back down the one that arrived.
+ *                                     Sharing the rail from platform to switch
+ *                                     is the branch contract and every real
+ *                                     reversal does it for a few hundred
+ *                                     metres; spending more of the interval on
+ *                                     the neighbour's rail than on rail of its
+ *                                     own is a station order the track cannot
+ *                                     honour.
+ *
+ * Every joint is reported as a fact either way, so a reader can see that a
+ * line reverses at 藤沢 and how much rail the two legs share there.
+ */
+function checkHiddenReversals(line, problems) {
+  const segments = line.compactLine?.segments;
+  const stations = line.compactLine?.stations;
+  if (!Array.isArray(segments) || !Array.isArray(stations)) return [];
+
+  // The intervals as the package stores them, with both ends brought onto the
+  // authoritative platform anchors — the same two vertices decodeIntervals
+  // welds, so the audit measures the geometry the renderer starts from.
+  const intervals = segments.map((segment, index) => {
+    const coordinates = (segment?.[2] || []).map((point) => [point[0], point[1]]);
+    const from = stations[index];
+    const to = stations[(index + 1) % stations.length];
+    if (coordinates.length < 2 || !from || !to) return null;
+    coordinates[0] = [from[2], from[3]];
+    coordinates[coordinates.length - 1] = [to[2], to[3]];
+    return { coordinates, from, to };
+  });
+
+  // ── a fold at the interval's own platform ──
+  intervals.forEach((interval, index) => {
+    if (!interval) return;
+    const { coordinates, from, to } = interval;
+    for (const [station, walk] of [
+      [to, coordinates],
+      [from, coordinates.slice().reverse()],
+    ]) {
+      const fold = stationApproachFold(walk, [station[2], station[3]], {
+        touchMeters: STATION_TOUCH_METERS,
+      });
+      if (fold.excessMeters < APPROACH_FOLD_METERS) continue;
+      problems.push({
+        code: "interval_doubles_back_at_station",
+        severity: "WARNING",
+        detail:
+          `${from[1]}→${to[1]} is already ${fold.chordMeters.toFixed(0)} m from ${station[1]} ` +
+          `with ${fold.trackMeters.toFixed(0)} m of track still to lay (+${fold.excessMeters.toFixed(0)} m) — ` +
+          `it runs past its own platform and comes back, which is a switchback ` +
+          `or a fold, and only a human can tell which`,
+        at: [station[2], station[3]],
+      });
+    }
+  });
+
+  // ── a reversal at the joint between two intervals ──
+  const reversals = [];
+  for (let index = 0; index + 1 < intervals.length; index += 1) {
+    const incoming = intervals[index];
+    const outgoing = intervals[index + 1];
+    if (!incoming || !outgoing) continue;
+    const joint = incoming.coordinates[incoming.coordinates.length - 1];
+    // Only a joint the two intervals actually meet at can reverse; a gap is
+    // somebody else's defect.
+    if (distanceMeters(joint, outgoing.coordinates[0]) > ENDPOINT_STATION_METERS)
+      continue;
+    // Both headings over a real span of track, never off the two vertices
+    // touching the joint: surveyed vertices can be a metre apart and say
+    // nothing about which way the rail runs. Same span the corner test calls
+    // "more track than any survey wobble".
+    const arriving = localHeading(
+      incoming.coordinates,
+      incoming.coordinates.length - 1,
+      -1,
+      SHARP_TURN_RUN_METERS,
+    );
+    const leaving = localHeading(outgoing.coordinates, 0, +1, SHARP_TURN_RUN_METERS);
+    const deflection = angleBetweenHeadings(arriving, leaving);
+    if (deflection == null || deflection < SHARP_TURN_DEGREES) continue;
+
+    const incomingMeters = pathLengthMeters(incoming.coordinates);
+    const reusedMeters = coincidentRunMeters(
+      incoming.coordinates.slice().reverse(),
+      outgoing.coordinates,
+      SHARED_TRACK_OVERLAP_METERS,
+    );
+    reversals.push({
+      station: incoming.to[1],
+      intervalIndex: index,
+      deflectionDegrees: deflection,
+      reusedMeters,
+      incomingMeters,
+      outgoingMeters: pathLengthMeters(outgoing.coordinates),
+      at: joint,
+    });
+    // Both arms, so that neither a long shared throat on a short interval nor
+    // a percentage of a hundred metres counts on its own. 成田 hands its
+    // 我孫子支線 694 m of the rail it arrived on and 会津若松 hands 1 020 m,
+    // and both are the switch really being that far out of the platform.
+    if (
+      reusedMeters >= RENDERER_RETRACE_RUN_METERS &&
+      reusedMeters > incomingMeters - reusedMeters
+    )
+      problems.push({
+        code: "reversal_joint_redraws_track",
+        severity: "WARNING",
+        detail:
+          `the line reverses at ${incoming.to[1]} (${deflection.toFixed(0)}°) and leaves along ` +
+          `${(reusedMeters / 1000).toFixed(2)} km of the ${(incomingMeters / 1000).toFixed(2)} km ` +
+          `interval it arrived on — more of that interval is redrawn than is left of it, so ` +
+          `${incoming.from[1]}→${incoming.to[1]}→${outgoing.to[1]} is an order no track joins up`,
+        at: joint,
+      });
+  }
+  return reversals;
 }
 
 /**
@@ -773,7 +945,12 @@ function detectCorridors(parts) {
 
 // ── the audit ────────────────────────────────────────────────────────────────
 
-export { RENDER_STYLE };
+export {
+  RENDER_STYLE,
+  RENDERER_REAL_TRACK_METERS,
+  RENDERER_RETRACE_RUN_METERS,
+  APPROACH_FOLD_METERS,
+};
 
 // ── route ↔ railway lane alignment ───────────────────────────────────────────
 //
@@ -978,6 +1155,7 @@ export function auditCountry(country, options = {}) {
     const problems = [];
     checkPartsAndStations(line, problems, referenceIndex);
     checkIntervalDistances(line, problems);
+    const reversals = checkHiddenReversals(line, problems);
     const branches = checkBranches(line, problems);
     lineReports.push({
       lineId: line.lineId,
@@ -989,6 +1167,7 @@ export function auditCountry(country, options = {}) {
       partCount: (line.parts || []).length,
       stationCount: (line.stationOrder || []).length,
       branches,
+      reversals,
       problems,
     });
   }
@@ -1107,6 +1286,8 @@ const GEOMETRY_CODES = [
   "duplicate_segment",
   "sharp_artificial_turn",
   "interval_overshoots_audit",
+  "interval_doubles_back_at_station",
+  "reversal_joint_redraws_track",
 ];
 
 function renderLine(line) {
@@ -1118,6 +1299,17 @@ function renderLine(line) {
   rows.push(
     `  Completeness: ${statusFor(line.problems, COMPLETENESS_CODES)}   Topology: ${statusFor(line.problems, TOPOLOGY_CODES)}   Geometry: ${statusFor(line.problems, GEOMETRY_CODES)}`,
   );
+  // Where the line turns round. The drawn map breaks its stroke here and the
+  // shape stops existing, so this is the only place a reader can see that the
+  // package has 藤沢 reversing and how much rail the two legs share doing it.
+  for (const reversal of line.reversals || []) {
+    rows.push(
+      `  Reversal at ${reversal.station} (interval ${reversal.intervalIndex}→${reversal.intervalIndex + 1}): ` +
+        `${reversal.deflectionDegrees.toFixed(0)}° · ${reversal.reusedMeters.toFixed(0)} m of the ` +
+        `${(reversal.incomingMeters / 1000).toFixed(2)} km it arrived on redrawn · own track ` +
+        `${(reversal.outgoingMeters / 1000).toFixed(2)} km`,
+    );
+  }
   for (const branch of line.branches) {
     rows.push(
       `  Branch stroke ${branch.partIndex}: joins at ${branch.connectionStation ?? "—"} ` +

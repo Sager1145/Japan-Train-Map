@@ -57,6 +57,17 @@
   // Two intervals meeting at this shallow an angle are not a curve — the line
   // is reversing onto other track (a branch), so the drawn line must break.
   const REVERSAL_MAX_DEGREES = 25;
+  // A corner no railway turns. The standing topology audit reports 110° or
+  // more carried by 60 m of track either side
+  // (scripts/validation/validate-railway-topology.mjs, SHARP_TURN_DEGREES /
+  // SHARP_TURN_RUN_METERS); nothing in here may WELD one, or the drawn network
+  // reports a defect the survey does not have.
+  const SHARP_TURN_DEGREES = 110;
+  // Turns across a joint are read over a RUN of track rather than off the two
+  // adjoining edges, for the same reason the audit reads them that way: both
+  // sides are surveyed geometry, where consecutive vertices can be a metre
+  // apart and say nothing about which way the rail runs.
+  const TURN_RUN_METERS = 60;
 
   function sameCoordinate(left, right) {
     return Boolean(
@@ -560,6 +571,64 @@
     return built.length >= 2 ? built : null;
   }
 
+  // The vertex `span` metres along `coordinates` from `from` in direction
+  // `step`, or the last one reached if the stroke ends first.
+  function windowedPoint(coordinates, from, step, span) {
+    let travelled = 0;
+    let last = null;
+    for (
+      let index = from + step;
+      index >= 0 && index < coordinates.length;
+      index += step
+    ) {
+      travelled += distanceMeters(coordinates[index - step], coordinates[index]);
+      last = coordinates[index];
+      if (travelled >= span) break;
+    }
+    return last;
+  }
+
+  // The corner the trunk would have to turn at `index` to pick `tail` up.
+  function spliceTurnDegrees(current, index, tail) {
+    const before = windowedPoint(current, index, -1, TURN_RUN_METERS);
+    const after = windowedPoint(tail, 0, +1, TURN_RUN_METERS);
+    if (!before || !after) return 0;
+    return turnDegrees(before, current[index], after);
+  }
+
+  // Do the two intervals meeting at this platform SHARE their track out of it?
+  //
+  // A branch only joins its trunk AT A STATION, so the rail between platform
+  // and switch is run over twice — once arriving, once leaving. Joined
+  // head-to-tail the pair then FOLDS back on itself instead of running
+  // through, and the nearest point on a fold is its own apex: the last
+  // surveyed vertex before the about-face. That distance is the LONGITUDINAL
+  // gap up to the platform, and reading it as a sideways displacement is how
+  // 成田 came to be drawn 93 m off its own survey — the 我孫子支線 leaves over
+  // the 600 m of rail the 佐原 main line arrives on, so the fold apex measured
+  // 205 m, and 205 m blended across the full 2.4 km window swung the main line
+  // clear of the basemap track that the 空港支線, drawn from the very same
+  // coordinates, still sat on.
+  //
+  // This is the two-sided form of the terminal rule below, and it rests on the
+  // same argument: the platform lies beyond the alignment either side can
+  // read, and the package's own final edge is better evidence than a heading
+  // extrapolated around a reversal. So the approach is left exactly as drawn.
+  function foldedAtPlatform(head, tail, cut) {
+    if (head.length < 2 || !tail.length) return false;
+    const seam = head[head.length - 1];
+    // Anywhere but the apex and the pair is not folding here: the platform sat
+    // on track one side or the other genuinely runs through.
+    if (distanceMeters(cut.point, seam) > ANCHOR_SEAM_METERS) return false;
+    const before = windowedPoint(head, head.length - 1, -1, TURN_RUN_METERS);
+    const after =
+      tail.length >= 2
+        ? windowedPoint(tail, 0, +1, TURN_RUN_METERS)
+        : tail[0];
+    if (!before || !after) return false;
+    return turnDegrees(before, seam, after) >= 180 - REVERSAL_MAX_DEGREES;
+  }
+
   // Rebuild the drawn approach on both sides of ONE platform.
   //
   // `incoming` arrives at the station and `outgoing` leaves it; either is null
@@ -590,6 +659,8 @@
 
     const cut = nearestCutOnPath(path, anchor);
     if (!cut) return null;
+    if (foldedAtPlatform(head.slice(headFrom), tail.slice(0, tailTo + 1), cut))
+      return null;
     // A cut AT the far end of what we can read means the platform lies beyond
     // the last surveyed vertex the line has — which only a terminal can do,
     // and which leaves nothing to measure it against. The package's own final
@@ -814,7 +885,22 @@
         const inCurrent = current.length
           ? nearestVertexIndex(current, divergence)
           : { index: -1, distance: Infinity };
-        if (inCurrent.distance <= RETRACE_MATCH_METERS) {
+        if (
+          inCurrent.distance <= RETRACE_MATCH_METERS &&
+          spliceTurnDegrees(current, inCurrent.index, tail) >= SHARP_TURN_DEGREES
+        ) {
+          // The tail leaves the divergence back along the way the trunk came
+          // in, so there is no trunk to carry on with: the station this
+          // interval STARTS at is a reversal, and the two legs merely share
+          // the rail between its platform and the switch. Splitting here would
+          // weld a hairpin into open track short of the platform — 成田 at the
+          // 我孫子支線 switch, 会津若松 a kilometre out — and leave the station
+          // on the branch stroke alone. Close the stroke instead, the same
+          // shape isReversalJoint draws where the two legs share no track at
+          // all, and let this interval open its own part at the station, head
+          // included, so both legs reach the platform.
+          flush();
+        } else if (inCurrent.distance <= RETRACE_MATCH_METERS) {
           // The excursion we just drew hangs off THIS part at `divergence`.
           // Split there: the far side is the branch, the trunk resumes along
           // the fresh tail, and the branch is re-served from the station this

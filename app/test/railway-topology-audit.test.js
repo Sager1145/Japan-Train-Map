@@ -204,6 +204,127 @@ test("a reversal is judged by the track either side, not the two edges touching 
   );
 });
 
+test("a reversal the drawn map breaks its stroke at is still measured", async () => {
+  const { stationApproachFold, coincidentRunMeters } = await topologyPromise;
+  const {
+    RENDERER_REAL_TRACK_METERS,
+    RENDERER_RETRACE_RUN_METERS,
+    APPROACH_FOLD_METERS,
+  } = await auditPromise;
+
+  // The audit's last blind spot. Where a line turns back on itself BETWEEN two
+  // intervals, rail-network.js breaks the drawn stroke there (isReversalJoint
+  // → flush), and where it turns back INSIDE one the stroke-end trim or the
+  // groomer removes the thorn. Either way the corner never reaches the drawn
+  // geometry, so no angle test can find it: of the 48 corners the interval
+  // chain has at or past 110°, the drawn network keeps 14.
+  //
+  // Both measures below therefore run on the PACKAGE's own intervals, which is
+  // also what makes them immune to the display layer — a station-approach
+  // rebuild can move drawn vertices by tens of metres without moving these.
+  const metresEast = 1 / (111320 * Math.cos((35.72 * Math.PI) / 180));
+  const metresNorth = 1 / 111320;
+  const at = (east, north) => [139.77 + east * metresEast, 35.72 + north * metresNorth];
+  const platform = at(0, 0);
+
+  // An honest approach: the line comes in and stops. Every vertex inside the
+  // platform's touch radius has as much track left as it has distance left.
+  const arrival = [at(0, -900), at(0, -400), at(0, -120), at(0, -40), platform];
+  assert.equal(stationApproachFold(arrival, platform).excessMeters, 0);
+
+  // 東北線 at 日暮里, in miniature: the interval reaches its own platform, runs
+  // 261 m past it and comes back to end there. 617 m of track to cover the
+  // last 94 m, which is the shape both 東北線-3 and -4 ship.
+  const fold = [at(0, -900), at(0, -94), at(0, 261.5), platform];
+  const seen = stationApproachFold(fold, platform);
+  assert.equal(Math.round(seen.chordMeters), 94);
+  assert.equal(Math.round(seen.trackMeters), 617);
+  assert.equal(Math.round(seen.excessMeters), 523);
+  assert.ok(
+    seen.excessMeters >= APPROACH_FOLD_METERS,
+    `a 261 m excursion out and back measured ${seen.excessMeters.toFixed(0)} m`,
+  );
+  // …and the floor is the renderer's own idea of real railway, applied to one
+  // arm of the excursion, not a number picked to catch this case.
+  assert.equal(APPROACH_FOLD_METERS, 2 * RENDERER_REAL_TRACK_METERS);
+
+  // A terminal reversal is the same 180° and NOT this defect: 藤沢, 柏, 飯能,
+  // 早岐 and 遠軽 all meet their platform end-on and stop. Nothing to report,
+  // which is what keeps the rule down to single digits over five packages.
+  const terminal = [at(-600, 0), at(-200, 0), at(-40, 0), platform];
+  assert.equal(stationApproachFold(terminal, platform).excessMeters, 0);
+
+  // The joint arm. A real reversal leaves on DIFFERENT rail — that is what
+  // makes it a reversal rather than a fold — so however sharp the angle, the
+  // two legs stop coinciding as soon as they are past the switch.
+  const arriving = [at(0, -1200), at(0, -400), platform];
+  const separateRail = [platform, at(-14, -400), at(-14, -1200)];
+  assert.ok(
+    coincidentRunMeters(arriving.slice().reverse(), separateRail) <
+      RENDERER_RETRACE_RUN_METERS,
+    "a reversal onto its own second track is not redrawn track",
+  );
+  // Drawn back down the rail it arrived on, it is.
+  const sameRail = [platform, at(0, -400), at(0, -1200), at(-500, -1200)];
+  assert.ok(
+    coincidentRunMeters(arriving.slice().reverse(), sameRail) >=
+      RENDERER_RETRACE_RUN_METERS,
+    "an interval redrawing its neighbour has to measure as redrawn",
+  );
+
+  // Both floors are rail-network.js's, read back out of it so the audit and
+  // the renderer cannot disagree about what counts as re-used track.
+  const source = fs.readFileSync(
+    path.join(__dirname, "../public/rail-network.js"),
+    "utf8",
+  );
+  const constant = (name) => {
+    const match = source.match(new RegExp(`const ${name} = ([0-9.]+);`));
+    assert.ok(match, `${name} not found in rail-network.js`);
+    return Number(match[1]);
+  };
+  assert.equal(constant("RETRACE_MIN_TAIL_METERS"), RENDERER_REAL_TRACK_METERS);
+  assert.equal(constant("RETRACE_MIN_RUN_METERS"), RENDERER_RETRACE_RUN_METERS);
+});
+
+test("every hidden reversal in the shipped packages has been read", async () => {
+  const { auditCountry } = await auditPromise;
+  // The adjudication behind the budgets, made 2026-08-19 over the whole of
+  // jp/tw/hk/mo/kr. The rule cannot separate a switchback from a fold — the
+  // geometry is the same shape — so it says so and a human reads the list.
+  // What it CAN do is stay this short: 27 reversal joints in jp, of which
+  // 26 are real reversal stations and are silent.
+  //
+  //   jp  8 folds — 出雲坂根, 姨捨, 真幸, 二本木 are genuine switchbacks;
+  //                 東北線-3 and -4 both run 265 m past 日暮里 and back,
+  //                 養老線 does the same at 室, and 日豊線-p1 at 立石 is the
+  //                 removed switchback's alignment. Three real defects, all
+  //                 open.
+  //       1 joint — 予讃線-3 draws 3.26 km of the 4.48 km 五郎→新谷 interval
+  //                 twice, because no track joins 五郎 to 新谷 since 1986 and
+  //                 the path goes round by 伊予大洲. Open.
+  //   tw  3 folds — all 阿里山線: the 獨立山 spiral and the 阿里山 zigzag.
+  //   hk  0, mo 0 — neither network reverses anywhere.
+  //   kr  1 fold  — 안산연결선 passes 초지 and returns. Open, unadjudicated.
+  const budget = { jp: 9, tw: 3, hk: 0, mo: 0, kr: 1 };
+  for (const [country, allowed] of Object.entries(budget)) {
+    const report = auditCountry(country, { corridors: false, n02: false });
+    const found = report.lines.flatMap((line) =>
+      line.problems
+        .filter(
+          (problem) =>
+            problem.code === "interval_doubles_back_at_station" ||
+            problem.code === "reversal_joint_redraws_track",
+        )
+        .map((problem) => `${line.operator}／${line.name}: ${problem.detail}`),
+    );
+    assert.ok(
+      found.length <= allowed,
+      `${country} grew to ${found.length} hidden reversals (budget ${allowed}):\n${found.join("\n")}`,
+    );
+  }
+});
+
 test("no interval spends its kilometres going the wrong way", async () => {
   const report = await japanReport();
   // The other half of the reversal story, and the half no corner test can see:

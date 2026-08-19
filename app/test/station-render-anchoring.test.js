@@ -308,7 +308,10 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // 京王線 32 + 京王新線 4 — 新宿 now seats a 新線新宿 row of its own.
     // +2 for 総武線-3's underground 新橋・品川 rows on the extended 東京—
     // 西大井 stroke; the shared 東京 and existing 西大井 rows were retained.
-    ["jp", 10223],
+    // +1 on 2026-08-19 (audited junctions): 公園 gains a row on ユーカリが丘線's
+    // tail — the junction where the residential ring and the tail meet, the
+    // same shape as the 上越線 water-mark above.
+    ["jp", 10220],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

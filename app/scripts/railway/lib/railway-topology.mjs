@@ -138,6 +138,79 @@ export function straightRunMeters(coordinates, index, direction, options = {}) {
   return Math.min(meters, maxMeters);
 }
 
+/**
+ * How much track the polyline lays AFTER it has already arrived.
+ *
+ * `coordinates` must end at `station`. Walking it, every vertex that is
+ * already inside `touchMeters` of the platform is asked a simple question:
+ * how much track is left, and how far is left to go? On an honest approach
+ * those two agree — the line comes in and stops. Where the line runs past its
+ * own platform and turns back, the track left over is the excursion plus the
+ * way home while the distance left to go is nearly nothing, and the surplus
+ * between them is the whole fold, measured without knowing where the corner is
+ * or whether there is a corner at all.
+ *
+ * This is the reversal a drawn map cannot show: the renderer breaks its stroke
+ * at the platform, or grooms the thorn away, and the shape stops existing
+ * before any corner test can see it. The metres survive in the package.
+ *
+ * Returns the worst vertex as `{ excessMeters, chordMeters, trackMeters }`,
+ * all zero when the approach never doubles back.
+ */
+export function stationApproachFold(coordinates, station, options = {}) {
+  const touchMeters = options.touchMeters ?? 150;
+  let total = 0;
+  const arc = [0];
+  for (let index = 1; index < coordinates.length; index += 1) {
+    total += distanceMeters(coordinates[index - 1], coordinates[index]);
+    arc.push(total);
+  }
+  let worst = { excessMeters: 0, chordMeters: 0, trackMeters: 0 };
+  for (let index = 0; index < coordinates.length; index += 1) {
+    const chordMeters = distanceMeters(coordinates[index], station);
+    if (chordMeters > touchMeters) continue;
+    const trackMeters = total - arc[index];
+    const excessMeters = trackMeters - chordMeters;
+    if (excessMeters > worst.excessMeters)
+      worst = { excessMeters, chordMeters, trackMeters };
+  }
+  return worst;
+}
+
+/**
+ * How far `walk` stays on `reference`'s own track, starting from walk[0].
+ *
+ * Both polylines come out of one track graph, so rail they share is rail they
+ * were cut from together — the same survey vertices, not two alignments that
+ * happen to run near each other. `radiusMeters` is therefore a coincidence
+ * test, not a proximity one: a couple of metres, so that two tracks of a
+ * four-track approach measure as what they are (different track) while an
+ * interval drawn back down the one it arrived on measures as the same rail.
+ *
+ * The walk stops the moment it leaves, because what is being asked is how much
+ * rail the two lay on top of each other continuously, not how often they meet.
+ */
+export function coincidentRunMeters(reference, walk, radiusMeters = 2) {
+  let travelled = 0;
+  let shared = 0;
+  for (let index = 1; index < walk.length; index += 1) {
+    travelled += distanceMeters(walk[index - 1], walk[index]);
+    let nearest = Infinity;
+    for (let other = 1; other < reference.length; other += 1) {
+      const gap = pointSegmentDistanceMeters(
+        walk[index],
+        reference[other - 1],
+        reference[other],
+      );
+      if (gap < nearest) nearest = gap;
+      if (nearest <= radiusMeters) break;
+    }
+    if (nearest > radiusMeters) break;
+    shared = travelled;
+  }
+  return shared;
+}
+
 export function angleBetweenHeadings(a, b) {
   if (a == null || b == null) return null;
   let delta = Math.abs(a - b) % 360;

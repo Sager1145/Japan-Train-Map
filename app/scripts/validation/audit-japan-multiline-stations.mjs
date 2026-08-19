@@ -28,7 +28,12 @@ import {
   claimedTrackAt,
   pickPlatform,
 } from "../railway/lib/station-track-claim.mjs";
-import { findDuplicateStrokes } from "../railway/lib/duplicate-strokes.mjs";
+import {
+  DUPLICATE_METERS,
+  RUN_REPORT_METERS,
+  SAMPLE_STEP_METERS,
+  findDuplicateStrokes,
+} from "../railway/lib/duplicate-strokes.mjs";
 
 // ── station-zone basemap gate ────────────────────────────────────────────────
 //
@@ -72,6 +77,24 @@ const SYSTEMATIC_OFFSET_FLOOR_METERS = 15;
 // How much further than its line's own offset a dot may sit before it stops
 // being explained by that offset.
 const SYSTEMATIC_OFFSET_MARGIN_METERS = 15;
+
+// ── continuation (A) versus branch/rejoin (B): see classifyPair ──────────────
+// Two arms count as leaving on the same metals at the duplicate-stroke audit's
+// own coincidence gate (3 m point-to-segment), measured out to its reporting
+// window (200 m) in its sampling step (10 m).
+const SHARED_DEPARTURE_GATE_METERS = DUPLICATE_METERS;
+const SHARED_DEPARTURE_WINDOW_METERS = RUN_REPORT_METERS;
+const SHARED_DEPARTURE_STEP_METERS = SAMPLE_STEP_METERS;
+// How long that coincidence has to hold before it means "one railway leaving
+// this station once", rather than the two strokes merely starting at the same
+// junction point. A station throat is tens of metres; 100 m is already out on
+// the running line, and the shape this catches (支線共用軌) runs for
+// hundreds — 塩尻's 中央線 trunk and 辰野支線 share 1,204 m.
+const SHARED_DEPARTURE_RUN_METERS = 100;
+// A continuation's two arms must at least point away from each other. This is
+// the coarse question ("is this a through route or a fork?"); the 5° tangent
+// gate is the separate, tighter QUALITY question asked of an A once it is one.
+const OPPOSED_ARM_DEGREES = 90;
 
 const require = createRequire(import.meta.url);
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -143,7 +166,7 @@ function nearestDistinct(coordinates, fromStart) {
   return ordered.find((point) => distanceMeters(station, point) > 0.05) || station;
 }
 
-function stationGeometry(line, stationIndex) {
+export function stationGeometry(line, stationIndex) {
   const intervals = decodeIntervals(line);
   const point = [line.stations[stationIndex][2], line.stations[stationIndex][3]];
   const incoming = stationIndex > 0 ? intervals[stationIndex - 1] : null;
@@ -216,6 +239,9 @@ function stationGeometry(line, stationIndex) {
   return {
     intervals,
     point,
+    // Every adjacent interval rewritten to start AT the station and run away
+    // from it, so two strokes can be compared as they leave (see classifyPair).
+    outwardPaths: outwardIntervals,
     endpoint: stationIndex === 0 || stationIndex === line.stations.length - 1,
     endpointExact,
     immediateReturn,
@@ -286,7 +312,67 @@ function bestContinuationTurn(a, b) {
   return rounded(best);
 }
 
-function classifyPair(a, b, occurrences) {
+/**
+ * How far two strokes stay on ONE alignment as they leave a shared station.
+ *
+ * Measured from the station outward on every adjacent interval either side,
+ * as the first contiguous run within the duplicate-stroke gate: the moment the
+ * two part company the run stops, so a 1,204 m answer means 1,204 m of shared
+ * metals, not 1,204 m of "somewhere near each other".
+ */
+export function sharedDepartureMeters(a, b) {
+  let best = 0;
+  for (const [from, to] of [
+    [a, b],
+    [b, a],
+  ]) {
+    for (const arm of from.geometry.outwardPaths || []) {
+      for (const other of to.geometry.outwardPaths || []) {
+        if (arm.length < 2 || other.length < 2) continue;
+        let run = 0;
+        for (const sample of resample(arm, SHARED_DEPARTURE_STEP_METERS)) {
+          if (sample.measure > SHARED_DEPARTURE_WINDOW_METERS) break;
+          if (distanceToParts(sample.point, [other]) > SHARED_DEPARTURE_GATE_METERS) break;
+          run = sample.measure;
+        }
+        best = Math.max(best, run);
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * A/B/C/D/E per multi-line-station-audit-rules.json.
+ *
+ * A is "the same railway, meeting here, forming a CONTINUATION rather than a
+ * branch"; B is "sibling strokes meeting at a branch or rejoin station".
+ * Until 2026-08-19 the split was proxied by "exactly two strokes of this
+ * railway, both ending here", which a TERMINAL JUNCTION satisfies just as well
+ * as a through route. 塩尻 is the case that exposed it: the 中央線 trunk
+ * (東京→岡谷→みどり湖→塩尻) and the 辰野支線 both end there, so the proxy said
+ * continuation — but they leave the station along the SAME 1,204 m of track
+ * (24 identical vertices) before diverging, which is the MAIN_BRANCH_SHARED
+ * shape of a branch, and 塩尻 is exactly the junction the 辰野支線's
+ * rejoin_variant evidence names. The pair then failed A's 5° tangent gate at
+ * 180° and was reported as a geometry defect, when the geometry was right and
+ * the classification was wrong.
+ *
+ * So branch-versus-continuation is now decided on its own two signals, and
+ * neither of them is the tangent gate:
+ *
+ *   they leave on the same metals   → branch: one railway leaving once, with a
+ *                                     fork further out (支線共用軌)
+ *   their arms are not even opposed → branch: a stroke that departs on the
+ *                                     same side as its sibling is not the
+ *                                     other half of a through route
+ *
+ * A continuation must show neither. The 5° tangent check stays where it was,
+ * as A's quality requirement: a genuine two-arm continuation drawn with a kink
+ * of 5-90° still classifies as A and still reports. Because the new test only
+ * ADDS conditions to A, no pair can move from B to A.
+ */
+export function classifyPair(a, b, occurrences, sharedDeparture) {
   const paired =
     a.line.alignmentRole === "paired_alignment" ||
     b.line.alignmentRole === "paired_alignment";
@@ -302,7 +388,13 @@ function classifyPair(a, b, occurrences) {
   const sameRailwayCount = occurrences.filter(
     (candidate) => candidate.railwayIdentity === a.railwayIdentity,
   ).length;
-  return sameRailwayCount === 2 && a.geometry.endpoint && b.geometry.endpoint ? "A" : "B";
+  // Three or more strokes of one railway here is a junction by arithmetic, and
+  // a stroke that only passes through cannot be one arm of a two-arm route.
+  if (sameRailwayCount !== 2 || !a.geometry.endpoint || !b.geometry.endpoint) return "B";
+  const turn = bestContinuationTurn(a, b);
+  const armsOpposed = turn != null && turn < OPPOSED_ARM_DEGREES;
+  const shared = (sharedDeparture ?? sharedDepartureMeters(a, b)) >= SHARED_DEPARTURE_RUN_METERS;
+  return armsOpposed && !shared ? "A" : "B";
 }
 
 function electedJunction(occurrences, railwayIdentity) {
@@ -706,7 +798,12 @@ export function buildAudit(options = {}) {
       for (let right = left + 1; right < occurrences.length; right += 1) {
         const a = occurrences[left];
         const b = occurrences[right];
-        const classification = classifyPair(a, b, occurrences);
+        // Only meaningful inside one railway: two independent railways sharing
+        // a corridor out of a station are the duplicate-stroke audit's subject,
+        // not this one's.
+        const sharedDeparture =
+          a.railwayIdentity === b.railwayIdentity ? sharedDepartureMeters(a, b) : null;
+        const classification = classifyPair(a, b, occurrences, sharedDeparture);
         const shouldShare = classification === "A" || classification === "B";
         const coordinateEqual = samePoint(a.geometry.point, b.geometry.point);
         const renderedCoordinateEqual = samePoint(a.render.coordinate, b.render.coordinate);
@@ -749,6 +846,9 @@ export function buildAudit(options = {}) {
           exact_render_coordinate_equal: renderedCoordinateEqual,
           railway_identity_equal: identityEqual,
           continuation_tangent_difference_degrees: tangent,
+          // Why a same-railway pair is a branch rather than a continuation:
+          // this many metres of one alignment leaving the station.
+          shared_departure_meters: rounded(sharedDeparture, 1),
           problems,
         });
       }

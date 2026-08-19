@@ -280,6 +280,27 @@ def checks_from_inventory(key, members, adjacency, station_by_uid):
     return checks, "audited_station"
 
 
+def merge_with_previous(
+    previous: list[dict], out: list[dict], wanted: set[str] | None
+) -> list[dict]:
+    """Fold a --lines rerun's rows back into the rows it did not rebuild.
+
+    Kept rows are chosen by CANONICAL KEY, not by check_id. check_ids are
+    numbered per line (…-P000, …-P001, …-S000), so a line that comes back with
+    fewer stations than last time stops emitting its highest ids; keeping every
+    id "this run did not write" would strand those as orphan rows for platforms
+    and intervals that no longer exist. Dropping the whole line instead also
+    covers the rows whose id moved because the line changed line_id on entering
+    the package.
+
+    No --lines is a full rebuild: `out` already is the whole queue.
+    """
+    if not wanted or not previous:
+        return out
+    kept = [row for row in previous if row.get("canonical_key") not in wanted]
+    return sorted(kept + out, key=lambda row: row["check_id"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lines", default="", help="canonical keys, comma separated")
@@ -380,15 +401,7 @@ def main() -> None:
                 }
             )
 
-    if wanted and previous:
-        # A --lines run rewrites only those lines' rows; everything else stays.
-        rewritten = {row["check_id"] for row in out}
-        kept = [
-            row
-            for check_id, row in sorted(previous.items())
-            if check_id not in rewritten
-        ]
-        out = sorted(kept + out, key=lambda row: row["check_id"])
+    out = merge_with_previous(list(previous.values()), out, wanted)
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT.open("w", encoding="utf-8-sig", newline="") as handle:

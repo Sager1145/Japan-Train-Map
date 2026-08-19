@@ -97,9 +97,21 @@ const EXPECTED_COUNTS = Object.freeze({
   // (東北線-3 西日暮里–日暮里) is deferred: straightened, it re-pairs with the
   // 山手線/新幹線 corridor and the lane solver would seat one railway in two
   // lanes — see render-snapshot.mjs, batch 14.
-  segments: 657,
-  stations: 10223,
-  lines: 657,
+  // +1 station row on 2026-08-19 (audited junctions): a junction the audit
+  // names stays on the trunk, so 山万ユーカリが丘線's tail regains 公園 — a
+  // junction row on a second stroke. No stroke, lane stretch or station group
+  // changes count.
+  // −3 lines / −5 station rows on 2026-08-19 (switchback pseudo-edges): the
+  // station graph carried a direct edge across three reversal stations —
+  // 室—西大垣 past 大垣, 川東—東山代 past 伊万里, 北赤羽—川口 past 赤羽 — so
+  // each line drew the fold instead of the station. With the edges gone the
+  // trunks run through 大垣, 伊万里 and 赤羽, and the three strokes that only
+  // existed to carry the skipped station (養老線-2, 西九州線-2, 東北線-7) are
+  // no longer produced. The five rows are the duplicate copies those strokes
+  // held; the stations themselves stayed, on the trunk.
+  segments: 654,
+  stations: 10220,
+  lines: 654,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

@@ -228,6 +228,47 @@ function decodeIntervals(compactLine) {
   return intervals;
 }
 
+// A reversal is read over a RUN of track either side rather than off the two
+// adjoining edges: surveyed vertices can be a metre apart and say nothing
+// about which way the rail runs. Same run the topology audit uses.
+const REVERSAL_RUN_METERS = 60;
+const REVERSAL_MIN_TURN_DEGREES = 155;
+
+function windowedPoint(coordinates, from, step, span) {
+  let travelled = 0;
+  let last = null;
+  for (
+    let index = from + step;
+    index >= 0 && index < coordinates.length;
+    index += step
+  ) {
+    travelled += distanceMeters(coordinates[index - step], coordinates[index]);
+    last = coordinates[index];
+    if (travelled >= span) break;
+  }
+  return last;
+}
+
+// Do the two intervals meeting at this platform double back over each other?
+// `cut` has to land ON the joint between them — anywhere else along the path
+// and one side or the other genuinely runs through.
+function foldsAtPlatform(head, tail, cut) {
+  if (head.length < 2 || !tail.length) return false;
+  const seamIndex = head.length - 1;
+  const atSeam =
+    (cut.index === seamIndex - 1 && cut.ratio >= 1) ||
+    (cut.index === seamIndex && cut.ratio <= 0);
+  if (!atSeam) return false;
+  const seam = head[seamIndex];
+  const before = windowedPoint(head, head.length - 1, -1, REVERSAL_RUN_METERS);
+  const after =
+    tail.length >= 2
+      ? windowedPoint(tail, 0, +1, REVERSAL_RUN_METERS)
+      : tail[0];
+  if (!before || !after) return false;
+  return turnDegrees(before, seam, after) >= REVERSAL_MIN_TURN_DEGREES;
+}
+
 /**
  * How far the approach pass had to move the alignment to reach this platform.
  *
@@ -238,9 +279,16 @@ function decodeIntervals(compactLine) {
  * the renderer so the audit is a second opinion, not an echo.
  *
  * `beyondEnd` says the platform lies past the last surveyed vertex its line
- * has, which only a terminal can do. There is no track there to be off, so
- * there is no displacement to report — the renderer draws the package's own
- * final edge and this audit says so rather than inventing a number.
+ * has, so there is no track there to be off and no displacement to report —
+ * the renderer draws the package's own final edge and this audit says so
+ * rather than inventing a number. A terminal is the one-sided case. The
+ * two-sided one is `folded`: where a branch leaves its trunk the two intervals
+ * SHARE the rail between platform and switch, so read straight through they
+ * double back instead of running on, and the nearest point on that fold is its
+ * own apex — the last surveyed vertex before the about-face, a LONGITUDINAL
+ * gap up to the platform. Reported as a sideways displacement it reads as a
+ * defect (成田 measured 205 m, 会津若松 100 m) at platforms whose alignment is
+ * exact to the vertex.
  */
 function anchorDisplacement(compactLine, intervals, stationIndex) {
   const stationCount = compactLine.stations.length;
@@ -261,13 +309,15 @@ function anchorDisplacement(compactLine, intervals, stationIndex) {
   const row = compactLine.stations[stationIndex];
   const anchor = [row[2], row[3]];
   const path = head.concat(tail);
-  if (path.length < 2) return { meters: null, beyondEnd: false };
+  if (path.length < 2) return { meters: null, beyondEnd: false, folded: false };
   const cut = nearestCut(path, anchor);
-  if (!cut) return { meters: null, beyondEnd: false };
+  if (!cut) return { meters: null, beyondEnd: false, folded: false };
+  if (foldsAtPlatform(head, tail, cut))
+    return { meters: null, beyondEnd: true, folded: true };
   const beyondEnd =
     (!incoming && cut.index === 0 && cut.ratio <= 0) ||
     (!outgoing && cut.index === path.length - 2 && cut.ratio >= 1);
-  return { meters: cut.distance, beyondEnd };
+  return { meters: cut.distance, beyondEnd, folded: false };
 }
 
 // ── audit ───────────────────────────────────────────────────────────────────
@@ -349,6 +399,7 @@ export function auditCountry(country, options = {}) {
         curvatureSpike: 0,
         displacementMeters: displacement.beyondEnd ? null : displacement.meters,
         beyondEnd: displacement.beyondEnd,
+        foldedAtPlatform: displacement.folded,
         problems: [],
       };
 
@@ -443,7 +494,15 @@ function renderRow(row) {
     `Distance to Render Line: ${row.distancePx.toFixed(2)} px`,
     `Endpoint Distance:      ${row.endpointPx == null ? "—" : `${row.endpointPx.toFixed(2)} px`}`,
     `Max Turn:               ${row.maxTurn.toFixed(0)}° (${row.turnAtStation.toFixed(0)}° at the platform, spike ×${row.curvatureSpike.toFixed(1)})`,
-    `Anchor Displacement:    ${row.displacementMeters == null ? (row.beyondEnd ? "— (platform beyond the last surveyed vertex)" : "—") : `${row.displacementMeters.toFixed(1)} m`}`,
+    `Anchor Displacement:    ${
+      row.displacementMeters == null
+        ? row.foldedAtPlatform
+          ? "— (the two legs share their track out of this platform)"
+          : row.beyondEnd
+            ? "— (platform beyond the last surveyed vertex)"
+            : "—"
+        : `${row.displacementMeters.toFixed(1)} m`
+    }`,
     `${row.severity}`,
   ];
   for (const problem of row.problems)

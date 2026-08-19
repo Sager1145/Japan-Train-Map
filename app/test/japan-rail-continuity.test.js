@@ -60,7 +60,12 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // inventory no longer emits 函館線-4 (鹿部–大沼), because that interval is
   // already the final arm of 函館線-3. Full-staging prune removes the stale
   // duplicate instead of letting an unreproducible stroke survive promotion.
-  assert.equal(pkg.lines.length, 657);
+  // 654 on 2026-08-19: the three strokes that only carried a station the
+  // graph's switchback pseudo-edge had skipped — 養老線-2 (室 大垣),
+  // 西九州線-2 (東山代 伊万里 川東) and 東北線-7 (王子 上中里, renumbered to
+  // -6) — are gone, their track now drawn by the trunks through 大垣, 伊万里
+  // and 赤羽.
+  assert.equal(pkg.lines.length, 654);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

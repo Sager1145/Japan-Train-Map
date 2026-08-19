@@ -133,8 +133,81 @@
 // BOTH edges at a corner to be >=60 m and these are 70 m and 36 m. A fold scan
 // with no edge-length floor over every line this campaign touched finds no
 // other new fold: 北赤羽 168, 王子 168, 成東 163 and 東京 90 all predate it.
+//
+// 2026-08-19 audited junctions — 657 / 10224 / 657 / 9039, from 657 / 10223 /
+// 657 / 9039. A junction the audit NAMES now stays on the trunk however few
+// neighbours it has outside its branch part, so 山万ユーカリが丘線 stops being
+// drawn with a hole in it: the tail runs 公園–地区センター–ユーカリが丘 again.
+// 公園 is where the tail meets the residential ring, and while it was peeled
+// onto the ring alone the 449 m 公園–地区センター hop belonged to neither
+// stroke — the map drew the ring floating clear of the tail. The one new
+// platform row is that shared junction. Nothing else moves: a hop between two
+// junctions is left to the trunk, so 上越線's 湯檜曽–土合 下り線 and 東海道線's
+// 梅田貨物線 stay reported as uncovered corridor instead of being drawn as a
+// second copy of the trunk's own cut of the same station pair. The builder
+// change also restores 中央線's みどり湖–塩尻 (3.96 km the 辰野支線 stroke does
+// not cover), but that line is NOT promoted here: at 塩尻 the trunk and the
+// 辰野支線 both terminate and share the first 1.204 km of track vertex for
+// vertex, and audit-japan-multiline-stations calls that pair a continuation
+// (class A) and demands a tangent under 5° where a fork reads 180°. The rules
+// file already says class A is "a continuation rather than a branch" and
+// class B is a branch or rejoin station, so the classifier — not the data —
+// is what has to settle first.
+// 2026-08-19 switchback pseudo-edges — 654 / 10219 / 654 / 9039, from
+// 657 / 10224 / 657 / 9039. The station contracted graph carried a direct edge
+// across three reversal stations, because N02 joins the two legs at a junction
+// a few hundred metres short of the platform and first_station_paths walks
+// through it without asking whether a train could make the turn: 室—西大垣 past
+// 大垣, 川東—東山代 past 伊万里, 北赤羽—川口 past 赤羽. Each line drew the fold
+// instead of the station. With the three edges deleted (see
+// evidence/network-corrections-2026-08-13.json, block
+// switchback_pseudo_edge_removals_2026_08_19) the trunks run through all three
+// stations — 養老線 27 stations / 57.48 km against an official 57.5, 西九州線 57
+// / 93.88 against 93.8 — and the three strokes that existed only to carry the
+// skipped station stop being produced: 養老線-2, 西九州線-2 and 東北線-7, whose
+// 王子–上中里 track is 東北線-6 now. The five station rows are those strokes'
+// duplicate copies; every station stayed, on the trunk. Same batch, path_matching
+// prefers a route that does not run past its destination platform and fold back,
+// which straightened 東北線-3's 西日暮里→日暮里 (696 m fold) — the sixth staging
+// fix the 2026-08-18 note above deferred, resolved by path choice rather than by
+// re-anchoring, so the lane solver never sees a second pairing.
+// 2026-08-19 station approaches at reversals — counts unchanged, GEOMETRY
+// changed, which is why this digest moves without a line, station or group
+// following it. Two display-layer passes were inventing shape at the stations
+// where a branch leaves its trunk and the two legs share the rail between
+// platform and switch:
+//   * the approach rebuild read that pair joined head-to-tail as "the
+//     alignment through the platform". It is a FOLD, and the nearest point on
+//     a fold is its apex, so the longitudinal gap up to the platform was read
+//     as a sideways displacement and blended across the approach window. 成田
+//     measured 205 m and was drawn up to 93 m off its own survey — the 佐原
+//     main line swung clear of the basemap track that 成田線-3, built from the
+//     very same coordinates, still sat on, which is what the reader saw as two
+//     parallel teal strokes with a spindle between them.
+//   * the retrace split cut the trunk at the switch and welded it onto the
+//     returning leg, a corner of 135° at 成田, 133° at 会津若松, 126° at 養老線
+//     and 118° at 西九州線 — angles the topology audit itself calls impossible.
+// Both now stand aside: the approach is left as the package drew it, and the
+// stroke closes on the station so each leg reaches the platform on its own
+// surveyed track. Drawn-vs-raw in the 成田 throat 90.3 m → 0.0 m; jp station
+// anchoring 14 WARNING → 5 (the nine that go were all this fold: 成田 205,
+// 会津若松 100, 二本木 100, 伊万里 95, 遠軽 88, 十和田南 81, 柏 68, 立野 67,
+// 藤沢 65 — the five that stay are real and unreviewed).
+//
+// Two switchbacks read SHARPER afterwards and that is the fix, not a
+// regression: 肥薩線 大畑 reports 160° and 小田急箱根 大平台 133° (was 148°)
+// because the survey has those corners — raw carries 160° at
+// 130.78504,32.16386 — and the displacement blend had been bending them away
+// (drawn-vs-raw 15.5 m and 20.9 m, both 0.0 m now). 養老線 大垣 likewise trades
+// a welded 126° corner for reversal_joint_redraws_track, which is the honest
+// description: the two legs really do share that rail.
+//
+// One station more than the note above: 中央線 gains 塩尻 and the 3.96 km of
+// みどり湖–塩尻 that no stroke drew, once partition_by_audit stopped stripping a
+// junction that sits at the end of a main path. 10219 → 10220 platforms, the
+// line 67 → 68 stations and 215.755 km, and the count of lines does not move.
 export const EXPECTED_RENDER_HASH =
-  "84a8ae76db65cd562a7e117b42027c9a0faf01464027e0c8f341b6f67b3ce866";
+  "c679e9d0ad83c6692356148ef316867ded7899b5d2abae71cbd540cbfb55987b";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

@@ -62,8 +62,11 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   // 385/320 after the 東京 Apple-layout correction: the former 東海道線-2
   // display stroke is now 総武線-3. 総武線 has no audited package badge, so
   // the stroke correctly uses the exact JR East operator fallback instead.
-  assert.equal(packageImages.length, 385);
-  assert.equal(linesWithBadges.length, 320);
+  // 383/318 on 2026-08-19: 養老線-2 and 西九州線-2 fold into their trunks now
+  // that 大垣 and 伊万里 sit on the trunk chain, so each family shows one
+  // badge-carrying stroke fewer. Both railways keep their badge on the trunk.
+  assert.equal(packageImages.length, 383);
+  assert.equal(linesWithBadges.length, 318);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -161,9 +164,12 @@ test("every non-line image falls back to the exact operator, never a parent or p
   // part now inherits its parent railway's badge — 京王線-2 and its kind
   // otherwise fell through to an operator mark those railways do not have.
   // 総武線-3 adds one operator-fallback stroke without adding an operator.
-  assert.equal(missingBadgeLines.length, 337);
+  // 336/329 on 2026-08-19: 東北線-7 is no longer produced — its 王子–上中里
+  // track is 東北線-6 now. The operator count holds: JR East keeps every other
+  // 東北線 stroke.
+  assert.equal(missingBadgeLines.length, 336);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 330);
+  assert.equal(coveredLines.length, 329);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(
