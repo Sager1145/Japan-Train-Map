@@ -109,9 +109,19 @@ const EXPECTED_COUNTS = Object.freeze({
   // existed to carry the skipped station (養老線-2, 西九州線-2, 東北線-7) are
   // no longer produced. The five rows are the duplicate copies those strokes
   // held; the stations themselves stayed, on the trunk.
-  segments: 654,
-  stations: 10220,
-  lines: 654,
+  // −2 lines / −4 station rows on 2026-08-19 (redrawn-track pseudo-edges): the
+  // station graph carried two edges across 尾久 — 王子—日暮里 and
+  // 東十条—日暮里, both riding the 日暮里—尾久—赤羽 支線 — so 東北線 drew that
+  // corridor three times and folded 168° at 日暮里. With them gone the 電車線
+  // trunk runs 赤羽→東十条→王子→上中里→田端→西日暮里→日暮里, and the two
+  // strokes that existed only to carry the skipped station (東北線-5 王子—上中里
+  // and the old 東北線-4) stop being produced. The same batch removed
+  // 予讃線 五郎—新谷, the fourth side of the 伊予若宮信号場 wye, so 予讃線-3 is
+  // the official 新谷—伊予大洲 section alone. Every station stayed; the four
+  // rows are the duplicate copies the dropped strokes held.
+  segments: 652,
+  stations: 10216,
+  lines: 652,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

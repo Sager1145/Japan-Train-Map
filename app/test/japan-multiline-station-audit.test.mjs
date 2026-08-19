@@ -22,7 +22,9 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   // 876 on 2026-08-19: 大垣, 伊万里 and 赤羽 are drawn by one stroke each now
   // that the trunks run through them, and 室/西大垣/川東/東山代 lose the
   // sibling stroke that used to double them.
-  assert.equal(report.summary.multi_display_line_groups, 876);
+  // 874 on 2026-08-19: 王子 and 東十条 are drawn by one stroke each now that the
+  // 電車線 trunk runs through them instead of the 尾久 支線's two skip edges.
+  assert.equal(report.summary.multi_display_line_groups, 874);
   assert.ok(report.summary.audited_station_groups >= report.summary.multi_display_line_groups);
   assert.equal(report.summary.fix_required, 0);
 

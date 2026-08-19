@@ -546,7 +546,13 @@ function basemapCheck(line, geometry, stationIndex, osmIndex, filterCache, platf
   // name the platform this line's own trains use, and see whether the dot is
   // on it. Without them the verdict stays `possible_wrong_platform`.
   const pick = platformIndex
-    ? pickPlatform(geometry.point, geometry.outwardBearings, claim, platformIndex)
+    ? pickPlatform(geometry.point, geometry.outwardBearings, claim, platformIndex, {
+        // A platform nearer another stop of this line is that stop's, however
+        // well it sits on the claimed track — see pickPlatform.
+        otherStations: line.stations
+          .filter((_entry, index) => index !== stationIndex)
+          .map((entry) => [entry[2], entry[3]]),
+      })
     : null;
   const dotToPlatform = pick
     ? distanceMeters(geometry.point, pick.platform.midpoint)

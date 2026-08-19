@@ -3909,10 +3909,12 @@ def outline_midpoint(coords, geometry_lib):
     An outline is not a path along the platform, it is a path AROUND it — out
     along one side and back along the other — so half its perimeter is not its
     middle, it is the far END. That is the whole of the defect this fixes: every
-    one of the thirteen platforms registered in station-anchor-overrides.json is
-    a closed OSM way, and reading each as an open polyline put its dot 15.1 m to
-    187.5 m past the centre (糸魚川 landed on the buffer-stop end of a 313 m
-    platform, 和歌山市 121.8 m out, 橿原神宮前 90.6 m).
+    one of the thirteen platforms that batch surveyed for
+    station-anchor-overrides.json is a closed OSM way, and reading each as an
+    open polyline put its dot 15.1 m to 187.5 m past the centre (糸魚川 landed
+    on the buffer-stop end of a 313 m platform, 和歌山市 121.8 m out,
+    橿原神宮前 90.6 m). Two of the thirteen have since been withdrawn to
+    `reverted`, so eleven rows carry it now.
 
     So the ring is split at its two farthest-apart vertices — the platform's two
     ends — and the arc midpoints of the two sides averaged. That is the middle

@@ -110,8 +110,15 @@ export function buildRows(options = {}) {
         const hit = claimedTrackAt(point, filter, trackIndex, 250);
         return hit ? hit.distance : Infinity;
       };
+      // The line's other stops bound the search: at 紙屋町 the 宇品線's own
+      // metals are the wye curve, so the platforms 紙屋町西 actually uses lost
+      // the adjacency test to one of 本通's, 148 m down 鯉城通り.
+      const otherStations = line.stations
+        .filter((entry) => entry[0] !== group.station_group)
+        .map((entry) => [entry[2], entry[3]]);
       const pick = pickPlatform(current, [], { trackDistanceAt }, platforms.index, {
         radiusMeters: 250,
+        otherStations,
       });
       const reject = (why) =>
         refused.push({ station: group.station_name, line: row.display_line_id, why });
@@ -211,9 +218,10 @@ function main() {
     safety:
       `A row exists only when the target platform is within ${ANCHOR_ON_TRACK_M} m of a way the ` +
       "line can claim — named for the line itself, and carrying no operator tag that names " +
-      "somebody else; the builder additionally refuses to apply a row whose N02 feature has " +
-      "moved more than 1 m from the recorded midpoint. A platform mapped as an area is measured " +
-      "at the centre of its outline, which is where the builder puts the dot.",
+      "somebody else — and only when no OTHER station of the same line stands closer to that " +
+      "platform than this one does; the builder additionally refuses to apply a row whose N02 " +
+      "feature has moved more than 1 m from the recorded midpoint. A platform mapped as an area " +
+      "is measured at the centre of its outline, which is where the builder puts the dot.",
     retrieved: new Date().toISOString().slice(0, 10),
     source:
       "OpenStreetMap (ODbL) platform elements from outputs/osm-basemap-cache/platforms; " +

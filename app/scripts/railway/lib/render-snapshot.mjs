@@ -119,9 +119,9 @@
 // A 14th row (名古屋 西名古屋港線, platform ref 14;15) was REVERTED: applying
 // it measured worse, 148.9→195.7 m, because ref 14;15 is a JR island and
 // あおなみ線 uses its own — the 25 m gate passed on a naming artifact. It
-// waits for route-relation evidence. 広島電鉄 宇品線 is built but NOT
-// promoted: moving 紙屋町西 splits the line into a trunk plus a branch, which
-// is a topology change and needs its own review.
+// waits for route-relation evidence. 広島電鉄 宇品線 was built but NOT
+// promoted, because moving 紙屋町西 split the line into a trunk plus a branch;
+// that row is reverted too — see the 2026-08-19 宇品線 entry below.
 //
 // 2026-08-19 品川 revert — batch 1's 東海道線 platform pick is withdrawn. It
 // improved the dot (32.0 m to 1.6 m from a way named 東海道本線) but forced
@@ -262,8 +262,62 @@
 //     coordinates. jp station anchoring 5 WARNING → 0, and the sideways case
 //     is still measured: 東武日光's misplaced dot read 93° off axis and would
 //     have been reported.
+//
+// 2026-08-19 宇品線 revert — the digest does NOT move, and that is the point:
+// batch 2's 広島電鉄 宇品線 row is withdrawn, so the published 20-stop line is
+// what the builder now produces again, byte for byte. The row moved 紙屋町西
+// 162.2 m onto 鯉城通り, and every consequence followed from that one dot: the
+// 紙屋町西–本通 interval drew 0.067 km against an audited 0.228, the graph cut
+// 紙屋町西–紙屋町東 instead of 紙屋町西–本通, and the line came out as a
+// 19-stop trunk without 紙屋町東 plus a 2-stop sibling. The platform it moved
+// to is 本通's northbound one (way/929779365, 67 m from 本通's own dot, 56 m
+// from the platform 本通 itself picks) — 宇品線 branches from 本線 at the
+// 紙屋町 crossing and has no platform of its own there, so both its northern
+// termini stand on 本線's 相生通り metals and lost the adjacency test to a
+// platform down the branch. pickPlatform now discards a platform that stands
+// nearer another stop of the same line; with the real 紙屋町西 platforms back
+// in the ranking the audit reads the dot as systematic_line_offset — 34.0 m
+// from the claimed track against a 24 m approach median — so the row is not
+// proposed at all any more.
+//
+// 2026-08-19 redrawn-track pseudo-edges — 652 / 10216 / 652 / 9039, down 2
+// lines and 4 station rows. Three contracted edges are gone because no line
+// section corresponds to them, and each was making the map paint track a
+// neighbouring hop already painted (block
+// redrawn_track_pseudo_edge_removals_2026_08_19 of
+// evidence/network-corrections-2026-08-13.json).
+//
+//   * 予讃線 五郎—新谷 is the fourth side of the 伊予若宮信号場 wye. The three
+//     legs leave that node — 1,208 m from 五郎, 2,348 m from 伊予大洲 — on
+//     bearings 29.3° / 57.6° / 210.3°, so 五郎 and 新谷 sit 28.3° apart and the
+//     edge is a 152° reversal. Officially there is 高松—宇和島 297.6 km,
+//     向井原—内子 23.5 and 新谷—伊予大洲 5.9; 五郎—新谷 was the 内子線's own
+//     first section until 1986-03-03, the day the 新線 opened. 予讃線-3 is now
+//     新谷 → 伊予大洲 alone, 5.843 km against that official 5.9, and the 3.26 km
+//     it used to draw twice is drawn once.
+//   * 東北線 王子—日暮里 and 東十条—日暮里 both ride the 日暮里—尾久—赤羽 支線
+//     past 尾久 — 372 m from its platform, INSIDE drop_skip_station_edges' 400 m
+//     window, and still never cut. Not by `keep`, not by `shield`, not by the
+//     connectivity guard: 東北線's N02 sections fall into three groups
+//     (389 / 8 / 3), 日暮里's platform is the only one of that corridor to
+//     project onto the 8-section island at 139.77069,35.72840, and
+//     path_between returns None for every pair ending there — so
+//     stations_passed_by_cut answers "no track could be cut" with the empty
+//     list, which the caller reads as "skips nobody". Every other pseudo-edge
+//     of the clique (東十条—尾久, 東十条—鶯谷, 王子—鶯谷, 尾久—鶯谷) was cut
+//     normally. With these two gone the 電車線 trunk runs
+//     赤羽→東十条→王子→上中里→田端→西日暮里→日暮里→上野→…→東京 on 東北線-2,
+//     the 支線 is 尾久→日暮里 2.723 km against an official 2.7 on 東北線-3, and
+//     東北線-4's 168° fold 265 m short of 日暮里 is gone with the stroke that
+//     drew it. 東北線-5 (王子—上中里) folds into the trunk too.
+//
+// The audit reads 652 lines, 11 WARNING, 0 ERROR: reversal_joint_redraws_track
+// 2 → 1 (only 養老線's real 大垣 reversal is left),
+// interval_doubles_back_at_station 6 → 5 and sharp_artificial_turn 11 → 10.
+// N02 coverage of 東北線 loses 0.85 km, all of it inside the parallel window
+// where the 電車線 already draws the corridor; isolatedKm stays 0.
 export const EXPECTED_RENDER_HASH =
-  "ebea72e47b8e518569c0e5a3e751249e240d47e8b9c21b736e8aa054133bfa22";
+  "92946a373b3366d55f284ee48e95ba49ae80f4e952efbfd45370d1ac18d3629d";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

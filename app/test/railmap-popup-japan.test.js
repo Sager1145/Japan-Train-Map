@@ -65,8 +65,11 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   // 383/318 on 2026-08-19: 養老線-2 and 西九州線-2 fold into their trunks now
   // that 大垣 and 伊万里 sit on the trunk chain, so each family shows one
   // badge-carrying stroke fewer. Both railways keep their badge on the trunk.
-  assert.equal(packageImages.length, 383);
-  assert.equal(linesWithBadges.length, 318);
+  // 381/316 on 2026-08-19: 東北線 loses the two strokes the 尾久 支線's skip
+  // edges produced, and a split part carries its parent railway's badge, so
+  // the JR East family shows two badge-carrying strokes fewer.
+  assert.equal(packageImages.length, 381);
+  assert.equal(linesWithBadges.length, 316);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));
@@ -432,7 +435,12 @@ test("Nippori lists the split Tohoku railway once", () => {
       line.name === "東北線" &&
       line.stations.some((station) => station[1] === "日暮里"),
   );
-  assert.ok(nipporiStrokes.length >= 3, "fixture no longer exercises split strokes");
+  // Two since 2026-08-19: the 電車線 stroke that ends 西日暮里→日暮里→上野 and
+  // the 尾久 支線 stroke that arrives 尾久→日暮里. The third used to be the
+  // 王子—日暮里 pseudo-edge's own stroke, which drew the same 支線 a second
+  // time; what the popup has to prove is that several strokes of ONE railway
+  // list once, and two prove it.
+  assert.ok(nipporiStrokes.length >= 2, "fixture no longer exercises split strokes");
 
   const stationId = `${nipporiStrokes[0].id}:nippori`;
   const lineById = new Map(

@@ -311,7 +311,13 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // +1 on 2026-08-19 (audited junctions): 公園 gains a row on ユーカリが丘線's
     // tail — the junction where the residential ring and the tail meet, the
     // same shape as the 上越線 water-mark above.
-    ["jp", 10220],
+    // −4 on 2026-08-19 (redrawn-track pseudo-edges): 東北線 loses the two
+    // strokes that only existed to carry the 尾久 支線's skip edges, so the
+    // 王子/上中里/日暮里/尾久 rows they duplicated collapse onto the 電車線
+    // trunk (13+8+4+3+2 → 12+4+3 across -2/-3/-4), and 予讃線-3 drops its
+    // phantom 五郎 row. Every station itself stayed; what went is the second
+    // copy a second stroke was holding.
+    ["jp", 10216],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

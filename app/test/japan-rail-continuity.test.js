@@ -65,7 +65,14 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // 西九州線-2 (東山代 伊万里 川東) and 東北線-7 (王子 上中里, renumbered to
   // -6) — are gone, their track now drawn by the trunks through 大垣, 伊万里
   // and 赤羽.
-  assert.equal(pkg.lines.length, 654);
+  // 652 on 2026-08-19: the same treatment for two edges that ride the
+  // 日暮里—尾久—赤羽 支線 past 尾久 — 王子—日暮里 and 東十条—日暮里 — leaves the
+  // 電車線 trunk continuous through 王子, 上中里, 田端 and 西日暮里, so the two
+  // strokes that only carried the skipped station (東北線-5 and the old
+  // 東北線-4) are no longer produced. 予讃線 loses no stroke: deleting the
+  // 伊予若宮信号場 wye's fourth side just shortens 予讃線-3 to the official
+  // 新谷—伊予大洲 section.
+  assert.equal(pkg.lines.length, 652);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

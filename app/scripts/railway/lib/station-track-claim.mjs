@@ -200,6 +200,14 @@ export function claimedTrackAt(point, filter, index, radiusMeters = 200) {
   return null;
 }
 
+/** Metres between two [lon, lat] points, flat-earth over station distances. */
+function metres(a, b) {
+  return Math.hypot(
+    (a[0] - b[0]) * 111320 * Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180),
+    (a[1] - b[1]) * 111320,
+  );
+}
+
 /** Smallest angle between two headings, ignoring which way round they point. */
 function axisDifference(a, b) {
   if (a == null || b == null) return null;
@@ -220,14 +228,40 @@ function axisDifference(a, b) {
  * two candidates are the two faces of one island (or two islands of one
  * group) and the cache cannot separate them — the caller must send that to
  * review rather than trusting the ranking.
+ *
+ * `options.otherStations` are the line's OTHER stops, and they bound the
+ * search: adjacency-first ranking is right about which track matters and says
+ * nothing about which STATION a platform belongs to, so where the line's own
+ * metals run past a stop that stands on somebody else's, the ranking will
+ * happily reach down the line for a platform that is adjacent. 広島電鉄's
+ * 宇品線 is the case. Both its northern termini — 紙屋町西 and 紙屋町東 — are
+ * on the 本線's 相生通り metals, because the 宇品線 branches at the 紙屋町
+ * crossing and has no platform of its own there; its own named track is the
+ * wye curve 34 m away. So for 紙屋町西 the two platforms 11.3 m and 18.2 m from
+ * the dot both measured 43.2 m from a 宇品線 way and lost, and the pick went
+ * 148.4 m down 鯉城通り to way/929779365, which is 本通's northbound platform
+ * (67 m from 本通's own dot, paired 56 m from the platform 本通 itself picks).
+ * The margin gate could not catch it either: the runner-up was 本通's OTHER
+ * platform, so the two agreed and `decisionChanges` was false.
+ *
+ * A platform that stands closer to another stop of the same line than to this
+ * one is that stop's platform. It is a Voronoi test, so it cannot fire on the
+ * genuine long moves this is for — 横浜's 相鉄本線 island is 234 m from the dot
+ * and still nearer 横浜 than 平沼橋, a kilometre up the line.
  */
 export function pickPlatform(point, bearings, claim, platformIndex, options = {}) {
   const radius = options.radiusMeters || 150;
   const adjacency = options.adjacencyMeters || 25;
+  const otherStations = options.otherStations || [];
   const found = platformIndex.within(point, radius);
   if (!found.size) return null;
   const candidates = [];
   for (const [meta, distance] of found) {
+    if (
+      meta.midpoint &&
+      otherStations.some((station) => metres(meta.midpoint, station) < distance)
+    )
+      continue;
     const alignment =
       bearings && bearings.length
         ? Math.min(
@@ -258,6 +292,9 @@ export function pickPlatform(point, bearings, claim, platformIndex, options = {}
     if (Math.abs(alignmentRank) > 15) return alignmentRank;
     return a.distance - b.distance;
   });
+  // Every candidate belonged to a neighbouring stop: this station has no
+  // platform of its own in the cache, which is a "cannot tell", not a pick.
+  if (!candidates.length) return null;
   const best = candidates[0];
   const runnerUp = candidates.find(
     (row) => row.platform.key !== best.platform.key && row.platform.midpoint,
