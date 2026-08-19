@@ -206,8 +206,31 @@
 // みどり湖–塩尻 that no stroke drew, once partition_by_audit stopped stripping a
 // junction that sits at the end of a main path. 10219 → 10220 platforms, the
 // line 67 → 68 stations and 215.755 km, and the count of lines does not move.
+//
+// 2026-08-19 stale alignments — counts unchanged (654 / 10220 / 654 / 9039),
+// GEOMETRY changed on six intervals, which is why this digest moves alone. We
+// were drawing track that no longer exists: the standing basemap audit
+// (validate-basemap-alignment.mjs) measures every drawn metre against OSM's own
+// disused/abandoned/razed ways, and six intervals were sitting ON a removed
+// alignment or in a vacuum.
+//   * 福知山線 尼崎–塚口 292.6 m → 9.9 m. Nothing was imported: the CURRENT
+//     alignment is in N02-25 as RailroadSection #9405 (1,669 m via the 塚口
+//     curve) and the walk had simply taken the shorter #9404 (1,222 m), which
+//     is the 上り線 abandoned when the JR東西線 opened in 1997. 2.497 → 2.941 km,
+//     which is longer than the 営業キロ because the 1997 route is.
+//   * 筑豊線 折尾–東水巻 268.9 → 11.5 m (2022 折尾 rebuild), 飯田線 城西–向市場
+//     137.5 → 11.9 m (1977 第一久頭合 relocation), 奥羽線 板谷–庭坂 282.1 →
+//     57.3 m (板谷トンネル), 芸備線 甲立–上川立 262.2 → 12.1 m (2006 郷原
+//     トンネル) — all four take OSM's current running track for the separated
+//     span only, from evidence/stale-alignment-geometry.json.
+//   * 奥羽線-p1 陣場–白沢 303.6 → 10.5 m: the second bore, where N02 carries one
+//     coarse centre-line for the 松原トンネル. Same defect and same fix as
+//     上越線's 湯檜曽ループ in paired-alignment-geometry.json.
+// The lead-in and run-out of every replaced interval keep N02 vertex for vertex,
+// so 福知山線 still shares the 尼崎 throat with 東海道線 and 奥羽線-p1 still
+// merges into its trunk, both vertex for vertex. jp basemap audit ERROR 6 → 0.
 export const EXPECTED_RENDER_HASH =
-  "c679e9d0ad83c6692356148ef316867ded7899b5d2abae71cbd540cbfb55987b";
+  "4b2945e6590532b7a1737d6f7441efce1de1bedf2696598d48e31acd1bfa0938";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

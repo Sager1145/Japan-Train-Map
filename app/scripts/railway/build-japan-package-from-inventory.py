@@ -2178,32 +2178,46 @@ def load_pair_bypasses():
 
 
 def load_pair_geometry():
-    """OSM track for the bores of a paired alignment, keyed by line and stations.
+    """Registered replacement track for an interval, keyed by role and stations.
 
-    N02-25 carries one coarse centre-line for a second bore. On 上越線's
-    湯檜曽ループ it stands up to 222 m off the track OSM and the basemap both
-    draw, which reads on the map as a stroke that does not follow the railway.
-    OSM keeps the bores as separate named ways, so the loop can be taken from it
-    way by way.
+    Two evidence files, one schema, one consumer:
 
-    Only intervals listed in the file are replaced. The lead-in from the last
-    shared station is deliberately absent: there N02 has a single centre-line
-    for both directions and the paired stroke has to stay EXACTLY coincident
-    with the primary, which a second survey's geometry would break.
+    * `paired-alignment-geometry.json` — N02-25 carries one coarse centre-line
+      for a second bore. On 上越線's 湯檜曽ループ it stands up to 222 m off the
+      track OSM and the basemap both draw, which reads on the map as a stroke
+      that does not follow the railway. OSM keeps the bores as separate named
+      ways, so the loop can be taken from it way by way.
+    * `stale-alignment-geometry.json` — intervals where N02-25 still carries an
+      alignment the railway no longer uses (尼崎's pre-1997 上り線, 折尾's
+      pre-2022 line, the 飯田線's pre-1977 第一久頭合 route, 板谷峠's pre-tunnel
+      surface line, the 芸備線's pre-2006 route). The 2026-08-18 basemap
+      comparison found each of them by measuring the drawn stroke against OSM's
+      own disused/abandoned/razed ways.
+
+    Only intervals listed in a file are replaced. The lead-in from the last
+    shared station is deliberately kept as N02: there N02 has a single
+    centre-line for both directions and a paired stroke — or a stroke sharing a
+    station throat with a neighbour — has to stay EXACTLY coincident with it,
+    which a second survey's geometry would break.
     """
-    path = RAW / "evidence" / "paired-alignment-geometry.json"
-    if not path.exists():
-        return {}
-    rows = json.loads(path.read_text("utf-8")).get("intervals", [])
-    return {
-        (
-            row.get("role", "paired"),
-            row["line"],
-            row["from_station"],
-            row["to_station"],
-        ): row["coordinates"]
-        for row in rows
-    }
+    geometry = {}
+    for name in (
+        "paired-alignment-geometry.json",
+        "stale-alignment-geometry.json",
+    ):
+        path = RAW / "evidence" / name
+        if not path.exists():
+            continue
+        for row in json.loads(path.read_text("utf-8")).get("intervals", []):
+            geometry[
+                (
+                    row.get("role", "paired"),
+                    row["line"],
+                    row["from_station"],
+                    row["to_station"],
+                )
+            ] = row["coordinates"]
+    return geometry
 
 
 def load_station_platform_corrections():
