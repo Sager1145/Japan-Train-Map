@@ -19,9 +19,9 @@
 //                                   deck hover/tooltip
 //   app-route-simplify.js    §5     Douglas-Peucker pre-render decimation
 //   app-dates.js             §6     date grouping/sorting + UI date state
+//   app-dom.js               §8     the cached DOM element table (`els`)
 //   app-state.js                    core mutable state owner + actions
-//   app.js  (this file)      §7–10  API client & HAS_BACKEND flag, DOM refs,
-//                                   boot
+//   app.js  (this file)      §7,9–10  API client & HAS_BACKEND flag, boot
 //                                   sequence, SSE live refresh + prebuild
 //   app-stations.js          §11    station resolution & data accessors
 //   app-persistence.js       §12–15 server autosave, file handles, user
@@ -313,42 +313,6 @@ async function ensureRailSectionsLoaded() {
   }
   return railSectionsReady;
 }
-
-// =========================================================================
-//  §8.  Cached DOM element references
-// =========================================================================
-
-// Cached DOM references. app.js is loaded at the END of <body> (no `defer`),
-// so the document is fully parsed when this runs — getElementById here at
-// module-eval time resolves every element synchronously, before first render.
-const els = {
-  list: document.getElementById("train-list"),
-  dateBar: document.getElementById("date-bar"),
-  dateStatus: document.getElementById("date-status"),
-  listTitle: document.getElementById("train-list-title"),
-  importTarget: document.getElementById("import-target"),
-  mapDateFilter: document.getElementById("map-date-filter"),
-  search: document.getElementById("search-input"),
-  importJson: document.getElementById("import-json-input"),
-  importStatus: document.getElementById("import-status"),
-  importProgressWrap: document.getElementById("import-progress-wrap"),
-  importProgressFill: document.getElementById("import-progress-fill"),
-  importProgressText: document.getElementById("import-progress-text"),
-  localJsonFileInput: document.getElementById("local-json-file-input"),
-  json: document.getElementById("train-json-input"),
-  jsonStatus: document.getElementById("json-status"),
-  fieldStatus: document.getElementById("field-status"),
-  stopsBody: document.getElementById("stops-body"),
-  id: document.getElementById("field-id"),
-  number: document.getElementById("field-number"),
-  trainType: document.getElementById("field-train-type"),
-  company: document.getElementById("field-company"),
-  direction: document.getElementById("field-direction"),
-  origin: document.getElementById("field-origin"),
-  destination: document.getElementById("field-destination"),
-  color: document.getElementById("field-color"),
-  toggleFocusZoom: document.getElementById("toggle-focus-zoom"),
-};
 
 // =========================================================================
 //  §9.  Boot sequence (runs once on DOMContentLoaded)
