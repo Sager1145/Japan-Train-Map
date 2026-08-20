@@ -19,10 +19,6 @@ function configureStationRouteResolver(resolver) {
   stationRouteResolver = resolver || null;
 }
 
-function clone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
 function stationName(feature) {
   return (
     feature.properties.station_name ||

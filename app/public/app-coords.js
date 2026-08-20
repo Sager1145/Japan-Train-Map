@@ -13,6 +13,14 @@
 //  They belong together and they belong at the bottom: this file depends on
 //  nothing but window.AppCore, which owns the 5-decimal grid rule itself.
 //
+//  The feature->coordinate accessors joined them for the same reason. Seven
+//  modules ask a GeoJSON feature where it is; the two functions that answer
+//  were declared in app-style.js, so route solving, route graphing, deck
+//  records, persistence and station resolution all appeared to depend on the
+//  styling module. `clone` came with them: it is the deep copy those
+//  accessors return coordinates through, and its only other callers are data
+//  modules that were reaching into app-stations.js for it.
+//
 //  These formats are compatibility surfaces. Route-cache keys, stats edge
 //  keys and overlap caches are all keyed on the exact bytes emitted here, so
 //  a change to the spelling is a change to every persisted cache.
@@ -79,4 +87,32 @@ function iterateGeometryLines(geometry) {
   else return [];
   _geometryLinesCache.set(geometry, result);
   return result;
+}
+
+// Deep copy of plain JSON data. Callers of getFeaturePathCoordinates mutate
+// what they get back, so the LineString/Point branch must not hand out the
+// feature's own array.
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+// Where a feature is, for display purposes: an explicit display_point wins,
+// then a Point's own coordinates, then the first vertex of its path.
+function getFeatureDisplayCoordinate(feature) {
+  const p = feature.properties || {};
+  if (Array.isArray(p.display_point)) return p.display_point;
+  if (feature.geometry?.type === "Point") return feature.geometry.coordinates;
+  return getFeaturePathCoordinates(feature)[0];
+}
+
+function getFeaturePathCoordinates(feature) {
+  if (!feature?.geometry) return [];
+  if (
+    feature.geometry.type === "LineString" ||
+    feature.geometry.type === "Point"
+  )
+    return clone(feature.geometry.coordinates);
+  if (feature.geometry.type === "MultiLineString")
+    return feature.geometry.coordinates.flatMap((line) => line);
+  return [];
 }

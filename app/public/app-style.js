@@ -118,25 +118,6 @@ function toLatLng(feature) {
   return [coord[1], coord[0]];
 }
 
-function getFeatureDisplayCoordinate(feature) {
-  const p = feature.properties || {};
-  if (Array.isArray(p.display_point)) return p.display_point;
-  if (feature.geometry?.type === "Point") return feature.geometry.coordinates;
-  return getFeaturePathCoordinates(feature)[0];
-}
-
-function getFeaturePathCoordinates(feature) {
-  if (!feature?.geometry) return [];
-  if (
-    feature.geometry.type === "LineString" ||
-    feature.geometry.type === "Point"
-  )
-    return clone(feature.geometry.coordinates);
-  if (feature.geometry.type === "MultiLineString")
-    return feature.geometry.coordinates.flatMap((line) => line);
-  return [];
-}
-
 function coordinatesEqual(a, b) {
   return (
     a && b && Number(a[0]) === Number(b[0]) && Number(a[1]) === Number(b[1])
