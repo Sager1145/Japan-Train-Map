@@ -316,8 +316,40 @@
 // interval_doubles_back_at_station 6 → 5 and sharp_artificial_turn 11 → 10.
 // N02 coverage of 東北線 loses 0.85 km, all of it inside the parallel window
 // where the 電車線 already draws the corridor; isolatedKm stays 0.
+// 2026-08-19 service spans — 658 / 10216 / 652 / 9039, up six segment
+// FEATURES and not one metre of railway. The package gained an optional
+// line-level `serviceSpans` (version 2025.5.0), derived by lib/service_status.py
+// from the edge-level `network_status` the 2026-08-13 audit already keeps, and
+// the renderer cuts each marked line into the stretch that still runs trains
+// and the stretch that does not so the second can be drawn broken.
+//
+// Seven lines carry a drawable span — 肥薩線 八代—吉松 86.5 km, 米坂線
+// 今泉—坂町 67.9, 美祢線 全線 46.1, 日田彦山線 夜明—添田 29.2, 津軽線
+// 蟹田—三厩 28.6, 黒部峡谷 猫又—欅平 7.7, 湯前線 人吉温泉—肥後西村 5.8 —
+// 271.8 km in all. Six of them keep an open stretch and add one feature each;
+// 美祢線 is closed end to end and swaps its single feature for a closed one,
+// which is why the count rises by six rather than seven. 陸羽西線's
+// `all_trains_pass` spans are carried in the package and deliberately NOT
+// drawn: its trains run and its track is ordinary railway, and two of its
+// stations are passed without stopping — a fact about stations.
+//
+// 美祢線 and 日田彦山線 were `active` in all three inventory tables until this
+// batch; both have been out of rail service since 2023 (JR West's standing
+// 長期運転見合わせ page lists 美祢線 and nothing else; JR Kyushu's 添田—夜明 has
+// run as BRT ひこぼしライン since 2023-08-28, with 鉄道事業廃止 filed 2025-12-26
+// for 2027-03-31 — a DELETION for a later batch, not a status change).
+//
+// The cut is lossless and was proved so before the hash moved: the open and
+// closed features of every split line re-cover their line's whole
+// displayPartsForLine geometry to within a metre (japan-rail-continuity), and
+// running the NEW renderer against the OLD package reproduced this file's
+// previous digest exactly — the field is additive and a package without it
+// renders as it always did. 肥薩線 needed the interval-by-interval cut rather
+// than a run-by-run one: its stroke breaks at the 大畑 ループ reversal, in the
+// middle of the closed section, and reading the span as two runs left the
+// 9.4 km 大畑—矢岳 leg drawn solid.
 export const EXPECTED_RENDER_HASH =
-  "92946a373b3366d55f284ee48e95ba49ae80f4e952efbfd45370d1ac18d3629d";
+  "35f2c426051ff3bd23de73e3846742b57fd3c4846d0d2efcc06375f3d4dde0e0";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

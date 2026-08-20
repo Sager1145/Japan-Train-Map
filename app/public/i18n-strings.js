@@ -487,6 +487,11 @@
       zh: "可在地圖圖層中開啟，顯示官方路線色與灰色車站點。",
       en: "Optional in Map Layers, using official line colors and grey station dots.",
     },
+    "info.suspendedTitle": { zh: "停駛區間", en: "Suspended sections" },
+    "info.suspendedDesc": {
+      zh: "以虛線顯示：路線仍在，但該區間目前無旅客列車（停運、代行巴士或 BRT）。",
+      en: "Drawn broken: the railway is still there, but no passenger train currently runs over it (suspended, replacement bus, or BRT).",
+    },
     "info.sourcesHeading": { zh: "資料與授權", en: "Data & Licenses" },
     "info.n02Title": { zh: "日本鐵路網", en: "Japan railway network" },
     "info.n02Body": {
@@ -1087,6 +1092,8 @@
     "info.terminalDesc": "大きな墨色の点と白い外周で、行程の端点を強調します。",
     "info.networkTitle": "全鉄道路線",
     "info.networkDesc": "地図レイヤーから有効にすると、公式路線色と灰色の駅マーカーを表示します。",
+    "info.suspendedTitle": "運休区間",
+    "info.suspendedDesc": "破線で表示：線路は残っていますが、現在この区間に旅客列車は運行していません（運転見合わせ・代行バス・BRT）。",
     "info.sourcesHeading": "データとライセンス",
     "info.n02Title": "日本の鉄道網",
     "info.n02Body": "国土交通省『国土数値情報（鉄道データ N02）』を加工して作成しています。",

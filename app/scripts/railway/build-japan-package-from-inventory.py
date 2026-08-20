@@ -1573,6 +1573,7 @@ def build_lines(
     sys.path.insert(0, str(APP_DIR / "scripts" / "railway"))
     n02_source = load_module(APP_DIR / "scripts" / "railway" / "n02" / "n02_source.py", "n02_source")
     geometry_lib = importlib.import_module("lib.geometry")
+    service_status = importlib.import_module("lib.service_status")
 
     with tempfile.TemporaryDirectory(prefix="n02-") as scratch:
         root = Path(n02_root) if n02_root else extract_n02(Path(scratch))
@@ -1620,6 +1621,11 @@ def build_lines(
         pair = (row["from_station_uid"], row["to_station_uid"])
         adjacency[key].add(tuple(sorted(pair)))
         audited_distance[(key, tuple(sorted(pair)))] = float(row.get("distance_km") or 0)
+
+    # Current service status, from the SAME rows the adjacency comes from. The
+    # edge column is the single authority; the line-level column and the
+    # package's serviceSpans/serviceStatus are both derived from it below.
+    edge_status = service_status.edge_status_index(network["connections"])
 
     members = collections.defaultdict(list)
     for station in network["stations"]:
@@ -1863,6 +1869,7 @@ def build_lines(
                 anchors=anchors,
                 station_by_uid=station_by_uid,
                 audited_distance=audited_distance,
+                edge_status=edge_status,
                 english=english,
                 operator_short=operator_short,
                 geometry_lib=geometry_lib,
@@ -1912,6 +1919,7 @@ def build_lines(
                         anchors=refined,
                         station_by_uid=station_by_uid,
                         audited_distance=audited_distance,
+                        edge_status=edge_status,
                         english=english,
                         operator_short=operator_short,
                         geometry_lib=geometry_lib,
@@ -1964,6 +1972,7 @@ def build_lines(
                         anchors=refined,
                         station_by_uid=station_by_uid,
                         audited_distance=audited_distance,
+                        edge_status=edge_status,
                         english=english,
                         operator_short=operator_short,
                         geometry_lib=geometry_lib,
@@ -3564,6 +3573,7 @@ def build_display_line(
     operator_short,
     geometry_lib,
     normalise_line_name,
+    edge_status=None,
     structure_by_section=None,
     platforms_by_group=None,
     surveyed=None,
@@ -3766,8 +3776,33 @@ def build_display_line(
         entry["isHSR"] = 1
     if is_loop:
         entry["isLoop"] = 1
-    if row.get("network_status") and row["network_status"] != "active":
-        entry["serviceStatus"] = row["network_status"]
+    # Current service status. The EDGE column is the authority: it is the only
+    # one able to say that 肥薩線 runs trains over 37 of its 124 km, and the
+    # line-level column of the same inventory is a summary of it that this
+    # rebuild restates rather than copies. `serviceSpans` rows are
+    # [firstStation, lastStation, code] over THIS stroke's own station order —
+    # ordinals, not metres, because the drawn geometry is re-anchored, cut,
+    # trimmed and smoothed downstream while the stations are what all of that
+    # anchors to (see lib/service_status.py).
+    if edge_status:
+        service_status = importlib.import_module("lib.service_status")
+        spans = service_status.service_spans(key, order, edge_status)
+        if is_loop and spans:
+            # A ring's closing interval has no [first, last] to name it. No
+            # marked line is a ring today; refuse rather than drop it silently.
+            closing = frozenset((order[-1], order[0]))
+            if (key, closing) in edge_status:
+                raise SystemExit(
+                    f"{key}: a loop's closing interval cannot be expressed as a span"
+                )
+        missed = service_status.unmatched_skip_edges(key, order, edge_status, spans)
+        if missed:
+            raise SystemExit(f"{key}: ledger edges outside every derived span: {missed}")
+        if spans:
+            entry["serviceSpans"] = spans
+            entry["serviceStatus"] = service_status.line_service_status(
+                spans, len(order)
+            )
     if not is_loop:
         for span in separated_direction_runs(order, platforms_by_group or {}, station_by_uid):
             primary_sections = set()

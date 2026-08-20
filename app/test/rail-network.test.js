@@ -119,7 +119,13 @@ const EXPECTED_COUNTS = Object.freeze({
   // 予讃線 五郎—新谷, the fourth side of the 伊予若宮信号場 wye, so 予讃線-3 is
   // the official 新谷—伊予大洲 section alone. Every station stayed; the four
   // rows are the duplicate copies the dropped strokes held.
-  segments: 652,
+  // 658 segment features for 652 lines on 2026-08-19 (service spans): seven
+  // railways are drawn as an open stretch plus a closed one, because a dash
+  // rhythm belongs to a feature and cannot vary along it. 美祢線 is closed end
+  // to end and so contributes ONE feature rather than two, which is where
+  // 652 + 7 = 659 loses its last one. Stations, lines and groups do not move:
+  // the cut is in the drawing, not in the railway.
+  segments: 658,
   stations: 10216,
   lines: 652,
   groups: 9039,
@@ -278,10 +284,29 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
   // The LOD gate is the point: it may never be a FILTER, because geojson
   // filters are evaluated per tile-parse and neighbouring tiles can disagree
   // about the zoom.
+  //
+  // A filter on a CONSTANT feature property is fine and the field now carries
+  // one — `suspended`, which splits the in-service strokes from the ones the
+  // dashed layer draws. It is decided when the feature is built and can never
+  // differ between two parses of the same feature. What must never appear is
+  // the camera: assert on the absence of ["zoom"], which is the actual rule,
+  // rather than on the absence of any filter at all.
   const mentionsZoom = (value) =>
     JSON.stringify(value ?? null).includes('["zoom"]');
-  assert.equal(lines.filter, undefined);
-  assert.ok(!mentionsZoom(stations.filter));
+  const suspendedLines = byId.get(win.RailMapStyle.SEGMENTS_SUSPENDED_LAYER);
+  for (const layer of [
+    lines,
+    stations,
+    suspendedLines,
+    byId.get(win.RailMapStyle.SEGMENTS_CASING_LAYER),
+    byId.get(win.RailMapStyle.SEGMENTS_SUSPENDED_CASING_LAYER),
+  ])
+    assert.ok(!mentionsZoom(layer.filter), `${layer.id} filters on zoom`);
+  // JSON round-trip: the style is evaluated in a vm realm, so its arrays are
+  // structurally identical but not reference-equal to this file's.
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(lines.filter), ["!=", ["get", "suspended"], 1]);
+  assert.deepEqual(plain(suspendedLines.filter), ["==", ["get", "suspended"], 1]);
   assert.equal(stations.filter, undefined);
   assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0.5);
   assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0.5);
@@ -412,4 +437,163 @@ test("ridden geometry is an exact slice of the complete display line", () => {
   );
   assert.ok(stationIndex > 0, "B must be a vertex of the drawn line");
   assert.deepEqual(route.geometry.coordinates, displayLine.slice(stationIndex));
+});
+
+// ── the service cut, on geometry small enough to check by hand ──
+// A straight line of six stations one tenth of a degree apart at the equator,
+// so every interval is the same length and a span's expected share of the line
+// is arithmetic rather than a measurement.
+function straightLine(serviceSpans) {
+  const stations = [];
+  const segments = [];
+  for (let index = 0; index < 6; index += 1) {
+    stations.push([`s${index}`, `S${index}`, index * 0.1, 0]);
+    if (index)
+      segments.push([
+        11.13,
+        index > 1 ? 1 : 0,
+        index > 1
+          ? [[index * 0.1, 0]]
+          : [
+              [(index - 1) * 0.1, 0],
+              [index * 0.1, 0],
+            ],
+      ]);
+  }
+  const line = {
+    id: "cut-fixture",
+    name: "Cut Line",
+    operator: "Fixture Rail",
+    rank: 1,
+    color: "#123456",
+    stations,
+    segments,
+  };
+  if (serviceSpans) line.serviceSpans = serviceSpans;
+  return line;
+}
+
+function cutFeatures(serviceSpans) {
+  const network = RailNetwork.buildNetworkFromCompactPackage({
+    format: "compact-v1",
+    version: "cut-fixture",
+    lines: [straightLine(serviceSpans)],
+  });
+  const features = network.segments.features;
+  const spans = (geometry) =>
+    geometry.type === "MultiLineString"
+      ? geometry.coordinates
+      : [geometry.coordinates];
+  const ends = (feature) =>
+    spans(feature.geometry).map((part) => [
+      Number(part[0][0].toFixed(6)),
+      Number(part[part.length - 1][0].toFixed(6)),
+    ]);
+  return {
+    open: features.filter((feature) => feature.properties.suspended !== 1),
+    closed: features.filter((feature) => feature.properties.suspended === 1),
+    ends,
+  };
+}
+
+test("a service span cuts at its own stations, whichever end of the line it sits at", () => {
+  // No spans at all: one feature, and not a property more than a line without
+  // the field ever had. This is what keeps an old package rendering unchanged.
+  const plain = cutFeatures(null);
+  assert.equal(plain.open.length, 1);
+  assert.equal(plain.closed.length, 0);
+  assert.equal(plain.open[0].properties.suspended, undefined);
+  assert.equal(plain.open[0].properties.serviceCode, undefined);
+
+  // PREFIX — S0…S2 closed, S2…S5 open, cut exactly at S2.
+  const prefix = cutFeatures([[0, 2, 1]]);
+  assert.deepEqual(prefix.ends(prefix.closed[0]), [[0, 0.2]]);
+  assert.deepEqual(prefix.ends(prefix.open[0]), [[0.2, 0.5]]);
+  assert.equal(prefix.closed[0].properties.serviceCode, 1);
+  assert.equal(prefix.closed[0].properties.serviceStatus, "service_suspended");
+  assert.equal(prefix.closed[0].properties.labelSuppressed, 1);
+
+  // SUFFIX — the mirror image.
+  const suffix = cutFeatures([[3, 5, 2]]);
+  assert.deepEqual(suffix.ends(suffix.closed[0]), [[0.3, 0.5]]);
+  assert.deepEqual(suffix.ends(suffix.open[0]), [[0, 0.3]]);
+  assert.equal(suffix.closed[0].properties.serviceStatus, "substitute_bus");
+
+  // MIDDLE — the case the ledger has no drawable instance of today, so the
+  // fixture is the only place it is exercised. The open half comes back as TWO
+  // strokes, one either side.
+  const middle = cutFeatures([[2, 3, 3]]);
+  assert.deepEqual(middle.ends(middle.closed[0]), [[0.2, 0.3]]);
+  assert.deepEqual(middle.ends(middle.open[0]), [
+    [0, 0.2],
+    [0.3, 0.5],
+  ]);
+  assert.equal(middle.open[0].properties.partCount, 2);
+  assert.equal(middle.closed[0].properties.partCount, 1);
+
+  // WHOLE LINE — nothing is left to be open, and the name falls to the closed
+  // stroke because there is no other stroke to carry it (this is 美祢線).
+  const whole = cutFeatures([[0, 5, 2]]);
+  assert.equal(whole.open.length, 0);
+  assert.equal(whole.closed.length, 1);
+  assert.deepEqual(whole.ends(whole.closed[0]), [[0, 0.5]]);
+  assert.equal(whole.closed[0].properties.labelSuppressed, undefined);
+  assert.equal(whole.closed[0].properties.name, "Cut Line");
+
+  // TWO SPANS, one code each: the gravest wins the feature's code, and the
+  // open remainder is every piece between and beyond them.
+  const two = cutFeatures([
+    [0, 1, 2],
+    [3, 4, 1],
+  ]);
+  assert.deepEqual(two.ends(two.closed[0]), [
+    [0, 0.1],
+    [0.3, 0.4],
+  ]);
+  assert.deepEqual(two.ends(two.open[0]), [
+    [0.1, 0.3],
+    [0.4, 0.5],
+  ]);
+  assert.equal(two.closed[0].properties.serviceCode, 1);
+});
+
+test("all_trains_pass is carried in the package and never drawn broken", () => {
+  // 陸羽西線's case: the trains run and the track is ordinary railway; two
+  // STATIONS are passed without stopping. Drawing the rail between them broken
+  // would say something false about the rail.
+  const passed = cutFeatures([[1, 3, 4]]);
+  assert.equal(passed.closed.length, 0);
+  assert.equal(passed.open.length, 1);
+  assert.deepEqual(passed.ends(passed.open[0]), [[0, 0.5]]);
+});
+
+test("the open and closed halves are one railway at one level of detail", () => {
+  const { open, closed } = cutFeatures([[0, 2, 1]]);
+  for (const key of [
+    "lineId",
+    "name",
+    "operator",
+    "color",
+    "minz",
+    "visibilityKm",
+    "intervalCount",
+    "isHSR",
+    "isLoop",
+  ])
+    assert.equal(
+      open[0].properties[key],
+      closed[0].properties[key],
+      `${key} differs between the open and closed halves`,
+    );
+  // `parts` is NOT cut. Ride slicing, hit-testing and the route solver all read
+  // it, and a ride taken before the suspension is still a ride.
+  const network = RailNetwork.buildNetworkFromCompactPackage({
+    format: "compact-v1",
+    version: "cut-fixture",
+    lines: [straightLine([[0, 2, 1]])],
+  });
+  const record = network.lineById.get("cut-fixture");
+  assert.equal(record.parts.length, 1);
+  assert.equal(record.parts[0][0][0], 0);
+  assert.equal(record.parts[0].at(-1)[0], 0.5);
 });

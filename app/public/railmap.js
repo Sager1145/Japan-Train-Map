@@ -78,6 +78,8 @@
     STATION_LABELS_SOURCE,
     SEGMENTS_LAYER,
     SEGMENTS_CASING_LAYER,
+    SEGMENTS_SUSPENDED_LAYER,
+    SEGMENTS_SUSPENDED_CASING_LAYER,
     STATIONS_LAYER,
     STATIONS_LABEL_LAYER,
     SEGMENTS_LABEL_LAYER,
@@ -735,6 +737,8 @@
       for (const layer of [
         SEGMENTS_CASING_LAYER,
         SEGMENTS_LAYER,
+        SEGMENTS_SUSPENDED_CASING_LAYER,
+        SEGMENTS_SUSPENDED_LAYER,
         SEGMENTS_LABEL_LAYER,
       ])
         this._setVisibility(layer, visibility);
@@ -938,6 +942,33 @@
       if (m.getLayer(SEGMENTS_LAYER)) {
         m.setPaintProperty(SEGMENTS_LAYER, "line-color-transition", transition);
         m.setPaintProperty(SEGMENTS_LAYER, "line-color", networkLineColor(theme));
+      }
+      // The suspended stretches are the same field in the same two inks, so
+      // they follow the same two colour rules. Both layers, or a theme switch
+      // would leave every closed railway painted for the surface it left.
+      if (m.getLayer(SEGMENTS_SUSPENDED_CASING_LAYER)) {
+        m.setPaintProperty(
+          SEGMENTS_SUSPENDED_CASING_LAYER,
+          "line-color-transition",
+          transition,
+        );
+        m.setPaintProperty(
+          SEGMENTS_SUSPENDED_CASING_LAYER,
+          "line-color",
+          networkCasingColor(theme),
+        );
+      }
+      if (m.getLayer(SEGMENTS_SUSPENDED_LAYER)) {
+        m.setPaintProperty(
+          SEGMENTS_SUSPENDED_LAYER,
+          "line-color-transition",
+          transition,
+        );
+        m.setPaintProperty(
+          SEGMENTS_SUSPENDED_LAYER,
+          "line-color",
+          networkLineColor(theme),
+        );
       }
       if (m.getLayer(STATIONS_LAYER)) {
         m.setPaintProperty(

@@ -9,6 +9,31 @@ const RailNetwork = require("../public/rail-network.js");
 
 const PACKAGE_PATH = path.join(__dirname, "../public/rail/jp-2025.json");
 
+// Metres along a path, and along everything a feature draws. Only ever used to
+// compare one drawing of a stretch of railway against another drawing of the
+// same stretch, so a local flat-earth metric is exact enough and independent of
+// whatever the renderer uses.
+function pathMeters(coordinates) {
+  let total = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    const [from, to] = [coordinates[index - 1], coordinates[index]];
+    const scale = Math.cos((((from[1] + to[1]) / 2) * Math.PI) / 180);
+    total += Math.hypot(
+      (to[0] - from[0]) * 111320 * scale,
+      (to[1] - from[1]) * 110540,
+    );
+  }
+  return total;
+}
+
+function featureMeters(feature) {
+  const parts =
+    feature.geometry.type === "MultiLineString"
+      ? feature.geometry.coordinates
+      : [feature.geometry.coordinates];
+  return parts.reduce((sum, coordinates) => sum + pathMeters(coordinates), 0);
+}
+
 function coordinateKey(coordinate) {
   return `${coordinate[0]},${coordinate[1]}`;
 }
@@ -35,7 +60,12 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // characterisation, not a rule — everything below it is the rule, and it is
   // unchanged: every line's intervals match its station order, and every
   // interval meets its neighbour exactly.
-  assert.equal(pkg.version, "2025.4.2");
+  // 2025.5.0 adds one optional line-level field, `serviceSpans` — the runs of
+  // station ordinals a line is out of passenger service over, derived from the
+  // inventory's edge-level `network_status`. Additive: a reader that does not
+  // know the key draws those stretches solid, which is what every reader did
+  // before it existed.
+  assert.equal(pkg.version, "2025.5.0");
   // 661: down from 664 with the 2026-08-18 live-line gap repairs. Five severed
   // sibling strokes rejoined their railways — 石北線-2 (生田原–西留辺蘂 T-junction
   // blind spot), 常磐線-2 (広野–Jヴィレッジ, N02's missing 218 m approach),
@@ -332,15 +362,80 @@ test("Japan renders one complete feature per line, never one per station interva
     network.segments.features.length <= pkg.lines.length + 4 * lanedPairs.size,
     `${network.segments.features.length} features for ${pkg.lines.length} lines and ${lanedPairs.size} laned pairs`,
   );
-  // Exactly one render feature per package line: a railway is drawn on its
-  // own surveyed geometry, never split into a feature per screen offset.
+  // One render feature per package line — a railway is drawn on its own
+  // surveyed geometry, never split into a feature per screen offset — with
+  // exactly one sanctioned exception: a line the LEDGER says has stopped
+  // carrying passengers over part of itself is cut into the stretch that still
+  // runs trains and the stretch that does not, because a dash rhythm is a
+  // property of a feature and cannot be varied along one. The split is
+  // permitted only where `serviceSpans` says so, and only into those two.
+  const SUSPENDED_CODES = new Set([1, 2, 3]);
+  const maySplit = new Set(
+    pkg.lines
+      .filter((line) =>
+        (line.serviceSpans || []).some((span) => SUSPENDED_CODES.has(span[2])),
+      )
+      .map((line) => line.id),
+  );
+  // The ledger's own count, so a line that quietly gained or lost a span shows
+  // up here rather than only in the render hash.
+  assert.equal(maySplit.size, 7);
   for (const line of pkg.lines) {
+    const own = network.segments.features.filter(
+      (feature) => feature.properties.lineId === line.id,
+    );
+    const closed = own.filter((feature) => feature.properties.suspended === 1);
+    if (!maySplit.has(line.id)) {
+      assert.equal(own.length, 1, `${line.id} emits more than one feature`);
+      assert.equal(closed.length, 0, `${line.id} is dashed without a ledger span`);
+      continue;
+    }
+    assert.equal(closed.length, 1, `${line.id} must emit one closed feature`);
+    assert.ok(
+      own.length <= 2,
+      `${line.id} emits ${own.length} features; at most open + closed`,
+    );
+    // Both halves are one railway at one level of detail. A closed stretch
+    // that faded a zoom before the open one would read as two railways.
+    for (const feature of own) {
+      assert.equal(feature.properties.minz, closed[0].properties.minz);
+      assert.equal(
+        feature.properties.visibilityKm,
+        closed[0].properties.visibilityKm,
+      );
+    }
+    // The name is written once: on the open stroke where there is one, on the
+    // closed stroke when the whole railway is closed (美祢線).
     assert.equal(
-      network.segments.features.filter(
-        (feature) => feature.properties.lineId === line.id,
-      ).length,
+      own.filter((feature) => feature.properties.labelSuppressed !== 1).length,
       1,
-      `${line.id} emits more than one feature`,
+      `${line.id} does not carry its name exactly once`,
+    );
+    // Nothing is lost in the cut: the two halves together are the whole line,
+    // to the metre.
+    const drawn = own.reduce((sum, feature) => sum + featureMeters(feature), 0);
+    const whole = RailNetwork.displayPartsForLine(line).reduce(
+      (sum, coordinates) => sum + pathMeters(coordinates),
+      0,
+    );
+    assert.ok(
+      Math.abs(drawn - whole) < 1,
+      `${line.id} loses ${(whole - drawn).toFixed(1)} m in the service cut`,
+    );
+    // …and the closed half really is the ledger's kilometres, not a stray
+    // stroke: the drawn cut is within 1% of the package's own interval sum.
+    const spanKm = (line.serviceSpans || [])
+      .filter((span) => SUSPENDED_CODES.has(span[2]))
+      .reduce((sum, span) => {
+        let km = 0;
+        for (let index = span[0]; index < span[1]; index += 1)
+          km += line.segments[index][0];
+        return sum + km;
+      }, 0);
+    const closedKm = featureMeters(closed[0]) / 1000;
+    assert.ok(
+      Math.abs(closedKm - spanKm) < spanKm * 0.01,
+      `${line.id} draws ${closedKm.toFixed(3)} km closed against ${spanKm.toFixed(3)} km of span`,
     );
   }
   // Lines that carry a branch under one id — a TOPOLOGY property, so it is
@@ -386,7 +481,15 @@ test("Japan renders one complete feature per line, never one per station interva
   }
   for (const line of pkg.lines) {
     const strokes = network.lineById.get(line.id).parts.length;
-    const ceiling = strokes + 8 * (laneRowsPerLine.get(line.id) || 0);
+    // …plus the service cut, which is the other sanctioned reason to break a
+    // stroke. Each drawable span cuts a stroke in at most two places — one for
+    // a stretch that reaches an end, two for one in the middle — so it adds at
+    // most two pieces. It is a cut per LEDGER SPAN, never per hop.
+    const spans = (line.serviceSpans || []).filter((span) =>
+      SUSPENDED_CODES.has(span[2]),
+    ).length;
+    const ceiling =
+      strokes + 8 * (laneRowsPerLine.get(line.id) || 0) + 2 * spans;
     assert.ok(
       piecesPerLine.get(line.id) <= ceiling,
       `${line.id}: ${piecesPerLine.get(line.id)} drawn pieces for ${strokes} strokes and ${laneRowsPerLine.get(line.id) || 0} lanes`,

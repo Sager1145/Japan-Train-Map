@@ -415,7 +415,55 @@ test("underground_structure_is_preserved_without_guessing_other_countries", () =
   // A dashed network overlay is deliberately deferred until those measures
   // are cut onto the final branched/lane display features; painting whole
   // subway lines dashed would be a false shortcut.
+  //
+  // That condition has now been met for ONE kind of measure and one only —
+  // current service status — so the rule tightens rather than relaxes. The
+  // field's own layers still may not carry a dash: `serviceStatus` on a line
+  // is a summary ("partial_service_suspended"), and a ["case", ["get",
+  // "serviceStatus"], …] on SEGMENTS_LAYER would draw all 124 km of 肥薩線
+  // broken to describe 87 of them. The dash is allowed only on the layers fed
+  // by geometry that rail-network.js has already cut to the ledger's station
+  // spans.
   const { byId } = labelLayers();
   for (const id of [style.SEGMENTS_LAYER, style.SEGMENTS_CASING_LAYER])
     assert.equal(byId.get(id).paint["line-dasharray"], undefined);
+  for (const id of [
+    style.SEGMENTS_SUSPENDED_LAYER,
+    style.SEGMENTS_SUSPENDED_CASING_LAYER,
+  ]) {
+    const layer = byId.get(id);
+    const dash = layer.paint["line-dasharray"];
+    assert.ok(Array.isArray(dash) && dash.length === 2, `${id} has no dash`);
+    // …and it draws ONLY the cut features, never the whole field.
+    assert.deepEqual(JSON.parse(JSON.stringify(layer.filter)), [
+      "==",
+      ["get", "suspended"],
+      1,
+    ]);
+    // Butt caps: a round cap adds half a line width of ink at each end of
+    // every dash, lengthening the mark and shortening the gap until the line
+    // reads solid again (the reason TRAIN_XDAY_LAYER gives).
+    assert.equal(layer.layout["line-cap"], "butt");
+  }
+  // The dash is one RHYTHM in pixels, expressed per layer in that layer's own
+  // widths. MapLibre measures line-dasharray in line widths, so the casing —
+  // 1.4× the core — needs a proportionally smaller pair or its dashes run 40%
+  // long and hang a grey tail off both ends of every mark. Equal pairs on the
+  // two layers is the bug this asserts against.
+  const core = byId.get(style.SEGMENTS_SUSPENDED_LAYER).paint["line-dasharray"];
+  const casing = byId.get(style.SEGMENTS_SUSPENDED_CASING_LAYER).paint[
+    "line-dasharray"
+  ];
+  const coreWidth = 3;
+  const casingWidth = 3 + 0.6 * 2;
+  for (let index = 0; index < 2; index += 1)
+    assert.ok(
+      Math.abs(core[index] * coreWidth - casing[index] * casingWidth) < 0.01,
+      `dash ${index} is ${core[index] * coreWidth} px on the core and ${
+        casing[index] * casingWidth
+      } px on the casing`,
+    );
+  // Same rhythm as the map's only other dash, the cross-day train.
+  assert.ok(Math.abs(core[0] * coreWidth - 1.6 * 4 * 1.18) < 0.01);
+  assert.ok(Math.abs(core[1] * coreWidth - 1.4 * 4 * 1.18) < 0.01);
 });

@@ -2186,6 +2186,20 @@ tr.branch-junction td {
   background: var(--rail-text);
 }
 
+/* The suspended row is the network row with the continuity taken out: same
+   3px weight, same hue, no station dot — the dash IS the whole difference, as
+   it is on the map. The 7.5/6.6 px rhythm is the one railmap-style.js paints
+   (DASH_PX), scaled to this swatch's 3px stroke. */
+.map-info-symbol--suspended {
+  height: 3px;
+  border-radius: 0;
+  background: repeating-linear-gradient(
+    to right,
+    var(--rail-text) 0 7px,
+    transparent 7px 13px
+  );
+}
+
 .map-info-symbol--network::after {
   content: "";
   position: absolute;

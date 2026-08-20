@@ -300,6 +300,10 @@ function buildMapInfoControl() {
         <span class="map-info-symbol map-info-symbol--network" aria-hidden="true"></span>
         <div><strong data-i18n="info.networkTitle">全部鐵路線</strong><p data-i18n="info.networkDesc">可在地圖圖層中開啟，顯示官方路線色與灰色車站點。</p></div>
       </div>
+      <div class="map-info-legend-row" data-country="jp">
+        <span class="map-info-symbol map-info-symbol--suspended" aria-hidden="true"></span>
+        <div><strong data-i18n="info.suspendedTitle">停駛區間</strong><p data-i18n="info.suspendedDesc">以虛線顯示：路線仍在，但該區間目前無旅客列車（停運、代行巴士或 BRT）。</p></div>
+      </div>
     </section>
 
     <section class="map-info-section" aria-labelledby="map-info-sources-heading">

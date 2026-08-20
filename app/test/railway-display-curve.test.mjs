@@ -11,7 +11,8 @@ const pkg = JSON.parse(
 
 test("Japan display package advertises the current reproducible contract", () => {
   assert.equal(pkg.format, "compact-v1");
-  assert.equal(pkg.version, "2025.4.2");
+  // 2025.5.0: the additive `serviceSpans` field (see japan-rail-continuity).
+  assert.equal(pkg.version, "2025.5.0");
   assert.equal(pkg.geometrySource.officialOnly, 0);
   assert.deepEqual(pkg.geometrySource.osmGeometry.lines, [
     "jp-東日本旅客鉄道-東北新幹線",

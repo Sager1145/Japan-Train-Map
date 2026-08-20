@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(SCRIPT_DIR, '..', '..');
 const PACKAGE_PATH = path.join(APP_DIR, 'public', 'rail', 'jp-2025.json');
-const PACKAGE_VERSION = '2025.4.2';
+const PACKAGE_VERSION = '2025.5.0';
 
 const CASES = [
   {

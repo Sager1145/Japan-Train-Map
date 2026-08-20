@@ -93,7 +93,34 @@ for (const line of pkg.lines) {
   structureRows += structure.length;
 }
 
-pkg.version = "2025.4.2";
+// `serviceSpans` gets the same treatment `structure` gets above, in its own
+// units: rows are [firstStation, lastStation, code] over the line's `stations`
+// array, so the clamp is to that array's bounds rather than to a length in
+// metres. A row that survives names two real, distinct, correctly ordered
+// stations of THIS line; anything else is dropped rather than published as an
+// index the renderer would have to guess at.
+let serviceSpanRows = 0;
+let droppedServiceSpans = 0;
+for (const line of pkg.lines) {
+  const last = line.stations.length - 1;
+  const spans = [];
+  for (const row of line.serviceSpans || []) {
+    const from = Math.max(0, Math.min(last, Math.round(Number(row[0]))));
+    const to = Math.max(0, Math.min(last, Math.round(Number(row[1]))));
+    const code = Math.round(Number(row[2]));
+    if (!(to > from) || !(code >= 1 && code <= 4)) {
+      droppedServiceSpans += 1;
+      continue;
+    }
+    spans.push([from, to, code]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  if (spans.length) line.serviceSpans = spans;
+  else delete line.serviceSpans;
+  serviceSpanRows += spans.length;
+}
+
+pkg.version = "2025.5.0";
 pkg.generatedAt = "2026-08-18T00:00:00.000Z";
 pkg.geometrySource = {
   officialOnly: 0,
@@ -144,6 +171,7 @@ fs.writeFileSync(`${PACKAGE_PATH}.gz`, zlib.gzipSync(raw, { level: 9, mtime: 0 }
 console.log(
   `jp: ${pkg.lines.length} lines, ${pkg.stats.intervals} intervals, ` +
     `${pkg.stats.stations} platforms, ${structureRows} structure rows ` +
-    `(${clampedStructureRows} clamped), ${colourResult.applied} verified line colours ` +
+    `(${clampedStructureRows} clamped), ${serviceSpanRows} service spans ` +
+    `(${droppedServiceSpans} dropped), ${colourResult.applied} verified line colours ` +
     `(${colourResult.inherited} sources inherited), version ${pkg.version}`,
 );

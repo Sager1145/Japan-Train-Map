@@ -166,6 +166,43 @@
     );
   }
 
+  // ─────────────────────── the one dash rhythm on the map ───────────────────────
+  // MapLibre measures `line-dasharray` in LINE WIDTHS, not pixels, so the same
+  // pair of numbers on two strokes of different weight draws two different
+  // rhythms. This map already has one dash — the cross-day continuation of an
+  // overnight train, [1.6, 1.4] on a 4 × 1.18 px stroke — so the rhythm is
+  // fixed in PIXELS here and every dashed layer divides by its own width to
+  // reach it. Two dashes that differed would read as two meanings.
+  const DASH_RATIO = Object.freeze([1.6, 1.4]);
+  const DASH_REFERENCE_WIDTH_PX = 4 * RIDDEN_WIDTH_SCALE;
+  // ≈ 7.55 px on, 6.61 px off.
+  const DASH_PX = Object.freeze(
+    DASH_RATIO.map((ratio) => ratio * DASH_REFERENCE_WIDTH_PX),
+  );
+
+  // The dash pair for a stroke of `widthPx` at full scale. It needs no zoom
+  // ramp of its own and must not have one: every railway width here is one
+  // token times railwayScale(), so a dash expressed as a multiple of the width
+  // is carried down by the same factor and the on:off:width proportion is the
+  // same at z4 as at z18. The narrowest these lines are ever drawn is z4
+  // (railwayScale 0.354, core 1.06 px), where the dash is still 2.7 px long —
+  // and below that minZoomForLength has already taken them off the map.
+  function dashArrayForWidth(widthPx) {
+    return DASH_PX.map((px) => Number((px / widthPx).toFixed(4)));
+  }
+  // A casing is 1.4× the core, so an uncorrected pair would draw its dashes
+  // 40% longer than the ink they surround and leave a grey tail hanging off
+  // both ends of every dash. Dividing each layer by its OWN width locks the
+  // two in phase.
+  function networkSuspendedDash() {
+    return dashArrayForWidth(RAILWAY_STYLE.railWidthPx);
+  }
+  function networkSuspendedCasingDash() {
+    return dashArrayForWidth(
+      RAILWAY_STYLE.railWidthPx + RAILWAY_STYLE.networkCasingEdgePx * 2,
+    );
+  }
+
   // ─────────────────── the railway's screen-space weight contract ───────────────────
   // Every railway weight — network stroke, network station dot, ridden route,
   // recorded-call marker, selection casing, and the lane a bundled railway
@@ -442,6 +479,25 @@
   const STATION_LABELS_SOURCE = "rn-station-labels";
   const SEGMENTS_LAYER = "rn-segments-line";
   const SEGMENTS_CASING_LAYER = "rn-segments-casing";
+  // The same field, for the stretches of it that no longer carry passenger
+  // trains — 肥薩線 八代—吉松, 美祢線, the BRT-ed 日田彦山線, 津軽線 蟹田—三厩,
+  // 米坂線 今泉—坂町 …. Their own layer pair rather than a dasharray on the
+  // field, for two reasons that both matter: `line-dasharray` has no value
+  // meaning "solid", so one layer cannot mix the two; and putting a dash on
+  // the field would push all 650-odd features onto the dashed-texture path
+  // for the sake of six. The features they draw are cut to the ledger's own
+  // station spans in rail-network.js — the condition the whole-line shortcut
+  // in test/apple-maps-railway-contract.test.js was waiting on.
+  const SEGMENTS_SUSPENDED_LAYER = "rn-segments-suspended-line";
+  const SEGMENTS_SUSPENDED_CASING_LAYER = "rn-segments-suspended-casing";
+  // Drawn only on the features rail-network.js flagged, and correspondingly
+  // kept OFF the field's own three layers, so the two can never both claim a
+  // metre of track.
+  const IN_SERVICE_FILTER = ["!=", ["get", "suspended"], 1];
+  const SUSPENDED_FILTER = ["==", ["get", "suspended"], 1];
+  // One name per railway. rail-network.js marks the closed stroke of a line
+  // that still has an open one; a wholly closed railway carries its own name.
+  const SEGMENT_LABEL_FILTER = ["!=", ["get", "labelSuppressed"], 1];
   const STATIONS_LAYER = "rn-stations-dot";
   // The same dot for a platform whose line runs in a parallel lane. It cannot
   // be a circle — MapLibre has no per-feature circle offset — so it is an ICON
@@ -540,6 +596,14 @@
     // the "all railway lines" field
     [SEGMENTS_CASING_LAYER, "line-width", networkCasingWidth],
     [SEGMENTS_LAYER, "line-width", () => railwayScale(RAILWAY_STYLE.railWidthPx)],
+    // …and the same field where it is no longer in service. Identical widths
+    // on purpose: the dash is the whole difference.
+    [SEGMENTS_SUSPENDED_CASING_LAYER, "line-width", networkCasingWidth],
+    [
+      SEGMENTS_SUSPENDED_LAYER,
+      "line-width",
+      () => railwayScale(RAILWAY_STYLE.railWidthPx),
+    ],
     [
       STATIONS_LAYER,
       "circle-radius",
@@ -804,6 +868,11 @@
       id: SEGMENTS_CASING_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE,
+      // A feature-property filter, not a zoom one: it is constant for the life
+      // of the feature, so the tile-parse hazard the note on SEGMENTS_LAYER
+      // warns about — neighbouring tiles parsed at different zooms hiding
+      // different halves of a line — cannot arise here.
+      filter: IN_SERVICE_FILTER,
       layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
       paint: {
         "line-color": networkCasingColor(theme),
@@ -815,6 +884,7 @@
       id: SEGMENTS_LAYER,
       type: "line",
       source: SEGMENTS_SOURCE,
+      filter: IN_SERVICE_FILTER,
       layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
       paint: {
         // Theme-dependent: _applyThemePaint recomposites this on a switch.
@@ -827,6 +897,41 @@
         // Screen-space: half a station circle, at every zoom — the scale ramp
         // moves the two of them together, never one without the other.
         "line-width": railwayScale(RAILWAY_STYLE.railWidthPx),
+      },
+    });
+    // The same railway, over the stretches where the trains have stopped. Same
+    // hue, same weight, same casing, same LOD — only the continuity differs,
+    // because that is the only thing that differs on the ground. Drawn
+    // immediately above the field so a closed stretch never disappears under
+    // the open railway beside it, and below the station dots so the platforms
+    // of a suspended line still read as platforms.
+    layers.push({
+      id: SEGMENTS_SUSPENDED_CASING_LAYER,
+      type: "line",
+      source: SEGMENTS_SOURCE,
+      filter: SUSPENDED_FILTER,
+      // Butt caps, for the reason TRAIN_XDAY_LAYER gives: a round cap adds
+      // half a line width of ink at each end of every dash, which lengthens
+      // the mark and shortens the gap until the line reads solid again.
+      layout: { "line-cap": "butt", "line-join": "round", visibility: "none" },
+      paint: {
+        "line-color": networkCasingColor(theme),
+        "line-opacity": lineLengthVisibilityOpacity(0.88),
+        "line-width": networkCasingWidth(),
+        "line-dasharray": networkSuspendedCasingDash(),
+      },
+    });
+    layers.push({
+      id: SEGMENTS_SUSPENDED_LAYER,
+      type: "line",
+      source: SEGMENTS_SOURCE,
+      filter: SUSPENDED_FILTER,
+      layout: { "line-cap": "butt", "line-join": "round", visibility: "none" },
+      paint: {
+        "line-color": networkLineColor(theme),
+        "line-opacity": lineLengthVisibilityOpacity(UNRIDDEN_OPACITY),
+        "line-width": railwayScale(RAILWAY_STYLE.railWidthPx),
+        "line-dasharray": networkSuspendedDash(),
       },
     });
     layers.push({
@@ -872,6 +977,9 @@
         id: SEGMENTS_LABEL_LAYER,
         type: "symbol",
         source: SEGMENTS_SOURCE,
+        // A railway split into an open and a closed stroke is still ONE
+        // railway with ONE name; rail-network.js says which stroke carries it.
+        filter: SEGMENT_LABEL_FILTER,
         layout: {
           visibility: "none",
           "text-field": ["coalesce", ["get", "name"], ""],
@@ -1491,6 +1599,10 @@
     STATIONS_SOURCE,
     SEGMENTS_LAYER,
     SEGMENTS_CASING_LAYER,
+    SEGMENTS_SUSPENDED_LAYER,
+    SEGMENTS_SUSPENDED_CASING_LAYER,
+    networkSuspendedDash,
+    networkSuspendedCasingDash,
     STATIONS_LAYER,
     STATION_LABELS_SOURCE,
     STATIONS_LABEL_LAYER,

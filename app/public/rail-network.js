@@ -1383,6 +1383,197 @@
       : { coordinates: backward, backward: true };
   }
 
+  // ───────────────────────── current service status ─────────────────────────
+  // The package's `serviceSpans` rows are [firstStation, lastStation, code]
+  // over the line's OWN `stations` array — station ordinals, never metres.
+  // `structure` measures in metres of the N02 walk, which is a different ruler
+  // from the display geometry (anchoring, branch cutting, fold trimming and
+  // kink smoothing all move it), and that is exactly why nothing here reads
+  // it. A station ordinal survives every one of those passes because the
+  // stations are what those passes anchor TO.
+  const SERVICE_STATUS_CODES = Object.freeze({
+    1: "service_suspended",
+    2: "substitute_bus",
+    3: "no_passenger_train",
+    4: "all_trains_pass",
+  });
+  // Which codes mean NO PASSENGER TRAIN RUNS ON THIS TRACK, i.e. which ones
+  // the map draws as a broken line. `all_trains_pass` (4) is deliberately not
+  // among them: on 陸羽西線 the trains run and the track is ordinary railway —
+  // two STATIONS are passed without stopping. That is a fact about a station,
+  // and drawing the rail between them broken would state something false.
+  const SUSPENDED_SERVICE_CODES = new Set([1, 2, 3]);
+  // Below this a complement piece is rounding noise at a cut, not railway.
+  const SERVICE_CUT_EPSILON_METERS = 0.5;
+  // Two stroke ends this close are the same place — the joint a line's drawn
+  // parts break at. Further apart they are two separate stretches of railway
+  // and nothing may be painted between them.
+  const SERVICE_JOINT_METERS = 250;
+
+  // A synthetic projection at an arbitrary arc length, in the shape
+  // sliceForward() consumes. Interpolating on the SAME vertex array both
+  // sides of the cut read is what makes the in-service piece and the
+  // suspended piece meet at one identical coordinate, with no gap to show and
+  // no overlap to double-draw.
+  function cutAtMeasure(metric, partIndex, measure) {
+    const cumulative = metric.cumulative;
+    const total = cumulative[cumulative.length - 1] || 0;
+    const clamped = Math.max(0, Math.min(total, measure));
+    let index = 0;
+    while (index < cumulative.length - 2 && cumulative[index + 1] < clamped)
+      index += 1;
+    const span = cumulative[index + 1] - cumulative[index];
+    const ratio = span > 0 ? (clamped - cumulative[index]) / span : 0;
+    const start = metric.coordinates[index];
+    const end = metric.coordinates[index + 1];
+    return {
+      partIndex,
+      index,
+      ratio,
+      measure: clamped,
+      coordinate: [
+        start[0] + (end[0] - start[0]) * ratio,
+        start[1] + (end[1] - start[1]) * ratio,
+      ],
+    };
+  }
+
+  // Which END of a stroke a point stands at, as a measure along it. Used only
+  // where an interval crosses the break between two strokes, to decide which
+  // way each of them runs out to meet the other.
+  function nearestEnd(metric, point) {
+    const total = metric.cumulative[metric.cumulative.length - 1] || 0;
+    const head = metric.coordinates[0];
+    const tail = metric.coordinates[metric.coordinates.length - 1];
+    return distanceMeters(head, point) <= distanceMeters(tail, point)
+      ? { measure: 0, coordinate: head }
+      : { measure: total, coordinate: tail };
+  }
+
+  function addRange(rangesByPart, partIndex, first, second) {
+    const low = Math.min(first, second);
+    const high = Math.max(first, second);
+    if (high - low <= SERVICE_CUT_EPSILON_METERS) return;
+    if (!rangesByPart.has(partIndex)) rangesByPart.set(partIndex, []);
+    rangesByPart.get(partIndex).push([low, high]);
+  }
+
+  function mergeMeasureRanges(ranges) {
+    const sorted = ranges.slice().sort((left, right) => left[0] - right[0]);
+    const merged = [];
+    for (const range of sorted) {
+      const last = merged[merged.length - 1];
+      if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]);
+      else merged.push([range[0], range[1]]);
+    }
+    return merged;
+  }
+
+  // The line's display strokes, split into the part still carrying trains and
+  // the part that is not. Returns null when the line has no drawable suspended
+  // span, so a package without `serviceSpans` — every package but jp, and jp
+  // before this field existed — produces byte-identical output to before.
+  function serviceSplitForLine(line, compactLine) {
+    const spans = compactLine.serviceSpans;
+    if (!Array.isArray(spans) || !spans.length) return null;
+    const stations = compactLine.stations;
+    const metrics = lineMetrics(line);
+    if (!metrics.length) return null;
+
+    const projectionCache = new Map();
+    const anchorAt = (index) => {
+      const row = stations[index];
+      if (!row) return null;
+      return projectPointToLine(line, [row[2], row[3]], projectionCache);
+    };
+
+    const rangesByPart = new Map();
+    const codes = new Set();
+    for (const span of spans) {
+      const code = Number(span[2]);
+      if (!SUSPENDED_SERVICE_CODES.has(code)) continue;
+      const first = Math.max(0, Math.min(Number(span[0]), Number(span[1])));
+      const last = Math.min(
+        stations.length - 1,
+        Math.max(Number(span[0]), Number(span[1])),
+      );
+      if (!(last > first)) continue;
+      // One INTERVAL at a time, not one run at a time. A line's drawn strokes
+      // break where no train can turn — 肥薩線 is cut in two at the 大畑 ループ
+      // reversal, right in the middle of the closed 八代—吉松 — so a span can
+      // straddle a break, and reading it as two runs would leave the 9.4 km
+      // 大畑—矢岳 leg drawn solid inside a section that has had no train since
+      // 2020.
+      for (let index = first; index < last; index += 1) {
+        const from = anchorAt(index);
+        const to = anchorAt(index + 1);
+        if (!from || !to) continue;
+        if (from.partIndex === to.partIndex) {
+          addRange(rangesByPart, from.partIndex, from.measure, to.measure);
+          codes.add(code);
+          continue;
+        }
+        // Across a break both strokes carry part of the interval, so each runs
+        // out to the end that meets the other. Only when they really do meet:
+        // two strokes of a line that are separately located (a disconnected
+        // administrative line) are not a joint, and filling between them would
+        // paint kilometres of railway the interval never touches.
+        const fromEnd = nearestEnd(metrics[from.partIndex], to.coordinate);
+        const toEnd = nearestEnd(metrics[to.partIndex], from.coordinate);
+        if (distanceMeters(fromEnd.coordinate, toEnd.coordinate) > SERVICE_JOINT_METERS)
+          continue;
+        addRange(rangesByPart, from.partIndex, from.measure, fromEnd.measure);
+        addRange(rangesByPart, to.partIndex, toEnd.measure, to.measure);
+        codes.add(code);
+      }
+    }
+    if (!rangesByPart.size) return null;
+
+    const inService = [];
+    const suspended = [];
+    metrics.forEach((metric, partIndex) => {
+      const total = metric.cumulative[metric.cumulative.length - 1] || 0;
+      const ranges = rangesByPart.get(partIndex);
+      if (!ranges) {
+        inService.push(metric.coordinates);
+        return;
+      }
+      const merged = mergeMeasureRanges(ranges);
+      let cursor = 0;
+      const emit = (target, from, to) => {
+        if (to - from <= SERVICE_CUT_EPSILON_METERS) return;
+        const coordinates = sliceForward(
+          metric,
+          cutAtMeasure(metric, partIndex, from),
+          cutAtMeasure(metric, partIndex, to),
+          false,
+        );
+        if (coordinates.length > 1) target.push(coordinates);
+      };
+      for (const [from, to] of merged) {
+        emit(inService, cursor, from);
+        emit(suspended, from, to);
+        cursor = to;
+      }
+      emit(inService, cursor, total);
+    });
+    if (!suspended.length) return null;
+    return {
+      inService,
+      suspended,
+      // The gravest code on the line, for a future per-status treatment. One
+      // dash rhythm serves all three today: three rhythms on one map say
+      // "these differ" louder than they say how.
+      serviceCode: Math.min(...codes),
+    };
+  }
+
+  function geometryForParts(parts) {
+    return parts.length === 1
+      ? { type: "LineString", coordinates: parts[0] }
+      : { type: "MultiLineString", coordinates: parts };
+  }
+
   // Distance from a platform anchor to its track that is still just the
   // station's own approach; beyond it, the projection is telling us something
   // is wrong with the data and should not be hidden.
@@ -1748,35 +1939,75 @@
       // meet at a station so the map still reads continuous, but nothing can
       // draw or slice straight through the junction (see displayPartsForLine).
       const lineParts = displayPartsForLine(compactLine);
-      const lineGeometry =
-        lineParts.length === 1
-          ? { type: "LineString", coordinates: lineParts[0] }
-          : { type: "MultiLineString", coordinates: lineParts };
-      // One feature per line, on the line's own surveyed geometry. Every
-      // railway draws where it was surveyed: a shared corridor is shown by
-      // the strokes that are really there, never by pushing one of them
-      // sideways on screen.
-      {
+      const lineGeometry = geometryForParts(lineParts);
+      lineById.get(lineId).geometry = lineGeometry;
+      lineById.get(lineId).parts = lineParts;
+      // `parts` stays WHOLE whatever the service status says. Ride slicing,
+      // hit-testing and the route solver all read it, and a ride recorded
+      // before the suspension is still a ride: what closed is the timetable,
+      // not the metals the train ran on.
+      const serviceSplit = serviceSplitForLine(
+        lineById.get(lineId),
+        compactLine,
+      );
+      // One feature per line, on the line's own surveyed geometry — split in
+      // two ONLY where the ledger says passenger trains have stopped running
+      // over part of it, because a dash rhythm cannot be expressed per-vertex
+      // and the alternative (dashing the whole line) would claim 肥薩線 is
+      // closed over 124 km when 37 of them still carry trains. Every railway
+      // still draws where it was surveyed: a shared corridor is shown by the
+      // strokes that are really there, never by pushing one of them sideways.
+      const baseProperties = {
+        lineId,
+        name: compactLine.name,
+        operator: compactLine.operator,
+        color: featureColor,
+        minz: lineMinZoom,
+        isHSR: compactLine.isHSR ? 1 : 0,
+        isLoop: compactLine.isLoop ? 1 : 0,
+        intervalCount: compactLine.segments.length,
+        partCount: lineParts.length,
+        strokeCount: lineParts.length,
+        visibilityKm,
+      };
+      if (!serviceSplit) {
         lineFeatures.push({
           type: "Feature",
           geometry: lineGeometry,
+          properties: baseProperties,
+        });
+      } else {
+        // Both features carry the SAME minz and visibilityKm: they are one
+        // railway at one level of detail, and a line whose closed half faded
+        // out a zoom before its open half would read as two railways.
+        if (serviceSplit.inService.length)
+          lineFeatures.push({
+            type: "Feature",
+            geometry: geometryForParts(serviceSplit.inService),
+            properties: {
+              ...baseProperties,
+              partCount: serviceSplit.inService.length,
+              strokeCount: serviceSplit.inService.length,
+            },
+          });
+        lineFeatures.push({
+          type: "Feature",
+          geometry: geometryForParts(serviceSplit.suspended),
           properties: {
-            lineId,
-            name: compactLine.name,
-            operator: compactLine.operator,
-            color: featureColor,
-            minz: lineMinZoom,
-            isHSR: compactLine.isHSR ? 1 : 0,
-            isLoop: compactLine.isLoop ? 1 : 0,
-            intervalCount: compactLine.segments.length,
-            partCount: lineParts.length,
-            strokeCount: lineParts.length,
-            visibilityKm,
+            ...baseProperties,
+            partCount: serviceSplit.suspended.length,
+            strokeCount: serviceSplit.suspended.length,
+            suspended: 1,
+            serviceCode: serviceSplit.serviceCode,
+            serviceStatus: SERVICE_STATUS_CODES[serviceSplit.serviceCode] || "",
+            // The line's name is written ONCE. It goes on the stroke that
+            // still runs trains, and only falls to the closed stroke when
+            // there is no other — a wholly suspended railway is still a
+            // railway with a name (美祢線 is the whole-line case).
+            ...(serviceSplit.inService.length ? { labelSuppressed: 1 } : {}),
           },
         });
       }
-      lineById.get(lineId).geometry = lineGeometry;
-      lineById.get(lineId).parts = lineParts;
       addIndexValue(linesByName, compactLine.name, lineById.get(lineId));
       addIndexValue(
         linesByOperator,
