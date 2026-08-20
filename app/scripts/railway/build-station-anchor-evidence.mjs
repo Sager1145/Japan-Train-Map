@@ -88,12 +88,20 @@ function previousEvidence() {
     station_anchor_overrides: [],
     reverted: [],
     known_false_positives: [],
+    // Hand-written judgements this generator cannot re-derive. `not_fixed`
+    // records a station investigated and deliberately left alone (旭川: OSM
+    // maps no platform there, so there is nothing sourced to move the dot
+    // onto), and `second_purpose` records a criterion for writing a row that
+    // the FIXABLE verdict set cannot express. Both are prose decisions, and a
+    // --write that dropped them would erase the reason a station is missing
+    // from the array and invite the next batch to re-derive it from scratch.
+    not_fixed: [],
   };
-  if (!fs.existsSync(EVIDENCE)) return empty;
+  if (!fs.existsSync(EVIDENCE)) return { ...empty, second_purpose: "" };
   const previous = JSON.parse(fs.readFileSync(EVIDENCE, "utf8"));
   for (const block of Object.keys(empty))
     if (Array.isArray(previous[block])) empty[block] = previous[block];
-  return empty;
+  return { ...empty, second_purpose: previous.second_purpose || "" };
 }
 
 /**
@@ -171,21 +179,7 @@ export function buildRows(options = {}) {
         continue;
       }
       if (!pick) {
-        // Say WHICH emptiness this is. Since pickPlatform started throwing out
-        // elements that declare a road bus and no railway, "nothing here" and
-        // "nothing here but bus shelters" are different findings, and the
-        // second is the one 紙屋町東 produces.
-        const near = [...platforms.index.within(current, 250).keys()];
-        const road = near.filter((meta) => meta.serves === "road").length;
-        reject(
-          !near.length
-            ? "no platform candidate within 250 m"
-            : road === near.length
-              ? `no railway platform within 250 m — all ${road} candidate(s) here declare a ` +
-                "road bus and no railway"
-              : `no platform candidate within 250 m (${near.length - road} railway platform(s) ` +
-                `here belong to another stop of this line; ${road} declare a road bus)`,
-        );
+        reject("no platform candidate within 250 m");
         continue;
       }
       const onTrack = trackDistanceAt(pick.platform.midpoint);
@@ -249,13 +243,16 @@ export function buildRows(options = {}) {
     refused,
     reverted: previous.reverted,
     knownFalsePositives: previous.known_false_positives,
+    notFixed: previous.not_fixed,
+    secondPurpose: previous.second_purpose,
   };
 }
 
 function main() {
   const argv = process.argv.slice(2);
   const limit = argv.includes("--limit") ? Number(argv[argv.indexOf("--limit") + 1]) : 0;
-  const { rows, carried, refused, reverted, knownFalsePositives } = buildRows({ limit });
+  const { rows, carried, refused, reverted, knownFalsePositives, notFixed, secondPurpose } =
+    buildRows({ limit });
   for (const row of carried)
     process.stdout.write(
       `  CARRIED ${row.station.padEnd(10)} ${row.line.padEnd(28)} already applied — ${row.osm}\n`,
@@ -285,16 +282,13 @@ function main() {
       "Replace ONE N02 station (platform) feature with its surveyed OSM platform, where the audit " +
       "measured the drawn dot on the wrong platform of a shared station. Track geometry is never " +
       "touched by this block.",
+    ...(secondPurpose ? { second_purpose: secondPurpose } : {}),
     generator: "scripts/railway/build-station-anchor-evidence.mjs",
     safety:
       `A row exists only when the target platform is within ${ANCHOR_ON_TRACK_M} m of a way the ` +
       "line can claim — named for the line itself, and carrying no operator tag that names " +
       "somebody else — and only when no OTHER station of the same line stands closer to that " +
-      "platform than this one does. Candidates that declare a road bus and no railway (91% of " +
-      "the OSM platform cache is highway=bus_stop) are not platforms a train calls at and are " +
-      "never considered; a platform that declares no mode at all is still considered, because " +
-      "that is how many tram and metro platforms are mapped. The builder additionally refuses " +
-      "to apply a row whose N02 " +
+      "platform than this one does; the builder additionally refuses to apply a row whose N02 " +
       "feature has moved more than 1 m from the recorded midpoint. A platform mapped as an area " +
       "is measured at the centre of its outline, which is where the builder puts the dot.",
     idempotence:
@@ -308,6 +302,7 @@ function main() {
       "verdicts from outputs/railway-audit/multi-line-stations/audit.json",
     refused,
     station_anchor_overrides: merged,
+    not_fixed: notFixed,
     reverted,
     known_false_positives: knownFalsePositives,
   };
