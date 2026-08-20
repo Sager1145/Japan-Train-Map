@@ -938,6 +938,14 @@ test("route cache keys include the solver version", () => {
   assert.match(key, /^solver:17\|/);
 });
 
+test("offline precompute is exposed through one named adapter", () => {
+  const { context } = loadAppFamily();
+  assert.equal(
+    vm.runInContext(`typeof globalThis.PrecomputeAdapter?.solveStore`, context),
+    "function",
+  );
+});
+
 test("precomputed sample geometry replaces stale warmed geometry", () => {
   const { context } = loadAppFamily();
   const result = vm.runInContext(

@@ -69,97 +69,12 @@ const STATIONS_FILE = `stations${suffix}.json`;
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 
 // ---------------------------------------------------------------------------
-// Driver — runs INSIDE the vm context so it can reach app.js's top-level
-// lexical bindings (railSectionsGeoJson, runtimeRouteCache, ...).
+// Driver — calls the frontend's named adapter. The VM remains the deployment-
+// compatible classic-script runtime, but the build tool no longer reaches into
+// arbitrary lexical bindings.
 // ---------------------------------------------------------------------------
 const DRIVER_SOURCE = `
-(async () => {
-  // The sandbox has no localStorage, so the app family booted on its default
-  // country. Point it at the store being solved before anything reads it —
-  // the statistics classifier and the solver gate both dispatch on it.
-  activeCountry = __host.country;
-  railSectionsGeoJson = __host.railSections;
-  stationsGeoJson = __host.stations;
-  matchedRoutesGeoJson = { type: "FeatureCollection", features: [] };
-  matchedStopsGeoJson = __host.matchedStops;
-  await buildStationIndexesSliced(stationsGeoJson);
-
-  const store = parseImportedCanonicalStore(__host.trainStoreText);
-  const results = [];
-  for (let i = 0; i < store.trains.length; i += 1) {
-    const raw = store.trains[i];
-    // Same normalization + id de-dup the browser boot path applies.
-    const id = appendImportedTrain(raw, null);
-    const train = getTrain(id);
-
-    // Use the browser's exact deterministic solve context. This keeps the
-    // exporter in lockstep if route-policy inputs are added later.
-    const solveContext = buildTrainRouteSolveContext(train);
-    const cacheKey = solveContext ? solveContext.cacheKey : null;
-
-    const t0 = performance.now();
-    // The interactive render path intentionally queues cold solves so clicks
-    // never block. Offline export must await that same streaming solver
-    // directly, then verify the render lookup is a pure cache hit.
-    const features = await warmRouteCacheForTrainStreaming(train);
-    const ms = Math.round(performance.now() - t0);
-
-    let route = null;
-    if (cacheKey) {
-      if (runtimeRouteCache.has(cacheKey)) {
-        route = { cache_key: cacheKey, features: runtimeRouteCache.get(cacheKey) };
-      } else if (runtimeRouteNegativeCache.has(cacheKey)) {
-        // The solver could not route this train — e.g. its stops live outside
-        // the N02 network entirely (Taiwan itineraries, hand-authored
-        // corridors). Fall back to the curated matched-routes geometry when it
-        // covers this train: embedding it makes the part seed the client cache
-        // exactly like a solved train (same features the render fallback would
-        // draw), instead of publishing a persistent "unsolvable" marker for
-        // geometry we in fact have.
-        const matched = (__host.matchedRoutes.features || [])
-          .filter((feature) => {
-            const props = feature.properties || {};
-            return props.train_id === id && props.is_primary !== false;
-          })
-          .sort(
-            (a, b) =>
-              Number(a.properties?.segment_index ?? 0) -
-              Number(b.properties?.segment_index ?? 0),
-          );
-        if (matched.length) {
-          runtimeRouteNegativeCache.delete(cacheKey);
-          runtimeRouteCache.set(cacheKey, matched);
-          route = { cache_key: cacheKey, features: matched };
-        } else {
-          route = { cache_key: cacheKey, unsolvable: true };
-        }
-      } else {
-        throw new Error(
-          \`Route solve for train \${id} produced neither a positive nor negative cache entry.\`,
-        );
-      }
-      // Belt and braces: the client-side prepare must see this as a pure hit.
-      const prep = prepareTrainRouteSolve(train);
-      if (!prep.done) {
-        throw new Error(\`Seeded cache miss for train \${id} — export would not skip the on-device solve.\`);
-      }
-    }
-
-    __host.onTrainSolved({
-      index: i,
-      id,
-      raw,
-      route,
-      featureCount:
-        route && Array.isArray(route.features)
-          ? route.features.length
-          : features.length,
-      ms,
-    });
-    results.push({ id, solved: Boolean(route && !route.unsolvable), featureCount: features.length });
-  }
-  return { total: store.trains.length, schemaVersion: store.schema_version, results };
-})()
+globalThis.PrecomputeAdapter.solveStore(__host)
 `;
 
 // Assemble manifest.json from already-emitted part files (used after sliced
