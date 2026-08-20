@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 /*
  * validate-basemap-alignment.mjs — the standing "drawn network vs OSM basemap"
- * audit (Japan).
+ * audit, for any of the five countries.
  *
- * The map draws the jp package's own survey (N02-derived) on top of an
- * OSM-derived basemap (OpenFreeMap). Where the two disagree the reader sees a
- * railway floating beside the faint basemap track — sometimes because WE drew
- * a removed alignment (a real defect), sometimes because the BASEMAP is the
- * approximate one (volunteer-digitised long tunnels). This audit measures the
- * disagreement and classifies it, re-running the 2026-08-18 one-off
- * comparison (594/663 lines clean) as a repeatable check.
+ * The map draws each package's own survey on top of an OSM-derived basemap
+ * (OpenFreeMap). Where the two disagree the reader sees a railway floating
+ * beside the faint basemap track — sometimes because WE drew a removed
+ * alignment (a real defect), sometimes because the BASEMAP is the approximate
+ * one (volunteer-digitised long tunnels). This audit measures the disagreement
+ * and classifies it, re-running the 2026-08-18 one-off comparison (594/663 jp
+ * lines clean) as a repeatable check.
+ *
+ * `--country jp|tw|hk|mo|kr` picks the package, the exclusions ledger and the
+ * attribution pass's naming rules together; jp is the default because that is
+ * the network the thresholds were calibrated on. Every country reads the SAME
+ * cell cache — the grid is geographic, not national.
  *
  * Method (identical to the one-off):
  *   1. Cover the package's geometry with 1°×1° grid cells (~72 cells).
@@ -53,13 +58,44 @@
  *   node scripts/validation/validate-basemap-alignment.mjs \
  *       --fetch --cells E127N26,E135N34 --lines 沖縄都市モノレール線,福知山線
  *       the smoke slice: one known-clean line, one known defect.
+ *   --country C        jp (default) · tw · hk · mo · kr
  *   --json out.json    full machine-readable report
- *   --all              print per-line stats for clean lines too
+ *   --all              print per-line stats for clean lines too, and every
+ *                      wrong_track finding rather than the WARNING ones
  *   --show-excluded    print the findings the ledger suppressed
  *   --strict           exit 1 if any ERROR remains after the ledger
+ *   --no-attribution   skip the wrong_track pass (distance audit only)
  *   --cache-dir DIR    override the cell cache location
  *   --endpoints a,b    Overpass mirrors (or env OVERPASS_ENDPOINTS)
  *   --sleep-ms N       politeness gap between Overpass requests (default 3000)
+ *
+ * ── the second criterion: whose track is this? ───────────────────────────────
+ *
+ * Everything above measures DISTANCE to the nearest active rail, and a line
+ * drawn on the WRONG railway's metals is 0.2–1.3 m from a rail, so the 50 m
+ * gate can never see it. 京浜急行電鉄's 空港線 leaves 京急蒲田 along 90 m of
+ * 京急本線 track before cutting across to its own, and this audit scored the
+ * whole line one of its 589 clean ones (median 1.97 m, p95 7.53 m, max 9.67 m).
+ *
+ * So a second pass asks ATTRIBUTION instead of distance: for every sample
+ * sitting on a rail, does the way it is sitting on carry THIS LINE's name? The
+ * identity test is scripts/railway/lib/track-attribution.mjs, which is
+ * station-track-claim's ladder read at corridor scale. A `wrong_track` finding
+ * needs all four of:
+ *   · the stroke is ON a rail (≤ 8 m — floating is the other criterion's job),
+ *   · that rail NAMES a railway, and the name is not this line's,
+ *   · this line's own metals are mapped within 120 m SIDEWAYS (an endpoint
+ *     distance is how far past the end of our name we have walked, not an
+ *     offset — see lateralDistance), and
+ *   · they are at least 15 m further away than the rail we are standing on.
+ * Anything else is undecidable and reported as nothing.
+ *
+ * Graded, never judged. Where the line's own way is ≥ 40 m sideways the stroke
+ * is on a different alignment (WARNING); below that it is the multi-track
+ * corridor case — 東海道本線 / 京浜東北線 / 山手線 are 15–30 m apart and N02
+ * draws one centre-line per railway — and is INFO. wrong_track findings are
+ * counted SEPARATELY from off_basemap/systematic_offset and never raise ERROR,
+ * so the standing distance counts stay comparable across runs.
  *
  * NOT part of npm test / CI: the first run needs the public Overpass API, and
  * the cache is machine-local. Run it by hand after geometry rebuilds, like
@@ -79,14 +115,22 @@ import {
   distanceMeters,
   resample,
 } from "../railway/lib/railway-topology.mjs";
+import {
+  attributionFilterFor,
+  axisDifference,
+  bearingAt,
+  ownTrackAt,
+} from "../railway/lib/track-attribution.mjs";
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const REPO_DIR = path.resolve(APP_DIR, "..");
-const PACKAGE_FILE = path.join(APP_DIR, "public/rail/jp-2025.json");
-const LEDGER_FILE = path.join(
-  APP_DIR,
-  "data/raw/railway/jp/evidence/basemap-alignment-exclusions.json",
-);
+const COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
+const packageFileFor = (country) => path.join(APP_DIR, `public/rail/${country}-2025.json`);
+// One ledger per country, beside that country's other adjudicated evidence.
+// A country that has never needed an exclusion simply has no file, and
+// `loadLedger` reads that as an empty ledger rather than an error.
+const ledgerFileFor = (country) =>
+  path.join(APP_DIR, `data/raw/railway/${country}/evidence/basemap-alignment-exclusions.json`);
 const DEFAULT_CACHE_DIR = path.join(REPO_DIR, "outputs", "osm-basemap-cache");
 
 // ── thresholds ───────────────────────────────────────────────────────────────
@@ -118,6 +162,24 @@ const INTERVAL_JUMP_METERS = 100;
 // see every way within the ~1 km search radius without needing its neighbour.
 const CELL_MARGIN_DEGREES = 0.02;
 
+// ── thresholds: the attribution (wrong_track) criterion ──────────────────────
+// Half the distance pass's step: the shape this is for is a junction lead-in
+// tens of metres long, and 30 m samples straddle it.
+const ATTRIBUTION_STEP_METERS = 15;
+// Closer than this to a rail and the stroke is ON it. Beyond, "which track" is
+// not the question any more — the distance criterion above is.
+const ATTRIBUTION_ON_RAIL_METERS = 8;
+// How far to look for the line's own metals before answering "cannot tell".
+const ATTRIBUTION_OWN_RADIUS_METERS = 120;
+// The own track has to be meaningfully further than the one we stand on, or
+// the two are the same pair of rails digitised twice.
+const ATTRIBUTION_SEPARATION_METERS = 15;
+// One or two samples is a station throat crossing, not a run along a track.
+const ATTRIBUTION_RUN_METERS = 45;
+// Beyond this the line's own metals are a different alignment, not the next
+// track over in the same corridor.
+const ATTRIBUTION_ALIGNMENT_METERS = 40;
+
 // OSM railway= values that are operating track (preserved = running heritage).
 const ACTIVE_RAILWAY = new Set([
   "rail",
@@ -132,6 +194,10 @@ const ACTIVE_RAILWAY = new Set([
 ]);
 // Lifecycle states meaning the track is gone or out of service.
 const DEAD_RAILWAY = new Set(["disused", "abandoned", "razed", "dismantled"]);
+// Yard throats, sidings and crossovers are real rails no scheduled train is
+// drawn along; the attribution pass must not claim one as a line's own track.
+// Same vocabulary as scripts/railway/lib/osm-basemap-cache.mjs.
+const NON_RUNNING_SERVICE = new Set(["yard", "siding", "spur", "crossover"]);
 
 const OVERPASS_ENDPOINTS = (
   process.env.OVERPASS_ENDPOINTS ||
@@ -145,8 +211,8 @@ const USER_AGENT =
 
 // ── package loading ──────────────────────────────────────────────────────────
 
-function loadPackage() {
-  const pkg = JSON.parse(fs.readFileSync(PACKAGE_FILE, "utf8"));
+function loadPackage(country) {
+  const pkg = JSON.parse(fs.readFileSync(packageFileFor(country), "utf8"));
   const lines = pkg.lines.map((compact) => {
     const stations = compact.stations.map((row) => ({
       name: row[1],
@@ -165,12 +231,17 @@ function loadPackage() {
       lineId: compact.id,
       name: compact.name,
       operator: compact.operator,
+      // The brand the timetables use — OSM files 東武鉄道's 日光線 as 東武日光線,
+      // and the attribution pass reads that prefix off the package rather than
+      // guessing it.
+      operatorShort: compact.operatorShort,
       kind: compact.kind,
+      country,
       stations,
       intervals,
     };
   });
-  return { version: pkg.version, lines };
+  return { version: pkg.version, country, lines };
 }
 
 function cellOf(point) {
@@ -347,7 +418,19 @@ function buildIndexes(cacheDir, cells) {
       if (coordinates.length < 2) continue;
       indexes[bucket].add(coordinates, {
         id: way.id,
-        name: way.tags.name || null,
+        name: way.tags.name || way.tags["name:ja"] || null,
+        // The attribution pass needs the operator to strengthen or weaken a
+        // name, `service` to tell a running track from a yard road, and the
+        // way's own geometry to measure sideways rather than end-on.
+        operator: way.tags.operator || null,
+        operatorJa: way.tags["operator:ja"] || null,
+        service: way.tags.service || null,
+        running: !NON_RUNNING_SERVICE.has(way.tags.service),
+        // How deep OSM puts this way. Two ways at different layers are stacked,
+        // not side by side, and their horizontal distance is not an offset —
+        // see gradeAttributionRun.
+        layer: Number.parseInt(way.tags.layer ?? "0", 10) || 0,
+        coordinates,
         railway: way.tags.railway || way.tags["disused:railway"] || way.tags["abandoned:railway"] || way.tags["razed:railway"] || way.tags.highway || null,
         state:
           way.tags.railway && DEAD_RAILWAY.has(way.tags.railway)
@@ -455,6 +538,180 @@ function auditLine(line, indexes, covered) {
   };
 }
 
+/**
+ * The attribution pass: which railway's track is this line drawn on?
+ *
+ * Walks the same geometry as `auditLine`, twice as finely, and asks the
+ * identity question at every sample that sits on a rail. Contiguous samples
+ * that answer "somebody else's, and mine is over there" become one run; a
+ * sample that answers "mine", "cannot tell", or "off the rails entirely" closes
+ * the run, so a finding is always an unbroken stretch on one foreign track.
+ */
+function auditAttribution(line, index, covered, coverage) {
+  const filter = attributionFilterFor(line);
+  const findings = [];
+  let run = null;
+  let previousEnd = null;
+  const count = (key) => {
+    if (coverage) coverage[key] = (coverage[key] || 0) + 1;
+  };
+
+  const closeRun = () => {
+    if (run && run.meters >= ATTRIBUTION_RUN_METERS) findings.push(run);
+    run = null;
+  };
+
+  for (const interval of line.intervals) {
+    const coordinates = interval.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
+    if (previousEnd && distanceMeters(previousEnd, coordinates[0]) > INTERVAL_JUMP_METERS)
+      closeRun(); // a branch stroke starts here — not the same walk
+    previousEnd = coordinates[coordinates.length - 1];
+
+    for (const sample of resample(coordinates, ATTRIBUTION_STEP_METERS)) {
+      const point = sample.point;
+      if (!covered.has(cellId(cellOf(point)))) {
+        closeRun();
+        continue;
+      }
+      count("sampled");
+      const nearest = index.nearest(point, (meta) => meta.running);
+      // Floating clear of every rail is the distance criterion's business.
+      if (!nearest || nearest.distance > ATTRIBUTION_ON_RAIL_METERS) {
+        count("offRail");
+        closeRun();
+        continue;
+      }
+      // On our own metals: nothing to disagree with.
+      if (filter.owns(nearest.meta)) {
+        count("onOwnTrack");
+        closeRun();
+        continue;
+      }
+      // On a rail that names no railway — an unnamed way, or one named after
+      // the tunnel it runs through. It cannot disagree with us either.
+      if (!filter.identifiable(nearest.meta)) {
+        count("unnamedRail");
+        closeRun();
+        continue;
+      }
+      const own = ownTrackAt(point, filter, index, ATTRIBUTION_OWN_RADIUS_METERS);
+      // Our name is not mapped beside us here — genuine shared track, or OSM
+      // simply does not carry this line. Undecidable, never a verdict.
+      if (!own) {
+        count("ownTrackNotInReach");
+        closeRun();
+        continue;
+      }
+      if (own.distance - nearest.distance < ATTRIBUTION_SEPARATION_METERS) {
+        count("ownTrackAlongside");
+        closeRun();
+        continue;
+      }
+      count("onAnotherRailway");
+      if (!run)
+        run = {
+          fromStation: interval.from,
+          toStation: interval.to,
+          meters: 0,
+          maxOwnDistance: 0,
+          onWays: new Map(),
+          maxPoint: point,
+          maxOwn: own,
+          maxNearest: nearest,
+        };
+      run.meters += ATTRIBUTION_STEP_METERS;
+      run.toStation = interval.to;
+      const label = `${nearest.meta.name}${
+        nearest.meta.operatorJa || nearest.meta.operator
+          ? `／${nearest.meta.operatorJa || nearest.meta.operator}`
+          : ""
+      }`;
+      run.onWays.set(label, (run.onWays.get(label) || 0) + 1);
+      if (own.distance > run.maxOwnDistance) {
+        run.maxOwnDistance = own.distance;
+        run.maxPoint = point;
+        run.maxOwn = own;
+        run.maxNearest = nearest;
+      }
+    }
+    // NOT closed here: consecutive intervals share their station anchor.
+  }
+  closeRun();
+
+  return findings.map((run) => {
+    const divergence = axisDifference(
+      bearingAt(run.maxNearest.meta.coordinates, run.maxPoint),
+      bearingAt(run.maxOwn.way.coordinates, run.maxPoint),
+    );
+    const separated = run.maxOwnDistance >= ATTRIBUTION_ALIGNMENT_METERS;
+    return {
+      code: "wrong_track",
+      lineId: line.lineId,
+      line: line.name,
+      operator: line.operator,
+      kind: line.kind,
+      span: `${run.fromStation}→${run.toStation}`,
+      meters: run.meters,
+      // Named for the distance criterion's field so the ledger's
+      // maxDeviationMetersLte rule reads the same number on both codes.
+      maxDistance: run.maxOwnDistance,
+      at: run.maxPoint,
+      onWay: [...run.onWays.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .map(([label]) => label),
+      standingOn: {
+        wayId: run.maxNearest.meta.id,
+        name: run.maxNearest.meta.name,
+        distance: run.maxNearest.distance,
+        layer: run.maxNearest.meta.layer ?? 0,
+      },
+      ownTrack: {
+        wayId: run.maxOwn.way.id,
+        name: run.maxOwn.way.name,
+        distance: run.maxOwnDistance,
+        strength: run.maxOwn.strength,
+        layer: run.maxOwn.way.layer ?? 0,
+      },
+      divergenceDegrees: divergence,
+      ...gradeAttributionRun(run, separated),
+    };
+  });
+}
+
+/**
+ * Grade one attribution run — and refuse to call a VERTICAL stack an offset.
+ *
+ * The criterion's premise is that the stroke is standing ON the rail it is
+ * within 8 m of. Under a city that premise fails: 台北車站 stacks the metro at
+ * layer −4, 臺鐵 at −2 and 台灣高速鐵路 at −3 beneath the same streets, so the
+ * 淡水信義線 measured 0.5 m from a 縱貫線東正線 tunnel it passes two levels
+ * above, and its own metals "40 m away" are simply the next street over. Two
+ * ways OSM puts on different layers are not side by side and the horizontal
+ * distance between them is not evidence of anything.
+ *
+ * The run is kept rather than dropped — a suppressed finding is one nobody can
+ * re-examine — but it can never be the WARNING that asks for a human. Only a
+ * stroke standing on a foreign track at ITS OWN LEVEL is that.
+ */
+function gradeAttributionRun(run, separated) {
+  const standingLayer = run.maxNearest.meta.layer ?? 0;
+  const ownLayer = run.maxOwn.way.layer ?? 0;
+  if (standingLayer !== ownLayer)
+    return {
+      severity: "INFO",
+      verdict:
+        `stacked, not beside: the track it stands on is at layer ${standingLayer} and its own metals ` +
+        `at layer ${ownLayer} — a horizontal distance between two levels is not an offset`,
+    };
+  return {
+    severity: separated ? "WARNING" : "INFO",
+    verdict: separated
+      ? "drawn on another railway's track — its own metals are a separate alignment here"
+      : "drawn on a neighbouring track of the same corridor — one N02 centre-line, several OSM tracks",
+  };
+}
+
 function grade(finding) {
   if (finding.nearestDead && finding.nearestDead.distance <= DEAD_HUG_METERS)
     return { severity: "ERROR", verdict: "drawn on a removed alignment" };
@@ -526,9 +783,10 @@ function decorateFindings(report, indexes) {
 
 // ── adjudicated-exclusions ledger ────────────────────────────────────────────
 
-function loadLedger() {
-  if (!fs.existsSync(LEDGER_FILE)) return { entries: [] };
-  return JSON.parse(fs.readFileSync(LEDGER_FILE, "utf8"));
+function loadLedger(country) {
+  const file = ledgerFileFor(country);
+  if (!fs.existsSync(file)) return { entries: [] };
+  return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
 /** Precompute each entry's span bbox from the package's own station anchors. */
@@ -653,6 +911,19 @@ function renderFinding(finding) {
   return `  ${bits.join(" · ")}`;
 }
 
+function renderAttribution(finding) {
+  return (
+    `  ${finding.severity} wrong_track: ${finding.operator}／${finding.line} ${finding.span} — ` +
+    `${finding.meters} m on ${finding.onWay.join(" + ")}` +
+    `, own ${finding.ownTrack.name ?? "?"} way/${finding.ownTrack.wayId} ` +
+    `${finding.ownTrack.distance.toFixed(1)} m sideways ` +
+    `(standing ${finding.standingOn.distance.toFixed(1)} m from way/${finding.standingOn.wayId}` +
+    `${finding.divergenceDegrees == null ? "" : `, ${finding.divergenceDegrees.toFixed(0)}° apart`}) ` +
+    `@ ${finding.at[0].toFixed(4)},${finding.at[1].toFixed(4)} [${finding.lineId}]` +
+    (finding.ledgerId ? ` [ledger: ${finding.ledgerId}]` : "")
+  );
+}
+
 function severityRank(severity) {
   return severity === "ERROR" ? 2 : severity === "WARNING" ? 1 : 0;
 }
@@ -661,22 +932,26 @@ function severityRank(severity) {
 
 function parseArgs(argv) {
   const options = {
+    country: "jp",
     fetch: false,
     plan: false,
     all: false,
     strict: false,
     showExcluded: false,
+    attribution: true,
     sleepMs: 3000,
     cacheDir: DEFAULT_CACHE_DIR,
     endpointCursor: 0,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--fetch") options.fetch = true;
+    if (arg === "--country") options.country = argv[++index];
+    else if (arg === "--fetch") options.fetch = true;
     else if (arg === "--plan") options.plan = true;
     else if (arg === "--all") options.all = true;
     else if (arg === "--strict") options.strict = true;
     else if (arg === "--show-excluded") options.showExcluded = true;
+    else if (arg === "--no-attribution") options.attribution = false;
     else if (arg === "--json") options.json = argv[++index];
     else if (arg === "--cells") options.cells = argv[++index].split(",").filter(Boolean);
     else if (arg === "--lines") options.lines = argv[++index].split(",").filter(Boolean);
@@ -687,19 +962,24 @@ function parseArgs(argv) {
       OVERPASS_ENDPOINTS.push(...argv[++index].split(",").filter(Boolean));
     }
   }
+  // An unknown country must stop the run, never fall back to the default: a
+  // `--country tw` that silently audits Japan reports 651 lines of somebody
+  // else's findings and looks exactly like a successful Taiwan audit.
+  if (!COUNTRIES.includes(options.country))
+    throw new Error(`unknown --country ${options.country} (expected ${COUNTRIES.join(", ")})`);
   return options;
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const pkg = loadPackage();
+  const pkg = loadPackage(options.country);
   const allCells = gridCells(pkg.lines);
   const cells = options.cells
     ? allCells.filter((cell) => options.cells.includes(cellId(cell)))
     : allCells;
 
   if (options.plan) {
-    process.stdout.write(`package ${pkg.version} · ${pkg.lines.length} lines · ${allCells.length} grid cells\n`);
+    process.stdout.write(`${options.country} package ${pkg.version} · ${pkg.lines.length} lines · ${allCells.length} grid cells\n`);
     for (const cell of allCells) {
       const cached = readCellCache(options.cacheDir, cell);
       process.stdout.write(
@@ -724,9 +1004,12 @@ async function main() {
   const lines = pkg.lines.filter(
     (line) => !lineFilter || lineFilter.has(line.name) || lineFilter.has(line.lineId),
   );
-  const ledger = prepareLedger(loadLedger(), pkg.lines);
+  const ledger = prepareLedger(loadLedger(options.country), pkg.lines);
 
   const reports = [];
+  // What the attribution pass could and could not answer, so a reader can tell
+  // "no findings" from "no coverage".
+  const coverage = {};
   let totalSamples = 0;
   let totalSkipped = 0;
   for (const line of lines) {
@@ -737,6 +1020,14 @@ async function main() {
     const { kept, excluded } = applyLedger(decorateFindings(report, indexes), ledger);
     report.findings = kept;
     report.excluded = excluded;
+    // The attribution criterion answers a different question and is tallied on
+    // its own, so its findings live in their own field from the start rather
+    // than being sorted back out of a shared list later.
+    const attribution = options.attribution
+      ? applyLedger(auditAttribution(line, indexes.active, covered, coverage), ledger)
+      : { kept: [], excluded: [] };
+    report.attribution = attribution.kept;
+    report.attributionExcluded = attribution.excluded;
     delete report.rawFindings;
     reports.push(report);
   }
@@ -744,7 +1035,7 @@ async function main() {
   // ── render ──
   const rows = [];
   rows.push(
-    `══ Basemap Alignment Report — jp (package ${pkg.version} · ` +
+    `══ Basemap Alignment Report — ${options.country} (package ${pkg.version} · ` +
       `OSM cache ${covered.size}/${allCells.length} cells, ${wayCount} ways, oldest ${oldestFetch?.slice(0, 10) ?? "—"}) ══`,
   );
   rows.push(
@@ -797,6 +1088,42 @@ async function main() {
   );
   for (const entry of unmatchedLedger)
     rows.push(`  WARNING ledger entry ${entry.id}: span stations not found in the package`);
+
+  // ── the attribution criterion, counted apart from the distance one ──
+  const attributionAll = reports.flatMap((report) => report.attribution);
+  const attributionExcluded = reports.flatMap((report) => report.attributionExcluded);
+  if (options.attribution) {
+    const separated = attributionAll.filter((finding) => finding.severity === "WARNING");
+    const corridor = attributionAll.filter((finding) => finding.severity !== "WARNING");
+    rows.push("");
+    rows.push("── Track Attribution (wrong_track) ──");
+    const sampled = coverage.sampled || 0;
+    const share = (value) => `${(((value || 0) / (sampled || 1)) * 100).toFixed(1)}%`;
+    rows.push(
+      `${sampled} samples at ${ATTRIBUTION_STEP_METERS} m · on their own named track ${share(coverage.onOwnTrack)} · ` +
+        `clear of every rail ${share(coverage.offRail)} · on a rail that names no railway ${share(coverage.unnamedRail)}`,
+    );
+    rows.push(
+      `  on somebody else's named track: own metals not in reach (shared track, or OSM does not carry the line) ` +
+        `${share(coverage.ownTrackNotInReach)} · own metals alongside within ${ATTRIBUTION_SEPARATION_METERS} m ` +
+        `${share(coverage.ownTrackAlongside)} · reportable ${share(coverage.onAnotherRailway)}`,
+    );
+    rows.push(
+      `runs where the nearest named rail is not this line's: ${attributionAll.length} ` +
+        `over ${new Set(attributionAll.map((finding) => finding.lineId)).size} lines, ` +
+        `${(attributionAll.reduce((total, finding) => total + finding.meters, 0) / 1000).toFixed(2)} km`,
+    );
+    rows.push(
+      `  WARNING (own metals ≥ ${ATTRIBUTION_ALIGNMENT_METERS} m sideways — a separate alignment): ${separated.length}` +
+        ` · INFO (same corridor, neighbouring track): ${corridor.length}` +
+        (attributionExcluded.length ? ` · ledger-excluded: ${attributionExcluded.length}` : ""),
+    );
+    const listed = options.all ? attributionAll : separated;
+    for (const finding of listed.sort((left, right) => right.maxDistance - left.maxDistance))
+      rows.push(renderAttribution(finding));
+    if (!options.all && corridor.length)
+      rows.push(`  (${corridor.length} INFO runs not listed — pass --all)`);
+  }
   process.stdout.write(`${rows.join("\n")}\n`);
 
   if (options.json) {
@@ -804,6 +1131,7 @@ async function main() {
       options.json,
       JSON.stringify(
         {
+          country: options.country,
           packageVersion: pkg.version,
           cache: {
             dir: options.cacheDir,
@@ -821,9 +1149,16 @@ async function main() {
             VACUUM_DEVIATION_METERS,
             REVIEW_DEVIATION_METERS,
             SYSTEMATIC_MEDIAN_METERS,
+            ATTRIBUTION_STEP_METERS,
+            ATTRIBUTION_ON_RAIL_METERS,
+            ATTRIBUTION_OWN_RADIUS_METERS,
+            ATTRIBUTION_SEPARATION_METERS,
+            ATTRIBUTION_RUN_METERS,
+            ATTRIBUTION_ALIGNMENT_METERS,
           },
           totalSamples,
           totalSkipped,
+          attributionCoverage: coverage,
           lines: reports,
         },
         null,

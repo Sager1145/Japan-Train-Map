@@ -33,6 +33,10 @@ const OPERATOR_ALIASES = new Map([
   ["大阪モノレール", ["大阪高速鉄道"]],
   ["一般社団法人札幌市交通事業振興公社", ["札幌市交通局", "札幌市"]],
   ["WILLERTRAINS", ["京都丹後鉄道", "北近畿タンゴ鉄道"]],
+  // tw — OSM files the New Taipei operator without the 大眾 the package uses,
+  // and the two do not contain one another, so no suffix rule can bridge them.
+  ["新北大眾捷運", ["新北捷運"]],
+  ["新北捷運", ["新北大眾捷運"]],
 ]);
 
 /** Strip the decorations that separate a package line name from its OSM name. */
@@ -50,13 +54,21 @@ export function normaliseLineName(name) {
     .replace(/^JR|^ＪＲ/u, "");
 }
 
+// The company-form words that carry no identity. 株式会社 is Japan's; the
+// Chinese ones are Taiwan's, where OSM routinely writes 高雄捷運公司 for the
+// package's 高雄捷運股份有限公司 and 臺中捷運公司 for 臺中捷運股份有限公司 —
+// neither contains the other, so containment alone cannot match them. No
+// Japanese or Korean operator name contains these characters, so stripping
+// them is inert outside tw/hk/mo.
+const COMPANY_FORM = /株式会社|股份有限公司|有限公司|股份公司|公司|\s+/gu;
+
 function operatorForms(operator) {
-  const base = String(operator || "").replace(/株式会社|\s+/gu, "");
+  const base = String(operator || "").replace(COMPANY_FORM, "");
   return [base, ...(OPERATOR_ALIASES.get(base) || [])].filter(Boolean);
 }
 
 function textMatches(candidate, forms) {
-  const value = String(candidate || "").replace(/株式会社|\s+/gu, "");
+  const value = String(candidate || "").replace(COMPANY_FORM, "");
   if (!value) return false;
   return forms.some((form) => form && (value.includes(form) || form.includes(value)));
 }
