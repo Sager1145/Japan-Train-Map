@@ -100,3 +100,7 @@ app/data/raw/railway/jp/backup-n02-2025-baseline-20260813/
 
 # Transport archive of the directory committed beside it.
 app/data/raw/railway/hk/rebuild-inventory.zip
+
+# Agent worktrees: real git checkouts, so an unqualified `git add` picks them
+# up as embedded repositories.
+.claude/worktrees/
