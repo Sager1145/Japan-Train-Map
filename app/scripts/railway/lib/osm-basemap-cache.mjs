@@ -123,6 +123,56 @@ export function loadOsmTrackIndex(options = {}) {
 
 const PLATFORM_DIR = "platforms";
 
+// The fetch asks Overpass for `public_transport=platform` as well as
+// `railway=platform`, and in Japan that second query is overwhelmingly ROAD
+// furniture: measured over the 72 cached cells, 154,006 of the 168,881 indexed
+// elements (91.2%) are `highway=bus_stop`. A bus shelter is not a place a train
+// calls at, and one of them — node/9418004134, 広電バス's 立町 — was picked as
+// 紙屋町東's 宇品線 platform, 199 m away and named for the NEXT stop on a
+// different line.
+//
+// So every element is classified once, here, by what it says it SERVES:
+//
+//   rail      it names a rail platform tag or a rail mode — trusted in full
+//   road      it names a road-bus identity and NO rail one — never a platform
+//             a train calls at
+//   unstated  it says neither — kept, and only ranked below `rail`
+//
+// The third class is why this is a three-way answer and not a boolean. Japan's
+// tram and metro platforms are routinely mapped as a bare
+// `public_transport=platform` way with no mode tag at all — 都電荒川線's 熊野前
+// (way/445412130), 札幌市電's すすきの (way/431614567), JR京都駅0番のりば
+// (way/516319355) — so "declares no rail mode" cannot mean "is not rail".
+// Only a POSITIVE road declaration rejects; absence of evidence demotes.
+//
+// Measured against the same cache: NOT ONE of the 154,006 `highway=bus_stop`
+// elements also declares a rail platform tag or a rail mode, so this rejection
+// cannot cost a tram stop. The tram operators that do appear among the bus
+// stops — 広電, 東京都交通局, 富山地方鉄道, 鹿児島市 — appear there as their own
+// BUS divisions, while their tramway platforms are `railway=platform` (with or
+// without `tram=yes`). Operator is deliberately NOT consulted: the campaign's
+// rule is that a mismatched operator demotes rather than discards, and mode
+// tags answer this question without it.
+const RAIL_PLATFORM_RAILWAY = new Set([
+  "platform",
+  "platform_edge",
+  "tram_stop",
+  "station",
+  "halt",
+]);
+const RAIL_MODE_TAGS = ["train", "tram", "subway", "light_rail", "monorail", "funicular"];
+const ROAD_MODE_TAGS = ["bus", "trolleybus", "share_taxi"];
+
+/** `rail` | `road` | `unstated` — what this platform element says it serves. */
+export function platformServiceOf(tags = {}) {
+  if (RAIL_PLATFORM_RAILWAY.has(tags.railway)) return "rail";
+  for (const mode of RAIL_MODE_TAGS) if (tags[mode] === "yes") return "rail";
+  // `highway` is occasionally a multi-value tag (`crossing;bus_stop`).
+  if (String(tags.highway || "").split(";").includes("bus_stop")) return "road";
+  for (const mode of ROAD_MODE_TAGS) if (tags[mode] === "yes") return "road";
+  return "unstated";
+}
+
 function metresBetween(a, b) {
   return Math.hypot(
     (a[0] - b[0]) * 111320 * Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180),
@@ -232,6 +282,11 @@ function axisBearing(coordinates) {
  * Node platforms are indexed as a degenerate two-point edge so one index
  * answers for ways, relations and nodes alike; `axis` is null for those, and a
  * caller must not pretend a point has an orientation.
+ *
+ * Everything the cache holds is indexed, road furniture included, and every
+ * entry carries `serves` (see platformServiceOf) so the CALLER decides. Making
+ * the loader drop bus stops would hide the 91% from the counts that are
+ * supposed to describe the cache; `byService` reports the split instead.
  */
 export function loadOsmPlatformIndex(options = {}) {
   const cacheDir = options.cacheDir || DEFAULT_CACHE_DIR;
@@ -239,9 +294,11 @@ export function loadOsmPlatformIndex(options = {}) {
   const index = createEdgeIndex(INDEX_CELL_DEGREES);
   const cells = [];
   const seen = new Set();
+  const byService = { rail: 0, road: 0, unstated: 0 };
   let platforms = 0;
   let stations = 0;
-  if (!fs.existsSync(directory)) return { index, platforms, stations, cells, oldestFetch: null };
+  if (!fs.existsSync(directory))
+    return { index, platforms, stations, byService, cells, oldestFetch: null };
   let oldestFetch = null;
   for (const file of fs.readdirSync(directory).filter(cellFileName).sort()) {
     let record;
@@ -270,6 +327,7 @@ export function loadOsmPlatformIndex(options = {}) {
         key,
         id: element.id,
         kind: element.type,
+        serves: platformServiceOf(tags),
         name: tags.name || tags["name:ja"] || null,
         ref: tags.ref || tags["railway:ref"] || null,
         operator: tags["operator:ja"] || tags.operator || null,
@@ -287,9 +345,10 @@ export function loadOsmPlatformIndex(options = {}) {
             : 0,
       };
       index.add(coordinates.length > 1 ? coordinates : [coordinates[0], coordinates[0]], meta);
+      byService[meta.serves] += 1;
       platforms += 1;
     }
   }
-  return { index, platforms, stations, cells, oldestFetch };
+  return { index, platforms, stations, byService, cells, oldestFetch };
 }
 

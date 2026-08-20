@@ -171,7 +171,21 @@ export function buildRows(options = {}) {
         continue;
       }
       if (!pick) {
-        reject("no platform candidate within 250 m");
+        // Say WHICH emptiness this is. Since pickPlatform started throwing out
+        // elements that declare a road bus and no railway, "nothing here" and
+        // "nothing here but bus shelters" are different findings, and the
+        // second is the one 紙屋町東 produces.
+        const near = [...platforms.index.within(current, 250).keys()];
+        const road = near.filter((meta) => meta.serves === "road").length;
+        reject(
+          !near.length
+            ? "no platform candidate within 250 m"
+            : road === near.length
+              ? `no railway platform within 250 m — all ${road} candidate(s) here declare a ` +
+                "road bus and no railway"
+              : `no platform candidate within 250 m (${near.length - road} railway platform(s) ` +
+                `here belong to another stop of this line; ${road} declare a road bus)`,
+        );
         continue;
       }
       const onTrack = trackDistanceAt(pick.platform.midpoint);
@@ -276,7 +290,11 @@ function main() {
       `A row exists only when the target platform is within ${ANCHOR_ON_TRACK_M} m of a way the ` +
       "line can claim — named for the line itself, and carrying no operator tag that names " +
       "somebody else — and only when no OTHER station of the same line stands closer to that " +
-      "platform than this one does; the builder additionally refuses to apply a row whose N02 " +
+      "platform than this one does. Candidates that declare a road bus and no railway (91% of " +
+      "the OSM platform cache is highway=bus_stop) are not platforms a train calls at and are " +
+      "never considered; a platform that declares no mode at all is still considered, because " +
+      "that is how many tram and metro platforms are mapped. The builder additionally refuses " +
+      "to apply a row whose N02 " +
       "feature has moved more than 1 m from the recorded midpoint. A platform mapped as an area " +
       "is measured at the centre of its outline, which is where the builder puts the dot.",
     idempotence:

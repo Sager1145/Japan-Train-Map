@@ -248,6 +248,25 @@ function axisDifference(a, b) {
  * one is that stop's platform. It is a Voronoi test, so it cannot fire on the
  * genuine long moves this is for — 横浜's 相鉄本線 island is 234 m from the dot
  * and still nearer 横浜 than 平沼橋, a kilometre up the line.
+ *
+ * A candidate that says outright it serves a ROAD bus and no railway is thrown
+ * out before any of that (`serves === "road"`, classified in
+ * osm-basemap-cache.mjs). It has to be thrown out rather than ranked down,
+ * because none of the three ranking fields can see the difference: 紙屋町東's
+ * 宇品線 pick was 広電バス's 立町 shelter, 199 m away and named for the next
+ * stop of a DIFFERENT line, and it beat the trams' own platforms on adjacency
+ * because 相生通り carries 宇品線-named track past it, cleared the same-line
+ * Voronoi test because 立町 is not a 宇品線 stop, and cleared the 25 m on-track
+ * gate at 14.7 m. Nothing about it is nearly right; it is not a railway
+ * platform at all. 91% of the index is that shape.
+ *
+ * A candidate that declares NOTHING (`serves === "unstated"`) is only ranked
+ * below one that declares rail, never dropped — a bare
+ * `public_transport=platform` way is how 都電荒川線's 熊野前, 札幌市電's
+ * すすきの and JR京都駅's 0番のりば are all mapped. The demotion sits BELOW
+ * adjacency on purpose: adjacency to the line's own claimed track is the
+ * strongest evidence the cache holds (prompt 2.4), and a tag that a volunteer
+ * did not type is not evidence against it.
  */
 export function pickPlatform(point, bearings, claim, platformIndex, options = {}) {
   const radius = options.radiusMeters || 150;
@@ -257,6 +276,7 @@ export function pickPlatform(point, bearings, claim, platformIndex, options = {}
   if (!found.size) return null;
   const candidates = [];
   for (const [meta, distance] of found) {
+    if (meta.serves === "road") continue;
     if (
       meta.midpoint &&
       otherStations.some((station) => metres(meta.midpoint, station) < distance)
@@ -287,6 +307,9 @@ export function pickPlatform(point, bearings, claim, platformIndex, options = {}
   candidates.sort((a, b) => {
     const adjacencyRank = Number(b.adjacentToClaimedTrack === true) - Number(a.adjacentToClaimedTrack === true);
     if (adjacencyRank) return adjacencyRank;
+    const declaresRail = (row) => Number(row.platform.serves === "rail");
+    const serviceRank = declaresRail(b) - declaresRail(a);
+    if (serviceRank) return serviceRank;
     const aligned = (row) => (row.alignmentDegrees == null ? 90 : row.alignmentDegrees);
     const alignmentRank = aligned(a) - aligned(b);
     if (Math.abs(alignmentRank) > 15) return alignmentRank;
