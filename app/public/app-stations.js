@@ -10,6 +10,15 @@
 //  §11.  Station resolution & generic data accessors
 // =========================================================================
 
+// Route-specific station preferences are injected after the route algorithms
+// load. Station identity remains usable on its own and no longer reaches into
+// route-graph or route-solver globals directly.
+let stationRouteResolver = null;
+
+function configureStationRouteResolver(resolver) {
+  stationRouteResolver = resolver || null;
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -172,16 +181,19 @@ function resolveStationForTrain(stopOrName, train) {
   const candidates = resolveStationCandidates(stopOrName);
   if (candidates.length <= 1) return candidates[0] || null;
 
-  const allowedCodes = train ? getAllowedInstitutionTypeCodes(train) : null;
-  const preferred = allowedCodes
-    ? filterStationsByPreferredInstitution(candidates, allowedCodes)
+  const allowedCodes =
+    train && stationRouteResolver
+      ? stationRouteResolver.allowedInstitutionCodes(train)
+      : null;
+  const preferred = allowedCodes && stationRouteResolver
+    ? stationRouteResolver.filterPreferredStations(candidates, allowedCodes)
     : [];
   const pool = preferred.length ? preferred : candidates;
   if (pool.length === 1) return pool[0];
 
   const excludeStop = typeof stopOrName === "object" ? stopOrName : null;
   const anchors = train ? trainAnchorCoordinates(train, excludeStop) : [];
-  if (!anchors.length) return pool[0];
+  if (!anchors.length || !stationRouteResolver) return pool[0];
 
   let best = pool[0];
   let bestDistance = Infinity;
@@ -190,7 +202,7 @@ function resolveStationForTrain(stopOrName, train) {
     if (!coord) return;
     let nearest = Infinity;
     anchors.forEach((anchor) => {
-      const d = distanceMeters(coord, anchor);
+      const d = stationRouteResolver.distanceMeters(coord, anchor);
       if (d < nearest) nearest = d;
     });
     if (nearest < bestDistance) {

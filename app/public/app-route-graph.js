@@ -34,6 +34,17 @@ function reportRouteSolve(messageKey, params, level = "warn") {
 //  §27.  Route matching, template keys, feature generation & full graph construction
 // =========================================================================
 
+let routeSolverApi = null;
+let routeSolveInProgress = false;
+
+function configureRouteSolverApi(api) {
+  routeSolverApi = api || null;
+}
+
+function setRouteSolveInProgress(inProgress) {
+  routeSolveInProgress = Boolean(inProgress);
+}
+
 function getTrainRouteTemplateKey(train) {
   return (train.route_sections || [])
     .map((section) => {
@@ -60,6 +71,8 @@ function getTrainRouteTemplateKey(train) {
 
 let runtimeRouteGraph = null;
 const runtimeRouteCache = new Map();
+const runtimeRouteNegativeCache = new Set();
+
 // Negative cache: cacheKeys whose solve produced ZERO usable geometry (all
 // sections failed — bad/mismatched station codes, or no path under the policy).
 // A failure is deterministic for a given (rail data + sections + policy), all of
@@ -67,7 +80,6 @@ const runtimeRouteCache = new Map();
 // the ~25 unsolvable trains rebuilt regional graphs and ran Dijkstra on every
 // prewarm, final render and live refresh — a big chunk of the ~53 s hot reload.
 // Editing a train changes its cacheKey, so a fix is re-solved automatically.
-const runtimeRouteNegativeCache = new Set();
 const ROUTE_NEG_CACHE_MARKER = "__neg__::";
 const STATION_SNAP_MAX_DISTANCE_METERS = 500;
 const STATION_SNAP_COST_FACTOR = 4;
@@ -412,14 +424,15 @@ function solveTaiwanRouteSectionOnOfficialInterval(
   ]);
   if (
     continuityAnchor &&
-    distanceMeters(continuityAnchor, coordinates[0]) >
+    routeSolverApi.distanceMeters(continuityAnchor, coordinates[0]) >
       ROUTE_SECTION_CONTINUITY_STATION_METERS
   )
     return null;
 
   const edgeCount = coordinates.length - 1;
   const physicalLength =
-    Math.round(pathLengthForCoordinates(coordinates) * 100) / 100;
+    Math.round(routeSolverApi.pathLengthForCoordinates(coordinates) * 100) /
+    100;
   const preferredLines = normalizedRouteSectionHintValues([
     ...(train?.route_policy?.preferred_line_names || []),
     ...requiredLines,
@@ -622,39 +635,14 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
 // progressive load the streaming warm-up already owns solving, so we simply
 // defer to it. getMatchedRouteFeatures() falls back to any precomputed
 // matched-routes geometry meanwhile, so covered trains still draw instantly.
-function generateMatchedRouteFeaturesForTrain(train) {
-  const prep = prepareTrainRouteSolve(train);
-  if (prep.done) return prep.result;
-  if (importInProgress) return [];
-  // Rail-sections may still be loading in the background (boot no longer
-  // awaits it). Solving now would run Dijkstra over an EMPTY dataset and
-  // negative-cache the train as unsolvable — persistently. Skip this frame,
-  // kick the solver warm-up, and repaint once it is ready.
-  if (!railSectionsGeoJson) {
-    requestSolverThenRerender();
-    return [];
-  }
-  // Cold miss with data ready: solve OFF the render thread, draw a beat later.
-  requestTrainRouteSolve(train);
-  return [];
-}
-
 // Streaming solve — used by the progressive load/import warm-up. Solves the
 // train ONE section at a time and calls the caller's shared `yieldIfNeeded()`
 // after each, so a long itinerary hands the main thread back mid-train (paint +
 // input stay live, and GC can reclaim transient graph memory between slices).
 // Writes the exact same runtime/negative caches + matched-routes features as the
 // synchronous solver, so the later render-time lookup is an untouched cache hit.
-async function warmRouteCacheForTrainStreaming(train, { yieldIfNeeded } = {}) {
-  let prep = prepareTrainRouteSolve(train);
-  if (prep.done) return prep.result;
-
-  // Genuine cache miss: this is the first point that actually needs the
-  // solver, so pay the one-time rail-sections load + IndexedDB warm-up here
-  // (boot no longer blocks on either). The warm-up may itself satisfy this
-  // train, so re-check before running a fresh solve.
-  await ensureSolverReady();
-  prep = prepareTrainRouteSolve(train);
+async function solveTrainRouteStreaming(train, { yieldIfNeeded } = {}) {
+  const prep = prepareTrainRouteSolve(train);
   if (prep.done) return prep.result;
 
   const { routeSections, templateKey, allowedCodes, cacheKey } = prep;
@@ -787,12 +775,12 @@ function stitchAdjacentRouteFeatureEndpoints(features) {
     if (
       !previousEnd ||
       !currentStart ||
-      distanceMeters(previousEnd, currentStart) >
+      routeSolverApi.distanceMeters(previousEnd, currentStart) >
         ROUTE_SECTION_STITCH_MAX_METERS
     ) {
       continue;
     }
-    if (coordinatesClose(previousEnd, currentStart, 0.25)) {
+    if (routeSolverApi.coordinatesClose(previousEnd, currentStart, 0.25)) {
       currentLines[0][0] = previousEnd;
     } else {
       currentLines[0].unshift(previousEnd);
@@ -962,8 +950,8 @@ function buildRouteGraphFromFeatures(features) {
   const cellSize = 0.01;
 
   function ensureNode(coord) {
-    const normalized = normalizeGraphCoord(coord);
-    const key = coordKey(normalized);
+    const normalized = routeSolverApi.normalizeGraphCoord(coord);
+    const key = routeSolverApi.coordKey(normalized);
     if (!nodes.has(key)) {
       nodes.set(key, normalized);
       adjacency.set(key, []);
@@ -973,7 +961,7 @@ function buildRouteGraphFromFeatures(features) {
         institution_type_codes: new Set(),
         railway_class_codes: new Set(),
       });
-      const gk = graphGridKey(normalized, cellSize);
+      const gk = routeSolverApi.graphGridKey(normalized, cellSize);
       if (!grid.has(gk)) grid.set(gk, []);
       grid.get(gk).push(key);
     }
@@ -1003,7 +991,7 @@ function buildRouteGraphFromFeatures(features) {
     if (a === b) return;
     recordNodeMeta(a, properties);
     recordNodeMeta(b, properties);
-    const length = distanceMeters(nodes.get(a), nodes.get(b));
+    const length = routeSolverApi.distanceMeters(nodes.get(a), nodes.get(b));
     const edge = {
       to: b,
       length: Math.max(length, 0.01),
@@ -1055,7 +1043,7 @@ function getRuntimeRouteGraph() {
   const graph = buildRouteGraphFromFeatures(
     (railSectionsGeoJson && railSectionsGeoJson.features) || [],
   );
-  addStationTransferConnectorEdges(graph);
+  routeSolverApi.addStationTransferConnectorEdges(graph);
   runtimeRouteGraph = graph;
   return runtimeRouteGraph;
 }
@@ -1189,7 +1177,10 @@ function padBboxMeters(bbox, meters) {
 }
 
 function bboxDiagonalMeters(bbox) {
-  return distanceMeters([bbox[0], bbox[1]], [bbox[2], bbox[3]]);
+  return routeSolverApi.distanceMeters(
+    [bbox[0], bbox[1]],
+    [bbox[2], bbox[3]],
+  );
 }
 
 const REGION_QUANT_DEG = 0.25;
@@ -1207,6 +1198,13 @@ const REGIONAL_GRAPH_NODE_BUDGET = 300000;
 const REGIONAL_GRAPH_LOAD_NODE_BUDGET = 600000;
 const regionalGraphCache = new Map(); // quantized-bbox key -> graph (insertion order = LRU)
 let regionalGraphNodeCount = 0;
+
+function invalidateRouteGraphIndexes() {
+  runtimeRouteGraph = null;
+  railSectionSpatialIndex = null;
+  regionalGraphCache.clear();
+  regionalGraphNodeCount = 0;
+}
 
 // Evict least-recently-used regional graphs until the resident node count is at
 // or below `target` (always keeping at least one so the in-flight solve has its
@@ -1242,7 +1240,10 @@ function getRegionalRouteGraph(bbox) {
     return cached;
   }
   const graph = buildRouteGraphFromFeatures(railFeaturesInBbox(qbbox));
-  addStationTransferConnectorEdges(graph, stationFeaturesInBbox(qbbox));
+  routeSolverApi.addStationTransferConnectorEdges(
+    graph,
+    stationFeaturesInBbox(qbbox),
+  );
   graph.regionBbox = qbbox;
   regionalGraphCache.set(key, graph);
   regionalGraphNodeCount += graph.nodes.size;
@@ -1254,7 +1255,7 @@ function getRegionalRouteGraph(bbox) {
   // back to the steady budget once the solve/load settles (see below +
   // finalizeProgressiveLoad).
   trimRegionalGraphCache(
-    importInProgress || _solveInProgress
+    importInProgress || routeSolveInProgress
       ? REGIONAL_GRAPH_LOAD_NODE_BUDGET
       : REGIONAL_GRAPH_NODE_BUDGET,
   );
@@ -1266,12 +1267,12 @@ function getRegionalRouteGraph(bbox) {
 // lives in exactly one place).
 function resolveSectionEndpoints(section, train, allowedCodes) {
   return {
-    fromStations: resolveRouteEndpointStationCandidates(
+    fromStations: routeSolverApi.resolveEndpointCandidates(
       { name: section.from, n02_station_code: section.from_n02_station_code },
       train,
       allowedCodes,
     ),
-    toStations: resolveRouteEndpointStationCandidates(
+    toStations: routeSolverApi.resolveEndpointCandidates(
       { name: section.to, n02_station_code: section.to_n02_station_code },
       train,
       allowedCodes,
@@ -1336,9 +1337,12 @@ function solveRouteSectionOnDemand(
   allowedCodes,
   continuityAnchor = null,
 ) {
+  if (!routeSolverApi) {
+    throw new Error("Route section solver has not been configured.");
+  }
   const endpointBbox = sectionEndpointBbox(section, train, allowedCodes);
   if (!endpointBbox) {
-    return solveRouteSectionOnN02Graph(
+    return routeSolverApi.solveSection(
       section,
       segmentIndex,
       train,
@@ -1355,7 +1359,7 @@ function solveRouteSectionOnDemand(
   let lastResult = null;
   for (const margin of margins) {
     const graph = getRegionalRouteGraph(padBboxMeters(endpointBbox, margin));
-    const result = solveRouteSectionOnN02Graph(
+    const result = routeSolverApi.solveSection(
       section,
       segmentIndex,
       train,
@@ -1370,7 +1374,7 @@ function solveRouteSectionOnDemand(
   }
   // The region wasn't conclusively large enough — use the full graph so the
   // answer is provably identical to the original all-Japan solve.
-  const full = solveRouteSectionOnN02Graph(
+  const full = routeSolverApi.solveSection(
     section,
     segmentIndex,
     train,
@@ -1388,7 +1392,7 @@ function intersects(a, b) {
 }
 
 function nearbyGraphNodes(coord, graph, radiusDeg = 0.0015, limit = 30) {
-  const [lon, lat] = normalizeGraphCoord(coord);
+  const [lon, lat] = routeSolverApi.normalizeGraphCoord(coord);
   const baseX = Math.floor(lon / graph.cellSize);
   const baseY = Math.floor(lat / graph.cellSize);
   const cellRadius = Math.max(1, Math.ceil(radiusDeg / graph.cellSize));
@@ -1400,7 +1404,10 @@ function nearbyGraphNodes(coord, graph, radiusDeg = 0.0015, limit = 30) {
       bucket.forEach((key) => {
         if (seen.has(key)) return;
         seen.add(key);
-        const distance = distanceMeters([lon, lat], graph.nodes.get(key));
+        const distance = routeSolverApi.distanceMeters(
+          [lon, lat],
+          graph.nodes.get(key),
+        );
         found.push({ key, distance });
       });
     }

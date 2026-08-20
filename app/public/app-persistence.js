@@ -796,12 +796,12 @@ function buildUserStoreChunks(canonicalStore) {
     try {
       const context = buildTrainRouteSolveContext(liveById.get(train.id) || train);
       if (context && context.cacheKey) {
-        if (runtimeRouteCache.has(context.cacheKey)) {
+        if (RouteService.has(context.cacheKey)) {
           chunk.routes.push({
             cache_key: context.cacheKey,
-            features: runtimeRouteCache.get(context.cacheKey),
+            features: RouteService.get(context.cacheKey),
           });
-        } else if (runtimeRouteNegativeCache.has(context.cacheKey)) {
+        } else if (RouteService.isNegative(context.cacheKey)) {
           chunk.routes.push({ cache_key: context.cacheKey, unsolvable: true });
         }
       }
@@ -1049,13 +1049,13 @@ function seedRouteCacheEntries(routes) {
     if (!route || typeof route.cache_key !== "string" || !route.cache_key)
       continue;
     if (route.unsolvable === true) {
-      runtimeRouteNegativeCache.add(route.cache_key);
+      RouteService.seedNegative(route.cache_key);
     } else if (
       Array.isArray(route.features) &&
       route.features.length &&
-      !runtimeRouteCache.has(route.cache_key)
+      !RouteService.has(route.cache_key)
     ) {
-      runtimeRouteCache.set(route.cache_key, route.features);
+      RouteService.seed(route.cache_key, route.features);
     }
   }
 }
@@ -1188,9 +1188,9 @@ async function warmRouteCacheFromIndexedDb() {
             evicted += 1;
           } else if (isNegative) {
             // Persisted "this route can't be solved" marker for this rail net.
-            runtimeRouteNegativeCache.add(cacheKey);
+            RouteService.seedNegative(cacheKey);
           } else if (Array.isArray(cursor.value) && cursor.value.length) {
-            runtimeRouteCache.set(rest, cursor.value);
+            RouteService.seed(rest, cursor.value);
             warmed += 1;
           }
         } else {

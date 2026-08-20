@@ -68,8 +68,7 @@ function activateCountry(context, country) {
       activeCountry = ${JSON.stringify(country)};
       railSectionsGeoJson = __sections;
       stationsGeoJson = { type: "FeatureCollection", features: [] };
-      runtimeRouteCache.clear();
-      runtimeRouteNegativeCache.clear();
+      RouteService.resetForCountry();
       getRailContentHash();
     `,
     context,
@@ -159,14 +158,14 @@ test("country switch keeps the other country's persisted route cache", async () 
   );
   assert.equal(
     vm.runInContext(
-      `runtimeRouteCache.has("solver:" + ROUTE_SOLVER_CACHE_VERSION + "|tw-route")`,
+      `RouteService.has("solver:" + ROUTE_SOLVER_CACHE_VERSION + "|tw-route")`,
       context,
     ),
     true,
     "Taiwan warm loads Taiwan's own entry",
   );
   assert.equal(
-    vm.runInContext(`runtimeRouteCache.size`, context),
+    vm.runInContext(`RouteService.cacheSize()`, context),
     1,
     "no cross-country entries warmed",
   );
@@ -176,7 +175,7 @@ test("country switch keeps the other country's persisted route cache", async () 
   await vm.runInContext(`warmRouteCacheFromIndexedDb()`, context);
   assert.equal(
     vm.runInContext(
-      `runtimeRouteCache.has("solver:" + ROUTE_SOLVER_CACHE_VERSION + "|jp-route")`,
+      `RouteService.has("solver:" + ROUTE_SOLVER_CACHE_VERSION + "|jp-route")`,
       context,
     ),
     true,

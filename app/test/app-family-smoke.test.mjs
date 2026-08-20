@@ -943,15 +943,15 @@ test("precomputed sample geometry replaces stale warmed geometry", () => {
   const result = vm.runInContext(
     `(() => {
       const key = "solver:15|hiroden-test";
-      runtimeRouteCache.set(key, [{ geometry: { coordinates: [[0, 0], [9, 9]] } }]);
-      runtimeRouteNegativeCache.add(key);
+      RouteService.seed(key, [{ geometry: { coordinates: [[0, 0], [9, 9]] } }]);
+      RouteService.seedNegative(key);
       seedRouteCacheFromPart({ route: {
         cache_key: key,
         features: [{ geometry: { coordinates: [[0, 0], [1, 0]] } }],
       } });
       return {
-        coordinates: runtimeRouteCache.get(key)[0].geometry.coordinates,
-        negative: runtimeRouteNegativeCache.has(key),
+        coordinates: RouteService.get(key)[0].geometry.coordinates,
+        negative: RouteService.isNegative(key),
       };
     })()`,
     context,

@@ -101,7 +101,7 @@ class MinHeap {
 }
 
 function getMatchedRouteFeatures(train) {
-  let candidates = generateMatchedRouteFeaturesForTrain(train);
+  let candidates = RouteService.featuresForTrain(train);
 
   if (!candidates.length) {
     candidates = matchedRoutesGeoJson.features

@@ -196,10 +196,7 @@ async function reloadSolverDatasetsForCountrySwitch() {
   railSectionsGeoJson = null;
   railSectionsReady = null;
   railSectionsTextReady = null;
-  runtimeRouteGraph = null;
-  railSectionSpatialIndex = null;
-  regionalGraphCache.clear();
-  regionalGraphNodeCount = 0;
+  RouteService.invalidateDataset();
   _statsEdgeIndex = null;
   _statsIndexBuild = null;
 
@@ -308,100 +305,6 @@ async function ensureRailSectionsLoaded() {
   return railSectionsReady;
 }
 
-// One-time gate for everything the route SOLVER needs beyond the render path:
-// the parsed rail-sections dataset plus the persisted route-geometry cache
-// (IndexedDB). Boot no longer awaits either — on a static deploy every train
-// ships with precomputed geometry (see sample-data parts below), so the solver may
-// never run at all. The first genuine cache MISS awaits this instead, paying
-// the one-time load exactly when it is needed. Memoised; cleared on failure so
-// a later solve retries cleanly.
-let solverReadyPromise = null;
-function ensureSolverReady() {
-  if (!solverReadyPromise) {
-    solverReadyPromise = (async () => {
-      await ensureRailSectionsLoaded();
-      await warmRouteCacheFromIndexedDb();
-    })();
-    solverReadyPromise.catch(() => {
-      solverReadyPromise = null;
-    });
-  }
-  return solverReadyPromise;
-}
-
-// Render-path helper: a synchronous render found a train with no cached route
-// while rail-sections are still loading. Kick the solver warm-up and repaint
-// once, so the missing line appears without user interaction — and WITHOUT
-// running (or negative-caching!) a solve on data that isn't there yet.
-let solverRenderKickPending = false;
-function requestSolverThenRerender() {
-  if (solverRenderKickPending) return;
-  solverRenderKickPending = true;
-  ensureSolverReady()
-    .then(() => {
-      solverRenderKickPending = false;
-      renderTrainLayers();
-    })
-    .catch(() => {
-      solverRenderKickPending = false;
-    });
-}
-
-// Set while a SINGLE train's route is being solved (sync or the async queue
-// below). It lifts the regional-graph cache to the larger transient budget for
-// the duration so a multi-region train doesn't evict-then-rebuild its own
-// regions mid-solve (see getRegionalRouteGraph).
-let _solveInProgress = false;
-
-// Off-thread solve queue. A cold route solve builds ~0.4 s regional graphs per
-// region — running it synchronously on a click/render froze the tab for ~2 s
-// ("selecting a rail is slow"). Instead we enqueue the train, solve it in the
-// background one section at a time (yielding to paint/input between sections),
-// and repaint once its geometry is cached. The train draws a beat later rather
-// than hanging the UI — the same deal the progressive import already makes.
-const _pendingRouteSolves = new Set();
-let _routeSolveDraining = false;
-async function drainPendingRouteSolves() {
-  if (_routeSolveDraining) return;
-  _routeSolveDraining = true;
-  _solveInProgress = true;
-  try {
-    let frameStart = performance.now();
-    const yieldIfNeeded = async () => {
-      if (performance.now() - frameStart < 12) return;
-      await waitForImportPaint();
-      frameStart = performance.now();
-    };
-    while (_pendingRouteSolves.size) {
-      const id = _pendingRouteSolves.values().next().value;
-      _pendingRouteSolves.delete(id);
-      const train = getTrain(id);
-      if (!train) continue;
-      try {
-        await warmRouteCacheForTrainStreaming(train, { yieldIfNeeded });
-        // Draw it incrementally as soon as it's solved (invalidates the
-        // signature-cached route items — which are geometry-independent — so the
-        // freshly-solved geometry is actually picked up) and shows progressively
-        // instead of all-at-once at the end.
-        appendTrainToLayers(train);
-      } catch (err) {
-        console.warn(`Background route solve failed for ${id}.`, err);
-      }
-    }
-  } finally {
-    _solveInProgress = false;
-    trimRegionalGraphCache(REGIONAL_GRAPH_NODE_BUDGET);
-    _routeSolveDraining = false;
-    // Repaint so the freshly-cached routes appear; markers follow the same
-    // signature so this is a cheap cache-hit render.
-    renderTrainLayers();
-  }
-}
-function requestTrainRouteSolve(train) {
-  if (!train || _pendingRouteSolves.has(train.id)) return;
-  _pendingRouteSolves.add(train.id);
-  drainPendingRouteSolves();
-}
 // =========================================================================
 //  §8.  Cached DOM element references
 // =========================================================================
@@ -557,7 +460,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // solver can never run (prepareTrainRouteSolve gates it), so warming the
   // 12 MB rail-sections here would be pure wasted download + memory.
   if (HAS_BACKEND && activeCountryHasRouteSolver()) {
-    ensureSolverReady()
+    RouteService.ensureReady()
       .then(() => scheduleRouteGraphPrebuild())
       .catch((err) =>
         console.warn(

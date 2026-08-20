@@ -93,10 +93,7 @@ async function switchCountrySession(next) {
     // Runtime route artifacts do not encode country. Purge them before the new
     // country's same-named stations or reused train ids can read old geometry.
     // Persisted caches remain isolated by countryDbName and are not deleted.
-    runtimeRouteCache.clear();
-    runtimeRouteNegativeCache.clear();
-    _pendingRouteSolves.clear();
-    solverReadyPromise = null;
+    RouteService.resetForCountry();
     if (matchedRoutesGeoJson && Array.isArray(matchedRoutesGeoJson.features)) {
       matchedRoutesGeoJson.features = matchedRoutesGeoJson.features.filter(
         (feature) =>

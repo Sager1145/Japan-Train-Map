@@ -10,6 +10,12 @@
 //  §29.  Route solving: institution/edge rules, route hints & Dijkstra
 // =========================================================================
 
+let routeGraphApi = null;
+
+function configureRouteGraphApi(api) {
+  routeGraphApi = api || null;
+}
+
 function preferredInstitutionSet(allowedCodes) {
   return new Set((allowedCodes || []).map(String).filter(Boolean));
 }
@@ -57,7 +63,7 @@ function institutionPreferencePenaltyForEdge(edge, allowedCodes, train) {
 function graphNodeHasPreferredInstitution(meta, allowedCodes) {
   const preferred = preferredInstitutionSet(allowedCodes);
   if (!preferred.size) return true;
-  return intersects(meta?.institution_type_codes, preferred);
+  return routeGraphApi.intersects(meta?.institution_type_codes, preferred);
 }
 
 function addStationTransferConnectorEdges(graph, stationFeatures) {
@@ -109,7 +115,7 @@ function addStationTransferConnectorEdges(graph, stationFeatures) {
       ? sourceLines.flat()
       : [getFeatureDisplayCoordinate(feature)];
     sourceCoords.forEach((coord) => {
-      nearbyGraphNodes(
+      routeGraphApi.nearbyNodes(
         coord,
         graph,
         STATION_TRANSFER_NODE_RADIUS_DEG,
@@ -298,7 +304,7 @@ function solveRouteSectionOnN02Graph(
   allowedCodes,
   continuityAnchor = null,
 ) {
-  const { fromStations, toStations } = resolveSectionEndpoints(
+  const { fromStations, toStations } = routeGraphApi.resolveSectionEndpoints(
     section,
     train,
     allowedCodes,
@@ -493,7 +499,9 @@ function solveRouteSectionOnN02Graph(
         graph,
         best.pathKeys,
       ),
-      route_template_key: routeKeyDigest(getTrainRouteTemplateKey(train)),
+      route_template_key: routeGraphApi.keyDigest(
+        routeGraphApi.templateKey(train),
+      ),
       path_coordinate_count: coordinates.length,
       raw_path_coordinate_count: rawCoordinates.length,
       snap_distance_m: {
@@ -598,7 +606,7 @@ function inferSectionRouteConstraints(section, train) {
 }
 
 function buildSegmentRouteHints(section, fromStations, toStations, train) {
-  const allowedCodes = getAllowedInstitutionTypeCodes(train);
+  const allowedCodes = routeGraphApi.allowedInstitutionCodes(train);
   const preferredLines = new Set(
     (train.route_policy?.preferred_line_names || [])
       .map(String)
@@ -608,7 +616,7 @@ function buildSegmentRouteHints(section, fromStations, toStations, train) {
     [
       ...(train.route_policy?.preferred_operator_names || []),
       // 公司 field soft-biases the solver toward that operator's tracks.
-      ...derivedPreferredOperatorNames(train),
+      ...routeGraphApi.preferredOperatorNames(train),
     ]
       .map(String)
       .filter(Boolean),
@@ -1050,24 +1058,24 @@ function getStationCandidateGraphNodes(
     if (hints.requirePreferredInstitution && !hasPreferredInstitution) return;
     if (
       (hints.requiredLines || new Set()).size &&
-      !intersects(hints.requiredLines, meta.line_names)
+      !routeGraphApi.intersects(hints.requiredLines, meta.line_names)
     )
       return;
     if (
       (hints.requiredOperators || new Set()).size &&
-      !intersects(hints.requiredOperators, meta.operators)
+      !routeGraphApi.intersects(hints.requiredOperators, meta.operators)
     )
       return;
     let score = nearest.distance;
     if (stationLine && meta.line_names?.has(stationLine)) score -= 40;
     if (stationOperatorName && meta.operators?.has(stationOperatorName))
       score -= 15;
-    if (intersects(hints.preferredLines, meta.line_names)) {
+    if (routeGraphApi.intersects(hints.preferredLines, meta.line_names)) {
       score -= 25;
     } else if ((hints.preferredLines || new Set()).size) {
       score += NON_PREFERRED_LINE_STATION_SNAP_PENALTY;
     }
-    if (intersects(hints.preferredOperators, meta.operators)) {
+    if (routeGraphApi.intersects(hints.preferredOperators, meta.operators)) {
       score -= 10;
     } else if ((hints.preferredOperators || new Set()).size) {
       score += NON_PREFERRED_OPERATOR_STATION_SNAP_PENALTY;
@@ -1095,7 +1103,7 @@ function getStationCandidateGraphNodes(
     // Station geometries are often LineString objects. The same railroad node can be
     // discovered from multiple station-geometry vertices; keep the best snap per node
     // instead of freezing the first, possibly hundreds-of-meters-away encounter.
-    nearbyGraphNodes(coord, graph, 0.006, 160).forEach((nearest) => {
+    routeGraphApi.nearbyNodes(coord, graph, 0.006, 160).forEach((nearest) => {
       if (nearest.distance <= STATION_SNAP_MAX_DISTANCE_METERS)
         maybeUpsertCandidate(nearest);
     });

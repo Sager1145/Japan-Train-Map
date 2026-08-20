@@ -128,7 +128,7 @@ async function runProgressiveAppend(
 async function warmRouteCacheForTrain(train, { yieldIfNeeded } = {}) {
   if (!train) return;
   try {
-    await warmRouteCacheForTrainStreaming(train, { yieldIfNeeded });
+    await RouteService.warmTrain(train, { yieldIfNeeded });
   } catch (err) {
     console.warn(
       `Route warm-up failed for ${train?.id}; will retry on render.`,
@@ -397,8 +397,7 @@ function seedRouteCacheFromPart(part) {
   const route = part && part.route;
   if (!route || typeof route.cache_key !== "string" || !route.cache_key) return;
   if (route.unsolvable === true) {
-    runtimeRouteCache.delete(route.cache_key);
-    runtimeRouteNegativeCache.add(route.cache_key);
+    RouteService.seedNegative(route.cache_key);
     return;
   }
   if (Array.isArray(route.features) && route.features.length) {
@@ -406,8 +405,7 @@ function seedRouteCacheFromPart(part) {
     // solver. Always replace a warmed IndexedDB entry: before this overwrite,
     // an old Hatchobori solve could survive indefinitely under the same key
     // and hide a corrected part-099.json.
-    runtimeRouteNegativeCache.delete(route.cache_key);
-    runtimeRouteCache.set(route.cache_key, route.features);
+    RouteService.seed(route.cache_key, route.features);
   }
 }
 
