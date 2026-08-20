@@ -5,9 +5,10 @@
  *
  * `lanes` and `stats` are functions of the WHOLE package, not of any one line,
  * so a promotion that changed a single line still invalidates both. Leaving
- * them stale is worse than leaving them absent: the renderer reads `lanes`
- * directly, so a stale table offsets strokes onto geometry that no longer
- * exists.
+ * them stale is worse than leaving them absent. Nothing reads `lanes` at
+ * runtime any more — 38cf0a8 removed the screen-space lane offsets — so what
+ * a stale table costs is the next person to audit geometry, who sees rows
+ * move and has to prove the movement was not theirs.
  *
  *   lanes  — recomputed from the package's own display geometry by the same
  *            sweep build-parallel-corridors.mjs uses. Derived, never authored.

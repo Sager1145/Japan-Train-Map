@@ -7,11 +7,11 @@
  * answer is a sweep over the whole drawn network (an edge index plus a 25 m
  * walk of every kilometre of track), which is far too much work to redo in the
  * browser on every boot — so it is computed here and stored in the package as
- * a `lanes` table that rail-network.js simply reads.
+ * a `lanes` table beside the geometry it describes.
  *
  * The table is DERIVED, not authored: it is a pure function of the package's
  * own display geometry, so regenerating it after any geometry change is
- * mandatory and test/railway-parallel-corridors.test.js fails if the stored
+ * mandatory, and test/rail-derived-tables.test.mjs fails if a published
  * table and a freshly computed one disagree.
  *
  * Usage:

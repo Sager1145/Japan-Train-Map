@@ -283,7 +283,16 @@ function encodeRow(coordinates, shared) {
 
 let changed = 0;
 const branchStationCodes = new Set();
-const TOPOLOGY_FIELDS = new Set(["id", "logo", "stations", "segments", "structure"]);
+// What a branch must NOT copy from its trunk: the fields that describe where
+// the branch itself runs. `logo` is deliberately absent — a branch shows its
+// parent railway's badge, which is why every branch that has one in the
+// package carries exactly its trunk's, and why the 27 without one all descend
+// from a trunk without one. Listing it here made the "already split" path
+// destructive: it deletes the branch's logo before inheriting, and an
+// inherited field it skips can never come back, so re-running this script over
+// an unchanged package silently dropped 中央線-2, 南武線-2 and 小泉線-2 from
+// the badge count and failed the popup contract three steps later.
+const TOPOLOGY_FIELDS = new Set(["id", "stations", "segments", "structure"]);
 
 function inheritLineMetadata(target, source) {
   for (const [key, value] of Object.entries(source)) {

@@ -10,9 +10,13 @@
  *                   present in the published package — and every row that is
  *                   not is named, because an unresolved row is a finding, not
  *                   a rounding error.
- *   2  DERIVED      `lanes` and `stats` match a fresh recomputation. A stale
- *                   lane table offsets strokes onto geometry that has moved,
- *                   which looks like a rendering bug three sessions later.
+ *   2  DERIVED      `lanes` and `stats` match a fresh recomputation. This
+ *                   compares the STORED table against a fresh one rather than
+ *                   recomputing both sides, so it is a real second opinion —
+ *                   but it reads its country from the batch it is closing, and
+ *                   every batch has been jp. test/rail-derived-tables.test.mjs
+ *                   runs the same comparison over all five packages, which is
+ *                   how tw, hk and kr are covered at all.
  *   3  TOPOLOGY     validate-railway-topology.mjs, scoped to THIS batch's lines.
  *                   Whole-network completeness (`missing_line`) is excluded
  *                   until S66 — see WHOLE_NETWORK_CODES for why.
