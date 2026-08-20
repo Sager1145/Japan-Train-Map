@@ -19,8 +19,9 @@
 //                                   deck hover/tooltip
 //   app-route-simplify.js    §5     Douglas-Peucker pre-render decimation
 //   app-dates.js             §6     date grouping/sorting + UI date state
-//   app.js  (this file)      §7–10  API client & HAS_BACKEND flag, core
-//                                   mutable state & DOM refs, boot
+//   app-state.js                    core mutable state owner + actions
+//   app.js  (this file)      §7–10  API client & HAS_BACKEND flag, DOM refs,
+//                                   boot
 //                                   sequence, SSE live refresh + prebuild
 //   app-stations.js          §11    station resolution & data accessors
 //   app-persistence.js       §12–15 server autosave, file handles, user
@@ -53,6 +54,7 @@
 //                                   progress UI
 //   app-validation.js        §33    validation (store / trains / JSON)
 //   app-ui-utils.js          §34–35 popups & tooltips + misc utilities
+//   app-country-session.js           country transition coordinator
 //
 //  DEPLOY CONTRACT (scripts/build/build-static-site.mjs): the static build
 //  rewrites `const HAS_BACKEND = true;` in THIS file (and fails the build
@@ -401,88 +403,8 @@ function requestTrainRouteSolve(train) {
   drainPendingRouteSolves();
 }
 // =========================================================================
-//  §8.  Core mutable state & cached DOM element references
+//  §8.  Cached DOM element references
 // =========================================================================
-
-let trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
-let selectedTrainId = null;
-let focusedTrainId = null;
-// Live maplibregl.Marker instances for the on-map origin/destination labels.
-let endpointLabelMarkers = new Map(); // label key -> { marker, el, anchor, fadeTimer }
-// Which date the sidebar list is filtered to. ALL_DATES shows the combined
-// "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
-let selectedDate = ALL_DATES;
-// Dates the user created manually that may not yet have any train. Merged
-// with the dates derived from trains when building the date-button bar.
-let manualDates = [];
-// When on, the map mirrors the sidebar date filter (only the selected date's
-// trains draw). Off by default: the map stays controlled by each train's
-// `visible` flag, matching the original behaviour.
-let mapFollowsSelectedDate = false;
-// Auto-focus: when on, picking a date zooms the map to that day's trains and
-// picking a train zooms to that train. The toggle button turns it off so the
-// map view stays put on selection (whether the pick came from a card or a
-// route line).
-// Defaults OFF: an auto-focus fitBounds animation forces a zoom change, and the
-// zoomend handler then recomputes overlap offsets and re-uploads the full
-// visible-route GeoJSON to the GPU — making a simple selection ~4 s instead of
-// the ~270 ms it takes with focus off. Users who want it can still toggle it on
-// (their choice is persisted in localStorage and restored on boot).
-let focusZoomEnabled = false;
-// The maplibregl.Map instance (created by initMap once the basemap + rail
-// network package have loaded).
-let map;
-// Cached route render items (overlap-split run features) + viewport-cull state.
-// The split runs / overlap slots depend only on the train data (not zoom/pan),
-// so we memoise them and re-attach only the segments inside the current view.
-let cachedRouteItems = null,
-  cachedRouteSignature = "",
-  cachedRouteOverlapSignature = "",
-  cachedRouteDateActive = false;
-// Pass-through markers number in the thousands and are sub-pixel clutter when
-// zoomed out. Below this zoom they are not rendered at all, which removes a large
-// chunk of per-frame Paint work (the trace showed Paint, not JS, is the
-// bottleneck). A lightweight zoomend handler re-renders markers only when the
-// view crosses this threshold — never on pan.
-// NOTE: MapLibre zoom convention (world in one 512px tile at z0) — one level
-// lower than the old Leaflet number for the same view.
-const PASSTHROUGH_MIN_ZOOM = 9;
-// Intermediate stop dots thin out next on the way out: below this zoom the
-// stopping-station dots (their black centers included) stop drawing too, so a
-// zoomed-out national view keeps only the route lines and terminal markers.
-// Must stay strictly BELOW PASSTHROUGH_MIN_ZOOM (stops outlive pass-throughs
-// while zooming out). Unlike the pass LOD this can't be a layer minzoom —
-// terminals share the stops layers and are never hidden — so RailMap rebuilds
-// the stops filters when the view crosses this threshold (never on pan, and a
-// no-op float compare on other zoom frames).
-const STOP_MIN_ZOOM = 7;
-let cachedOrderedTrains = [];
-let importInProgress = false;
-
-// --- Data-source mode -------------------------------------------------------
-// What the store on screen IS, and therefore whether edits persist:
-//   "user"          user's own data — autosaved (server on Node, IndexedDB on
-//                   the static deploy).
-//   "sample-single" one random sample day (static deploy boot with no user
-//                   data). Ephemeral: nothing persists.
-//   "sample-all"    the full sample, loaded on explicit request. Ephemeral.
-//   "sample-new-year-grand-loop" the independent New Year grand-loop sample.
-//   "sample-tokyo-limited-express-loop" the independent Tokyo ltd-exp loop.
-// The Node deployment always runs in "user" mode. Sample modes never write to
-// the user's IndexedDB store — the user's saved data survives untouched and
-// can be brought back with the "restore my data" button.
-let dataSourceMode = "user";
-let sampleModeDate = null; // the day shown while in "sample-single"
-let userStoreAvailable = false; // last known "IndexedDB holds user data" state
-let sampleEditHintShown = false; // one hint per sample session, not per edit
-function isSampleMode() {
-  return (
-    dataSourceMode === "sample-single" ||
-    dataSourceMode === "sample-all" ||
-    dataSourceMode === "sample-new-year-grand-loop" ||
-    dataSourceMode === "sample-tokyo-limited-express-loop"
-  );
-}
 
 // Cached DOM references. app.js is loaded at the END of <body> (no `defer`),
 // so the document is fully parsed when this runs — getElementById here at
@@ -556,7 +478,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // centreline model is also the geometry authority for every ridden
       // route. Load it before the first route render so no solver geometry can
       // briefly paint and then jump onto the display network.
-      RailMap.loadNetwork(),
+      RailMap.loadNetwork(activeRailPackageUrl()),
     ]),
     // The alternate theme is fetched ONLY to warm loadBasemap's cache for an
     // instant first theme switch. It used to sit inside the Promise.all that

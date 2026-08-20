@@ -397,7 +397,7 @@ function deckGetTooltip(info) {
         anchorLngLat: Array.isArray(o.position) ? o.position : null,
       };
     if (typeof RailMap !== "undefined" && !RailMap._network) {
-      RailMap.ensureNetwork().then((net) => {
+      RailMap.ensureNetwork(activeRailPackageUrl()).then((net) => {
         if (net) RailMap._tooltipRecord = null;
       });
     }

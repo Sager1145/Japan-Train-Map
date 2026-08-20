@@ -346,7 +346,7 @@ function saveSelectedFields() {
     const temp = clone(trainStore);
     temp.trains = temp.trains.map((t) => (t.id === oldId ? next : t));
     validateTrainStore(temp);
-    trainStore = temp;
+    AppActions.replaceTrainStore(temp);
     selectedTrainId = next.id;
     persistAndRender();
     setStatus(els.fieldStatus, I18N.t("status.fieldsSaved"), "ok");

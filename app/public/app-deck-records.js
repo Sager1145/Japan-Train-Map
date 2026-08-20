@@ -466,7 +466,7 @@ const ROUTE_SORT_TIER = 1e6;
 
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
-  const spacingPx = currentOverlapSpacingPx(items);
+  const spacingPx = currentOverlapSpacingPx();
   // Fast path (zoom/pan OR returning to an already-built scope): geometry,
   // styles, runs, shift vectors, lane multipliers and pixel spacing are all
   // unchanged. MapLibre owns the pixel translation across view changes.
@@ -520,7 +520,7 @@ function buildDeckRouteRecords(items) {
     const noPick = scopeFlags.dimmed === true;
     const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
     const color = [rgb[0], rgb[1], rgb[2], alpha];
-    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }, lineIdx) => {
+    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
       if (!orig || orig.length < 2) return;
       const nSeg = orig.length - 1;
       // Per ORIGINAL segment: sharing-train set, this train's lane slot and

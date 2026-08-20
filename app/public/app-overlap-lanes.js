@@ -90,7 +90,7 @@ function routeRecordScopeFlags(train) {
 // per-train weights + focus boost). The focus boost is budgeted for EVERY
 // train so the spacing — and with it the whole record cache — never depends
 // on which train is currently selected.
-function currentOverlapSpacingPx(items) {
+function currentOverlapSpacingPx() {
   // Line weight is uniform (global 線路粗細), so spacing keys off the single
   // base weight × scale + focus boost — no per-train weight scan.
   const scale = DISPLAY.routeWidthScale || 1;

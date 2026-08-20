@@ -86,8 +86,6 @@
     networkLabelTextColor,
     networkLabelHaloColor,
     networkLineLabelColor,
-    RAILWAY_STYLE,
-    stationIconId,
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
@@ -149,15 +147,11 @@
   //   segment i joins station i to station (i+1) % n (loop lines close the ring)
   async function loadNetwork(packageUrl) {
     try {
-      const url =
-        packageUrl ||
-        (typeof global.activeRailPackageUrl === "function"
-          ? global.activeRailPackageUrl()
-          : "./rail/jp-2025.json");
+      if (!packageUrl) throw new Error("A rail package URL is required.");
       // Rail packages are replaced in place. Revalidate the URL so a newly
       // rebuilt official package cannot be shadowed by the 24-hour static
       // JSON browser cache.
-      const res = await fetch(url, { cache: "no-cache" });
+      const res = await fetch(packageUrl, { cache: "no-cache" });
       if (!res.ok) return null;
       return global.RailNetwork.buildNetworkFromCompactPackage(await res.json());
     } catch (e) {
@@ -537,8 +531,8 @@
         ctx.closePath();
       };
       diamond(half);
-      // tokens.ink / tokens.white from railmap-style.js — mirrored literals
-      // (the tokens object is not exported); keep the three in sync.
+      // The station inks from railmap-style.js are mirrored literals here;
+      // keep the three in sync.
       ctx.fillStyle = "rgb(26,26,26)";
       ctx.fill();
       ctx.lineJoin = "miter";
@@ -754,12 +748,12 @@
     // Fetch + build + upload the active country's network package when it was
     // not supplied at attach time, or retry after a failed boot/country load.
     // Deduped so concurrent recovery/toggle requests parse once.
-    ensureNetwork() {
+    ensureNetwork(packageUrl) {
       if (this._network) return Promise.resolve(this._network);
       if (this._networkPromise) return this._networkPromise;
       const m = this._map;
       const generation = this._networkGeneration;
-      const request = loadNetwork()
+      const request = loadNetwork(packageUrl)
         .then((network) => {
           if (generation !== this._networkGeneration) return null;
           if (!network) {
@@ -817,7 +811,7 @@
     // `country` re-credits the segment source: the style is built once at boot
     // with the country that was active then, and switching swaps the geometry
     // underneath it, so the licence declaration has to move with the data.
-    switchNetworkCountry(country) {
+    switchNetworkCountry(country, packageUrl) {
       const shouldReload = Boolean(
         this._networkVisibleWanted ||
           this._networkStationsVisibleWanted ||
@@ -839,7 +833,7 @@
       if (sta) sta.setData(EMPTY_FC);
       if (staLabels) staLabels.setData(EMPTY_FC);
       if (!shouldReload) return Promise.resolve(null);
-      return this.ensureNetwork().then((network) => {
+      return this.ensureNetwork(packageUrl).then((network) => {
         // Country switching does not recreate the layer control. Re-apply its
         // current intent after the new sources are populated so a checked
         // "All Railway Lines" box can never leave an invisible Taiwan layer.

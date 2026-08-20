@@ -14,7 +14,6 @@ function rebuildSelectedRoute() {
   if (importBusy()) return;
   const train = getTrain();
   if (!train) return;
-  const stops = train.stops || [];
 
   train.route_sections = getRideRouteSectionsForTrain(train);
 

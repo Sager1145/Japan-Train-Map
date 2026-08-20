@@ -16,16 +16,6 @@
 
   const { MAP_SURFACE_COLORS, namespaceBasemap } = global.RailMapBasemap;
 
-  // ───────────────────────── design tokens (railprint tokens.ts) ─────────────────────────
-  const tokens = {
-    railLit: "#00A040",
-    railText: "#006B2D",
-    railDim: "#D7DEDA", // unridden network lines + unridden station dots
-    railBg: "#EAF4EE",
-    ink: "#1A1A1A", // primary text / selection casing / ridden station dots
-    inkMuted: "#6B756F",
-    white: "#FFFFFF",
-  };
   const DEFAULT_LINE_COLOR = global.RailNetwork.DEFAULT_LINE_COLOR;
 
   // ─────────────────────── railway style tokens (screen space) ───────────────────────
@@ -232,8 +222,8 @@
   // is a ramp on ONE half of that sum: a width that thinned while the offset
   // held would fan the bundle into a ladder, an offset that shrank while the
   // width held would weld it into one stroke. So every weight and every offset
-  // goes through railwayScale(), and validateParallelZoomStability() measures
-  // the built style across a spread of zooms to keep the proportions fixed.
+  // goes through railwayScale(). The contract tests evaluate the built style
+  // across a spread of zooms to keep the proportions fixed.
   //
   // MapLibre hands the screen-space part over for free: line-width,
   // line-offset, circle-radius and line-translate are all in CSS pixels, so a
@@ -535,8 +525,8 @@
   // these same RAILWAY_STYLE constants — the fill diameter drawn at
   // STATION_ICON_BASE_PX and the ring outside it in the same proportion the
   // circle layer uses. `icon-size` scales that base to the real diameter, so
-  // the drawn size stays readable from the built style (which is what
-  // validateParallelZoomStability measures) instead of hiding in the bitmap.
+  // the drawn size stays readable from the built style instead of hiding in
+  // the bitmap.
   const STATION_ICON_BASE_PX = 24;
 
   function stationIconId(theme, interchange, colorKey) {
@@ -587,11 +577,10 @@
   // while the line it targets steps into a lane is a target on empty map.
   //
   // Every value here goes through railwayScale(), and the ONE table is what
-  // makes that checkable: validateParallelZoomStability() reads the built
-  // style rather than trusting this list, but the list is what keeps every
-  // layer that draws a bundled railway — the field, its station stubs, the
-  // rides over it, the selection casing, the hover highlight and the hit
-  // target — carrying the identical offset expression.
+  // makes that checkable from the built style. It keeps every layer that draws
+  // a bundled railway — the field, its station stubs, the rides over it, the
+  // selection casing, the hover highlight and the hit target — carrying the
+  // identical offset expression.
   const RAILWAY_SCREEN_PAINT = [
     // the "all railway lines" field
     [SEGMENTS_CASING_LAYER, "line-width", networkCasingWidth],
@@ -1428,35 +1417,8 @@
     return style;
   }
 
-  // ───────────────────── the parallel-bundle zoom stability check ─────────────────────
-  // What the reader sees of a bundle, measured at a spread of zooms.
-  //
-  // It reads the BUILT style, not the tokens the style was built from: the
-  // contract is only worth something if what MapLibre is actually handed is
-  // what the tokens promised, so this evaluates the real paint expressions and
-  // reports the numbers a reader would see at each zoom.
-  //
-  // What it holds to is PROPORTION, not constancy. The railway is allowed to
-  // thin as the map pulls back — that is railwayScale() and the whole point of
-  // it — but only by the one shared factor, so every measurement below is
-  // divided by the ramp before it is compared. A weight that carries a ramp of
-  // its own, a lane offset that carries none, or a gap restated in metres all
-  // show up here as a spread once the shared factor has been taken out.
-  //
-  // The zooms deliberately straddle the ramp's whole range: two below the
-  // floor and the anchor, where the ramp is doing its work, and the rest above
-  // the anchor, where it is pinned at 1.
-  //
-  // Run it in the console (RailMapStyle.validateParallelZoomStability()) for a
-  // manual check; test/railway-parallel-corridors.test.js asserts it.
-  const ZOOM_STABILITY_ZOOMS = Object.freeze([3, 5, 8, 10, 12, 14, 16, 18]);
-  // Sub-pixel by many orders of magnitude: this is float slack, not a budget
-  // for "close enough to proportional". Rasterization may still land an offset
-  // on either side of a device pixel; that is the renderer's business, and it
-  // is not what this measures.
-  const ZOOM_STABILITY_TOLERANCE_PX = 1e-9;
-
-  // Enough of the MapLibre expression language to read a screen-space size:
+  // Enough of the MapLibre expression language for contract tests to read a
+  // screen-space size from the built style:
   // numbers, the arithmetic the style uses, per-feature lookups, and zoom
   // interpolation. ANYTHING else returns NaN on purpose — an unrecognised
   // expression must fail the check loudly rather than measure as a constant.

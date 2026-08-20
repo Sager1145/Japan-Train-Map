@@ -159,7 +159,7 @@ function buildMapLayersControl(hasBasemap) {
         RailMap.setNetworkVisible(v);
         RailMap.setNetworkStationsVisible(v);
         if (v) {
-          RailMap.ensureNetwork().then(() => {
+          RailMap.ensureNetwork(activeRailPackageUrl()).then(() => {
             if (!networkOverlayWanted) return; // toggled back off during load
             RailMap.setNetworkVisible(true);
             RailMap.setNetworkStationsVisible(true);
@@ -479,7 +479,10 @@ async function initMap(mapAssetsReady) {
   // alternate warm rides in parallel and is awaited solely in the fallback
   // below when the initial theme failed.
   const assets = mapAssetsReady || {
-    primary: Promise.all([RailMap.loadBasemap(theme), RailMap.loadNetwork()]),
+    primary: Promise.all([
+      RailMap.loadBasemap(theme),
+      RailMap.loadNetwork(activeRailPackageUrl()),
+    ]),
     alternate: RailMap.loadBasemap(alternateTheme).catch(() => null),
   };
   const [basemap, network] = await assets.primary;

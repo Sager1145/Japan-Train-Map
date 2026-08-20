@@ -68,7 +68,7 @@ function deleteTrain(trainId) {
 
 function deleteAllTrains() {
   if (importBusy()) return;
-  trainStore = { schema_version: SCHEMA_VERSION, trains: [] };
+  AppActions.resetTrainStore();
   selectedTrainId = null;
   focusedTrainId = null;
   persistAndRender();

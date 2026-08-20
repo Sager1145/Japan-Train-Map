@@ -25,12 +25,15 @@ test("rail network loader follows the active country and replaces cached data", 
     SEGMENTS_LAYER: "rail-segments-layer",
     SEGMENTS_CASING_LAYER: "rail-segments-casing-layer",
     STATIONS_LAYER: "rail-stations-layer",
+    railAttributionForCountry: (country) => `rail:${country}`,
   };
   win.RailMapGeometry = {};
 
   let country = "tw";
   const requests = [];
-  win.activeRailPackageUrl = () => `./rail/${country}-2025.json`;
+  win.activeRailPackageUrl = () => {
+    throw new Error("the implicit global URL hook must not be called");
+  };
   win.fetch = async (url, options) => {
     requests.push([url, options && options.cache]);
     return { ok: true, json: async () => ({ country: country.toUpperCase() }) };
@@ -65,7 +68,7 @@ test("rail network loader follows the active country and replaces cached data", 
 
   win.RailMap.setNetworkVisible(true);
   win.RailMap.setNetworkStationsVisible(true);
-  const taiwan = await win.RailMap.ensureNetwork();
+  const taiwan = await win.RailMap.ensureNetwork("./rail/tw-2025.json");
   assert.equal(taiwan.country, "TW");
   assert.deepEqual(requests, [
     ["./rail/tw-2025.json", "no-cache"],
@@ -79,7 +82,10 @@ test("rail network loader follows the active country and replaces cached data", 
   win.RailMap._network = null;
   win.RailMap._networkPromise = null;
   country = "jp";
-  const japan = await win.RailMap.switchNetworkCountry();
+  const japan = await win.RailMap.switchNetworkCountry(
+    "jp",
+    "./rail/jp-2025.json",
+  );
   assert.equal(japan.country, "JP");
   assert.deepEqual(requests, [
     ["./rail/tw-2025.json", "no-cache"],

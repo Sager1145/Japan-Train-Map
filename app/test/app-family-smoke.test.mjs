@@ -35,6 +35,51 @@ function loadAppFamily({ indexedDB } = {}) {
   return { context, i18nListeners };
 }
 
+test("persistence clear owns cancellation, deletion, and recovery reset", async () => {
+  const { context } = loadAppFamily({ indexedDB: new IDBFactory() });
+  const requests = [];
+  context.fetch = async (url, options = {}) => {
+    requests.push([url, options.method, options.headers?.["X-Client-Id"]]);
+    return { ok: true, status: 204, statusText: "No Content" };
+  };
+  vm.runInContext(
+    `(() => {
+      pendingServerStoreText = "pending";
+      storeSaveDirty = true;
+      storeRecoveryMode = true;
+      lastKnownServerStoreText = "saved";
+      lastKnownServerStoreExists = true;
+    })()`,
+    context,
+  );
+
+  await vm.runInContext("PersistenceService.clear()", context);
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][0], "./api/train-store");
+  assert.equal(requests[0][1], "DELETE");
+  assert.ok(requests[0][2]);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(vm.runInContext(
+      `({
+        pendingServerStoreText,
+        storeSaveDirty,
+        storeRecoveryMode,
+        lastKnownServerStoreText,
+        lastKnownServerStoreExists,
+      })`,
+      context,
+    ))),
+    {
+      pendingServerStoreText: null,
+      storeSaveDirty: false,
+      storeRecoveryMode: false,
+      lastKnownServerStoreText: null,
+      lastKnownServerStoreExists: false,
+    },
+  );
+});
+
 test("frontend jsonspec validation accepts canonical Taiwan TDX station ids", () => {
   const { context } = loadAppFamily();
   assert.equal(vm.runInContext('stationCodeSystem("003770")', context), "N02");

@@ -353,6 +353,87 @@ function resetPersistenceStateForCountrySwitch() {
   railContentHashCache = null;
 }
 
+// Clear every persistence surface as one serialized operation. Event
+// controllers must not manipulate timers, journals, in-flight writes, or
+// backend existence flags directly; those are private to this service.
+async function clearStoredData() {
+  clearTimeout(serverStoreSaveTimer);
+  clearTimeout(storeSaveRetryTimer);
+  clearTimeout(pendingServerStoreJournalTimer);
+  pendingServerStoreJournalTimer = null;
+  storeSaveRetryTimer = null;
+  pendingServerStoreText = null;
+  storeSaveDirty = false;
+
+  // A write already in flight could otherwise land after the delete and
+  // recreate the store the user just cleared.
+  if (serverStoreSaveInFlight) await serverStoreSavePromise;
+  if (userStoreSaveInFlight) await userStoreSavePromise;
+  await pendingServerStoreJournalQueue;
+  pendingServerStoreText = null;
+  storeSaveDirty = false;
+
+  if (HAS_BACKEND) {
+    const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+      method: "DELETE",
+      headers: { "X-Client-Id": CLIENT_ID },
+    });
+    if (!res.ok && res.status !== 404) {
+      throw new Error(`${res.status} ${res.statusText}`);
+    }
+    lastKnownServerStoreText = null;
+    lastKnownServerStoreExists = false;
+    try {
+      await clearPendingServerStoreSaves();
+    } catch (pendingError) {
+      // The canonical server store is already gone. Failure to remove a local
+      // recovery copy must not turn that successful clear into a failure.
+      console.warn(
+        "Could not clear pending server-store recovery copies.",
+        pendingError,
+      );
+    }
+  } else {
+    await clearUserStore();
+  }
+
+  await deleteStoredFileHandle();
+  exitStoreRecoveryMode();
+}
+
+async function flushPersistence() {
+  await flushServerStoreSave();
+  // Journal writes are queued separately from the network debounce. A country
+  // switch must wait for both before changing the country-scoped DB name.
+  await pendingServerStoreJournalQueue;
+}
+
+/**
+ * @typedef {Object} PersistenceServiceContract
+ * @property {Function} load
+ * @property {Function} scheduleSave
+ * @property {Function} flush
+ * @property {Function} clear
+ * @property {Function} enterRecoveryMode
+ * @property {Function} exitRecoveryMode
+ * @property {Function} resetForCountry
+ * @property {boolean} recoveryMode
+ */
+
+/** @type {Readonly<PersistenceServiceContract>} */
+const PersistenceService = Object.freeze({
+  load: loadTrainStoreFromServer,
+  scheduleSave: saveTrainStore,
+  flush: flushPersistence,
+  clear: clearStoredData,
+  enterRecoveryMode: enterStoreRecoveryMode,
+  exitRecoveryMode: exitStoreRecoveryMode,
+  resetForCountry: resetPersistenceStateForCountrySwitch,
+  get recoveryMode() {
+    return storeRecoveryMode;
+  },
+});
+
 // The read-only export textarea is a display convenience, not part of the
 // edit path. Refreshing it ran a full exportTrainStore() (whole-store
 // JSON.stringify) on EVERY mutation. Debounce it so rapid edits coalesce into
@@ -1062,7 +1143,7 @@ function openRouteCacheDb() {
   // country's solver cache lives in its own DB, so the warm pass below can
   // only ever evict ITS OWN country's superseded namespaces. A JP↔TW switch
   // therefore leaves the other country's persisted geometry intact for the
-  // bulk re-warm that switchActiveCountry's comment promises. (Japan keeps
+  // bulk re-warm that CountrySession's contract promises. (Japan keeps
   // the historical unsuffixed DB name, so existing users lose nothing.)
   return openIdb(
     countryDbName(ROUTE_CACHE_DB_NAME),

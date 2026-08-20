@@ -304,10 +304,10 @@ test("switching the country leaves the basemap alone", async () => {
   // the rail sources only — no basemap re-filter, and above all no vector
   // source re-parse (that was the only reason the private _reloadSource was
   // ever called).
-  await RailMap.switchNetworkCountry("tw");
+  await RailMap.switchNetworkCountry("tw", "./rail/tw-2025.json");
   assert.deepEqual(Array.from(filters.keys()), []);
   assert.deepEqual(plain(reloads), []);
-  await RailMap.switchNetworkCountry("jp");
+  await RailMap.switchNetworkCountry("jp", "./rail/jp-2025.json");
   assert.deepEqual(Array.from(filters.keys()), []);
   assert.deepEqual(plain(reloads), []);
 });

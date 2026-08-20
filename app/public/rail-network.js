@@ -890,7 +890,6 @@
   // twice rather than turned into one connected line. The map reads continuous;
   // the topology stays separate, so nothing can slice through a junction.
   function displayPartsForLine(compactLine) {
-    const stationCount = compactLine.stations.length;
     const stationPoints = compactLine.stations.map((station) => [
       station[2],
       station[3],
