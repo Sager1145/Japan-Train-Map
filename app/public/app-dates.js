@@ -181,3 +181,12 @@ function reconcileSelectedDate() {
   }
 }
 
+// Human-readable label for a date bucket used in buttons / titles. It lived in
+// app-render.js, which meant app-ui-utils.js depended on the renderer to spell
+// a date — the whole of that dependency cycle. A date label belongs with the
+// date module.
+function dateLabel(date) {
+  if (date === ALL_DATES) return I18N.t("date.all");
+  if (date === UNDATED) return I18N.t("date.undated");
+  return date;
+}

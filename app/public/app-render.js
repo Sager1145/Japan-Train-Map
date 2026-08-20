@@ -90,13 +90,6 @@ function applyMutationResult(result) {
   if (result.exportJson) scheduleExportTextareaRefresh();
 }
 
-// Human-readable label for a date bucket used in buttons / titles.
-function dateLabel(date) {
-  if (date === ALL_DATES) return I18N.t("date.all");
-  if (date === UNDATED) return I18N.t("date.undated");
-  return date;
-}
-
 // The date-selector bar: a "全部" button plus one button per available date
 // (dynamically generated, no fixed cap), ordered earliest-first. The active
 // date is highlighted. Clicking only re-scopes the sidebar list.
