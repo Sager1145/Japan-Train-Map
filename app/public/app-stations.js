@@ -145,9 +145,9 @@ async function buildStationIndexesSliced(collection) {
     });
     if (code) nameByCode.set(String(code), name);
     if ((i & 1023) === 1023 && now() - t0 > 12) {
-      // _statsYield, not setTimeout(0): exempt from the >=1 s background-tab
+      // yieldToEventLoop, not setTimeout(0): exempt from the >=1 s background-tab
       // timer clamp, so a boot in a hidden tab isn't stretched by seconds.
-      await _statsYield();
+      await yieldToEventLoop();
       t0 = now();
     }
   }

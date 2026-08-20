@@ -538,7 +538,7 @@ function waitForImportPaint() {
     // Hidden tab: rAF is suspended AND setTimeout(0) is clamped to >= 1 s, so
     // drive progress with an unthrottled macrotask yield instead — a 119-train
     // load in a background tab stays seconds, not minutes.
-    if (hidden) _statsYield().then(done);
+    if (hidden) yieldToEventLoop().then(done);
     else setTimeout(done, 100);
   });
 }

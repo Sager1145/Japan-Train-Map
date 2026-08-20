@@ -219,7 +219,7 @@ async function loadActiveCountryStationReadings() {
 async function parseFeatureCollectionChunked(text) {
   return parseFeatureCollectionTextChunked(text, {
     now: () => performance.now(),
-    yieldControl: _statsYield,
+    yieldControl: yieldToEventLoop,
   });
 }
 

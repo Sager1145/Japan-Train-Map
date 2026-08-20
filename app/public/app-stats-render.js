@@ -245,14 +245,14 @@ async function runMileageStatsJob() {
   for (const train of trains) {
     entries.push(collectTrainStatsEntry(train, idx));
     if (performance.now() - t0 > 12) {
-      await _statsYield();
+      await yieldToEventLoop();
       if (token !== _statsJobToken) return;
       t0 = performance.now();
     }
   }
   const superseded = Symbol("stats-superseded");
   const yieldPoint = async () => {
-    await _statsYield();
+    await yieldToEventLoop();
     if (token !== _statsJobToken) throw superseded;
   };
   try {

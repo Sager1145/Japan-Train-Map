@@ -802,26 +802,6 @@ function markerCategoryForStation(stationFeature) {
 }
 
 let _statsJobToken = 0;
-// Yield one macrotask WITHOUT the background-tab timer clamp. setTimeout(0) is
-// throttled to >= 1 s in hidden tabs, which stretched the chunked rail-sections
-// parse (~85 yields) and the stats edge-index build (~170 yields) to MINUTES
-// whenever the page loaded in a background tab or the user switched apps
-// mid-load — extremely common on iPhone. MessageChannel messages are ordinary
-// macrotasks (paint and input still interleave between slices) but are exempt
-// from timer throttling, so hidden-tab loads run at full speed.
-const _statsYield =
-  typeof MessageChannel === "function"
-    ? () =>
-        new Promise((resolve) => {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = () => {
-            channel.port1.close();
-            resolve();
-          };
-          channel.port2.postMessage(null);
-        })
-    : () => new Promise((resolve) => setTimeout(resolve, 0));
-
 // The sliced index build is NEVER cancelled — it runs once, shared by every
 // job via ensureStatsEdgeIndexAsync(). (An earlier version aborted on job
 // supersession, so the constant renderAll stream during a progressive import
@@ -914,7 +894,7 @@ async function buildStatsEdgeIndexSliced() {
       }
     }
     if ((fi & 127) === 127 && performance.now() - t0 > 12) {
-      await _statsYield();
+      await yieldToEventLoop();
       t0 = performance.now();
     }
   }
@@ -961,7 +941,7 @@ async function buildStatsEdgeIndexSliced() {
   const cats = activeStatCategories();
   for (let i = 0; i < kmArr.length; i += 1) {
     if ((i & 8191) === 8191 && performance.now() - t0 > 12) {
-      await _statsYield();
+      await yieldToEventLoop();
       t0 = performance.now();
     }
     totals.all += kmArr[i];
