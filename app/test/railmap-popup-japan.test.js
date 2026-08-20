@@ -170,9 +170,16 @@ test("every non-line image falls back to the exact operator, never a parent or p
   // 336/329 on 2026-08-19: 東北線-7 is no longer produced — its 王子–上中里
   // track is 東北線-6 now. The operator count holds: JR East keeps every other
   // 東北線 stroke.
-  assert.equal(missingBadgeLines.length, 336);
+  // 335/328 on 2026-08-20: 函館線's two halves join into one railway once the
+  // 苗穂 junction point stops rounding into two NODE_DP cells, so the 砂原支線
+  // renumbers -3 → -2 and one badge-less stroke leaves the package — one fewer
+  // line without a package badge, and one fewer resolving to its operator mark.
+  // JR Hokkaido keeps its other strokes, so the operator count holds at 124, and
+  // the 381 audited package badges are untouched: none of the lines involved
+  // carried one.
+  assert.equal(missingBadgeLines.length, 335);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 329);
+  assert.equal(coveredLines.length, 328);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

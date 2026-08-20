@@ -111,6 +111,7 @@ OPERATOR_ALIASES = {"東京地下鉄": "東京メトロ", "大阪市高速電気
 # Node identity for the track graph: N02's own ordinate precision. Deeper and
 # real junctions stop being shared nodes; shallower and separate tracks merge.
 NODE_DP = 5
+NODE_SCALE = 10 ** NODE_DP
 
 # An interval whose cut length disagrees with the audited distance by more than
 # the tolerance is reported. The check exists to catch a path that went the wrong
@@ -309,8 +310,34 @@ def line_id_for(operator: str, line: str) -> str:
     return f"jp-{operator}-{line}"
 
 
+def _quantise(value):
+    """One ordinate on the NODE_DP grid, as the integer count of grid steps.
+
+    NOT `round(value, NODE_DP)`. Python rounds halves to even, so a coordinate
+    that lands exactly on a grid boundary is sent up or down depending on the
+    parity of the digit before it — and two bit-for-bit-different copies of the
+    SAME surveyed point can then land in different cells. 函館線 is the case
+    that proved it: sections 19626 and 19640 both start at 札幌/苗穂, one
+    written 43.068785 and the other 43.06878500000003 (3e-9 m apart, i.e. the
+    same point), and ties-to-even keyed them .06878 and .06879. That single
+    disagreement was the only contact between the 函館 and 旭川 halves of the
+    railway, so the union-find never joined them and the package shipped Japan's
+    函館本線 as two display lines cut at 札幌.
+
+    Scaling FIRST and rounding halves away from zero fixes it: the multiply
+    lands both copies on the same scaled value, and the boundary rule no longer
+    depends on a neighbouring digit. A nationwide scan of all 404,646 N02
+    vertices finds one physical position keyed inconsistently under
+    `round(x, NODE_DP)` and none under this. Integers rather than the rounded
+    float because every caller uses a key only for identity — dict key, set
+    membership, equality — never as a coordinate, and an integer cannot be two
+    values that print the same.
+    """
+    return math.floor(value * NODE_SCALE + 0.5)
+
+
 def nkey(point):
-    return (round(point[0], NODE_DP), round(point[1], NODE_DP))
+    return (_quantise(point[0]), _quantise(point[1]))
 
 
 # ------------------------------------------------------------------ geometry
@@ -2421,7 +2448,9 @@ def load_station_platform_corrections():
 
 
 def _coords_key(coords):
-    return tuple((round(x, NODE_DP), round(y, NODE_DP)) for x, y in coords)
+    # Same grid, same tie rule as `nkey` — a patch matches the vertex string it
+    # was written against, and "same point at NODE_DP" has to mean one thing.
+    return tuple((_quantise(x), _quantise(y)) for x, y in coords)
 
 
 def apply_station_geometry_patches(net, n02_source):

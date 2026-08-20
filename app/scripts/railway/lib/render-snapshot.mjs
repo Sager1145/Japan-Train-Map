@@ -348,8 +348,33 @@
 // than a run-by-run one: its stroke breaks at the 大畑 ループ reversal, in the
 // middle of the closed section, and reading the span as two runs left the
 // 9.4 km 大畑—矢岳 leg drawn solid.
+//
+// 2026-08-20 (tie-proof node identity): 函館線 was two display strokes cut at
+// 札幌 because two bit-different copies of the same 苗穂 junction point — 3e-9 m
+// apart — rounded to different NODE_DP cells under Python's ties-to-even, and
+// that single disagreement was the ONLY contact between the 函館 and 旭川 halves
+// of the railway. `_quantise` scales before rounding, the halves join, and the
+// package draws one 函館 → 旭川 line of 422.5 km against the official 423.1.
+// One line leaves (the 砂原支線 renumbers -3 → -2) and 札幌 stops being counted
+// on two strokes. Nothing else nationwide moves: of the fourteen railways with
+// more than one track group, this was the only one split by a tie rather than
+// by a real survey gap — the next-closest is 山陽線 at 22.5 m.
+//
+// 2026-08-20 (stale alignments, batch 2): counts do not move (657 / 10215 /
+// 651 / 9039) — six intervals change GEOMETRY and one station dot moves, which
+// is why this digest travels alone. 信越線 宮内–長岡 swaps to N02-25's own
+// RailroadSection #14996 (107 → 6.7 m); 両毛線 思川–栃木 comes off 栃木県道31号,
+// where 31 of #17483's vertices were digitised (192 → 23 m); 播但線 京口–姫路
+// (76 → 42 m), 富良野線 旭川–神楽岡 (92 → 33 m) and 宗谷線 旭川四条–旭川
+// (45 → 32 m) come off the pre-elevation alignments of the 2008 姫路 and 2010
+// 旭川 rebuilds. All five are registered in
+// evidence/stale-alignment-geometry.json with their way ids and before/after
+// deviations. The station dot is 大糸線's at 松本, which stood on the 篠ノ井線
+// island 122 m from its own platform and now stands on 6;7; 大糸線 and
+// 篠ノ井線 no longer share a source coordinate there, which is correct — they
+// are two different islands and the audit classifies the pair C.
 export const EXPECTED_RENDER_HASH =
-  "35f2c426051ff3bd23de73e3846742b57fd3c4846d0d2efcc06375f3d4dde0e0";
+  "e25339229079e8e1819316ba7ba2538e20003eca0b4f88bfb9b13bc4e85a14f3";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

@@ -125,9 +125,15 @@ const EXPECTED_COUNTS = Object.freeze({
   // to end and so contributes ONE feature rather than two, which is where
   // 652 + 7 = 659 loses its last one. Stations, lines and groups do not move:
   // the cut is in the drawing, not in the railway.
-  segments: 658,
-  stations: 10216,
-  lines: 652,
+  // 657/10215/651 on 2026-08-20 (tie-proof node identity): 函館線's two halves
+  // were only ever separate because the 苗穂 junction point rounded into two
+  // NODE_DP cells, so the 函館 and 旭川 strokes now draw as one railway. The
+  // line and its segment feature go with the merge, and 札幌 loses the second
+  // station row it held as the shared end of two strokes. `groups` does not
+  // move: 札幌 was always one physical station group, drawn twice.
+  segments: 657,
+  stations: 10215,
+  lines: 651,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

@@ -19,10 +19,21 @@
  * track, and 伊万里's is 124 m, so both are refused here rather than
  * discovered later on the map.
  *
+ * `--write` is ADDITIVE. The rows this generator can see are only the ones the
+ * audit still calls wrong: a row that has been applied makes its station read
+ * `agrees_on_platform` on the next audit, so regenerating the array from
+ * scratch would delete the whole applied batch and silently revert the package
+ * (measured: eleven applied rows rewritten down to one). Applied rows are
+ * therefore read back and carried through unchanged, and so are the two
+ * blocks that record a human judgement — `reverted` (applied, then withdrawn)
+ * and `known_false_positives` (never applied, and never to be proposed again).
+ * Removing a row is a hand edit: move it into `reverted` with a reason.
+ *
  * Usage:
  *   node scripts/railway/build-station-anchor-evidence.mjs            # dry run
  *   node scripts/railway/build-station-anchor-evidence.mjs --write    # write evidence
- *   --limit N   take only the N largest moves (batching)
+ *   --limit N   take only the N largest NEW moves (batching; carried rows are
+ *               never affected by it)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -71,6 +82,20 @@ function platformGeometry(kind, id) {
   return null;
 }
 
+/** Whatever the evidence file already holds, or empty blocks if there is none. */
+function previousEvidence() {
+  const empty = {
+    station_anchor_overrides: [],
+    reverted: [],
+    known_false_positives: [],
+  };
+  if (!fs.existsSync(EVIDENCE)) return empty;
+  const previous = JSON.parse(fs.readFileSync(EVIDENCE, "utf8"));
+  for (const block of Object.keys(empty))
+    if (Array.isArray(previous[block])) empty[block] = previous[block];
+  return empty;
+}
+
 /**
  * Rows a human has already thrown out, keyed line␟station.
  *
@@ -79,19 +104,32 @@ function platformGeometry(kind, id) {
  * evidence that produced the row is unchanged, so the generator would propose
  * it again on the next run and quietly undo the decision. It is read back and
  * honoured instead, and the verdicts are carried into the file it rewrites.
+ *
+ * `known_false_positives` answers the same way for a pick that was judged
+ * wrong BEFORE it was ever applied — 紙屋町東's is the 名古屋 family again, a
+ * bus stop 135 m away named for a different stop — so that the refusal is a
+ * recorded decision rather than an accident of what the cache happens to hold.
  */
-function revertedRows() {
-  if (!fs.existsSync(EVIDENCE)) return [];
-  const previous = JSON.parse(fs.readFileSync(EVIDENCE, "utf8"));
-  return Array.isArray(previous.reverted) ? previous.reverted : [];
+function withdrawnRows(previous = previousEvidence()) {
+  return [
+    ...previous.reverted.map((row) => ({ ...row, withdrawal: "reverted by hand" })),
+    ...previous.known_false_positives.map((row) => ({
+      ...row,
+      withdrawal: "registered known false positive",
+    })),
+  ];
 }
+
+/** line␟station for any row of any block; the one key this file is joined on. */
+const rowKey = (row) => `${row.line}␟${row.station}`;
 
 export function buildRows(options = {}) {
   const pkg = JSON.parse(fs.readFileSync(PACKAGE, "utf8"));
   const audit = JSON.parse(fs.readFileSync(AUDIT, "utf8"));
-  const reverted = new Map(
-    revertedRows().map((row) => [`${row.line}␟${row.station}`, row]),
-  );
+  const previous = previousEvidence();
+  const carried = previous.station_anchor_overrides;
+  const alreadyApplied = new Set(carried.map(rowKey));
+  const reverted = new Map(withdrawnRows(previous).map((row) => [rowKey(row), row]));
   const { index: trackIndex } = loadOsmTrackIndex();
   const platforms = loadOsmPlatformIndex();
   const byId = new Map(pkg.lines.map((line) => [line.id, line]));
@@ -122,9 +160,14 @@ export function buildRows(options = {}) {
       });
       const reject = (why) =>
         refused.push({ station: group.station_name, line: row.display_line_id, why });
-      const withdrawn = reverted.get(`${line.operator}␟${line.name}␟${station[1]}`);
+      const key = `${line.operator}␟${line.name}␟${station[1]}`;
+      // An applied row is never re-derived: the audit that produced it has
+      // since been re-run against the FIXED package, so anything measured here
+      // would describe the dot after the move, not the defect it answers.
+      if (alreadyApplied.has(key)) continue;
+      const withdrawn = reverted.get(key);
       if (withdrawn) {
-        reject(`reverted by hand and not re-proposed — ${withdrawn.why}`);
+        reject(`${withdrawn.withdrawal} and not re-proposed — ${withdrawn.why}`);
         continue;
       }
       if (!pick) {
@@ -188,24 +231,38 @@ export function buildRows(options = {}) {
   rows.sort((a, b) => b.measured.dot_moves_m - a.measured.dot_moves_m);
   return {
     rows: options.limit ? rows.slice(0, options.limit) : rows,
+    carried,
     refused,
-    reverted: revertedRows(),
+    reverted: previous.reverted,
+    knownFalsePositives: previous.known_false_positives,
   };
 }
 
 function main() {
   const argv = process.argv.slice(2);
   const limit = argv.includes("--limit") ? Number(argv[argv.indexOf("--limit") + 1]) : 0;
-  const { rows, refused, reverted } = buildRows({ limit });
+  const { rows, carried, refused, reverted, knownFalsePositives } = buildRows({ limit });
+  for (const row of carried)
+    process.stdout.write(
+      `  CARRIED ${row.station.padEnd(10)} ${row.line.padEnd(28)} already applied — ${row.osm}\n`,
+    );
   for (const row of rows)
     process.stdout.write(
-      `  ${row.station.padEnd(10)} ${row.line.padEnd(28)} moves ${String(row.measured.dot_moves_m).padStart(6)} m  ` +
+      `  NEW     ${row.station.padEnd(10)} ${row.line.padEnd(28)} moves ${String(row.measured.dot_moves_m).padStart(6)} m  ` +
         `target ${row.measured.target_to_own_track_m} m from own track  ${row.osm}\n`,
     );
   for (const row of refused)
     process.stdout.write(`  REFUSED ${row.station.padEnd(10)} ${row.line}: ${row.why}\n`);
+  // Carried first, then new — the merged array is what would be written, and
+  // the two are only ever added to, never replaced by each other.
+  const merged = [...carried, ...rows].sort(
+    (a, b) => b.measured.dot_moves_m - a.measured.dot_moves_m,
+  );
   if (!argv.includes("--write")) {
-    process.stdout.write(`\n${rows.length} row(s), ${refused.length} refused — dry run\n`);
+    process.stdout.write(
+      `\n${carried.length} carried + ${rows.length} new = ${merged.length} row(s), ` +
+        `${refused.length} refused — dry run\n`,
+    );
     return;
   }
   const payload = {
@@ -222,16 +279,25 @@ function main() {
       "platform than this one does; the builder additionally refuses to apply a row whose N02 " +
       "feature has moved more than 1 m from the recorded midpoint. A platform mapped as an area " +
       "is measured at the centre of its outline, which is where the builder puts the dot.",
+    idempotence:
+      "--write is additive. An applied row makes its station read agrees_on_platform on the next " +
+      "audit, so it can only be carried over, never re-derived; `reverted` and " +
+      "`known_false_positives` are read back for the same reason. Removing a row is a hand edit: " +
+      "move it into `reverted` with the measurement that condemns it.",
     retrieved: new Date().toISOString().slice(0, 10),
     source:
       "OpenStreetMap (ODbL) platform elements from outputs/osm-basemap-cache/platforms; " +
       "verdicts from outputs/railway-audit/multi-line-stations/audit.json",
     refused,
-    station_anchor_overrides: rows,
+    station_anchor_overrides: merged,
     reverted,
+    known_false_positives: knownFalsePositives,
   };
   fs.writeFileSync(EVIDENCE, `${JSON.stringify(payload, null, 1)}\n`);
-  process.stdout.write(`\nwrote ${rows.length} override(s) to ${path.relative(REPO_DIR, EVIDENCE)}\n`);
+  process.stdout.write(
+    `\nwrote ${merged.length} override(s) (${carried.length} carried + ${rows.length} new) ` +
+      `to ${path.relative(REPO_DIR, EVIDENCE)}\n`,
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

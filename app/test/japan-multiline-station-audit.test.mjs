@@ -24,7 +24,12 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   // sibling stroke that used to double them.
   // 874 on 2026-08-19: 王子 and 東十条 are drawn by one stroke each now that the
   // 電車線 trunk runs through them instead of the 尾久 支線's two skip edges.
-  assert.equal(report.summary.multi_display_line_groups, 874);
+  // 873 on 2026-08-20: 札幌 is drawn by one stroke now. 函館線's 函館 and 旭川
+  // halves were separate only because the 苗穂 junction point is written twice
+  // in N02, 3e-9 m apart, and ties-to-even rounded the two copies into different
+  // NODE_DP cells; keyed tie-proof they are one railway and 札幌 leaves the
+  // multi-line set entirely.
+  assert.equal(report.summary.multi_display_line_groups, 873);
   assert.ok(report.summary.audited_station_groups >= report.summary.multi_display_line_groups);
   assert.equal(report.summary.fix_required, 0);
 
@@ -60,14 +65,20 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   }
 });
 
-test("Tokyo, Sapporo and Nippori are explicit evidence-backed repairs", async () => {
+test("Tokyo and Nippori are explicit evidence-backed repairs", async () => {
   const report = await audit();
   const fixed = new Map(
     report.fixed_station_groups.map((row) => [row.station_group, row.station_name]),
   );
   assert.equal(fixed.get("003766"), "東京");
-  assert.equal(fixed.get("000227"), "札幌");
   assert.equal(fixed.get("003417"), "日暮里");
+  // 札幌 was the third of these until 2026-08-20. Its repair welded the two
+  // 函館線 strokes to one platform anchor — but the strokes were only ever two
+  // because the 苗穂 junction point rounded into two NODE_DP cells, and with
+  // node identity keyed tie-proof there is one stroke through 札幌 and nothing
+  // left to weld. A station drawn by one line is not a multi-line station, so
+  // it is absent from the audit's groups rather than repaired within them.
+  assert.equal(fixed.get("000227"), undefined);
   assert.equal(
     report.station_groups.some((station) =>
       station.display_line_ids.includes("jp-北海道旅客鉄道-函館線-4"),

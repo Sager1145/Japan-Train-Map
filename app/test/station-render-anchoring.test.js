@@ -317,7 +317,11 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // trunk (13+8+4+3+2 → 12+4+3 across -2/-3/-4), and 予讃線-3 drops its
     // phantom 五郎 row. Every station itself stayed; what went is the second
     // copy a second stroke was holding.
-    ["jp", 10216],
+    // −1 on 2026-08-20 (tie-proof node identity): 函館線's 函館 and 旭川 halves
+    // join into one railway once the 苗穂 junction point stops rounding into two
+    // NODE_DP cells, so 札幌 keeps one row instead of the two it held as the
+    // shared end of two strokes.
+    ["jp", 10215],
     ["tw", 586],
     ["hk", 450],
     ["mo", 17],

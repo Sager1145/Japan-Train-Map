@@ -102,7 +102,12 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // 東北線-4) are no longer produced. 予讃線 loses no stroke: deleting the
   // 伊予若宮信号場 wye's fourth side just shortens 予讃線-3 to the official
   // 新谷—伊予大洲 section.
-  assert.equal(pkg.lines.length, 652);
+  // 651 on 2026-08-20: 函館線 stops being two strokes. The 苗穂 junction point
+  // is written twice in N02, 3e-9 m apart, and ties-to-even put the two copies
+  // in different NODE_DP cells — the only contact between the 函館 and 旭川
+  // halves — so the track graph never joined them. Keyed tie-proof they are one
+  // railway, 函館 → 旭川, and the 砂原支線 renumbers 函館線-3 → 函館線-2.
+  assert.equal(pkg.lines.length, 651);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {
