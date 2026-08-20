@@ -595,38 +595,6 @@
   const TRAIN_XDAY_LAYER = "train-routes-xday";
   const TRAIN_XDAY_STOP_LAYER = "train-xday-stop";
   const XDAY_ICON_ID = "railmap-xday-diamond";
-  // A laned platform's marker, rasterized once per theme by railmap.js from
-  // these same RAILWAY_STYLE constants — the fill diameter drawn at
-  // STATION_ICON_BASE_PX and the ring outside it in the same proportion the
-  // circle layer uses. `icon-size` scales that base to the real diameter, so
-  // the drawn size stays readable from the built style instead of hiding in
-  // the bitmap.
-  const STATION_ICON_BASE_PX = 24;
-
-  function stationIconId(theme, interchange, colorKey) {
-    const key = /^[0-9a-f]{6}$/i.test(String(colorKey || ""))
-      ? String(colorKey).toLowerCase()
-      : DEFAULT_LINE_COLOR.slice(1).toLowerCase();
-    return `rn-station-${theme === "dark" ? "dark" : "light"}-${key}${
-      interchange ? "-interchange" : ""
-    }`;
-  }
-
-  // Solid where one railway calls, open where two do — the same rule as the
-  // circle layer's colour pair, expressed as a choice of bitmap because an
-  // ordinary image carries its own colours.
-  function stationIconImage(theme) {
-    return [
-      "concat",
-      `rn-station-${theme === "dark" ? "dark" : "light"}-`,
-      ["coalesce", ["get", "colorKey"], DEFAULT_LINE_COLOR.slice(1).toLowerCase()],
-      ["case", ["==", ["get", "interchange"], 1], "-interchange", ""],
-    ];
-  }
-
-  function stationIconSize() {
-    return RAILWAY_STYLE.stationDiameterPx / STATION_ICON_BASE_PX;
-  }
   const TRAIN_PICK_LAYER = "train-routes-pick-line";
   const TRAIN_PICK_FAN_LAYER = "train-routes-pick-fan-line";
   const TRAIN_EXPAND_LAYER = "train-routes-expand";
@@ -1674,10 +1642,6 @@
     networkLabelHaloColor,
     networkLineLabelColor,
     labelVisibilityOpacity,
-    STATION_ICON_BASE_PX,
-    stationIconId,
-    stationIconImage,
-    stationIconSize,
     FADE_LAYER,
     TRAIN_ROUTES_SOURCE,
     TRAIN_PICK_SOURCE,
