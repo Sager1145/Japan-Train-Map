@@ -85,11 +85,14 @@ PERF_DEBUG             app-config.js             ← app-config.js 自己
 
 ---
 
-## 三、剩下 16 个环，按可处理性分三类
+## 三、剩下的环，按可处理性分三类
+
+> **2026-08-21 更新**：A 类和 C 类都已做完，环 **16 → 8**，剩下的 8 个全是 B 类。
+> 下面保留原始分类，因为 B 类那八个「为什么不该拆」的理由仍然有效。
 
 **不要一视同仁地去「清零」。** 下面的分类本身就是结论。
 
-### A 类 · 被别的工作流挡住（4 个）—— 现在不能碰
+### A 类 · 被别的工作流挡住（4 个）—— ✅ 已解锁并做完（`5517b49`）
 
 `app-display-settings.js` / `app-map-init.js` 目前带着**2026-08-20 线路配色工作流的未提交改动**
 （`git status` 可见）。git 只能整文件暂存，动它们就会把别人的半成品扫进提交。
@@ -125,7 +128,7 @@ app-render.js       ↔ app-store-ops.js       getTrain
 那是**设计变更，不是搬运**，代价与收益需要单独立项评估。
 其余几个是「编排层调模块入口 + 模块回报结果」的正常形状。
 
-### C 类 · 干净、机械、可以直接做（4 个）
+### C 类 · 干净、机械、可以直接做（4 个）—— ✅ 已做完（`5517b49`）
 
 ```
 app-live-refresh.js → app-import.js       经由 replaceTrainStoreFromStoreProgressive（反向 drainPendingLiveReload）
@@ -141,40 +144,103 @@ app-route-render.js → app-overlap-lanes.js 经由 invalidateDeckRouteCaches, _
 
 ## 四、下一步该做什么（按顺序）
 
-1. **等配色工作流落地**，然后做 A 类的 `DISPLAY` 拆分（一次干掉 3 个环）。
-2. C 类里的 `ROUTE_NEG_CACHE_MARKER`。
-3. **死代码**——注意：全仓库真正的顶层死代码是**个位数**，不是几十个。
-   已知清单（多数在 A 类文件里，同样被挡住）：
-   ```
-   railmap-style.js        ZOOM_STABILITY_ZOOMS, ZOOM_STABILITY_TOLERANCE_PX, tokens   ← 被挡
-   railmap.js              解构出的 RAILWAY_STYLE, stationIconId                        ← 被挡
-   rail-network.js         stationCount                                                 ← 被挡
-   app-config.js           dayIndexForStop, inferDateFromTrainId（AppCore 解构别名）    ← 被挡
-   railmap-interactions.js TRAIN_PICK_FAN_LAYER                                         ← 可做
-   app-route-render.js     stops                                                        ← 可做
-   ```
-   外加约 30 个空的 `catch (e) {}` 参数（写成 `catch {}`）。
-   **删之前必须对照 `npm run report:frontend` 的动态调用者列。**
-4. **重复实现**：`distanceMeters` 仍有 3 份
-   （`rail-network.js` / `app-route-solver.js` / `app-fit-worker.js`）。
-   `app-fit-worker.js` 是 **Web Worker，不共享全局作用域**，那一份是合法例外，
-   要么保留并注明，要么改用 `importScripts('app-core.js')`；另外两份没有理由。
-5. **长函数**（`npm run report:frontend` 有清单）。只拆**算法类**：
-   `smoothCorridorCurveUncached`(673)、`buildDeckRouteRecords`(661)、
-   `buildDeckOverlapMap`(391)、`smoothCurveStationJoins`(273) —— 按中间产物切。
-   `bindEvents` / `_wireInteractions` / `buildBaseStyle` 是**声明式清单**，
-   长是它的自然形态，**只加分节注释，不切碎**。
-6. **CSS 四层**：`railprint-base`(2723) / `ios-presentation`(1120) /
-   `device-layout`(731) / `solid-surfaces`(670)。`!important` 只有 8 处（很克制），
-   代价是**至少 15 个选择器在四个文件里都被写过**
-   （`.toolbar` `.train-item` `.rp-modal` `.map-layers-control` `.form-grid` …）。
-   先出一份 `app/public/styles/README.md` 说明「哪一层说了算」，**不要急着合并**。
-7. **`scripts/` 层不在范围内**。29 个 `.py` + 13 个 `.mjs`，建包器三代同堂
-   （`build-package-from-inventory.py` / `build-japan-package-from-inventory.py` /
-   `build-hong-kong-rail-package.py` 并存），`migrations/` 里 17 个一次性脚本。
-   背后是 12 GB 的资料管线，改错的代价和前端不是一个量级。**只出清单，不动代码。**
+> **2026-08-21 更新**：1、2、3、4、5、6 都已落地（见下）。这一节现在记的是
+> **做完之后剩下什么**，以及**哪些原始判断是错的**——后者比前者重要，
+> 因为下一个人如果照着原清单动手，会删掉活着的东西。
 
----
+### 已完成
+
+1. ✅ **A 类 `DISPLAY` 拆分** —— 配色工作流落地（`b32570e`）后解锁，新增叶子
+   `app-display-values.js`（零出边），一次干掉 3 个环。环 **16 → 8**。
+2. ✅ **`ROUTE_NEG_CACHE_MARKER`** 挪进 `app-persistence.js` §14。C 类四个环
+   连同长函数一起在 `5517b49` 落地。
+3. ✅ **死代码** —— `cb4196b`。见下「原清单错在哪」。
+4. ✅ **重复实现 `distanceMeters`** —— `e124776`。见下。
+5. ✅ **长函数**（只拆算法类，声明式清单只加分节注释）：
+   `smoothCorridorCurveUncached` 673 → 225、`buildDeckRouteRecords` 661 → 335、
+   `buildDeckOverlapMap` 391 → 60、`smoothCurveStationJoins` 273 → 92。
+6. ✅ **CSS 四层** —— `app/public/styles/README.md`（244 行，实测非推演）。
+   结论：层叠顺序是 base → ios → solid → device，**20 个**选择器在四个文件里都被写过
+   （原文估「至少 15 个」），solid 的不透明底色输给 device 的无前缀规则，
+   因为 solid 的 `!important` 只覆盖 `backdrop-filter` 和 `box-shadow`。**没有合并，按计划只出文档。**
+
+### 原清单错在哪（步骤 3）
+
+九个候选里**六个已经过时**。逐条实测（`git ls-files 'public/*.js'`，52 个文件；
+`public/` 下那些带空格 2 的影子文件是 Finder 复制的未跟踪垃圾，已清理，从不计入）：
+
+| 候选 | 实际 | 证据 |
+|---|---|---|
+| `TRAIN_PICK_FAN_LAYER` | **活着** | 根本不在 `railmap-interactions.js` 里。定义在 `railmap-style.js:631`，`railmap.js` 五处 + 一个测试在用 |
+| `stationIconId` | **真死，已删** | 见下 |
+| `stationCount` | **活着** | `rail-network.js` 11 处全是函数内 `const`，每一个都被读 |
+| `app-route-render.js` `stops` | **不存在** | 只有一处注释和一处 `train.stops`，没有这个绑定 |
+| `railmap.js` 解构的 `RAILWAY_STYLE` | **不存在** | 已经没了 |
+| `dayIndexForStop` / `inferDateFromTrainId` | **活着**，且在 `shared/app-core.js` 不在 `app-config.js` | 死的是 `app-config.js` 的解构别名，早已消失 |
+| 约 30 个空 `catch (e) {}` | **0 处** | `public/` 里非 vendor 的 catch 全是 `catch {`，只剩 vendored maplibre 两处 |
+| `ZOOM_STABILITY_*` / `railmap-style.js` `tokens` | 不存在 | 全仓 0 处 / 只有注释里的散文 |
+
+真正删掉的是 `railmap-style.js` 里**一簇四个绑定共 36 行**：
+`STATION_ICON_BASE_PX` / `stationIconId` / `stationIconImage` / `stationIconSize`。
+根因是 `38cf0a8`（drop screen-space lanes）删掉了车道站台符号图层——它们唯一的调用者——
+helper 却活了下来，还在 `RailMapStyle` 上导出，描述一张没人栅格化的位图。
+`STATION_ICON_BASE_PX` 只是**传递性**死亡：它被 `stationIconSize` 读，那个函数走了才浮出来。
+
+**故意留下的一个**：`app-state.js:65` 的 `AppState`——51 行冻结 getter 门面，全仓零读者。
+但它不是遗留物，是 `048c9bd` 开的**在途迁移**的声明读路径（文件自己的头注释第 6 行说明了这件事），
+兄弟 `AppActions` 在 5 个文件里活着。删它等于**倒退**同一场重构的另一步，那是架构决定不是死代码清理。
+
+计划书原话「全仓库真正的顶层死代码是**个位数**」是对的：全量扫过 51 个文件，
+4 个真死，1 个未被引用但有意保留。
+
+### 原清单错在哪（步骤 4）
+
+原文说「`distanceMeters` 仍有 3 份（`rail-network.js` / `app-route-solver.js` / `app-fit-worker.js`），
+`app-fit-worker.js` 是合法例外，另外两份没有理由」——**两处都错**。
+`rail-network.js` 那份是**不同算法**，而缺掉的第三份 haversine 在测试 harness 里。
+
+实际是**两个家族**：
+
+| 算法 | 位置 | 常数 |
+|---|---|---|
+| haversine `2R·asin(√x)` | `app-route-solver.js` / `app-fit-worker.js` / `test/fit-curve-invariants.test.js` | R = 6371000 m |
+| 等距圆柱（equirectangular） | `rail-network.js` / `test/station-render-anchoring.test.js` / `scripts/railway/lib/railway-topology.mjs` | 111320 m/deg |
+| 等距圆柱、返回 **km**、名字不同 | `shared/app-core.js` 的 `equirectKm` | 111.32 lon / 110.574 lat |
+
+**真重复只有 haversine 那三份。** 合并落点不是 `app-core.js`：
+
+| 方案 | Worker 载荷 | 相对今天 | 剩余副本 |
+|---|---|---|---|
+| 现状 | 110,375 B / 33,985 B gz | — | 3 |
+| `importScripts("app-core.js")` | 125,658 B / 39,450 B | +13.8% / +16.1% gz | 1 |
+| `importScripts("app-route-solver.js")` | 159,473 B / 46,735 B | +44.5% / +37.5% gz | 1 |
+| **搬进 `app-route-simplify.js`** ✅ | 110,375 B / 33,985 B | **+0.0%** | **1** |
+
+`app-route-simplify.js` 是页面（`index.html` #21）、Worker（已在它的 `importScripts` 里）
+和 vm harness（已把它读进上下文）**三者本来就都加载**的唯一叶子，所以零新增字节，
+而且一次干掉**两份**副本而不是一份。依赖图 310 边 → 310 边，无新环。
+
+对拍：从五国成品包里取 **423,754 组真实经纬度**，比 IEEE-754 原始位型。
+合并前 4 份 × 423,754 = 1,695,016 次比较 0 处不同；合并后 847,508 次 0 处不同。
+`test/distance-meters-parity.test.js` 从 3 个测试改成 5 个（282 → 284），
+钉的东西从「三份副本保持一致」改成「只剩一份声明 + Worker 与 harness 确实在读它 +
+八个返回值的位型 + `rail-network.js` 那份仍然故意不同」。反证过：把副本加回
+`app-fit-worker.js`，第 1、2 项立刻红。
+
+### 仍然剩下的
+
+- **等距圆柱家族还有三份**（`rail-network.js` / `test/station-render-anchoring.test.js` /
+  `scripts/railway/lib/railway-topology.mjs`）。测试那份可以用动态 `import()` 读 `railway-topology.mjs`
+  —— `railway-topology-audit.test.js` 已经在用这个写法 —— 把 3 收成 2。没做：与步骤 4 的
+  haversine 是两件事，一个提交只做一件事。
+- **B 类 8 个环不动**（设计使然）。真要断只能改事件订阅，那是设计变更不是搬运，需单独立项。
+- **`app/node_modules` 有 618 个文件被 git 跟踪**，尽管 `.gitignore:6` 写着
+  `app/node_modules/`（该规则不会取消跟踪它生效之前就加进去的文件）。
+  源头是 `045b5394`「Move project files into app/」，带进来的是 express 一系传递依赖，
+  不是有意 vendor 的补丁包；CI 跑 `npm ci`，不依赖它们。
+  代价是**任何一次依赖安装都会弄脏 `git status`**——在「逐文件 `git add`、多会话并行」
+  这条规则下是实打实的隐患。清法：`git rm -r --cached app/node_modules`。
+- **步骤 7（`scripts/` 层）按原计划不动代码**，只有清单。
 
 ## 五、硬性规则
 
@@ -182,7 +248,7 @@ app-route-render.js → app-overlap-lanes.js 经由 invalidateDeckRouteCaches, _
    要提交就**逐文件 `git add <path>`，永远不要 `git add -A`**。
 2. **删任何顶层绑定之前先查动态桥**（§1.1）。
 3. **不许改任何几何/求解算法的数值行为。** 本次重构必须是行为等价的。
-4. **不许减少测试数量。** 275 只能增不能减。
+4. **不许减少测试数量。** 当前 **284**，只能增不能减（08-21：275 → 282 转角半径 → 284 距离对拍）。
 5. **一个阶段一个提交**，不许把「搬代码」和「改逻辑」放进同一个提交。
 6. 结论必须带**可复算的数字**。没量过的写「未测量」。
 
