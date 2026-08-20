@@ -68,23 +68,12 @@
 //  §7.  App-data loading (the API client itself lives in app-api.js)
 // =========================================================================
 
-// Tracks the in-flight (or resolved) rail-sections fetch. rail-sections.json is
-// ~12 MB raw / 2.4 MB gzipped and is consumed ONLY by the route solver, which
-// runs after the map is already on screen — so it is fetched in parallel with
-// boot but never blocks first paint. ensureRailSectionsLoaded() awaits it right
-// before the first solve.
-let railSectionsReady = null;
-// The boot DOWNLOAD of rail-sections (response.text(), no JSON.parse). Kept
-// separate from railSectionsReady (the parse pipeline) so the ~1.1 s parse can
-// be deferred off the first-paint path and run in yielding chunks later.
-let railSectionsTextReady = null;
-
 async function loadAppData() {
   // Kick off the big solver-only dataset immediately, but only DOWNLOAD it here
   // (response.text(), no JSON.parse) so its ~1.1 s parse never blocks boot or
   // first paint. ensureRailSectionsLoaded() parses it in yielding chunks after
   // the map is on screen, right before the first solve.
-  railSectionsTextReady = fetchText(railSectionsApiForCountry(activeCountry));
+  const railSectionsDownload = AppDatasets.startRailSectionsDownload();
 
   // Country-specific station names/readings. Japan uses N02 code-keyed kana /
   // romaji / Chinese readings; Taiwan uses official TDX/PTX four-language
@@ -122,7 +111,7 @@ async function loadAppData() {
   // Surface a rail-sections DOWNLOAD failure instead of leaving an unhandled
   // rejection; ensureRailSectionsLoaded() re-fetches on demand before the first
   // solve.
-  railSectionsTextReady.catch((err) =>
+  railSectionsDownload.catch((err) =>
     console.error(
       "rail-sections download failed during boot; will retry before first route solve.",
       err,
@@ -140,8 +129,6 @@ async function loadAppData() {
 // an error, it would look like a route.
 async function reloadSolverDatasetsForCountrySwitch() {
   AppDatasets.clearRailSections();
-  railSectionsReady = null;
-  railSectionsTextReady = null;
   RouteService.invalidateDataset();
   _statsEdgeIndex = null;
   _statsIndexBuild = null;
@@ -150,8 +137,7 @@ async function reloadSolverDatasetsForCountrySwitch() {
   // it in yielding chunks on first need), while stations are parsed right away
   // because the first render after the switch already resolves stops through
   // the station index.
-  const sectionsText = fetchText(railSectionsApiForCountry(activeCountry));
-  railSectionsTextReady = sectionsText;
+  const sectionsText = AppDatasets.startRailSectionsDownload();
   sectionsText.catch((err) =>
     console.error(
       "rail-sections download failed after the country switch; will retry before the first solve.",
@@ -216,43 +202,6 @@ async function loadActiveCountryStationReadings() {
 // back to a native parse if the shape is unexpected. Each feature is still
 // parsed by native JSON.parse, so the feature objects are byte-for-byte
 // identical to the old path.
-async function parseFeatureCollectionChunked(text) {
-  return parseFeatureCollectionTextChunked(text, {
-    now: () => performance.now(),
-    yieldControl: yieldToEventLoop,
-  });
-}
-
-async function ensureRailSectionsLoaded() {
-  if (railSectionsGeoJson) return railSectionsGeoJson;
-  if (!railSectionsReady) {
-    railSectionsReady = (async () => {
-      // Reuse the in-flight/finished boot download; re-fetch once on failure.
-      const api = railSectionsApiForCountry(activeCountry);
-      let text;
-      try {
-        text = await (railSectionsTextReady ||
-          (railSectionsTextReady = fetchText(api)));
-      } catch (err) {
-        railSectionsTextReady = fetchText(api);
-        text = await railSectionsTextReady;
-      }
-      const data = AppDatasets.installRailSections(
-        await parseFeatureCollectionChunked(text),
-      );
-      // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
-      // download promise would otherwise keep it resident for the whole session,
-      // which matters on memory-tight iPhones.
-      railSectionsTextReady = null;
-      return data;
-    })();
-    // On any failure clear the memo so a later call retries cleanly.
-    railSectionsReady.catch(() => {
-      railSectionsReady = null;
-    });
-  }
-  return railSectionsReady;
-}
 
 // =========================================================================
 //  §9.  Boot sequence (runs once on DOMContentLoaded)

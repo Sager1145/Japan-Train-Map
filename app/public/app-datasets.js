@@ -13,9 +13,11 @@
 //  binding that belongs to somebody else. That is what makes the write side
 //  greppable: every dataset swap in the app is one of these calls.
 //
-//  What is deliberately NOT here: railSectionsReady / railSectionsTextReady.
-//  Those are the loader's in-flight bookkeeping, not the data, and they stay
-//  private to app.js.
+//  The rail-sections loader lives here too. It was left in app.js at first,
+//  on the theory that in-flight bookkeeping is not data — but app-route-service
+//  calls ensureRailSectionsLoaded before a solve, and that one call was the
+//  whole of its dependency cycle with the entry point. A dataset's loader
+//  belongs with the dataset.
 // =========================================================================
 
 // Data is served by the backend instead of being embedded in the page.
@@ -61,9 +63,66 @@ const AppDatasets = {
   // wrong network would not look like an error, it would look like a route.
   clearRailSections() {
     railSectionsGeoJson = null;
+    railSectionsReady = null;
+    railSectionsTextReady = null;
+  },
+  // Start (or restart) the DOWNLOAD only — response.text(), no JSON.parse — so
+  // the ~1.1 s parse never blocks boot or first paint. ensureRailSectionsLoaded
+  // parses it in yielding chunks after the map is on screen. Returns the
+  // promise so the caller can attach its own failure reporting.
+  startRailSectionsDownload() {
+    railSectionsTextReady = fetchText(railSectionsApiForCountry(activeCountry));
+    return railSectionsTextReady;
   },
   installStationIndexes(candidates, nameByCode) {
     stationCandidatesIndex = candidates;
     stationNameByCode = nameByCode;
   },
 };
+
+// Tracks the in-flight (or resolved) rail-sections PARSE. rail-sections.json is
+// ~12 MB raw / 2.4 MB gzipped and is consumed ONLY by the route solver, which
+// runs after the map is already on screen — so it is fetched in parallel with
+// boot but never blocks first paint. ensureRailSectionsLoaded() awaits it right
+// before the first solve.
+let railSectionsReady = null;
+// The DOWNLOAD (response.text(), no JSON.parse). Kept separate from
+// railSectionsReady (the parse pipeline) so the ~1.1 s parse can be deferred
+// off the first-paint path and run in yielding chunks later.
+let railSectionsTextReady = null;
+
+async function parseFeatureCollectionChunked(text) {
+  return parseFeatureCollectionTextChunked(text, {
+    now: () => performance.now(),
+    yieldControl: yieldToEventLoop,
+  });
+}
+
+async function ensureRailSectionsLoaded() {
+  if (railSectionsGeoJson) return railSectionsGeoJson;
+  if (!railSectionsReady) {
+    railSectionsReady = (async () => {
+      // Reuse the in-flight/finished boot download; re-fetch once on failure.
+      let text;
+      try {
+        text = await (railSectionsTextReady ||
+          AppDatasets.startRailSectionsDownload());
+      } catch (err) {
+        text = await AppDatasets.startRailSectionsDownload();
+      }
+      const data = AppDatasets.installRailSections(
+        await parseFeatureCollectionChunked(text),
+      );
+      // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
+      // download promise would otherwise keep it resident for the whole session,
+      // which matters on memory-tight iPhones.
+      railSectionsTextReady = null;
+      return data;
+    })();
+    // On any failure clear the memo so a later call retries cleanly.
+    railSectionsReady.catch(() => {
+      railSectionsReady = null;
+    });
+  }
+  return railSectionsReady;
+}
