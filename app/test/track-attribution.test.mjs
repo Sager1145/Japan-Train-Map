@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   attributionFilterFor,
   lateralDistance,
+  ownTrackAt,
   wayNameSpellings,
 } from "../scripts/railway/lib/track-attribution.mjs";
 
@@ -156,6 +157,93 @@ test("a company boundary keeps the neighbour's name on the line's own metals", (
     operatorShort: "阪神",
   });
   assert.equal(hanshin.owns(running("神戸高速線", "神戸高速鉄道")), true);
+});
+
+test("a branch filed under its parent without the space is still the parent's", () => {
+  // OSM way/233363367 is spelt JR阪和線東羽衣支線 — no bracket, no space. It is
+  // the 東羽衣支線's only track, and the package's 阪和線-2 IS that branch, so
+  // the audit was reporting the branch for standing on itself.
+  const hanwa = attributionFilterFor({
+    name: "阪和線",
+    operator: "西日本旅客鉄道",
+    operatorShort: "JR西日本",
+  });
+  assert.equal(hanwa.owns(running("JR阪和線東羽衣支線", "西日本旅客鉄道")), true);
+  assert.ok(wayNameSpellings("JR阪和線東羽衣支線", []).includes("東羽衣支線"));
+  // The rule is a 支線 tail and nothing looser: a bare "…線…線" split would
+  // fold a line's own freight road into it and hide the offset this criterion
+  // is for. 東海道貨物線 is a different pair of metals and must stay foreign.
+  const tokaido = attributionFilterFor({
+    name: "東海道線",
+    operator: "東日本旅客鉄道",
+    operatorShort: "JR東日本",
+  });
+  assert.equal(tokaido.owns(running("東海道本線東海道貨物線", "東日本旅客鉄道")), false);
+  assert.equal(tokaido.owns(running("東海道貨物線", "東日本旅客鉄道")), false);
+});
+
+// A stand-in for railway-topology's edge index: `within` hands back a Map of
+// meta → distance, which is all ownTrackAt reads.
+const fakeIndex = (ways) => ({
+  within(point, radiusMeters, accept) {
+    const found = new Map();
+    for (const meta of ways) {
+      if (accept && !accept(meta)) continue;
+      const hit = lateralDistance(meta.coordinates, point);
+      if (hit && hit.distance <= radiusMeters) found.set(meta, hit.distance);
+    }
+    return found;
+  },
+});
+// A north-south way `offsetDegrees` east of 136.0765, spanning `south`..`north`.
+const northSouth = (name, operatorJa, offsetDegrees, south, north) => ({
+  name,
+  operatorJa,
+  running: true,
+  coordinates: [
+    [136.0765 + offsetDegrees, south],
+    [136.0765 + offsetDegrees, north],
+  ],
+});
+
+test("own metals are the NEAREST ones of ours, whichever rung names them", () => {
+  // 敦賀, after the 2024 三セク handover: OSM files the through track as
+  // 北陸本線 under ハピラインふくい — the company-boundary rung — right beside
+  // the stroke, and a 北陸本線 under 西日本旅客鉄道 sits across the throat.
+  // Ranking by rung first answered with the far one, an order of magnitude out.
+  const hokuriku = attributionFilterFor({
+    name: "北陸線",
+    operator: "西日本旅客鉄道",
+    operatorShort: "JR西日本",
+  });
+  const point = [136.0765, 35.6346];
+  const near = northSouth("北陸本線", "ハピラインふくい", 0.0001, 35.633, 35.636);
+  const far = northSouth("北陸本線", "西日本旅客鉄道", 0.0009, 35.633, 35.636);
+  const found = ownTrackAt(point, hokuriku, fakeIndex([far, near]), 120);
+  assert.equal(found.way, near);
+  assert.ok(found.distance < 15, `${found.distance}`);
+  // With only the far one mapped, that is still the answer — nothing is hidden.
+  assert.equal(ownTrackAt(point, hokuriku, fakeIndex([far]), 120).way, far);
+});
+
+test("own metals presenting themselves end-on are 'cannot tell', not 'far away'", () => {
+  // 品川's north throat: OSM splits the corridor at a joint beside the sample,
+  // so both 東海道本線 ways carrying the line end there. The offset is ~30 m and
+  // unmeasurable; answering with a way 100 m up the line reported a separate
+  // alignment that does not exist.
+  const tokaido = attributionFilterFor({
+    name: "東海道線",
+    operator: "東日本旅客鉄道",
+    operatorShort: "JR東日本",
+  });
+  const point = [136.0765, 35.6346];
+  const joint = northSouth("東海道本線", "東日本旅客鉄道", 0.0003, 35.6349, 35.6360);
+  const distant = northSouth("東海道本線", "東日本旅客鉄道", 0.0011, 35.633, 35.636);
+  assert.equal(lateralDistance(joint.coordinates, point).clamped, true);
+  assert.equal(ownTrackAt(point, tokaido, fakeIndex([joint, distant]), 120), null);
+  // Without the joint in reach the distant way is a real, interior offset and
+  // is reported — the rule suppresses only the unmeasurable case.
+  assert.equal(ownTrackAt(point, tokaido, fakeIndex([distant]), 120).way, distant);
 });
 
 test("wayNameSpellings returns nothing for a way that identifies no railway", () => {

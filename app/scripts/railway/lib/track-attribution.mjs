@@ -360,6 +360,18 @@ export function wayNameSpellings(rawName, brandPrefixes = [], country = "jp") {
       add(bracketed[1]);
       add(bracketed[2]);
     }
+    // JR阪和線東羽衣支線 — the SAME shape with the space left out, which is how
+    // OSM writes most of them. Restricted to a 支線 tail on purpose: "…線…支線"
+    // can only be a branch filed under the railway it branches from, whereas a
+    // bare "…線…線" split would let 東海道本線東海道貨物線 read as the 本線 and
+    // collapse a distinct pair of metals into its parent — the very offset this
+    // criterion exists to see. 阪和線-2 IS the 東羽衣支線, and without this it
+    // was reported for standing on its own branch's only track.
+    const suffixed = /^(.+?線)(.+支線)$/u.exec(plain);
+    if (suffixed) {
+      add(suffixed[1]);
+      add(suffixed[2]);
+    }
     // JR鶴見線 大川支線 / 서울 지하철 2호선 신정지선 — a branch filed under its
     // parent, space separated.
     const spaced = rules.spacedTail.exec(plain);
@@ -502,27 +514,44 @@ export function lateralDistance(coordinates, point) {
 /**
  * The line's own claimed track BESIDE `point`, or null when none is in reach.
  *
- * Same identity ladder as station-track-claim's `claimedTrackAt` — strongest
- * rung first, distance only ranking inside a rung — with two differences: the
- * operator-only rung is gone (see `attributionFilterFor`), and a candidate whose
- * nearest point is its own endpoint is discarded, because that distance is
- * longitudinal (see `lateralDistance`). A rung whose every candidate is clamped
- * is a rung that says "your line's name ends here", which is a "cannot tell",
- * not a weaker claim to fall through to.
+ * The identity ladder is station-track-claim's minus its operator-only rung
+ * (see `attributionFilterFor`), but it is used only to decide WHICH ways are
+ * ours — not which of them answers. Inside a station the strongest rung wins
+ * because the question is "which platform road is mine"; here the question is
+ * "how far away are my metals", and the answer to that is the NEAREST way that
+ * is mine by any accepted rung. Ranking by rung first got 北陸線 at 敦賀 wrong
+ * by an order of magnitude: OSM files the through track as 北陸本線 under
+ * ハピラインふくい (the third rung, since the 2024 三セク handover) 7.8 m away,
+ * while a 北陸本線 under 西日本旅客鉄道 — first rung — sits 82.7 m off across
+ * the throat, and the audit reported the 82.7.
+ *
+ * Then: the nearest own metals decide the verdict, INCLUDING when they present
+ * themselves end-on. A clamped nearest is not a weaker answer to fall through
+ * from, it is a statement that the offset cannot be measured here (see
+ * `lateralDistance`), so the sample is undecidable. Falling through to a
+ * further, interior way instead reported ITS distance as "how far my own track
+ * is", which was false wherever OSM had merely split the corridor at a joint:
+ * at 品川 the line's own 東海道本線 runs 32 m away, and because both ways
+ * carrying it end beside the sample the audit answered 98.8 m and raised a
+ * WARNING. Ten of the jp WARNINGs were that artefact.
+ *
+ * Both rules only ever move the answer CLOSER or to "cannot tell", so neither
+ * can invent a disagreement. 京急蒲田 — the shape this criterion was built for
+ * — is untouched: the 空港線's own metals are 33 m away and interior there.
  */
 export function ownTrackAt(point, filter, index, radiusMeters) {
+  let best = null;
   for (const level of filter.levels) {
     const found = index.within(point, radiusMeters, level.accept);
-    if (!found.size) continue;
-    let best = null;
     for (const [meta] of found) {
       const hit = lateralDistance(meta.coordinates, point);
-      if (!hit || hit.clamped) continue;
-      if (!best || hit.distance < best.distance) best = { distance: hit.distance, way: meta };
+      if (!hit) continue;
+      if (!best || hit.distance < best.distance)
+        best = { distance: hit.distance, clamped: hit.clamped, way: meta, strength: level.strength };
     }
-    return best ? { strength: level.strength, ...best } : null;
   }
-  return null;
+  if (!best || best.clamped) return null;
+  return { strength: best.strength, distance: best.distance, way: best.way };
 }
 
 /**
