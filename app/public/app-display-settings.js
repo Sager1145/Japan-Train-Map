@@ -1,5 +1,12 @@
 // =========================================================================
-//  app-display-settings.js — §3: display-tuning settings & control panel (localStorage-only)
+//  app-display-settings.js — §3: the 顯示調節 control panel (localStorage-only)
+//
+//  The values this panel edits live one file earlier, in
+//  app-display-values.js (DISPLAY / DISPLAY_DEFAULTS / the storage keys /
+//  APPLIED_FIT_CURVE_SETTINGS). This file owns everything that ACTS on them:
+//  loading and persisting them, building and wiring the submenu controls,
+//  the theme and UI-mode selects, and the invalidate-then-rerender pass that
+//  turns a changed number into a redraw.
 //
 //  Part of the app-*.js family split out of the old single-file app.js:
 //  plain classic scripts sharing one global lexical scope, loaded in the
@@ -7,84 +14,10 @@
 // =========================================================================
 
 // =========================================================================
-//  §3.  Display-tuning settings & control panel (localStorage-only, not in store)
+//  §3.  Display-tuning control panel (localStorage-only, not in store)
 // =========================================================================
 
-// ------------------------------------------------------------------------
-// Global display-tuning settings. These are pure UI/presentation knobs that
-// scale or override the numbers returned by the three style helpers
-// (routeSegmentStyleValues / stopMarkerStyleValues / passThroughMarkerStyleValues),
-// so they affect BOTH the SVG and the deck.gl render paths uniformly. They are
-// NOT part of the canonical train store — they live in localStorage only, so
-// the exported JSON schema stays exactly { schema_version, trains:[...] }.
-// ------------------------------------------------------------------------
-// v2: defaults re-seeded for the railprint visual system (positron basemap at
-// full opacity, ridden lines full color, railprint-scale station dots). The
-// versioned key intentionally orphans v1 saved settings, whose numbers were
-// tuned for the old faded-raster look.
-// v5 (2026-08-20): the railway halved its weight, so the sizes that were
-// tuned AGAINST the old weight are re-seeded on migration (RESEEDED_ON_MIGRATION
-// below) while every other saved preference carries over untouched.
-const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v5";
-const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
-const DISPLAY_DEFAULTS = {
-  theme: "system", // system preference, explicit light, or explicit dark
-  uiMode: "auto", // automatic terminal detection, or an explicit mobile/desktop UI
-  routeWidthScale: 1, // multiplies each train's route line width
-  riddenOpacity: 1, // opacity of ridden (ride_segment=true) route segments (railprint: 1)
-  // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
-  // so the slider was a do-nothing control lying to the user.)
-  dimOpacity: 0.18, // opacity of trains not on the selected date
-  // px radius of origin / destination markers. Retuned 6 → 4 on 2026-08-20
-  // with the halved line weights: the endpoint dot earns its emphasis by
-  // being the largest mark on the route, and against a 2.36 px ride a 12 px
-  // disc stopped reading as a terminus and started reading as a blot. Two
-  // thirds of the old size keeps it clearly above the 6 px stop circles.
-  terminalRadius: 4,
-  // Legacy numeric range retained so existing saved display settings remain
-  // valid; it now controls the black center inside intermediate stop markers.
-  stopRadius: 5,
-  passRadius: 3, // px radius (at z12) of pass-through markers (railprint unridden dot = 3 @ z12)
-  markerStrokeScale: 1, // multiplies every marker's stroke width
-  focusBoost: 2, // extra line width / marker radius for the selected train
-  mapOpacity: 1, // basemap visibility; lower fades the map toward pure white (railprint: no fade)
-  fitCurvePrecision: 1, // B-spline output sampling density only
-  fitCurveMinRadius: 3100, // requested minimum geometric/direction radius, metres
-  fitCurveMinDetail: 3300, // source details below this physical scale are removed
-  fitCurveMaxDeviation: 4200, // how far fit controls may leave the source, metres
-  // Cross-day (overnight) trains: OFF draws the half that runs on the other
-  // calendar day dashed while a day is selected; ON draws the whole itinerary
-  // solid, exactly like every other train.
-  showFullCrossDay: false,
-  showFitCurves: false, // topmost black/white dashed fitted-curve debug overlay
-  showHoverRegions: false, // topmost hover pick / hysteresis region debug overlay
-  // Station-name reading annotations (labels / popups): three INDEPENDENT
-  // toggles. Until the user touches one (nameReadingsCustomized), they follow
-  // the UI language — zh shows kana, en shows romaji, ja shows none — the
-  // exact presentation placeName() hardwired before the toggles existed.
-  nameReadingKana: false,
-  nameReadingRomaji: false,
-  nameReadingZh: false,
-  nameReadingsCustomized: false,
-};
-// Live working copy (mutated by the UI; seeded from localStorage on boot).
-const DISPLAY = { ...DISPLAY_DEFAULTS };
-// Keys whose SAVED value is dropped when a payload is carried over from
-// PREVIOUS_DISPLAY_STORAGE_KEY — the ones this version retuned, and only
-// those. Everything else a reader has adjusted survives the version bump.
-const RESEEDED_ON_MIGRATION = new Set(["terminalRadius"]);
-const FIT_CURVE_SETTING_KEYS = [
-  "fitCurvePrecision",
-  "fitCurveMinRadius",
-  "fitCurveMinDetail",
-  "fitCurveMaxDeviation",
-];
-const APPLIED_FIT_CURVE_SETTINGS = {};
-function applyPendingFitCurveSettings() {
-  FIT_CURVE_SETTING_KEYS.forEach((key) => {
-    APPLIED_FIT_CURVE_SETTINGS[key] = DISPLAY[key];
-  });
-}
+// Slider read-out for the metre-valued fit-curve controls.
 const formatFitDistance = (x) =>
   x >= 1000 ? (x / 1000).toFixed(1) + "km" : Math.round(x) + "m";
 // Slider definitions for the "顯示調節" submenu (built dynamically in JS so the
@@ -371,7 +304,7 @@ function loadDisplaySettings() {
         }
       }
     }
-  } catch (err) {
+  } catch {
     // Non-fatal: disabled storage just means defaults.
   }
   // Reading toggles: non-customized users keep following the UI language;
@@ -386,7 +319,7 @@ function loadDisplaySettings() {
 function persistDisplaySettings() {
   try {
     localStorage.setItem(DISPLAY_STORAGE_KEY, JSON.stringify(DISPLAY));
-  } catch (err) {
+  } catch {
     /* ignore */
   }
 }

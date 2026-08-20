@@ -828,7 +828,7 @@ function buildUserStoreChunks(canonicalStore) {
           chunk.routes.push({ cache_key: context.cacheKey, unsolvable: true });
         }
       }
-    } catch (err) {
+    } catch {
       // Geometry is an optimization — the store itself must still be saved.
     }
   }
@@ -1095,6 +1095,12 @@ function seedRouteCacheEntries(routes) {
 // the warmed cache (getRuntimeRouteGraph runs only on a miss). railHash
 // namespaces entries to the current rail network, so changing the underlying N02
 // data transparently invalidates stale geometry.
+//
+// Positive and negative entries share one object store, so a persisted "this
+// route cannot be solved" verdict is stored under this extra key prefix. It is
+// purely a detail of that layout — only the writer below and the warm pass
+// that has to tell the two apart ever touch it.
+const ROUTE_NEG_CACHE_MARKER = "__neg__::";
 let railContentHashCache = null;
 function getRailContentHash() {
   if (railContentHashCache) return railContentHashCache;

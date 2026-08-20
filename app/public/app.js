@@ -14,7 +14,9 @@
 //   railmap-*.js + railmap.js  RailMap global: MapLibre map core (railprint;
 //                            its own module map lives in railmap.js's header)
 //   app-config.js            §1–2   perf instrumentation + app constants
-//   app-display-settings.js  §3     display-tuning settings & panel
+//   app-display-values.js    §3     the display-tuning values themselves
+//                                   (DISPLAY & friends; depends on nothing)
+//   app-display-settings.js  §3     the 顯示調節 panel that edits them
 //   app-display-features.js  §4     basemap opacity, endpoint labels,
 //                                   deck hover/tooltip
 //   app-route-simplify.js    §5     Douglas-Peucker pre-render decimation
@@ -363,7 +365,7 @@ async function loadActiveCountryStore(bootLoadOptions) {
         const userData = await readUserStoreAll();
         if (userData && userData.store)
           rawText = JSON.stringify(userData.store, null, 2);
-      } catch (_) {
+      } catch {
         /* rescue text is best-effort */
       }
       enterStoreRecoveryMode({ message: (err && err.message) || "", rawText });

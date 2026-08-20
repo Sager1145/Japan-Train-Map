@@ -77,7 +77,7 @@ async function switchCountrySession(next) {
     }
     try {
       localStorage.setItem(COUNTRY_STORAGE_KEY, next);
-    } catch (_) {
+    } catch {
       /* preference just won't survive a reload */
     }
 

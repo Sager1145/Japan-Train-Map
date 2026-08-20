@@ -750,6 +750,24 @@
   }
 
   // ───────────────────────────── the base style (style.ts buildBaseStyle) ────────────────
+  //
+  // A DECLARATIVE LAYER STACK, not an algorithm: `layers` is pushed in PAINT
+  // ORDER and that order IS the visual contract. Splitting it into per-tier
+  // builders would replace one readable top-to-bottom list with a call graph
+  // whose only content is the same order, so it stays one function. The
+  // §-banners below are its table of contents — the map's z-order, read down:
+  //
+  //   §1  sources        one geojson source per record kind
+  //   §2  ground         plain background + the optional basemap tint
+  //   §3  network        the whole national field: casing, line, suspended
+  //   §4  network dots   unridden station circles
+  //   §5  names          line labels, then station labels
+  //   §6  trains         ridden routes, cross-day dashes, pick + fan lanes
+  //   §7  train dots     pass-through, stop and cross-day markers
+  //   §8  selection      dark casing + the selected line and its dots
+  //   §9  hover expand   the fanned copies of a hovered group's courses
+  //   §10 debug          fitted curves, then hover regions (always last)
+  //   §11 assembly       glyphs/sprite + the non-enumerable basemap metadata
   function buildBaseStyle(opts) {
     const basemap = opts.basemap || null;
     const network = opts.network || null;
@@ -766,6 +784,7 @@
     const primaryStack = basemap
       ? namespaceBasemap(basemap, "", false)
       : null;
+    // ── §1 sources ──
     const sources = Object.assign({}, primaryStack ? primaryStack.sources : {});
     sources[SEGMENTS_SOURCE] = {
       type: "geojson",
@@ -821,6 +840,7 @@
     };
 
     const layers = [];
+    // ── §2 ground: plain background + the optional basemap tint ──
     // Plain background used for the explicit no-basemap mode and graceful
     // degradation when the online style is unavailable.
     layers.push({
@@ -845,7 +865,7 @@
       },
     });
 
-    // ── the full national network — railprint's "unridden field" ──
+    // ── §3 network — the full national field, railprint's "unridden field" ──
     // Hidden by default: the network is opt-in via the layers-control switch.
     // A narrow surface-coloured casing mirrors Apple Maps' Transit treatment:
     // it separates coloured railway ink from roads and adjacent railways while
@@ -921,6 +941,7 @@
         "line-dasharray": networkSuspendedDash(),
       },
     });
+    // ── §4 network dots — unridden station circles ──
     layers.push({
       id: STATIONS_LAYER,
       type: "circle",
@@ -945,7 +966,7 @@
       },
     });
 
-    // ── the names ──
+    // ── §5 names — line labels, then station labels ──
     // Text needs glyphs, and the glyph endpoint arrives WITH the basemap. A
     // basemap-less map (offline, or "no map" by choice) therefore draws the
     // network unlabelled rather than logging a styleglyphsmissing error per
@@ -1059,7 +1080,7 @@
       });
     }
 
-    // ── the trains ("ridden") — full-color line (glow removed by request) ──
+    // ── §6 trains ("ridden") — full-color line (glow removed by request) ──
     // line-sort-key (higher = on top) carries the static painter's order:
     // dimmed off-date tier under the active tier, then shorter total ride
     // over longer, then earlier date over later (see buildDeckRouteRecords).
@@ -1150,6 +1171,7 @@
         "line-width": riddenHoverLineWidth(),
       },
     });
+    // ── §7 train dots — pass-through, stop and cross-day markers ──
     // Other trains' station dots sit UNDER the selected route. ONE marker
     // source feeds all four dot layers; the selected train's dots move to the
     // SEL layers purely via tid filters (selection = 4 setFilter calls, zero
@@ -1201,6 +1223,7 @@
       },
       paint: { "icon-opacity": ["get", "alpha"] },
     });
+    // ── §8 selection — dark casing, the selected line and its dots ──
     // C3 — DARK selection casing UNDER the selected line, the line's own hue on
     // top; the dark halo peeking out reads as "selected" on the light basemap.
     layers.push({
@@ -1232,6 +1255,7 @@
         "line-width": riddenLineWidth(),
       },
     });
+    // ── §9 hover expand — the fanned copies of a hovered group's courses ──
     // HOVER-EXPAND: while the pointer is on an overlapped stretch, that
     // group's trains draw temporarily fanned into date-ordered parallel
     // lanes. Each expand feature is the member train's COMPLETE course,
@@ -1303,6 +1327,7 @@
       }),
     });
 
+    // ── §10 debug — fitted curves, then hover regions (always last) ──
     // Direction-fit debug overlay. These are intentionally the LAST style
     // layers so the exact curve used by hover direction remains visible above
     // routes, expanded lanes, markers and basemap labels. A black casing plus
@@ -1395,6 +1420,7 @@
       },
     });
 
+    // ── §11 assembly ──
     const style = { version: 8, sources, layers };
     if (basemap && basemap.glyphs) style.glyphs = basemap.glyphs;
     if (basemap && basemap.sprite) style.sprite = basemap.sprite;

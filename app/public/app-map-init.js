@@ -408,7 +408,7 @@ function retryErroredTile(map, event) {
       map.refreshTiles(sourceId, [
         { z: canonical.z, x: canonical.x, y: canonical.y },
       ]);
-    } catch (error) {
+    } catch {
       // Source removed (country switch / style reinstall) — nothing to retry.
     }
   }, TILE_RETRY_DELAYS_MS[attempt]);
@@ -447,7 +447,7 @@ function installTileRetryRecovery(map) {
       if (!stale.length) continue;
       try {
         map.refreshTiles(sourceId, stale);
-      } catch (error) {
+      } catch {
         // Source disappeared between the scan and the refresh — ignore.
       }
     }

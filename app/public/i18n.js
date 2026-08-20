@@ -417,7 +417,7 @@
     currentLang = lang;
     try {
       localStorage.setItem(LANG_KEY, lang);
-    } catch (e) {
+    } catch {
       /* storage may be unavailable; language just won't persist */
     }
     applyStatic(document);
@@ -437,7 +437,7 @@
       const saved = localStorage.getItem(LANG_KEY);
       if (saved === "zh") return "zh-Hant";
       if (SUPPORTED.includes(saved)) return saved;
-    } catch (e) {
+    } catch {
       /* ignore */
     }
     return "zh-Hant"; // default: Traditional Chinese

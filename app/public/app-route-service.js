@@ -38,6 +38,15 @@ configureRouteGraphApi({
   resolveSectionEndpoints: (...args) => resolveSectionEndpoints(...args),
   templateKey: (...args) => getTrainRouteTemplateKey(...args),
 });
+// Make a solve's verdict outlive the session. The route graph announces what
+// it decided; choosing IndexedDB as the place to keep it is this service's
+// call, not the graph's — so app-route-graph.js no longer reaches into the
+// persistence layer at all.
+setRouteCacheStore({
+  solved: (cacheKey, templateFeatures) =>
+    persistRouteCacheEntry(cacheKey, templateFeatures),
+  unsolvable: (cacheKey) => persistRouteNegativeEntry(cacheKey),
+});
 
 // One-time gate for the parsed rail sections and persisted route cache.
 // Memoisation is cleared after failure so a later solve can retry.

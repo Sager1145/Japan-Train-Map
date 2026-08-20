@@ -107,7 +107,7 @@ function loadActiveCountry() {
   try {
     const saved = localStorage.getItem(COUNTRY_STORAGE_KEY);
     if (SUPPORTED_COUNTRIES.includes(saved)) activeCountry = saved;
-  } catch (_) {
+  } catch {
     /* localStorage unavailable: stay on the default country */
   }
   TRAIN_STORE_API = trainStoreApiForCountry(activeCountry);

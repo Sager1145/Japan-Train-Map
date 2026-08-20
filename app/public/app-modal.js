@@ -35,7 +35,7 @@
         const v = i18n.t(key);
         if (v && v !== key) return v;
       }
-    } catch (_) {
+    } catch {
       /* fall through to fallback */
     }
     return fallback;
@@ -97,7 +97,7 @@
             ) {
               try {
                 previouslyFocused.focus();
-              } catch (_) {
+              } catch {
                 /* element gone */
               }
             }

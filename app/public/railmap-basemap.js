@@ -459,7 +459,7 @@
         if (theme === "dark") recolorPositronToDark(basemap);
       }
       return basemap;
-    } catch (e) {
+    } catch {
       return null;
     } finally {
       if (timer !== null) clearTimeout(timer);
@@ -486,7 +486,7 @@
         signal: ctl ? ctl.signal : undefined,
       });
       return res.ok;
-    } catch (e) {
+    } catch {
       return false;
     } finally {
       if (timer !== null) clearTimeout(timer);

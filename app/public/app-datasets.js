@@ -107,7 +107,7 @@ async function ensureRailSectionsLoaded() {
       try {
         text = await (railSectionsTextReady ||
           AppDatasets.startRailSectionsDownload());
-      } catch (err) {
+      } catch {
         text = await AppDatasets.startRailSectionsDownload();
       }
       const data = AppDatasets.installRailSections(

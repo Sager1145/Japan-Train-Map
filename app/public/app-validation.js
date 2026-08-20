@@ -111,7 +111,7 @@ function warnBranchLeak(train) {
         );
       }
     });
-  } catch (_) {
+  } catch {
     // Advisory only; never block import on the heuristic.
   }
 }

@@ -72,7 +72,7 @@ function statsCompanyLabel(operator) {
       typeof RailMapPopup.companyLabel === "function"
     )
       return RailMapPopup.companyLabel(operator);
-  } catch (_) {
+  } catch {
     /* fall through to the raw name */
   }
   return operator;

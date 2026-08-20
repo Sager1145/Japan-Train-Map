@@ -25,10 +25,12 @@ let liveReloadPending = false;
 // the latest state — e.g. a `cleared` event — instead of a stale one).
 let liveReloadPendingDetail = null;
 
-// Re-run the deferred live reload once the blocking work has finished. Called
-// from every `importInProgress = false` site; previously an event deferred
-// during a progressive import was silently dropped (the early return in
-// handleExternalStoreChange skipped its own finally-block retry).
+// Re-run the deferred live reload once the blocking work has finished.
+// Previously an event deferred during a progressive import was silently
+// dropped (the early return in handleExternalStoreChange skipped its own
+// finally-block retry); the import engine now announces every
+// `importInProgress = false` transition and the registration below turns that
+// announcement back into this drain.
 function drainPendingLiveReload() {
   if (!liveReloadPending) return;
   liveReloadPending = false;
@@ -36,6 +38,12 @@ function drainPendingLiveReload() {
   liveReloadPendingDetail = null;
   setTimeout(() => handleExternalStoreChange(next || {}), 0);
 }
+
+// Deferring a reload is this listener's own business, so it subscribes to the
+// import engine rather than being called by it. index.html loads app-import.js
+// well before this file, so the seam exists by the time this line runs — and it
+// runs at load, long before any import can start.
+setImportFinishedListener(drainPendingLiveReload);
 
 function subscribeToStoreEvents() {
   if (!HAS_BACKEND) return; // static deploy: no /api/events endpoint to subscribe to
@@ -51,7 +59,7 @@ function subscribeToStoreEvents() {
     let detail = {};
     try {
       detail = JSON.parse(evt.data || "{}");
-    } catch (err) {
+    } catch {
       /* ignore malformed payload */
     }
     // Ignore the echo of our own write.

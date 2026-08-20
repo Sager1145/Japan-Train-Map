@@ -86,9 +86,10 @@ exceptions explicit. Dataset loading and route-solve scheduling still live in
 `app.js`. Persistence timers, journals, recovery flags, and
 IndexedDB coordination are private to `PersistenceService` in
 `app-persistence.js`; route caches and
-regional graph caches are declared by `app-route-graph.js`; route-record and
-overlap caches are split across `app-route-render.js` and
-`app-overlap-lanes.js`.
+regional graph caches are declared by `app-route-graph.js`; every
+signature-keyed deck cache — overlap map, record bundle, route items, marker
+records, and the two "last uploaded" guards — is declared by
+`app-overlap-lanes.js` next to the invalidators that clear them.
 
 The desired direction is one named owner per state group and named actions at
 cross-file boundaries. This baseline does not claim that ownership has already

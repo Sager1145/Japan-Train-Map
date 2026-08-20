@@ -185,7 +185,14 @@ test("rejected or missing package art may use a verified line badge", () => {
     ],
     [
       "shinkansen-jr-kyushu.svg",
-      "20fce2cc5be5dc6edd7c6c108787f3721883f3a3fbebc20533aa404e88f12c90",
+      // The digest of the file as the repository stores it, which is not quite
+      // the file Commons serves: this one arrived with CRLF line endings and
+      // `* text=auto` in .gitattributes normalised them away on commit. The
+      // drawing is untouched — only the newlines are — but a hash taken from
+      // the downloaded bytes passes on the machine that downloaded them and
+      // fails on every fresh checkout, which is exactly what happened. SVGs are
+      // marked `-text` now so the next pictogram keeps the bytes it was given.
+      "f59e87fdddb65ab72f5f6c8bc41fc2f5c36752d4f93ab980c998c7a21a8a448f",
     ],
   ]);
   assert.deepEqual(

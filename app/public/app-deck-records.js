@@ -6,23 +6,31 @@
 //  order defined by index.html (the module map lives in app.js's header).
 // =========================================================================
 
-// Index every ORIGINAL route segment by the direction-independent key the
-// route dedupe uses, so shared N02 track (identical source coordinates) is
-// detected exactly — INDEPENDENT of how each feature's geometry was
-// simplified for display (per-feature simplification keeps different vertex
-// subsets, which used to fragment corridors into confetti). Slot order is by
+// Would this route item produce a DRAWN record? This is the same predicate
+// buildDeckRouteRecords uses to drop records (unridden sections are hidden
+// entirely; dimmed trains vanish when dimOpacity is 0). Anything invisible
+// must not occupy a lane slot or inflate the ×N count, or the fan and the
+// pick corridor get phantom gaps.
+function deckOverlapItemDrawn(item) {
+  const train = item.train;
+  if (!train) return false;
+  const flags = routeRecordScopeFlags(train);
+  // Off-date (dimmed) trains never occupy a parallel lane: while a concrete
+  // day is active, its routes must not shift sideways because of overlaps
+  // with OTHER days' routes, and the dim lines are not hoverable anyway.
+  if (flags.dimmed) return false;
+  const ridden =
+    item.feature.properties && item.feature.properties.ride_segment === true;
+  if (ridden && !riddenFeatureVisible(item.feature)) return false;
+  const { opacity } = routeSegmentStyleValues(train, ridden, flags);
+  return opacity > 0;
+}
+
+// INTERMEDIATE PRODUCT: `rank` — train id → lane slot order. Slots are by
 // DATE (earliest first, then departure time, then id) so parallel pick lanes
 // read left→right / top→bottom in chronological order, and a train keeps the
 // same lane along the whole shared stretch.
-function buildDeckOverlapMap(items) {
-  // Ensure the shared vertex canonicaliser is current FIRST, so the segKeys
-  // getRouteLinePairs hands back below (and to the record builder) are snapped
-  // against the shared representative set. Coincident N02 track keys identically
-  // across trains, so a shared corridor no longer fragments into single-train
-  // slivers. ensureRouteVertexSnap only rebuilds (and bumps the version) when the
-  // route geometry set changed — scope / visibility / style / ride toggles reuse
-  // the existing snap and its stamped segKeys instead of re-snapping every pass.
-  ensureRouteVertexSnap(items, OVERLAP_SNAP_METERS);
+function buildDeckOverlapTrainRank(items) {
   const uniqueTrains = [];
   const seenIds = new Set();
   items.forEach((it) => {
@@ -32,31 +40,18 @@ function buildDeckOverlapMap(items) {
     }
   });
   uniqueTrains.sort(compareTrainsByDateAndDeparture);
-  const rank = new Map(uniqueTrains.map((t, i) => [t.id, i]));
-  // Count ONLY segments that will actually produce a drawn record — the same
-  // predicate buildDeckRouteRecords uses to drop records (unridden sections
-  // are hidden entirely; dimmed trains vanish when dimOpacity is 0). Anything
-  // invisible must not occupy a lane slot or inflate the ×N count, or the fan
-  // and the pick corridor get phantom gaps.
-  const itemDrawn = (item) => {
-    const train = item.train;
-    if (!train) return false;
-    const flags = routeRecordScopeFlags(train);
-    // Off-date (dimmed) trains never occupy a parallel lane: while a concrete
-    // day is active, its routes must not shift sideways because of overlaps
-    // with OTHER days' routes, and the dim lines are not hoverable anyway.
-    if (flags.dimmed) return false;
-    const ridden =
-      item.feature.properties && item.feature.properties.ride_segment === true;
-    if (ridden && !riddenFeatureVisible(item.feature)) return false;
-    const { opacity } = routeSegmentStyleValues(train, ridden, flags);
-    return opacity > 0;
-  };
+  return new Map(uniqueTrains.map((t, i) => [t.id, i]));
+}
+
+// INTERMEDIATE PRODUCT: the two raw indices every later pass reads.
+//   seg             — segKey → Set(train id) sharing that ORIGINAL segment
+//   segmentGeometry — segKey → { key, a, b } endpoint coordinates
+function indexOverlapSegmentsByKey(items) {
   const seg = new Map();
   const segmentGeometry = new Map();
   items.forEach((item) => {
     const tid = item.train && item.train.id;
-    if (!tid || !itemDrawn(item)) return;
+    if (!tid || !deckOverlapItemDrawn(item)) return;
     getRouteLinePairs(item.feature).forEach(({ orig, segKeys }) => {
       for (let i = 0; i < segKeys.length; i += 1) {
         let ids = seg.get(segKeys[i]);
@@ -74,200 +69,214 @@ function buildDeckOverlapMap(items) {
       }
     });
   });
+  return { seg, segmentGeometry };
+}
 
-  // Add different-but-parallel tracks to the overlap graph. A metre-grid
-  // keeps this near O(n): each segment is compared only with geometries whose
-  // bounding boxes enter the same neighbourhood. Matched segment keys share
-  // both membership and a stable interaction key, so JR and Shinkansen routes
-  // fan together even though their raw coordinates differ.
+// INTERMEDIATE PRODUCT: `pairs` — candidate near-parallel segment pairs, the
+// raw material for adding different-but-parallel tracks to the overlap graph.
+// A metre-grid keeps this near O(n): each segment is compared only with
+// geometries whose bounding boxes enter the same neighbourhood.
+function collectNearParallelSegmentPairs(seg, segmentGeometry) {
+  const pairs = [];
+  if (!(OVERLAP_NEAR_PARALLEL_METERS > 0) || segmentGeometry.size <= 1)
+    return pairs;
+  const cellM = Math.max(20, OVERLAP_NEAR_PARALLEL_METERS);
+  const gridX = (lng) => lng * 80000;
+  const gridY = (lat) => lat * M_PER_DEG_LAT;
+  // Numeric bucket keys, for the same reason refreshRouteVertexSnap uses
+  // them: every segment probes a neighbourhood of cells, and on a
+  // full-country store the discarded "gx,gy" strings dominated this scan.
+  // The span is far wider than any real cell index at cellM >= 20 m.
+  const BUCKET_SPAN = 1 << 22;
+  const BUCKET_HALF = BUCKET_SPAN >> 1;
+  const bucketKey = (gx, gy) => gx * BUCKET_SPAN + (gy + BUCKET_HALF);
+  // Do the two segments share a train? (A route must never overlap itself.)
+  // Walks the smaller set instead of spreading one into a throwaway array
+  // per candidate pair.
+  const setsIntersect = (a, b) => {
+    const small = a.size <= b.size ? a : b;
+    const large = small === a ? b : a;
+    for (const id of small) if (large.has(id)) return true;
+    return false;
+  };
+  const buckets = new Map();
+  const descriptors = [...segmentGeometry.values()];
+  descriptors.forEach((d) => {
+    const ax = gridX(d.a[0]);
+    const ay = gridY(d.a[1]);
+    const bx = gridX(d.b[0]);
+    const by = gridY(d.b[1]);
+    d.minX = Math.min(ax, bx);
+    d.maxX = Math.max(ax, bx);
+    d.minY = Math.min(ay, by);
+    d.maxY = Math.max(ay, by);
+    const qx0 = Math.floor(
+      (d.minX - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+    );
+    const qx1 = Math.floor(
+      (d.maxX + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+    );
+    const qy0 = Math.floor(
+      (d.minY - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+    );
+    const qy1 = Math.floor(
+      (d.maxY + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
+    );
+    const checked = new Set();
+    for (let gx = qx0; gx <= qx1; gx += 1)
+      for (let gy = qy0; gy <= qy1; gy += 1) {
+        const list = buckets.get(bucketKey(gx, gy));
+        if (!list) continue;
+        list.forEach((other) => {
+          if (checked.has(other.key)) return;
+          checked.add(other.key);
+          const aIds = seg.get(d.key);
+          const bIds = seg.get(other.key);
+          // A route must never overlap itself at a loop, siding, or tight
+          // station throat.
+          if (setsIntersect(aIds, bIds)) return;
+          const separation = nearParallelSegmentSeparation(
+            d.a,
+            d.b,
+            other.a,
+            other.b,
+            OVERLAP_NEAR_PARALLEL_METERS,
+          );
+          if (separation == null) return;
+          pairs.push({ a: d.key, b: other.key, separation });
+        });
+      }
+    const ix0 = Math.floor(d.minX / cellM);
+    const ix1 = Math.floor(d.maxX / cellM);
+    const iy0 = Math.floor(d.minY / cellM);
+    const iy1 = Math.floor(d.maxY / cellM);
+    for (let gx = ix0; gx <= ix1; gx += 1)
+      for (let gy = iy0; gy <= iy1; gy += 1) {
+        const key = bucketKey(gx, gy);
+        let list = buckets.get(key);
+        if (!list) buckets.set(key, (list = []));
+        list.push(d);
+      }
+  });
+  return pairs;
+}
+
+// INTERMEDIATE PRODUCT: the near-parallel group index
+// ({ nearGroupByKey, nearMaxByGroup, nearPairCount }).
+//
+// Also WRITES BACK into `seg`: an accepted key's sharing set is replaced by
+// its expanded membership, which is what makes matched segment keys share
+// both membership and a stable interaction key — so JR and Shinkansen routes
+// fan together even though their raw coordinates differ.
+function groupNearParallelSegmentPairs(seg, pairs) {
   const nearGroupByKey = new Map();
   const nearMaxByGroup = new Map();
-  let nearPairCount = 0;
-  if (OVERLAP_NEAR_PARALLEL_METERS > 0 && segmentGeometry.size > 1) {
-    const cellM = Math.max(20, OVERLAP_NEAR_PARALLEL_METERS);
-    const gridX = (lng) => lng * 80000;
-    const gridY = (lat) => lat * M_PER_DEG_LAT;
-    // Numeric bucket keys, for the same reason refreshRouteVertexSnap uses
-    // them: every segment probes a neighbourhood of cells, and on a
-    // full-country store the discarded "gx,gy" strings dominated this scan.
-    // The span is far wider than any real cell index at cellM >= 20 m.
-    const BUCKET_SPAN = 1 << 22;
-    const BUCKET_HALF = BUCKET_SPAN >> 1;
-    const bucketKey = (gx, gy) => gx * BUCKET_SPAN + (gy + BUCKET_HALF);
-    // Do the two segments share a train? (A route must never overlap itself.)
-    // Walks the smaller set instead of spreading one into a throwaway array
-    // per candidate pair.
-    const setsIntersect = (a, b) => {
-      const small = a.size <= b.size ? a : b;
-      const large = small === a ? b : a;
-      for (const id of small) if (large.has(id)) return true;
-      return false;
-    };
-    const buckets = new Map();
-    const pairs = [];
-    const descriptors = [...segmentGeometry.values()];
-    descriptors.forEach((d) => {
-      const ax = gridX(d.a[0]);
-      const ay = gridY(d.a[1]);
-      const bx = gridX(d.b[0]);
-      const by = gridY(d.b[1]);
-      d.minX = Math.min(ax, bx);
-      d.maxX = Math.max(ax, bx);
-      d.minY = Math.min(ay, by);
-      d.maxY = Math.max(ay, by);
-      const qx0 = Math.floor(
-        (d.minX - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
-      );
-      const qx1 = Math.floor(
-        (d.maxX + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
-      );
-      const qy0 = Math.floor(
-        (d.minY - OVERLAP_NEAR_PARALLEL_METERS) / cellM,
-      );
-      const qy1 = Math.floor(
-        (d.maxY + OVERLAP_NEAR_PARALLEL_METERS) / cellM,
-      );
-      const checked = new Set();
-      for (let gx = qx0; gx <= qx1; gx += 1)
-        for (let gy = qy0; gy <= qy1; gy += 1) {
-          const list = buckets.get(bucketKey(gx, gy));
-          if (!list) continue;
-          list.forEach((other) => {
-            if (checked.has(other.key)) return;
-            checked.add(other.key);
-            const aIds = seg.get(d.key);
-            const bIds = seg.get(other.key);
-            // A route must never overlap itself at a loop, siding, or tight
-            // station throat.
-            if (setsIntersect(aIds, bIds)) return;
-            const separation = nearParallelSegmentSeparation(
-              d.a,
-              d.b,
-              other.a,
-              other.b,
-              OVERLAP_NEAR_PARALLEL_METERS,
-            );
-            if (separation == null) return;
-            pairs.push({ a: d.key, b: other.key, separation });
-          });
-        }
-      const ix0 = Math.floor(d.minX / cellM);
-      const ix1 = Math.floor(d.maxX / cellM);
-      const iy0 = Math.floor(d.minY / cellM);
-      const iy1 = Math.floor(d.maxY / cellM);
-      for (let gx = ix0; gx <= ix1; gx += 1)
-        for (let gy = iy0; gy <= iy1; gy += 1) {
-          const key = bucketKey(gx, gy);
-          let list = buckets.get(key);
-          if (!list) buckets.set(key, (list = []));
-          list.push(d);
-        }
-    });
-
-    if (pairs.length) {
-      // Expand membership only through DIRECT geometric neighbours. Do not
-      // flood train ids through an entire spatial component: A beside B and B
-      // later beside C must not make C appear on A's earlier section.
-      const expandedIds = new Map();
-      const expandedFor = (key) => {
-        let ids = expandedIds.get(key);
-        if (!ids) {
-          ids = new Set(seg.get(key) || []);
-          expandedIds.set(key, ids);
-        }
-        return ids;
-      };
-      pairs.forEach((pair) => {
-        const aIds = expandedFor(pair.a);
-        const bIds = expandedFor(pair.b);
-        (seg.get(pair.b) || []).forEach((id) => aIds.add(id));
-        (seg.get(pair.a) || []).forEach((id) => bIds.add(id));
-      });
-      const expandedSig = new Map();
-      expandedIds.forEach((ids, key) =>
-        expandedSig.set(key, [...ids].sort().join("\u0000")),
-      );
-      // A shared interaction group is valid only when both physical tracks
-      // resolve to the same direct membership. This keeps a three-way station
-      // throat from transitively merging unrelated lines.
-      const validPairs = pairs.filter(
-        (pair) => expandedSig.get(pair.a) === expandedSig.get(pair.b),
-      );
-      const parent = new Map();
-      const componentTrainIds = new Map();
-      const find = (key) => {
-        let root = key;
-        while (parent.get(root) !== root) root = parent.get(root);
-        let cur = key;
-        while (parent.get(cur) !== cur) {
-          const next = parent.get(cur);
-          parent.set(cur, root);
-          cur = next;
-        }
-        return root;
-      };
-      const union = (a, b) => {
-        if (!parent.has(a)) {
-          parent.set(a, a);
-          componentTrainIds.set(a, new Set(seg.get(a) || []));
-        }
-        if (!parent.has(b)) {
-          parent.set(b, b);
-          componentTrainIds.set(b, new Set(seg.get(b) || []));
-        }
-        const ar = find(a);
-        const br = find(b);
-        if (ar === br) return true;
-        const aIds = componentTrainIds.get(ar) || new Set();
-        const bIds = componentTrainIds.get(br) || new Set();
-        // The direct pair check above prevents a route overlapping itself,
-        // but a plain DSU can reintroduce that bug transitively: A↔B and B↔C
-        // would merge A with C even when A/C are two branches of one train.
-        // A physical interaction component may contain each train only once.
-        for (const id of aIds) if (bIds.has(id)) return false;
-        parent.set(br, ar);
-        bIds.forEach((id) => aIds.add(id));
-        componentTrainIds.set(ar, aIds);
-        componentTrainIds.delete(br);
-        return true;
-      };
-      const acyclicPairs = validPairs.filter((pair) => union(pair.a, pair.b));
-      const acceptedKeys = new Set();
-      acyclicPairs.forEach((pair) => {
-        acceptedKeys.add(pair.a);
-        acceptedKeys.add(pair.b);
-      });
-      const components = new Map();
-      parent.forEach((_, key) => {
-        if (!acceptedKeys.has(key)) return;
-        const root = find(key);
-        let keys = components.get(root);
-        if (!keys) components.set(root, (keys = []));
-        keys.push(key);
-      });
-      components.forEach((keys) => {
-        const canonical = "near:" + keys.slice().sort()[0];
-        keys.forEach((key) => {
-          seg.set(key, new Set(expandedIds.get(key) || seg.get(key) || []));
-          nearGroupByKey.set(key, canonical);
-        });
-      });
-      acyclicPairs.forEach((pair) => {
-        const group = nearGroupByKey.get(pair.a);
-        if (!group) return;
-        nearMaxByGroup.set(
-          group,
-          Math.max(nearMaxByGroup.get(group) || 0, pair.separation),
-        );
-      });
-      nearPairCount = acyclicPairs.length;
+  if (!pairs.length)
+    return { nearGroupByKey, nearMaxByGroup, nearPairCount: 0 };
+  // Expand membership only through DIRECT geometric neighbours. Do not
+  // flood train ids through an entire spatial component: A beside B and B
+  // later beside C must not make C appear on A's earlier section.
+  const expandedIds = new Map();
+  const expandedFor = (key) => {
+    let ids = expandedIds.get(key);
+    if (!ids) {
+      ids = new Set(seg.get(key) || []);
+      expandedIds.set(key, ids);
     }
-  }
+    return ids;
+  };
+  pairs.forEach((pair) => {
+    const aIds = expandedFor(pair.a);
+    const bIds = expandedFor(pair.b);
+    (seg.get(pair.b) || []).forEach((id) => aIds.add(id));
+    (seg.get(pair.a) || []).forEach((id) => bIds.add(id));
+  });
+  const expandedSig = new Map();
+  expandedIds.forEach((ids, key) =>
+    expandedSig.set(key, [...ids].sort().join("\u0000")),
+  );
+  // A shared interaction group is valid only when both physical tracks
+  // resolve to the same direct membership. This keeps a three-way station
+  // throat from transitively merging unrelated lines.
+  const validPairs = pairs.filter(
+    (pair) => expandedSig.get(pair.a) === expandedSig.get(pair.b),
+  );
+  const parent = new Map();
+  const componentTrainIds = new Map();
+  const find = (key) => {
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root);
+    let cur = key;
+    while (parent.get(cur) !== cur) {
+      const next = parent.get(cur);
+      parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  };
+  const union = (a, b) => {
+    if (!parent.has(a)) {
+      parent.set(a, a);
+      componentTrainIds.set(a, new Set(seg.get(a) || []));
+    }
+    if (!parent.has(b)) {
+      parent.set(b, b);
+      componentTrainIds.set(b, new Set(seg.get(b) || []));
+    }
+    const ar = find(a);
+    const br = find(b);
+    if (ar === br) return true;
+    const aIds = componentTrainIds.get(ar) || new Set();
+    const bIds = componentTrainIds.get(br) || new Set();
+    // The direct pair check above prevents a route overlapping itself,
+    // but a plain DSU can reintroduce that bug transitively: A↔B and B↔C
+    // would merge A with C even when A/C are two branches of one train.
+    // A physical interaction component may contain each train only once.
+    for (const id of aIds) if (bIds.has(id)) return false;
+    parent.set(br, ar);
+    bIds.forEach((id) => aIds.add(id));
+    componentTrainIds.set(ar, aIds);
+    componentTrainIds.delete(br);
+    return true;
+  };
+  const acyclicPairs = validPairs.filter((pair) => union(pair.a, pair.b));
+  const acceptedKeys = new Set();
+  acyclicPairs.forEach((pair) => {
+    acceptedKeys.add(pair.a);
+    acceptedKeys.add(pair.b);
+  });
+  const components = new Map();
+  parent.forEach((_, key) => {
+    if (!acceptedKeys.has(key)) return;
+    const root = find(key);
+    let keys = components.get(root);
+    if (!keys) components.set(root, (keys = []));
+    keys.push(key);
+  });
+  components.forEach((keys) => {
+    const canonical = "near:" + keys.slice().sort()[0];
+    keys.forEach((key) => {
+      seg.set(key, new Set(expandedIds.get(key) || seg.get(key) || []));
+      nearGroupByKey.set(key, canonical);
+    });
+  });
+  acyclicPairs.forEach((pair) => {
+    const group = nearGroupByKey.get(pair.a);
+    if (!group) return;
+    nearMaxByGroup.set(
+      group,
+      Math.max(nearMaxByGroup.get(group) || 0, pair.separation),
+    );
+  });
+  return { nearGroupByKey, nearMaxByGroup, nearPairCount: acyclicPairs.length };
+}
 
-  // Intern the sharing sets: ONE canonical Set instance per distinct train
-  // membership, so the record builder can detect run boundaries by simple
-  // identity comparison — a corridor stays a single run however many
-  // original segments long it is.
+// Intern the sharing sets: ONE canonical Set instance per distinct train
+// membership, so the record builder can detect run boundaries by simple
+// identity comparison — a corridor stays a single run however many
+// original segments long it is.
+// Mutates `seg` in place.
+function internSharedTrainIdSets(seg) {
   const canonicalIds = new Map(); // sorted-ids signature -> Set
   seg.forEach((ids, key) => {
     // Single-train segments — the overwhelming majority — are never surfaced
@@ -280,16 +289,20 @@ function buildDeckOverlapMap(items) {
     if (!canon) canonicalIds.set(idsSig, ids);
     else if (canon !== ids) seg.set(key, canon);
   });
+}
 
-  // --- canonical corridor direction ----------------------------------------
-  // Every train offsets its lane relative to the SAME reference direction, or
-  // lanes would swap sides wherever trains traverse shared track opposite
-  // ways or the bearing crosses an axis. Overlapped segments (≥2 trains) form
-  // chains; walk each connected chain once, orienting every segment away from
-  // the walk start so the direction is CONTINUOUS through every bend and
-  // station. Then flip the whole chain, if needed, so its net direction is
-  // east-dominant (or north-dominant for N-S chains): with lane normals taken
-  // right of this direction, slot 0 (earliest date) is the left/top lane.
+// --- canonical corridor direction ----------------------------------------
+// Every train offsets its lane relative to the SAME reference direction, or
+// lanes would swap sides wherever trains traverse shared track opposite
+// ways or the bearing crosses an axis. Overlapped segments (≥2 trains) form
+// chains; walk each connected chain once, orienting every segment away from
+// the walk start so the direction is CONTINUOUS through every bend and
+// station. Then flip the whole chain, if needed, so its net direction is
+// east-dominant (or north-dominant for N-S chains): with lane normals taken
+// right of this direction, slot 0 (earliest date) is the left/top lane.
+//
+// INTERMEDIATE PRODUCT: `segFrom` — segKey → the canonical FROM coordKey.
+function buildCorridorDirectionIndex(seg) {
   const adjacency = new Map(); // coordKey -> [segKey...]
   seg.forEach((ids, key) => {
     if (ids.size < 2) return;
@@ -363,6 +376,39 @@ function buildDeckOverlapMap(items) {
     if (flip)
       compSegs.forEach((sk) => segFrom.set(sk, otherEnd(sk, segFrom.get(sk))));
   });
+  return segFrom;
+}
+
+// Index every ORIGINAL route segment by the direction-independent key the
+// route dedupe uses, so shared N02 track (identical source coordinates) is
+// detected exactly — INDEPENDENT of how each feature's geometry was
+// simplified for display (per-feature simplification keeps different vertex
+// subsets, which used to fragment corridors into confetti).
+//
+// Five passes, each named for the intermediate product it yields:
+//   rank              buildDeckOverlapTrainRank        date-ordered lane slots
+//   seg/segmentGeom   indexOverlapSegmentsByKey        raw sharing + geometry
+//   near groups       collect/groupNearParallel…Pairs  parallel-track fanning
+//   (in place)        internSharedTrainIdSets          Set identity == run id
+//   segFrom           buildCorridorDirectionIndex      canonical lane normal
+function buildDeckOverlapMap(items) {
+  // Ensure the shared vertex canonicaliser is current FIRST, so the segKeys
+  // getRouteLinePairs hands back below (and to the record builder) are snapped
+  // against the shared representative set. Coincident N02 track keys identically
+  // across trains, so a shared corridor no longer fragments into single-train
+  // slivers. ensureRouteVertexSnap only rebuilds (and bumps the version) when the
+  // route geometry set changed — scope / visibility / style / ride toggles reuse
+  // the existing snap and its stamped segKeys instead of re-snapping every pass.
+  ensureRouteVertexSnap(items, OVERLAP_SNAP_METERS);
+  const rank = buildDeckOverlapTrainRank(items);
+  const { seg, segmentGeometry } = indexOverlapSegmentsByKey(items);
+  const { nearGroupByKey, nearMaxByGroup, nearPairCount } =
+    groupNearParallelSegmentPairs(
+      seg,
+      collectNearParallelSegmentPairs(seg, segmentGeometry),
+    );
+  internSharedTrainIdSets(seg);
+  const segFrom = buildCorridorDirectionIndex(seg);
 
   const orderedCache = new WeakMap(); // ids Set -> date-ordered id array
   return {
@@ -525,6 +571,438 @@ function publishDeckRouteRecordBundle({
   return bundle;
 }
 
+// INTERMEDIATE PRODUCT: one line's per-ORIGINAL-segment lane assignment —
+// the sharing-train set, this train's lane slot and the signed lane
+// multiplier (slots centered around the true track) — plus the bridged-sliver
+// flags the run's groupKey has to skip.
+function assignSegmentOverlapLanes(overlap, orig, segKeys, tid, noPick) {
+  const nSeg = orig.length - 1;
+  const segIds = new Array(nSeg);
+  const segSlot = new Array(nSeg);
+  const segMult = new Array(nSeg);
+  let lineHasOverlap = false;
+  for (let i = 0; i < nSeg; i += 1) {
+    // Off-date trains are excluded from the overlap map entirely: even
+    // where their track coincides with a same-day shared corridor they
+    // stay on the true track (no lane slot, no fan membership).
+    const ids = noPick ? null : overlap.idsForKey(segKeys[i]);
+    segIds[i] = ids;
+    if (ids) {
+      lineHasOverlap = true;
+      segSlot[i] = overlap.slotFor(ids, tid);
+      segMult[i] = segSlot[i] - (ids.size - 1) / 2;
+    } else {
+      segSlot[i] = 0;
+      segMult[i] = 0;
+    }
+  }
+  // ── bridge hair-thin overlap-key gaps ────────────────────────────────
+  // A shared corridor interrupted by a SHORT single-train sliver (segIds
+  // null) whose two neighbours carry the IDENTICAL sharing set is really
+  // one continuous corridor: the sliver only lost its key to a micro-vertex
+  // difference (see OVERLAP_BRIDGE_MAX_METERS). Re-attach it to that set so
+  // the run below stays one piece — the fan no longer collapses+reopens as
+  // the pointer slides across the sliver. Bridged segments are flagged so
+  // they are excluded from the (cross-train-identical) groupKey, whose
+  // members' keys diverge exactly here.
+  const segBridged = new Array(nSeg).fill(false);
+  if (!noPick) {
+    let i = 0;
+    while (i < nSeg) {
+      if (segIds[i] !== null) {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j < nSeg && segIds[j] === null) j += 1; // gap spans [i, j)
+      const before = i > 0 ? segIds[i - 1] : null;
+      const after = j < nSeg ? segIds[j] : null;
+      if (before && before === after) {
+        let gapM = 0;
+        for (let k = i; k < j; k += 1)
+          gapM += distanceMeters(orig[k], orig[k + 1]);
+        if (gapM <= OVERLAP_BRIDGE_MAX_METERS) {
+          const slot = overlap.slotFor(before, tid);
+          const mult = slot - (before.size - 1) / 2;
+          for (let k = i; k < j; k += 1) {
+            segIds[k] = before;
+            segSlot[k] = slot;
+            segMult[k] = mult;
+            segBridged[k] = true;
+          }
+          lineHasOverlap = true;
+        }
+      }
+      i = j;
+    }
+  }
+  return { segIds, segSlot, segMult, segBridged, lineHasOverlap };
+}
+
+// INTERMEDIATE PRODUCT: `runs` — maximal stretches of constant overlap
+// membership (Set identity — the same instance for every sharing train, so
+// run boundaries coincide exactly across all of them and so do the derived
+// groupKeys).
+function maximalOverlapRuns(segIds, nSeg) {
+  const runs = [];
+  let a = 0;
+  for (let i = 1; i < nSeg; i += 1) {
+    if (segIds[i] !== segIds[a]) {
+      runs.push({ a, b: i });
+      a = i;
+    }
+  }
+  runs.push({ a, b: nSeg }); // each run spans original vertices [a .. b]
+  return runs;
+}
+
+// INTERMEDIATE PRODUCT: the drawn vertex subset of one line — the Douglas-
+// Peucker subset plus the exact run boundaries, the original-index → drawn-
+// position map the run slicer needs, and the drawn length in metres.
+function buildDrawnVertexSubset(orig, keepIdx, runs, nSeg) {
+  const drawnIdx = mergeDrawnIndices(keepIdx, runs, nSeg, null);
+  const drawn = new Array(drawnIdx.length);
+  const posOf = new Map(); // original index -> position in drawn
+  for (let k = 0; k < drawnIdx.length; k += 1) {
+    drawn[k] = orig[drawnIdx[k]];
+    posOf.set(drawnIdx[k], k);
+  }
+  let drawnLen = 0;
+  for (let k = 1; k < drawn.length; k += 1)
+    drawnLen += distanceMeters(drawn[k - 1], drawn[k]);
+  return { drawn, posOf, drawnLen };
+}
+
+// INTERMEDIATE PRODUCT: `groupKey` — the run's interaction key, identical for
+// every train sharing it whichever way each traverses the track and however
+// each geometry was simplified.
+//
+// Smallest ORIGINAL segment key in the run — but only over segments
+// that are NATIVELY shared. A bridged sliver carries this train's
+// own key, which differs across members, so including it could hand
+// two members different groupKeys and split one fan in two. Every
+// bridged run still contains its shared flank segments, so a real
+// key is always found.
+function canonicalRunGroupKey(overlap, segKeys, segBridged, ra, rb) {
+  let groupKey = "";
+  for (let i = ra; i < rb; i += 1) {
+    if (segBridged[i]) continue;
+    const interactionKey = overlap.groupKeyForKey(segKeys[i]);
+    if (groupKey === "" || interactionKey < groupKey)
+      groupKey = interactionKey;
+  }
+  if (groupKey === "") {
+    groupKey = overlap.groupKeyForKey(segKeys[ra]);
+    for (let i = ra + 1; i < rb; i += 1) {
+      const interactionKey = overlap.groupKeyForKey(segKeys[i]);
+      if (interactionKey < groupKey) groupKey = interactionKey;
+    }
+  }
+  return groupKey;
+}
+
+// INTERMEDIATE PRODUCT: the run's shift AXIS — reference latitude plus the
+// canonically oriented chord vector the group's unit shift is taken
+// perpendicular to.
+//
+// The shift direction is the perpendicular of the CHORD joining the overlap
+// run's start and end points (a straight start-station → end-station line), so
+// the whole fan translates along ONE consistent axis no matter where
+// on the run the pointer hovers or how the track curves in between.
+// The chord is canonically oriented (lexicographic endpoint order)
+// so every sharing train derives the identical vector; sx is
+// pre-divided by cos(latRef) so the shift spans the same PIXEL
+// distance regardless of heading.
+function corridorRunShiftAxis(overlap, orig, segKeys, ra, rb) {
+  let latSum = 0;
+  for (let i = ra; i < rb; i += 1)
+    latSum += (orig[i][1] + orig[i + 1][1]) / 2;
+  const latRef = latSum / (rb - ra);
+  const coslatRef = Math.cos((latRef * Math.PI) / 180) || 1e-6;
+  // Chord endpoints in canonical (train-independent) order.
+  let pa = orig[ra];
+  let pb = orig[rb];
+  if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
+    const t = pa;
+    pa = pb;
+    pb = t;
+  }
+  let dx = (pb[0] - pa[0]) * coslatRef;
+  let dy = pb[1] - pa[1];
+  let len = Math.hypot(dx, dy);
+  if (len < 1e-9) {
+    // Degenerate chord (run starts and ends at the same station,
+    // e.g. a loop): fall back to the canonical dominant direction.
+    dx = 0;
+    dy = 0;
+    for (let i = ra; i < rb; i += 1) {
+      const d = overlap.dirForKey(segKeys[i], overlapNodeKey(orig[i]));
+      const latMid = (orig[i][1] + orig[i + 1][1]) / 2;
+      const coslat = Math.cos((latMid * Math.PI) / 180) || 1e-6;
+      dx += (orig[i + 1][0] - orig[i][0]) * coslat * d;
+      dy += (orig[i + 1][1] - orig[i][1]) * d;
+    }
+    len = Math.hypot(dx, dy) || 1;
+  }
+  return { latRef, coslatRef, dx, dy, len };
+}
+
+// A near-parallel interaction key can be encountered on more than one
+// physical run. Keep distinct geometry here; after every record has been
+// seen, rebuildGroupRepresentativeGeometry joins compatible sequential
+// fragments and recomputes the whole axis.
+function mergeRunLineIntoGroup(gi, runLine) {
+  if (!gi._lines) gi._lines = [gi._line];
+  const duplicate = gi._lines.some((other) => {
+    const same =
+      distanceMeters(other[0], runLine[0]) <= 0.05 &&
+      distanceMeters(other[other.length - 1], runLine[runLine.length - 1]) <=
+        0.05;
+    const reverse =
+      distanceMeters(other[0], runLine[runLine.length - 1]) <= 0.05 &&
+      distanceMeters(other[other.length - 1], runLine[0]) <= 0.05;
+    return same || reverse;
+  });
+  if (!duplicate) gi._lines.push(runLine);
+}
+
+// Each group's representative geometry + the snapped node keys of the curve
+// it will own. Run first in the corridor phase, because every later pass
+// reads gi._line.
+function stampCorridorRepresentativeGeometry(groupInfo) {
+  groupInfo.forEach((gi) => {
+    rebuildGroupRepresentativeGeometry(gi);
+    gi._curveEndpointNodeKeys = [
+      overlapNodeKey(gi._line[0]),
+      overlapNodeKey(gi._line[gi._line.length - 1]),
+    ];
+  });
+}
+
+// INTERMEDIATE PRODUCT: `joins` — one geometrically continuous partner per
+// run endpoint. gi._sig (the membership signature) is stamped here because
+// it is the bucket key candidates are matched within: only runs whose
+// member-train sets are identical may join.
+//
+// Matching by proximity as well as snapped identity closes feature seams;
+// greedy one-to-one pairing prevents a nearby fork from merging into the chain.
+function matchCorridorEndpointJoins(groupInfo) {
+  groupInfo.forEach((gi) => {
+    gi._sig = Object.keys(gi.mults).sort().join("|"); // membership signature
+  });
+  const endpoints = [];
+  groupInfo.forEach((gi, key) => {
+    [gi._pa, gi._pb].forEach((p, side) => {
+      const out = corridorEndpointOutward(gi, side);
+      if (out)
+        endpoints.push({
+          id: key + "::" + side,
+          key,
+          side,
+          p,
+          out,
+          sig: gi._sig,
+          nearParallel: Boolean(gi._nearParallel),
+        });
+    });
+  });
+  const cellDeg = Math.max(1e-6, OVERLAP_CORRIDOR_JOIN_METERS / 80000);
+  const buckets = new Map();
+  const candidates = [];
+  endpoints.forEach((end) => {
+    const gx = Math.floor(end.p[0] / cellDeg);
+    const gy = Math.floor(end.p[1] / cellDeg);
+    for (let dx = -2; dx <= 2; dx += 1)
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const list = buckets.get(end.sig + "::" + (gx + dx) + "," + (gy + dy));
+        if (!list) continue;
+        list.forEach((other) => {
+          const match = corridorEndpointPair(other, end);
+          if (match) candidates.push({ a: other, b: end, ...match });
+        });
+      }
+    const bk = end.sig + "::" + gx + "," + gy;
+    let list = buckets.get(bk);
+    if (!list) buckets.set(bk, (list = []));
+    list.push(end);
+  });
+  candidates.sort((a, b) => a.score - b.score);
+  return selectOneToOneEndpointPairs(candidates, 8);
+}
+
+// INTERMEDIATE PRODUCT: `comps` — the contiguous corridors, one per
+// disjoint-set component of joined runs. Each carries its member keys, its
+// mean reference latitude, and its endpoint DEGREES — so the corridor's
+// global start/end are the endpoints touched by exactly one run.
+function buildCorridorComponents(groupInfo, joins) {
+  const parent = new Map();
+  const find = (k) => {
+    let r = k;
+    while (parent.get(r) !== r) r = parent.get(r);
+    let c = k;
+    while (parent.get(c) !== c) {
+      const nx = parent.get(c);
+      parent.set(c, r);
+      c = nx;
+    }
+    return r;
+  };
+  const union = (a, b) => {
+    parent.set(find(a), find(b));
+  };
+  for (const key of groupInfo.keys()) parent.set(key, key);
+  joins.forEach((join) => {
+    union(join.a.key, join.b.key);
+  });
+  const comps = new Map(); // root → { keys, eps: Map(ck → {p, n}), latSum, n }
+  groupInfo.forEach((gi, key) => {
+    const root = find(key);
+    let c = comps.get(root);
+    if (!c)
+      comps.set(
+        root,
+        (c = { keys: [], keySet: new Set(), eps: new Map(), latSum: 0, n: 0 }),
+      );
+    c.keys.push(key);
+    c.keySet.add(key);
+    c.latSum += gi._latRef;
+    c.n += 1;
+    [gi._pa, gi._pb].forEach((p) => {
+      const ck = overlapNodeKey(p);
+      const e = c.eps.get(ck);
+      if (e) e.n += 1;
+      else c.eps.set(ck, { p, n: 1 });
+    });
+  });
+  return comps;
+}
+
+// INTERMEDIATE PRODUCT: one contiguous corridor's UNIFIED shift axis — the
+// perpendicular of the straight line joining the corridor's overall start
+// and end points, so hovering anywhere along it fans along the same axis.
+// null = keep the per-run chords (closed loop, or a degenerate chord).
+function unifiedCorridorShiftAxis(c) {
+  const ends = [];
+  c.eps.forEach((e) => {
+    if (e.n === 1) ends.push(e.p);
+  });
+  if (ends.length < 2) return null; // closed loop: keep per-run vectors
+  const coslat = Math.cos(((c.latSum / c.n) * Math.PI) / 180) || 1e-6;
+  // Farthest pair of degree-1 endpoints = corridor start / end stations
+  // (robust even if a branch gives more than two loose ends).
+  let pa = ends[0];
+  let pb = ends[1];
+  let best = -1;
+  for (let i = 0; i < ends.length; i += 1)
+    for (let j = i + 1; j < ends.length; j += 1) {
+      const ddx = (ends[j][0] - ends[i][0]) * coslat;
+      const ddy = ends[j][1] - ends[i][1];
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 > best) {
+        best = d2;
+        pa = ends[i];
+        pb = ends[j];
+      }
+    }
+  if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
+    const t = pa;
+    pa = pb;
+    pb = t;
+  }
+  const dx = (pb[0] - pa[0]) * coslat;
+  const dy = pb[1] - pa[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return null;
+  return { sx: dy / len / coslat, sy: -dx / len };
+}
+
+// INTERMEDIATE PRODUCT: `representative` — canonicalKey::tid → the index of
+// that train's first record in the corridor, which the pick bridges below
+// attach to. Rewrites every record's groupKey and shift onto the canonical
+// entry on the way.
+//
+// Collapsing all runs in one continuous corridor onto ONE interaction key is
+// the point: previously only the curve was shared, so the open fan moved the
+// current run's pick lane but left the adjacent run on the true track, and
+// crossing the run boundary produced a miss/collapse/reopen flash.
+function collapseCorridorRecordAliases(records, groupInfo, corridorAliases) {
+  const representative = new Map();
+  records.forEach((r, index) => {
+    if (r.overlapCount <= 1 || !r.groupKey) return;
+    const canonicalKey = corridorAliases.get(r.groupKey) || r.groupKey;
+    const g = groupInfo.get(canonicalKey);
+    r.groupKey = canonicalKey;
+    if (g) {
+      r.shiftX = g.sx;
+      r.shiftY = g.sy;
+    }
+    const tid = r.train && r.train.id;
+    const rk = canonicalKey + "::" + tid;
+    if (!representative.has(rk)) representative.set(rk, index);
+  });
+  return representative;
+}
+
+// Short invisible pick paths across each corridor join, so sliding the
+// pointer over a run boundary inside one fan never loses the hit.
+function attachCorridorPickBridges(
+  groupInfo,
+  corridorMasters,
+  representative,
+  spacingPx,
+) {
+  corridorMasters.forEach((canonicalKey) => {
+    const g = groupInfo.get(canonicalKey);
+    g.pickBridges = [];
+    (g._corridorJoins || []).forEach((join) => {
+      Object.keys(g.mults).forEach((tid) => {
+        const index = representative.get(canonicalKey + "::" + tid);
+        if (index === undefined) return;
+        g.pickBridges.push({
+          path: [join.a.p, join.b.p],
+          tid,
+          idx: index,
+          laneMult: g.mults[tid],
+          pickWidth: Math.max(spacingPx, 8),
+        });
+      });
+    });
+  });
+}
+
+// Only canonical entries remain addressable by railmap.js.
+function dropAliasedGroupEntries(groupInfo, corridorAliases) {
+  [...groupInfo.keys()].forEach((key) => {
+    const canonicalKey = corridorAliases.get(key);
+    if (canonicalKey && canonicalKey !== key) groupInfo.delete(key);
+  });
+}
+
+// INTERMEDIATE PRODUCT: `joinGroups` — the minimal groupInfo mirror the
+// worker needs to replay smoothCurveStationJoins on its side.
+function corridorStationJoinGroups(groupInfo) {
+  const joinGroups = [];
+  groupInfo.forEach((gi, groupKey) => {
+    joinGroups.push({
+      groupKey,
+      trainIds: Object.keys(gi.mults || {}),
+      endpointNodeKeys: (gi._curveEndpointNodeKeys || []).slice(),
+    });
+  });
+  return joinGroups;
+}
+
+// Three phases, each named for the intermediate product it yields:
+//
+//   §1 per line   assignSegmentOverlapLanes → maximalOverlapRuns →
+//                 buildDrawnVertexSubset, then one base+pick record per run
+//                 (canonicalRunGroupKey / corridorRunShiftAxis per group)
+//   §2 corridor   stampCorridorRepresentativeGeometry →
+//                 matchCorridorEndpointJoins → buildCorridorComponents →
+//                 per component: curve + unifiedCorridorShiftAxis, then
+//                 collapseCorridorRecordAliases → attachCorridorPickBridges →
+//                 dropAliasedGroupEntries
+//   §3 publish    assignDeckRouteSortKeys → publishDeckRouteRecordBundle
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx();
@@ -575,91 +1053,16 @@ function buildDeckRouteRecords(items) {
     getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
       if (!orig || orig.length < 2) return;
       const nSeg = orig.length - 1;
-      // Per ORIGINAL segment: sharing-train set, this train's lane slot and
-      // the signed lane multiplier (slots centered around the true track).
-      const segIds = new Array(nSeg);
-      const segSlot = new Array(nSeg);
-      const segMult = new Array(nSeg);
-      let lineHasOverlap = false;
-      for (let i = 0; i < nSeg; i += 1) {
-        // Off-date trains are excluded from the overlap map entirely: even
-        // where their track coincides with a same-day shared corridor they
-        // stay on the true track (no lane slot, no fan membership).
-        const ids = noPick ? null : overlap.idsForKey(segKeys[i]);
-        segIds[i] = ids;
-        if (ids) {
-          lineHasOverlap = true;
-          segSlot[i] = overlap.slotFor(ids, tid);
-          segMult[i] = segSlot[i] - (ids.size - 1) / 2;
-        } else {
-          segSlot[i] = 0;
-          segMult[i] = 0;
-        }
-      }
-      // ── bridge hair-thin overlap-key gaps ────────────────────────────────
-      // A shared corridor interrupted by a SHORT single-train sliver (segIds
-      // null) whose two neighbours carry the IDENTICAL sharing set is really
-      // one continuous corridor: the sliver only lost its key to a micro-vertex
-      // difference (see OVERLAP_BRIDGE_MAX_METERS). Re-attach it to that set so
-      // the run below stays one piece — the fan no longer collapses+reopens as
-      // the pointer slides across the sliver. Bridged segments are flagged so
-      // they are excluded from the (cross-train-identical) groupKey, whose
-      // members' keys diverge exactly here.
-      const segBridged = new Array(nSeg).fill(false);
-      if (!noPick) {
-        let i = 0;
-        while (i < nSeg) {
-          if (segIds[i] !== null) {
-            i += 1;
-            continue;
-          }
-          let j = i;
-          while (j < nSeg && segIds[j] === null) j += 1; // gap spans [i, j)
-          const before = i > 0 ? segIds[i - 1] : null;
-          const after = j < nSeg ? segIds[j] : null;
-          if (before && before === after) {
-            let gapM = 0;
-            for (let k = i; k < j; k += 1)
-              gapM += distanceMeters(orig[k], orig[k + 1]);
-            if (gapM <= OVERLAP_BRIDGE_MAX_METERS) {
-              const slot = overlap.slotFor(before, tid);
-              const mult = slot - (before.size - 1) / 2;
-              for (let k = i; k < j; k += 1) {
-                segIds[k] = before;
-                segSlot[k] = slot;
-                segMult[k] = mult;
-                segBridged[k] = true;
-              }
-              lineHasOverlap = true;
-            }
-          }
-          i = j;
-        }
-      }
+      const { segIds, segSlot, segMult, segBridged, lineHasOverlap } =
+        assignSegmentOverlapLanes(overlap, orig, segKeys, tid, noPick);
       if (lineHasOverlap) _deckHasOverlaps = true;
-      // Maximal runs of constant overlap membership (Set identity — the same
-      // instance for every sharing train, so run boundaries coincide exactly
-      // across all of them and so do the derived groupKeys).
-      const runs = [];
-      let a = 0;
-      for (let i = 1; i < nSeg; i += 1) {
-        if (segIds[i] !== segIds[a]) {
-          runs.push({ a, b: i });
-          a = i;
-        }
-      }
-      runs.push({ a, b: nSeg }); // each run spans original vertices [a .. b]
-      // Drawn vertices: the simplified subset plus the exact run boundaries.
-      const drawnIdx = mergeDrawnIndices(keepIdx, runs, nSeg, null);
-      const drawn = new Array(drawnIdx.length);
-      const posOf = new Map(); // original index -> position in drawn
-      for (let k = 0; k < drawnIdx.length; k += 1) {
-        drawn[k] = orig[drawnIdx[k]];
-        posOf.set(drawnIdx[k], k);
-      }
-      let drawnLen = 0;
-      for (let k = 1; k < drawn.length; k += 1)
-        drawnLen += distanceMeters(drawn[k - 1], drawn[k]);
+      const runs = maximalOverlapRuns(segIds, nSeg);
+      const { drawn, posOf, drawnLen } = buildDrawnVertexSubset(
+        orig,
+        keepIdx,
+        runs,
+        nSeg,
+      );
       drawnLenByTid.set(tid, (drawnLenByTid.get(tid) || 0) + drawnLen);
 
       // ── base + pick records, one per run ──
@@ -680,70 +1083,22 @@ function buildDeckRouteRecords(items) {
         const n = ids ? ids.size : 1;
         const mult = segMult[ra];
         let groupKey = "";
-        if (n > 1) {
-          // Smallest ORIGINAL segment key in the run — but only over segments
-          // that are NATIVELY shared. A bridged sliver carries this train's
-          // own key, which differs across members, so including it could hand
-          // two members different groupKeys and split one fan in two. Every
-          // bridged run still contains its shared flank segments, so a real
-          // key is always found.
-          for (let i = ra; i < rb; i += 1) {
-            if (segBridged[i]) continue;
-            const interactionKey = overlap.groupKeyForKey(segKeys[i]);
-            if (groupKey === "" || interactionKey < groupKey)
-              groupKey = interactionKey;
-          }
-          if (groupKey === "") {
-            groupKey = overlap.groupKeyForKey(segKeys[ra]);
-            for (let i = ra + 1; i < rb; i += 1) {
-              const interactionKey = overlap.groupKeyForKey(segKeys[i]);
-              if (interactionKey < groupKey) groupKey = interactionKey;
-            }
-          }
-        }
-        // One shift vector + lane multipliers per GROUP. The shift direction
-        // is the perpendicular of the CHORD joining the overlap run's start
-        // and end points (a straight start-station → end-station line), so
-        // the whole fan translates along ONE consistent axis no matter where
-        // on the run the pointer hovers or how the track curves in between.
-        // The chord is canonically oriented (lexicographic endpoint order)
-        // so every sharing train derives the identical vector; sx is
-        // pre-divided by cos(latRef) so the shift spans the same PIXEL
-        // distance regardless of heading.
+        if (n > 1)
+          groupKey = canonicalRunGroupKey(overlap, segKeys, segBridged, ra, rb);
+        // One shift vector + lane multipliers per GROUP: the whole fan
+        // translates along ONE consistent axis no matter where on the run the
+        // pointer hovers or how the track curves in between.
         let gi = null;
         if (n > 1) {
           gi = groupInfo.get(groupKey);
           if (!gi) {
-            let latSum = 0;
-            for (let i = ra; i < rb; i += 1)
-              latSum += (orig[i][1] + orig[i + 1][1]) / 2;
-            const latRef = latSum / (rb - ra);
-            const coslatRef = Math.cos((latRef * Math.PI) / 180) || 1e-6;
-            // Chord endpoints in canonical (train-independent) order.
-            let pa = orig[ra];
-            let pb = orig[rb];
-            if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
-              const t = pa;
-              pa = pb;
-              pb = t;
-            }
-            let dx = (pb[0] - pa[0]) * coslatRef;
-            let dy = pb[1] - pa[1];
-            let len = Math.hypot(dx, dy);
-            if (len < 1e-9) {
-              // Degenerate chord (run starts and ends at the same station,
-              // e.g. a loop): fall back to the canonical dominant direction.
-              dx = 0;
-              dy = 0;
-              for (let i = ra; i < rb; i += 1) {
-                const d = overlap.dirForKey(segKeys[i], overlapNodeKey(orig[i]));
-                const latMid = (orig[i][1] + orig[i + 1][1]) / 2;
-                const coslat = Math.cos((latMid * Math.PI) / 180) || 1e-6;
-                dx += (orig[i + 1][0] - orig[i][0]) * coslat * d;
-                dy += (orig[i + 1][1] - orig[i][1]) * d;
-              }
-              len = Math.hypot(dx, dy) || 1;
-            }
+            const { latRef, coslatRef, dx, dy, len } = corridorRunShiftAxis(
+              overlap,
+              orig,
+              segKeys,
+              ra,
+              rb,
+            );
             const mults = {};
             ids.forEach((id) => {
               mults[id] = overlap.slotFor(ids, id) - (ids.size - 1) / 2;
@@ -763,24 +1118,7 @@ function buildDeckRouteRecords(items) {
               _nearParallel: overlap.nearGroupInfo(groupKey),
             };
             groupInfo.set(groupKey, gi);
-          } else {
-            // A near-parallel interaction key can be encountered on more than
-            // one physical run. Keep distinct geometry here; after every
-            // record has been seen, rebuildGroupRepresentativeGeometry joins
-            // compatible sequential fragments and recomputes the whole axis.
-            if (!gi._lines) gi._lines = [gi._line];
-            const duplicate = gi._lines.some((other) => {
-              const same =
-                distanceMeters(other[0], runLine[0]) <= 0.05 &&
-                distanceMeters(other[other.length - 1], runLine[runLine.length - 1]) <=
-                  0.05;
-              const reverse =
-                distanceMeters(other[0], runLine[runLine.length - 1]) <= 0.05 &&
-                distanceMeters(other[other.length - 1], runLine[0]) <= 0.05;
-              return same || reverse;
-            });
-            if (!duplicate) gi._lines.push(runLine);
-          }
+          } else mergeRunLineIntoGroup(gi, runLine);
         }
         // The run is cut once more, where the railway under it changes lane.
         //
@@ -848,98 +1186,9 @@ function buildDeckRouteRecords(items) {
     const queueFitJob = (key, line, nearParallel) => {
       fitJobs.push({ key, line, nearParallel: Boolean(nearParallel) });
     };
-    groupInfo.forEach((gi) => {
-      rebuildGroupRepresentativeGeometry(gi);
-      gi._curveEndpointNodeKeys = [
-        overlapNodeKey(gi._line[0]),
-        overlapNodeKey(gi._line[gi._line.length - 1]),
-      ];
-    });
-    const parent = new Map();
-    const find = (k) => {
-      let r = k;
-      while (parent.get(r) !== r) r = parent.get(r);
-      let c = k;
-      while (parent.get(c) !== c) {
-        const nx = parent.get(c);
-        parent.set(c, r);
-        c = nx;
-      }
-      return r;
-    };
-    const union = (a, b) => {
-      parent.set(find(a), find(b));
-    };
-    groupInfo.forEach((gi, key) => {
-      parent.set(key, key);
-      gi._sig = Object.keys(gi.mults).sort().join("|"); // membership signature
-    });
-    // Select one geometrically continuous partner per run endpoint.  Matching
-    // by proximity as well as snapped identity closes feature seams; greedy
-    // one-to-one pairing prevents a nearby fork from merging into the chain.
-    const endpoints = [];
-    groupInfo.forEach((gi, key) => {
-      [gi._pa, gi._pb].forEach((p, side) => {
-        const out = corridorEndpointOutward(gi, side);
-        if (out)
-          endpoints.push({
-            id: key + "::" + side,
-            key,
-            side,
-            p,
-            out,
-            sig: gi._sig,
-            nearParallel: Boolean(gi._nearParallel),
-          });
-      });
-    });
-    const cellDeg = Math.max(1e-6, OVERLAP_CORRIDOR_JOIN_METERS / 80000);
-    const buckets = new Map();
-    const candidates = [];
-    endpoints.forEach((end) => {
-      const gx = Math.floor(end.p[0] / cellDeg);
-      const gy = Math.floor(end.p[1] / cellDeg);
-      for (let dx = -2; dx <= 2; dx += 1)
-        for (let dy = -1; dy <= 1; dy += 1) {
-          const list = buckets.get(end.sig + "::" + (gx + dx) + "," + (gy + dy));
-          if (!list) continue;
-          list.forEach((other) => {
-            const match = corridorEndpointPair(other, end);
-            if (match) candidates.push({ a: other, b: end, ...match });
-          });
-        }
-      const bk = end.sig + "::" + gx + "," + gy;
-      let list = buckets.get(bk);
-      if (!list) buckets.set(bk, (list = []));
-      list.push(end);
-    });
-    candidates.sort((a, b) => a.score - b.score);
-    const joins = selectOneToOneEndpointPairs(candidates, 8);
-    joins.forEach((join) => {
-      union(join.a.key, join.b.key);
-    });
-    // Per component: endpoint degrees, so the corridor's global start/end
-    // are the endpoints touched by exactly one run.
-    const comps = new Map(); // root → { keys, eps: Map(ck → {p, n}), latSum, n }
-    groupInfo.forEach((gi, key) => {
-      const root = find(key);
-      let c = comps.get(root);
-      if (!c)
-        comps.set(
-          root,
-          (c = { keys: [], keySet: new Set(), eps: new Map(), latSum: 0, n: 0 }),
-        );
-      c.keys.push(key);
-      c.keySet.add(key);
-      c.latSum += gi._latRef;
-      c.n += 1;
-      [gi._pa, gi._pb].forEach((p) => {
-        const ck = overlapNodeKey(p);
-        const e = c.eps.get(ck);
-        if (e) e.n += 1;
-        else c.eps.set(ck, { p, n: 1 });
-      });
-    });
+    stampCorridorRepresentativeGeometry(groupInfo);
+    const joins = matchCorridorEndpointJoins(groupInfo);
+    const comps = buildCorridorComponents(groupInfo, joins);
     const corridorAliases = new Map();
     const corridorMasters = new Set();
     comps.forEach((c) => {
@@ -1034,101 +1283,37 @@ function buildDeckRouteRecords(items) {
       else if (deferFit && chain)
         queueFitJob(canonicalKey, chain, nearInfos.length > 0);
       if (c.keys.length < 2) return; // lone run keeps its own chord
-      const ends = [];
-      c.eps.forEach((e) => {
-        if (e.n === 1) ends.push(e.p);
-      });
-      if (ends.length < 2) return; // closed loop: keep per-run vectors
-      const coslat = Math.cos(((c.latSum / c.n) * Math.PI) / 180) || 1e-6;
-      // Farthest pair of degree-1 endpoints = corridor start / end stations
-      // (robust even if a branch gives more than two loose ends).
-      let pa = ends[0];
-      let pb = ends[1];
-      let best = -1;
-      for (let i = 0; i < ends.length; i += 1)
-        for (let j = i + 1; j < ends.length; j += 1) {
-          const ddx = (ends[j][0] - ends[i][0]) * coslat;
-          const ddy = ends[j][1] - ends[i][1];
-          const d2 = ddx * ddx + ddy * ddy;
-          if (d2 > best) {
-            best = d2;
-            pa = ends[i];
-            pb = ends[j];
-          }
-        }
-      if (pb[0] < pa[0] || (pb[0] === pa[0] && pb[1] < pa[1])) {
-        const t = pa;
-        pa = pb;
-        pb = t;
-      }
-      const dx = (pb[0] - pa[0]) * coslat;
-      const dy = pb[1] - pa[1];
-      const len = Math.hypot(dx, dy);
-      if (len < 1e-9) return;
-      const sx = dy / len / coslat;
-      const sy = -dx / len;
+      const axis = unifiedCorridorShiftAxis(c);
+      if (!axis) return;
       c.keys.forEach((k) => {
         const g = groupInfo.get(k);
-        g.sx = sx;
-        g.sy = sy;
+        g.sx = axis.sx;
+        g.sy = axis.sy;
       });
     });
-    // Collapse all runs in one continuous corridor onto ONE interaction key.
-    // Previously only the curve was shared: the open fan moved the current
-    // run's pick lane but left the adjacent run on the true track, so crossing
-    // the run boundary produced a miss/collapse/reopen flash.
-    const representative = new Map();
-    records.forEach((r, index) => {
-      if (r.overlapCount <= 1 || !r.groupKey) return;
-      const canonicalKey = corridorAliases.get(r.groupKey) || r.groupKey;
-      const g = groupInfo.get(canonicalKey);
-      r.groupKey = canonicalKey;
-      if (g) {
-        r.shiftX = g.sx;
-        r.shiftY = g.sy;
-      }
-      const tid = r.train && r.train.id;
-      const rk = canonicalKey + "::" + tid;
-      if (!representative.has(rk)) representative.set(rk, index);
-    });
-    corridorMasters.forEach((canonicalKey) => {
-      const g = groupInfo.get(canonicalKey);
-      g.pickBridges = [];
-      (g._corridorJoins || []).forEach((join) => {
-        Object.keys(g.mults).forEach((tid) => {
-          const index = representative.get(canonicalKey + "::" + tid);
-          if (index === undefined) return;
-          g.pickBridges.push({
-            path: [join.a.p, join.b.p],
-            tid,
-            idx: index,
-            laneMult: g.mults[tid],
-            pickWidth: Math.max(spacingPx, 8),
-          });
-        });
-      });
-    });
-    // Only canonical entries remain addressable by railmap.js.
-    [...groupInfo.keys()].forEach((key) => {
-      const canonicalKey = corridorAliases.get(key);
-      if (canonicalKey && canonicalKey !== key) groupInfo.delete(key);
-    });
+    const representative = collapseCorridorRecordAliases(
+      records,
+      groupInfo,
+      corridorAliases,
+    );
+    attachCorridorPickBridges(
+      groupInfo,
+      corridorMasters,
+      representative,
+      spacingPx,
+    );
+    dropAliasedGroupEntries(groupInfo, corridorAliases);
     // Membership changes at stations create separate corridor curves. Round
     // their shared endpoints only after aliases collapse, so each physical
     // curve is edited once and both sides receive the exact same tangent.
     // Deferred mode ships that pass to the worker together with the solve
     // jobs (runFitCurveJobs replays it on a minimal groupInfo mirror).
-    if (deferFit) {
-      const joinGroups = [];
-      groupInfo.forEach((gi, groupKey) => {
-        joinGroups.push({
-          groupKey,
-          trainIds: Object.keys(gi.mults || {}),
-          endpointNodeKeys: (gi._curveEndpointNodeKeys || []).slice(),
-        });
-      });
-      pendingDeferredFit = { jobs: fitJobs, joinGroups };
-    } else smoothCurveStationJoins(groupInfo);
+    if (deferFit)
+      pendingDeferredFit = {
+        jobs: fitJobs,
+        joinGroups: corridorStationJoinGroups(groupInfo),
+      };
+    else smoothCurveStationJoins(groupInfo);
   }
 
   // ── static painter's order (line-sort-key, higher = on top) ──

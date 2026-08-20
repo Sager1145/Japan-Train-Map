@@ -10,6 +10,34 @@
 //  §16.  Progressive load / import engine (one train at a time, time-budgeted)
 // =========================================================================
 
+// -------------------------------------------------------------------------
+// Import-finished seam.
+//
+// A progressive import OWNS trainStore while it streams trains in, so work
+// that arrives mid-flight is deferred and replayed once the store is whole
+// again. Today the only such work is the SSE live reload, and this engine
+// used to call app-live-refresh.js's drain directly — the entire reason the
+// two modules depended on each other in both directions.
+//
+// The engine has no business knowing who is waiting: it announces the
+// transition and the interested module registers itself, exactly as
+// app-import-controller.js registers the persistence-state listener. With no
+// listener installed — the precompute exporter's Node vm, a static deploy
+// with no SSE stream — announcing is a silent no-op, which is what the
+// unconditional drain call already amounted to there.
+// -------------------------------------------------------------------------
+let importFinishedListener = null;
+
+function setImportFinishedListener(listener) {
+  importFinishedListener = typeof listener === "function" ? listener : null;
+}
+
+// Announce that `importInProgress` has just gone false and the store is
+// consistent again. Must be called from EVERY such site.
+function notifyImportFinished() {
+  if (importFinishedListener) importFinishedListener();
+}
+
 // Clear the in-memory store and selection before a full progressive reload.
 // Shared by the two "replace" import paths so the reset has one definition.
 function resetTrainStoreForProgressiveLoad() {
@@ -229,7 +257,7 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
     importInProgress = false;
     // If a server-side store change arrived mid-import, reconcile it now
     // instead of dropping it (bug: deferred live reloads were never retried).
-    drainPendingLiveReload();
+    notifyImportFinished();
   }
 }
 
@@ -309,7 +337,76 @@ async function replaceTrainStoreFromStoreProgressive(
     importInProgress = false;
     // If a server-side store change arrived mid-import, reconcile it now
     // instead of dropping it (bug: deferred live reloads were never retried).
-    drainPendingLiveReload();
+    notifyImportFinished();
+  }
+}
+
+// Append mode: the third progressive entry point, next to the two "replace"
+// paths above. It lived in app-store-ops.js for historical reasons, which
+// made the canonical-shape module reach into the import engine, the
+// persistence layer and the live-refresh listener to run one import.
+async function importCanonicalStoreAppendProgressive(json, onProgress) {
+  if (importInProgress) {
+    console.warn(
+      "A progressive load/import is already running; ignoring concurrent import.",
+    );
+    return { count: 0, ids: [] };
+  }
+  importInProgress = true;
+  try {
+    const importedStore = parseImportedCanonicalStore(json);
+
+    if (!importedStore.trains.length) {
+      throw new Error("Imported store contains no trains.");
+    }
+
+    if (onProgress) {
+      onProgress({
+        count: 0,
+        total: importedStore.trains.length,
+        id: I18N.t("prog.preparingId"),
+      });
+    }
+
+    // Append mode: unlike the "replace" paths this does NOT reset the store.
+    // Undated trains fall back to the currently-selected date (spec 3.1);
+    // trains carrying their own `date` keep it (spec 3.2), and when "全部"
+    // is active the date is inferred from the id instead.
+    const wasRecovery = storeRecoveryMode;
+    // Roll back on failure: appendImportedTrain pushes each valid train
+    // before an invalid one throws, and without this the half-appended
+    // prefix stayed in the store (and the next edit autosaved it).
+    const baselineCount = trainStore.trains.length;
+    let appendedIds;
+    try {
+      appendedIds = await runProgressiveAppend(importedStore.trains, {
+        persistEachStep: true,
+        onProgress,
+        fallbackDate: currentImportFallbackDate(),
+      });
+    } catch (error) {
+      if (trainStore.trains.length > baselineCount)
+        trainStore.trains.length = baselineCount;
+      renderAll();
+      throw error;
+    }
+    if (wasRecovery) {
+      // The user explicitly imported data over the recovery view and every
+      // train loaded. Resume saving — and re-issue the persist that the
+      // recovery guard swallowed during the append above.
+      exitStoreRecoveryMode();
+      saveTrainStore();
+    }
+
+    return {
+      count: appendedIds.length,
+      ids: appendedIds,
+    };
+  } finally {
+    importInProgress = false;
+    // If a server-side store change arrived mid-import, reconcile it now
+    // instead of dropping it (bug: deferred live reloads were never retried).
+    notifyImportFinished();
   }
 }
 
@@ -355,7 +452,7 @@ function makeManifestLoader(api, { attachPartsApi = false } = {}) {
           )
             return null;
           return attachPartsApi ? { ...manifest, parts_api: api } : manifest;
-        } catch (err) {
+        } catch {
           // No dataset published (or unreachable).
           return null;
         }
@@ -426,7 +523,7 @@ function makeTrainPartsSource(manifest) {
         const partPath = `${partsApi}/${names[index]}`;
         try {
           return await fetchJson(partPath, { cache: "no-cache" });
-        } catch (err) {
+        } catch {
           try {
             return await fetchJson(partPath, { cache: "no-cache" }); // one retry for transient failures
           } catch (retryErr) {
@@ -515,7 +612,7 @@ async function replaceTrainStoreFromPartsProgressive(
     return { count: appendedIds.length, ids: appendedIds };
   } finally {
     importInProgress = false;
-    drainPendingLiveReload();
+    notifyImportFinished();
   }
 }
 

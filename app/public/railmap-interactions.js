@@ -15,7 +15,6 @@
   const {
     STATIONS_LAYER,
     TRAIN_PICK_LAYER,
-    TRAIN_PICK_FAN_LAYER,
     TRAIN_PASS_LAYER,
     TRAIN_STOPS_LAYER,
     TRAIN_XDAY_STOP_LAYER,
@@ -30,10 +29,26 @@
 
   Object.assign(global.RailMap, {
     // ── interactions: route/marker click + hover, station hover popup ──
+    //
+    // A DECLARATIVE LISTENER LIST plus the two closures those listeners share.
+    // It is long because the pick resolver and the hover hysteresis genuinely
+    // need one another's state (pads, sticky sets, the fan's hold anchors);
+    // hoisting them out would mean threading a dozen `self._*` fields through
+    // parameter lists instead of reading them where they are used. The
+    // §-banners below are its table of contents:
+    //
+    //   §1 zoom listener: refresh the hover-region debug overlay
+    //   §2 pointer-capability pads and the screen-space pick geometry
+    //   §3 queryAt — the single pick resolver (markers vs route lanes, sticky)
+    //   §4 currentStickyTids — the sticky set of the CURRENT hover state
+    //   §5 click listener — select with the same priority the hover shows
+    //   §6 processHover — the rAF-coalesced hover hysteresis state machine
+    //   §7 mousemove / mouseleave listeners
     _wireInteractions() {
       const map = this._map;
       const self = this;
 
+      // ── §1 zoom listener: refresh the hover-region debug overlay ──
       // The hover-region debug geometry is source-backed and therefore still
       // follows zoom. Fan lanes themselves use pixel-valued line-translate,
       // so MapLibre keeps their spacing constant without any zoom-time work.
@@ -42,6 +57,7 @@
           self._pushHoverRegions(self._hoverDebugState);
       });
 
+      // ── §2 pointer-capability pads and the screen-space pick geometry ──
       // preferLanes (hover only): while a fan is expanded, the fanned trains'
       // own station dots must not steal the pointer from the lanes — sliding
       // along the fan would flicker hover/tooltip at every station. Clicks
@@ -130,6 +146,9 @@
         return false;
       };
 
+      // ── §3 queryAt — the single pick resolver ──
+      // Resolution order: sticky geometry wins outright; otherwise a marker
+      // beats a route unless an open fan owns that marker's train.
       function queryAt(point, preferLanes, stickyTids) {
         const sticky = stickyTids && stickyTids.length ? stickyTids : null;
         const markerLayers = [
@@ -280,6 +299,7 @@
         return markerHit;
       }
 
+      // ── §4 currentStickyTids ──
       // The sticky set for the CURRENT hover state: the open fan's members,
       // else the single hovered train.
       function currentStickyTids() {
@@ -289,6 +309,7 @@
         return null;
       }
 
+      // ── §5 click listener ──
       map.on("click", (e) => {
         // Clicks resolve with the same sticky priority the hover shows: at a
         // crossing you select the line you are hovering, never the one
@@ -351,6 +372,7 @@
         }
       });
 
+      // ── §6 processHover — the hover hysteresis state machine ──
       // Coalesce hover work to one pass per animation frame. mousemove can
       // fire at 120+ Hz on high-refresh pointing devices while each pass costs
       // rendered-feature queries + tooltip DOM writes — frame-scale
@@ -521,6 +543,7 @@
         self._showTooltip(hit, point);
         self._maybeStationPopup(hit ? null : point);
       };
+      // ── §7 mousemove / mouseleave listeners ──
       map.on("mousemove", (e) => {
         self._pendingHoverPoint = e.point;
         if (self._hoverRafId === null || self._hoverRafId === undefined)

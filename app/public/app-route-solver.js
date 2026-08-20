@@ -1347,6 +1347,15 @@ function graphGridKey(coord, cellSize) {
   return `${Math.floor(lon / cellSize)},${Math.floor(lat / cellSize)}`;
 }
 
+// Canonical great-circle distance for the solver family, and the bare global
+// that app-overlap-lanes.js / app-deck-records.js / app-route-graph.js resolve
+// to through the shared classic-script scope.
+//
+// Two deliberate mirrors of this exact body exist where that scope does not
+// reach: app-fit-worker.js (a Worker) and test/fit-curve-invariants.test.js
+// (a vm harness). test/distance-meters-parity.test.js fails if any of the
+// three drifts. rail-network.js's same-named function is a DIFFERENT,
+// equirectangular algorithm (~0.1125% longer) and is not part of this set.
 function distanceMeters(a, b) {
   const lon1 = Number(a[0]);
   const lat1 = Number(a[1]);

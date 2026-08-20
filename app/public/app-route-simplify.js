@@ -39,7 +39,7 @@ const OVERLAP_BRIDGE_MAX_METERS = (function () {
   try {
     const m = /[?&]bridge=(\d+(?:\.\d+)?)/.exec(location.search);
     if (m) return Number(m[1]);
-  } catch (e) {
+  } catch {
     /* no location — use default */
   }
   return 140;
@@ -54,7 +54,7 @@ const OVERLAP_CORRIDOR_JOIN_METERS = (function () {
   try {
     const m = /[?&]join=(\d+(?:\.\d+)?)/.exec(location.search);
     if (m) return Number(m[1]);
-  } catch (e) {
+  } catch {
     /* no location — use default */
   }
   return 120;
@@ -128,7 +128,7 @@ const OVERLAP_SNAP_METERS = (function () {
   try {
     const m = /[?&]snap=(\d+(?:\.\d+)?)/.exec(location.search);
     if (m) return Number(m[1]);
-  } catch (e) {
+  } catch {
     /* no location — use default */
   }
   return 2.5;
@@ -144,7 +144,7 @@ const OVERLAP_NEAR_PARALLEL_METERS = (function () {
   try {
     const m = /[?&]nearoverlap=(\d+(?:\.\d+)?)/.exec(location.search);
     if (m) return Number(m[1]);
-  } catch (e) {
+  } catch {
     /* no location — use default */
   }
   return 120;

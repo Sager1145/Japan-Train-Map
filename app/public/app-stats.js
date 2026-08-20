@@ -425,7 +425,7 @@ function collectTrainStatsEntry(train, idx) {
   let features = [];
   try {
     features = getMatchedRouteFeatures(train) || [];
-  } catch (err) {
+  } catch {
     features = []; // a single unsolvable train must not sink the whole panel
   }
   for (const f of features) {

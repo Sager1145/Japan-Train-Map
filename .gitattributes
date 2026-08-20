@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Supplied artwork is stored exactly as supplied. A pictogram is pinned by its
+# sha256 in test/railmap-popup-japan.test.js, and LF normalisation changes that
+# hash without changing the drawing — so the test passes where the file was
+# downloaded and fails everywhere else.
+*.svg -text

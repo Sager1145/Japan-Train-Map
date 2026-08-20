@@ -13,8 +13,17 @@
 // snapshot; app-overlap-lanes.js reads it as a free variable.
 var APPLIED_FIT_CURVE_SETTINGS = {};
 
-// Exact copy of app-route-solver.js's distanceMeters — importing that whole
-// file would drag in the route-graph machinery this worker never runs.
+// Exact copy of app-route-solver.js's distanceMeters. A Worker has its own
+// global scope, so the classic-script family's bare binding does not reach
+// here, and importScripts("app-route-solver.js") would drag in the whole
+// route-graph machinery this worker never runs. Copying the one leaf function
+// is the cheaper trade — the duplication is deliberate, not an oversight.
+//
+// The copy is kept honest by test/distance-meters-parity.test.js, which
+// compares this body against app-route-solver.js's character for character.
+// If you edit either, edit both. Do NOT swap in rail-network.js's same-named
+// equirectangular version: it reads ~0.1125% longer and would desynchronise
+// the worker from the synchronous fallback path.
 function distanceMeters(a, b) {
   const lon1 = Number(a[0]);
   const lat1 = Number(a[1]);

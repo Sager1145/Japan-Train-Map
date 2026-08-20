@@ -82,6 +82,10 @@
     );
   }
 
+  // Flat local projection at a given latitude: 111320 m per degree, with the
+  // longitude axis shrunk by cos(latitude). `distanceMeters` and `turnDegrees`
+  // below MUST share it — an angle measured on unprojected lon/lat degrees is
+  // wrong by the aspect ratio (at 35.56°N that once misreported a 9.3° bend).
   function localMetric(point, latitude) {
     const radians = (latitude * Math.PI) / 180;
     return [
@@ -90,6 +94,18 @@
     ];
   }
 
+  // NOT the same function as the route solver's `distanceMeters`, despite the
+  // name: this is the equirectangular one built on localMetric above, and it
+  // reads ~0.1125% LONGER everywhere (111320 vs the haversine's implied
+  // 111194.93 m/degree — measured constant across 240 lon/lat pairs spanning
+  // Sapporo→Kaohsiung and 1e-7°→2°). Both already apply the cos(latitude)
+  // correction, so the gap is purely the metres-per-degree constant.
+  //
+  // Do not "deduplicate" the two. Every threshold in this file (station
+  // touch, anchor seam, service joint) and every line length feeding the
+  // minzoom decision was tuned against these numbers, and the corresponding
+  // swap in test/fit-curve-invariants.test.js is on record as having quietly
+  // broken that harness's "mirrors the worker" guarantee.
   function distanceMeters(left, right) {
     const latitude = (left[1] + right[1]) / 2;
     const a = localMetric(left, latitude);

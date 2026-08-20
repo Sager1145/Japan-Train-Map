@@ -179,9 +179,8 @@ function renderTrainLayers() {
 //   - the pass-through LOD lives in the pass layers' `minzoom` (set from
 //     PASSTHROUGH_MIN_ZOOM), so crossing the threshold re-renders nothing —
 //     MapLibre just starts/stops drawing the already-uploaded circles.
-let _markerRecordsCacheBySig = new Map(); // recordSig → marker records
-let _routeItemsCacheBySig = new Map(); // recordSig → route items
-let _lastPushedMarkerRecords = null;
+// (The cache itself lives with the other signature-keyed deck caches in
+// app-overlap-lanes.js, next to the invalidators that clear it.)
 function renderTrainMarkers() {
   updateEndpointLabels();
   if (window.RailMap && map) {
@@ -268,7 +267,7 @@ function buildRouteItems(orderedTrains) {
 // train set / styling actually changes (via renderTrainLayers), never on a
 // pan or zoom. clearLayers() first so any segments added incrementally by
 // appendTrainToLayers during a progressive import are not double-counted.
-let _lastPushedBuilt = null;
+// (_lastPushedBuilt lives with the deck caches in app-overlap-lanes.js.)
 function renderRoutesInView() {
   if (!map || !cachedRouteItems || !window.RailMap) return;
   // One GeoJSON source for the whole train set; MapLibre re-tiles it on the

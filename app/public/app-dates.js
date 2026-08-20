@@ -119,7 +119,7 @@ function persistUiDateState() {
         focusZoomEnabled,
       }),
     );
-  } catch (err) {
+  } catch {
     // Non-fatal: private-mode / disabled storage just means no restore.
   }
 }
@@ -146,7 +146,7 @@ function restoreUiDateState() {
         return true;
       }
     }
-  } catch (err) {
+  } catch {
     // Ignore malformed saved UI state.
   }
   return false;

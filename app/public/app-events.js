@@ -208,7 +208,7 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   if (persist) {
     try {
       localStorage.setItem(SIDEBAR_VISIBILITY_KEY, sidebarVisible ? "1" : "0");
-    } catch (_) {}
+    } catch {}
   }
   cancelScheduledSidebarMapPadding();
   const easedMs = applySidebarMapPadding(
@@ -237,7 +237,7 @@ function setSidebarPanelState(state, { persist = true, animate = true } = {}) {
   if (persist) {
     try {
       localStorage.setItem(SIDEBAR_PANEL_STATE_KEY, state);
-    } catch (_) {}
+    } catch {}
   }
   if (!sidebarUsesVerticalDrag()) return;
   if (!sidebarVisible) {
@@ -269,14 +269,14 @@ function setupSidebarToggle() {
   sidebarToggleReady = true;
   try {
     sidebarVisible = localStorage.getItem(SIDEBAR_VISIBILITY_KEY) !== "0";
-  } catch (_) {
+  } catch {
     sidebarVisible = true;
   }
   try {
     const savedPanel = localStorage.getItem(SIDEBAR_PANEL_STATE_KEY);
     if (SIDEBAR_PANEL_STATES.includes(savedPanel))
       sidebarPanelState = savedPanel;
-  } catch (_) {}
+  } catch {}
   setSidebarVisible(sidebarVisible, { persist: false, animate: false });
 
   tab.addEventListener("click", (event) => {
@@ -334,7 +334,7 @@ function setupSidebarToggle() {
       captured =
         typeof tab.hasPointerCapture !== "function" ||
         tab.hasPointerCapture(event.pointerId);
-    } catch (_) {}
+    } catch {}
     if (!captured) {
       // Without capture, a release outside the tab never reaches the tab's
       // own pointerup/pointermove listeners — the drag would keep the
@@ -388,7 +388,7 @@ function setupSidebarToggle() {
     try {
       if (tab.hasPointerCapture(event.pointerId))
         tab.releasePointerCapture(event.pointerId);
-    } catch (_) {}
+    } catch {}
     app.classList.remove("sidebar-dragging");
     if (drag.moved && !cancelled) {
       suppressSidebarClick = true;
@@ -625,7 +625,24 @@ function setupWorkspaceTabs() {
 setupSidebarToggle();
 setupWorkspaceTabs();
 
+// A DECLARATIVE WIRING LIST, not an algorithm: one entry per control, in the
+// order the sidebar presents them. Its length is its natural form — cutting it
+// into per-section functions would only hide the fact that this IS the app's
+// complete input surface. The §-banners below are its table of contents:
+//
+//   §1  panel/tab bootstrap and collapse defaults
+//   §2  language-change re-render subscription
+//   §3  train CRUD (add / duplicate / delete / delete-all)
+//   §4  selection, fit, visibility, ordering, stops, route rebuild
+//   §5  local JSON: open / save / share sheet / file input
+//   §6  paste-import: validate and apply
+//   §7  export and download (JSON, portable HTML)
+//   §8  資料來源: curated datasets, user store, reset, clear storage
+//   §9  search debounce and the date bar
+//   §10 lifecycle: flush the debounced save when the tab is hidden
+//   §11 map date filter and focus zoom
 function bindEvents() {
+  // ── §1 panel/tab bootstrap and collapse defaults ──
   setupDisplaySettingsPanel();
   setupWorkspaceTabs();
   // Big secondary blocks (raw JSON areas, advanced display knobs) ship
@@ -633,6 +650,7 @@ function bindEvents() {
   document.querySelectorAll("details.collapse-desktop-open").forEach((d) => {
     if (!sidebarUsesVerticalDrag()) d.open = true;
   });
+  // ── §2 language-change re-render subscription ──
   // Re-render every dynamically-built UI string when the language changes.
   // (Static [data-i18n] DOM is handled by I18N.applyStatic; this covers the
   // JS-generated bits: display-panel labels, the focus button, the date bar,
@@ -660,6 +678,7 @@ function bindEvents() {
       renderAll();
     });
   }
+  // ── §3 train CRUD ──
   document
     .getElementById("add-train")
     .addEventListener("click", () => addTrain());
@@ -693,6 +712,7 @@ function bindEvents() {
         setStatus(els.jsonStatus, I18N.t("status.allDeleted"), "warn");
       }
     });
+  // ── §4 selection, fit, visibility, ordering, stops, route rebuild ──
   document
     .getElementById("fit-selected")
     .addEventListener("click", () => fitTrainBounds(getTrain()));
@@ -724,6 +744,7 @@ function bindEvents() {
   document
     .getElementById("rebuild-route")
     .addEventListener("click", rebuildSelectedRoute);
+  // ── §5 local JSON: open / save / share sheet / file input ──
   document
     .getElementById("open-local-json")
     .addEventListener("click", async () => {
@@ -794,6 +815,7 @@ function bindEvents() {
       setStatus(els.importStatus, error.message, "err");
     }
   });
+  // ── §6 paste-import: validate and apply ──
   document
     .getElementById("validate-import-json")
     .addEventListener("click", validateTextareaJson);
@@ -858,6 +880,7 @@ function bindEvents() {
         applyButton.disabled = false;
       }
     });
+  // ── §7 export and download ──
   document.getElementById("export-json").addEventListener("click", () => {
     els.json.value = exportTrainStore();
     // The preview lives in a details block that ships collapsed on mobile —
@@ -878,7 +901,7 @@ function bindEvents() {
     .addEventListener("click", () =>
       downloadText("index.html", buildPortableHtml(), "text/html"),
     );
-  // --- 資料來源 (static deploy: sample vs the user's own IndexedDB store) ---
+  // ── §8 資料來源 (static deploy: sample vs the user's own IndexedDB store) ──
   // One shared handler per dataset-replacing button (sample / curated loops).
   // Loading a dataset never touches the user's saved data, but it DOES replace
   // what is on screen — confirm before doing so. The finally-side
@@ -964,6 +987,7 @@ function bindEvents() {
         setStatus(els.jsonStatus, I18N.t("status.clearFail", { msg: error.message }), "err");
       }
     });
+  // ── §9 search debounce and the date bar ──
   // Debounce search: re-rendering the list on every keystroke (and, before,
   // JSON.stringify-ing every train including its route geometry per keystroke)
   // made typing janky. Coalesce keystrokes into one render after a short pause.
@@ -977,6 +1001,7 @@ function bindEvents() {
     .getElementById("remove-empty-dates")
     .addEventListener("click", removeEmptyDates);
 
+  // ── §10 lifecycle ──
   // When the tab is hidden, flush any pending (debounced) save immediately so
   // unsaved edits aren't lost if the page is backgrounded/closed. There are no
   // always-on animation/interval loops in this app to pause; the only deferred
@@ -984,6 +1009,7 @@ function bindEvents() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) flushServerStoreSave();
   });
+  // ── §11 map date filter and focus zoom ──
   if (els.mapDateFilter) {
     els.mapDateFilter.addEventListener("change", () => {
       mapFollowsSelectedDate = els.mapDateFilter.checked;

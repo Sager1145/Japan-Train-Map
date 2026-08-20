@@ -30,6 +30,32 @@ function reportRouteSolve(messageKey, params, level = "warn") {
   routeSolveReporter(messageKey, params, level);
 }
 
+// -------------------------------------------------------------------------
+// Cross-session cache seam.
+//
+// The same rule as the reporter above, one layer down: a solve must not reach
+// into the storage layer either. This module knows only the two verdicts a
+// solve can reach — solved geometry, or "unsolvable with this data + policy"
+// — and announces them. app-route-service.js, which already owns the runtime
+// cache lifecycle, installs the IndexedDB writers that make a verdict outlive
+// the session. With no sink installed, remembering is a silent no-op and the
+// runtime caches above are the whole story — which is exactly what an offline
+// exporter with no IndexedDB wants.
+// -------------------------------------------------------------------------
+let routeCacheStore = null;
+
+function setRouteCacheStore(store) {
+  routeCacheStore = store || null;
+}
+
+function rememberSolvedRouteAcrossSessions(cacheKey, templateFeatures) {
+  if (routeCacheStore) routeCacheStore.solved(cacheKey, templateFeatures);
+}
+
+function rememberUnsolvableRouteAcrossSessions(cacheKey) {
+  if (routeCacheStore) routeCacheStore.unsolvable(cacheKey);
+}
+
 // =========================================================================
 //  §27.  Route matching, template keys, feature generation & full graph construction
 // =========================================================================
@@ -80,7 +106,9 @@ const runtimeRouteNegativeCache = new Set();
 // the ~25 unsolvable trains rebuilt regional graphs and ran Dijkstra on every
 // prewarm, final render and live refresh — a big chunk of the ~53 s hot reload.
 // Editing a train changes its cacheKey, so a fix is re-solved automatically.
-const ROUTE_NEG_CACHE_MARKER = "__neg__::";
+// (The key PREFIX that distinguishes a persisted negative entry from a
+// persisted positive one is a detail of the IndexedDB layout, so it lives in
+// app-persistence.js §14 with the only two functions that read or write it.)
 const STATION_SNAP_MAX_DISTANCE_METERS = 500;
 const STATION_SNAP_COST_FACTOR = 4;
 // N02_002 institution type codes are treated as preferences by default, not
@@ -573,7 +601,7 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
     // graph build + Dijkstra. Cleared implicitly when the train's data changes
     // (its cacheKey changes).
     runtimeRouteNegativeCache.add(cacheKey);
-    persistRouteNegativeEntry(cacheKey);
+    rememberUnsolvableRouteAcrossSessions(cacheKey);
     return [];
   }
 
@@ -591,7 +619,7 @@ function commitTrainRouteSolve(train, cacheKey, templateKey, generated, warnings
   runtimeRouteCache.set(cacheKey, templateFeatures);
   // Persist the freshly solved geometry so later sessions skip both the solve
   // and (if every train hits the cache) the route-graph build entirely.
-  persistRouteCacheEntry(cacheKey, templateFeatures);
+  rememberSolvedRouteAcrossSessions(cacheKey, templateFeatures);
   // Solved geometry is kept only in runtimeRouteCache (this session) and
   // IndexedDB (cross-session). It is deliberately NOT attached back onto the
   // train object, so train-store.json and the in-memory store stay lean.

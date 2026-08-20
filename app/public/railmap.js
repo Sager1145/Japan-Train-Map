@@ -545,7 +545,7 @@
           ctx.getImageData(0, 0, size, size),
           { pixelRatio: ratio },
         );
-      } catch (e) {
+      } catch {
         // A concurrent styleimagemissing can add it first; that is fine.
       }
     },
@@ -1232,7 +1232,7 @@
           if (!basemap) return false;
           if (!(await probeBasemapOrigin(basemap))) return false;
           return await this._installBasemap(basemap);
-        } catch (e) {
+        } catch {
           return false;
         } finally {
           this._basemapRetryInflight = null;
