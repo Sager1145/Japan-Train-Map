@@ -49,7 +49,7 @@ function createApp({
 
   for (const [route, file] of Object.entries(DATA_FILES)) {
     const filePath = path.join(dataDir, file);
-    app.get(`/api/${route}`, async (req, res) => {
+    app.get([`/api/${route}`, `/api/${route}.json`], async (req, res) => {
       let stat;
       try {
         stat = await fs.promises.stat(filePath);

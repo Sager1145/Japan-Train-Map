@@ -75,7 +75,7 @@
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
          lazily by RailMap.ensureNetwork() only when enabled, so it no longer
          competes for boot bandwidth with the critical datasets. -->
-    <link rel="preload" href="api/stations" as="fetch" crossorigin />
+    <link rel="preload" href="api/stations.json" as="fetch" crossorigin />
   </head>
   <body>
     <div id="app">
@@ -409,6 +409,7 @@
          reference bindings from earlier files, and the precompute exporter
          (scripts/build/precompute-train-parts.mjs) replays this exact list minus
          the stubbed modules inside its Node vm sandbox. -->
+    <script src="runtime-config.js?v=20260821-refactor8"></script>
     <script src="app-config.js?v=20260808-jpcontinuity1"></script>
     <script src="app-modal.js?v=20260804-mobile1"></script>
     <script src="app-display-settings.js?v=20260802-device6"></script>

@@ -56,10 +56,9 @@
 //   app-ui-utils.js          §34–35 popups & tooltips + misc utilities
 //   app-country-session.js           country transition coordinator
 //
-//  DEPLOY CONTRACT (scripts/build/build-static-site.mjs): the static build
-//  rewrites `const HAS_BACKEND = true;` in THIS file (and fails the build
-//  if it goes missing), and appends `.json` to the ${API_BASE} fetch
-//  templates in every app*.js file it stages.
+//  DEPLOY CONTRACT: runtime-config.js supplies backend/static capabilities.
+//  The static build writes that one configuration artifact and never rewrites
+//  application source.
 // =========================================================================
 
 // =========================================================================
@@ -71,6 +70,10 @@
 // working when it is served from a sub-path (e.g. behind a reverse proxy at
 // /something/) instead of only from the domain root.
 const API_BASE = "./api";
+const APP_RUNTIME_CONFIG = window.APP_RUNTIME_CONFIG || {
+  hasBackend: true,
+  apiFileSuffix: "",
+};
 // True on the Node/Express deployment, whose backend answers the write/live
 // endpoints — /api/events (SSE live-refresh) and PUT/DELETE /api/train-store
 // (server autosave / clear). The GitHub Pages STATIC build has no backend, so
@@ -79,7 +82,13 @@ const API_BASE = "./api";
 // read-only dataset/seed GETs (fetchJson, loadTrainStoreFromServer) are served
 // as plain files on Pages and stay enabled either way. Local-file save/load via
 // the File System Access API is independent of this flag.
-const HAS_BACKEND = true;
+const HAS_BACKEND = APP_RUNTIME_CONFIG.hasBackend !== false;
+function apiResourceUrl(path) {
+  return `${API_BASE}/${path}${APP_RUNTIME_CONFIG.apiFileSuffix || ""}`;
+}
+function apiEndpointUrl(path) {
+  return `${API_BASE}/${path}`;
+}
 // A per-tab id sent with every store write (X-Client-Id). The server echoes it
 // in the SSE "store-changed" event so this tab can ignore the write it just
 // made and only react to changes from *other* sources (another tab, or an AI
@@ -92,7 +101,7 @@ const fetchJson = async (path, options) => {
   // Cache-Control: max-age on every dataset, so reloads revalidate to a 304 (or
   // serve straight from cache within max-age) instead of re-downloading the full
   // multi-MB payload. The old `cache: "no-store"` defeated all of that.
-  const res = await fetch(`${API_BASE}/${path}`, options);
+  const res = await fetch(apiResourceUrl(path), options);
   if (!res.ok)
     throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
   return res.json();
@@ -102,7 +111,7 @@ const fetchJson = async (path, options) => {
 // deferred and chunked (see parseFeatureCollectionChunked / ensureRailSectionsLoaded)
 // instead of blocking the main thread the instant the 12 MB body arrives.
 const fetchText = async (path) => {
-  const res = await fetch(`${API_BASE}/${path}`);
+  const res = await fetch(apiResourceUrl(path));
   if (!res.ok)
     throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
   return res.text();
@@ -576,7 +585,7 @@ function subscribeToStoreEvents() {
   if (!HAS_BACKEND) return; // static deploy: no /api/events endpoint to subscribe to
   if (typeof EventSource === "undefined") return; // very old browser: no live refresh
   try {
-    storeEventSource = new EventSource(`${API_BASE}/events`);
+    storeEventSource = new EventSource(apiEndpointUrl("events"));
   } catch (err) {
     console.warn("Live-refresh unavailable; could not open SSE stream.", err);
     return;

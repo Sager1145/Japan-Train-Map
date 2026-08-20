@@ -2,8 +2,8 @@
 //
 // WHY THIS EXISTS: `npm run dev` starts the Express app server, which is a
 // DIFFERENT product from what Pages publishes — it has /api/* endpoints, an SSE
-// live-refresh stream and server-side autosave, and it makes the frontend boot
-// with HAS_BACKEND = true. That flag changes the boot path substantially: the
+// live-refresh stream and server-side autosave, and its runtime config makes
+// the frontend boot with HAS_BACKEND = true. That flag changes the boot path:
 // backend build loads the whole train store and solves every route in the
 // browser, while the published build streams precomputed per-train parts and
 // never touches the solver. Testing against `npm run dev` therefore cannot tell

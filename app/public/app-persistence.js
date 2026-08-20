@@ -181,10 +181,10 @@ function queuePendingServerStoreJournalWrite(body) {
 }
 
 // PUT one serialized store body to the server train-store endpoint, throwing
-// on any non-OK status. Deploy contract: the `${API_BASE}` template literal
-// below is rewritten by the static build and must stay a literal.
+// on any non-OK status. apiResourceUrl() applies the deployment's configured
+// file suffix; this write path is gated off entirely on static deployments.
 async function putTrainStore(body, clientId) {
-  const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+  const res = await fetch(apiResourceUrl(TRAIN_STORE_API), {
     method: "PUT",
     headers: { "Content-Type": "application/json", "X-Client-Id": clientId },
     body,
@@ -379,7 +379,7 @@ async function clearStoredData() {
   storeSaveDirty = false;
 
   if (HAS_BACKEND) {
-    const res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+    const res = await fetch(apiResourceUrl(TRAIN_STORE_API), {
       method: "DELETE",
       headers: { "X-Client-Id": CLIENT_ID },
     });
@@ -484,7 +484,7 @@ function scheduleExportTextareaRefresh() {
 async function loadTrainStoreFromServer() {
   let res;
   try {
-    res = await fetch(`${API_BASE}/${TRAIN_STORE_API}`, {
+    res = await fetch(apiResourceUrl(TRAIN_STORE_API), {
       cache: "no-store",
     });
   } catch (error) {

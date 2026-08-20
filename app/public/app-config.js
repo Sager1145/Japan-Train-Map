@@ -64,11 +64,10 @@ function installLongTaskObserver() {
 //
 // Countries keep FULLY SEPARATE stores (separate server file + endpoint,
 // separate IndexedDB databases) and the UI shows one country at a time.
-// TRAIN_STORE_API therefore always names the ACTIVE country's endpoint — the
-// `${API_BASE}/${TRAIN_STORE_API}` fetch templates elsewhere are a deploy
-// contract (rewritten by the static build) and must keep reading this
-// binding. Japan keeps the historical unsuffixed names so existing data
-// stays reachable.
+// TRAIN_STORE_API therefore always names the ACTIVE country's endpoint.
+// apiResourceUrl() applies the active deployment's configured file suffix.
+// Japan keeps the historical unsuffixed names so existing data stays
+// reachable.
 let TRAIN_STORE_API = "train-store";
 const COUNTRY_STORAGE_KEY = "n02-active-country";
 const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];

@@ -27,19 +27,21 @@ async function createFixture({ includeTrainStore = true } = {}) {
   await fs.mkdir(stylesDir, { recursive: true });
   await fs.mkdir(partsDir, { recursive: true });
 
+  const appSource = [
+    "const HAS_BACKEND = true;",
+    "fetch(`${API_BASE}/${path}`);",
+    "fetch(`${API_BASE}/${TRAIN_STORE_API}`);",
+  ].join("\n");
   await fs.writeFile(
     path.join(publicDir, "app.js"),
-    [
-      "const HAS_BACKEND = true;",
-      "fetch(`${API_BASE}/${path}`);",
-      "fetch(`${API_BASE}/${TRAIN_STORE_API}`);",
-    ].join("\n"),
+    appSource,
   );
-  // The API templates live in several files of the app*.js family; every one
-  // of them must get the .json rewrite. Non-app scripts must stay untouched.
+  // These source-shaped sentinels prove the build no longer mutates any
+  // application file to express deployment differences.
+  const persistenceSource = "fetch(`${API_BASE}/${TRAIN_STORE_API}`);\n";
   await fs.writeFile(
     path.join(publicDir, "app-persistence.js"),
-    "fetch(`${API_BASE}/${TRAIN_STORE_API}`);\n",
+    persistenceSource,
   );
   await fs.writeFile(
     path.join(publicDir, "railmap.js"),
@@ -47,7 +49,17 @@ async function createFixture({ includeTrainStore = true } = {}) {
   );
   await fs.writeFile(
     path.join(publicDir, "index.html"),
-    '<link rel="preload" href="api/stations">',
+    '<link rel="preload" href="api/stations.json">',
+  );
+  await fs.writeFile(
+    path.join(publicDir, "runtime-config.js"),
+    [
+      "window.APP_RUNTIME_CONFIG = Object.freeze({",
+      "  hasBackend: true,",
+      '  apiFileSuffix: "",',
+      "});",
+      "",
+    ].join("\n"),
   );
   await fs.writeFile(path.join(stylesDir, "device-layout.css"), "body {}\n");
   await fs.writeFile(path.join(stylesDir, "device-layout.css.gz"), "ignored");
@@ -102,10 +114,10 @@ async function createFixture({ includeTrainStore = true } = {}) {
     );
   }
 
-  return { root, appDir, outputDir };
+  return { root, appDir, outputDir, appSource, persistenceSource };
 }
 
-test("static build preserves the Pages file and rewrite contract", async () => {
+test("static build preserves application source and writes Pages runtime config", async () => {
   const fixture = await createFixture();
   try {
     await buildStaticSite({
@@ -118,15 +130,13 @@ test("static build preserves the Pages file and rewrite contract", async () => {
       path.join(fixture.outputDir, "app.js"),
       "utf8",
     );
-    assert.match(app, /const HAS_BACKEND = false;/);
-    assert.match(app, /`\$\{API_BASE\}\/\$\{path\}\.json`/);
-    assert.match(app, /`\$\{API_BASE\}\/\$\{TRAIN_STORE_API\}\.json`/);
-    assert.match(
+    assert.equal(app, fixture.appSource);
+    assert.equal(
       await fs.readFile(
         path.join(fixture.outputDir, "app-persistence.js"),
         "utf8",
       ),
-      /`\$\{API_BASE\}\/\$\{TRAIN_STORE_API\}\.json`/,
+      fixture.persistenceSource,
     );
     assert.match(
       await fs.readFile(path.join(fixture.outputDir, "railmap.js"), "utf8"),
@@ -136,6 +146,12 @@ test("static build preserves the Pages file and rewrite contract", async () => {
       await fs.readFile(path.join(fixture.outputDir, "index.html"), "utf8"),
       '<link rel="preload" href="api/stations.json">',
     );
+    const runtimeConfig = await fs.readFile(
+      path.join(fixture.outputDir, "runtime-config.js"),
+      "utf8",
+    );
+    assert.match(runtimeConfig, /hasBackend: false/);
+    assert.match(runtimeConfig, /apiFileSuffix: ".json"/);
     assert.equal(
       await fs.readFile(path.join(fixture.outputDir, "app-core.js"), "utf8"),
       "globalThis.AppCore = { fixture: true };\n",
@@ -227,7 +243,7 @@ test("static build stamps script/style tags with content hashes", async () => {
       path.join(fixture.appDir, "public", "index.html"),
       [
         '<link rel="stylesheet" href="styles/device-layout.css?v=20260101-handwritten" />',
-        '<link rel="preload" href="api/stations" as="fetch" />',
+        '<link rel="preload" href="api/stations.json" as="fetch" />',
         '<script src="app.js?v=20260101-stale"></script>',
         '<script src="app-persistence.js"></script>',
         '<script src="railmap.js?v=keep&flag=1"></script>',
@@ -253,8 +269,7 @@ test("static build stamps script/style tags with content hashes", async () => {
         .digest("hex")
         .slice(0, 8);
 
-    // Every local asset is stamped with the hash of what actually shipped —
-    // i.e. AFTER the ${API_BASE}/HAS_BACKEND rewrites, not the source bytes.
+    // Every local asset is stamped with the hash of what actually shipped.
     for (const asset of [
       "styles/device-layout.css",
       "app.js",

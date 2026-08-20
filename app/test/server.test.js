@@ -201,6 +201,16 @@ test("datasets preserve gzip, cache, ETag, and 304 behavior", async () => {
     });
     assert.equal(unchanged.status, 304);
     assert.equal(await unchanged.text(), "");
+
+    // The browser preloads the file-shaped URL so one index works for both
+    // Express and Pages. Express keeps the canonical extensionless route as
+    // well, and serves the .json alias through the same delivery path.
+    const fileShaped = await fetch(`${baseUrl}/api/stations.json`);
+    assert.equal(fileShaped.status, 200);
+    assert.deepEqual(await responseJson(fileShaped), {
+      file: "stations.json",
+      values: [1, 2, 3],
+    });
   });
 });
 
