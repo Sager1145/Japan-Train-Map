@@ -8,6 +8,30 @@
 §6 / §7.2 / §7.5 / §7.7 / §9 / §12。上下行「哪条是哪条」的判据已经写在
 [`RAILWAY_ALIGNMENT_AUDIT_PROMPT.md`](./RAILWAY_ALIGNMENT_AUDIT_PROMPT.md)，**不要重造**。
 
+## 动手前先知道这件事：五国现在跑着**三套**几何管线
+
+| | 建包阶段做的几何处理 | 渲染阶段做的 |
+| --- | --- | --- |
+| **jp** | **没有**。N02 直出，全程无圆角、无平滑、无简化 | `smoothMicroKinks` 删毛刺（从不给真实转角倒角） |
+| **tw** | `relax_polyline`（capped Laplacian）→ `round_polyline_corners`（Bezier 倒角）→ `enforce_min_corner_radius` | 同上 |
+| **hk / mo / kr** | `geometry.py` 的 `despike` → `chaikin` → `simplify` | 同上 |
+
+这解释了阶段 1 的基线：jp 的 30–45° 折角有 1,121 个，tw 只有 15 个。
+**不是 jp 的资料更差，是 jp 从来没跑过那一步**。
+
+所以这件事真正的题目**可能不是「给 jp 加平滑」，而是「三套管线要不要收敛成一套」**。
+这是架构决定，必须在阶段 0 明确回答并写下理由，**不允许默认按「把 tw 那套照抄到 jp」实施**。
+三个选项各自的代价至少要评估到这个程度：
+
+- **收敛成一套共享 lib**（`scripts/railway/lib/`，参数按 §12.1 的 geometry profile 给）——
+  一致性最好，但会同时改动四个已经稳定、审计全绿的国家包，回归面最大。
+- **只给 jp 补一套**（移植 tw 的实现）—— 回归面最小，但五国从三套变四套，
+  以后每条新规则都要写四遍。
+- **不动建包层，改在渲染层**（`rail-network.js`）—— 单点改动、五国同时受益，
+  但违反 §12「每档 LOD 只算一次并缓存」的代价要算清楚：渲染层每次 boot 都要重算 385k 顶点。
+
+选哪个都可以，**但必须写明为什么，以及被否决的两个各自的代价**。
+
 ## 使用方式
 
 把下面「任务」整段作为 prompt 交给一个 agent。结论必须带**可复算的数字**，
@@ -207,7 +231,7 @@ paired alignment 两笔 · 环线接缝 · terminus · shared-edge boundary · s
 
 **4.4 至少三个候选算法做对比实验**，不许选一个直接上：
 
-- **移植 tw 的现成管线**（首选候选，不是唯一候选）：`relax_polyline` → `round_polyline_corners`
+- **tw 的现成管线**（用不用取决于文首那个架构决定，**不是默认答案**）：`relax_polyline` → `round_polyline_corners`
   → `enforce_min_corner_radius`。它已经带着本仓要的两条性质 —— **每个顶点位移有硬上限**、
   **倒角半径由相邻边长决定**（正是 §12.2 那个公式的一个实现）。要做的是把它从
   `build-taiwan-rail-package.py` 抽进 `scripts/railway/lib/`，参数按 profile 给，而不是复制一份。
@@ -292,6 +316,12 @@ node scripts/railway/build-parallel-corridors.mjs      # 几何一变必须重�
    —— 1 个支线分岔 · 1 个环线接缝 · 1 处上下行分线 · 1 个大站站内 ·
    1 处长隧道（底图粗的那类）· 1 处路面电车或短线。
    截图只用于确认，不用于推断。
+
+**「地图上看着顺了」与「审计数字降了」是两件事，验收必须分开写。**
+`tolerance: 0.5`（geojson-vt，单位是瓦片像素）与 `line-join: round` 会在低缩放吃掉一部分
+尖角**观感**，而拓扑审计量的是**包内几何**。所以：第 1、5、6 项是几何指标，第 8 项是观感指标，
+**不许拿观感的改善去抵几何指标没动**，也不许反过来拿审计数字下降就宣称观感已好。
+根因 (b) 的修法只改观感、不改几何，报告里要标明它属于哪一列。
 
 浏览器验证要点：console 条目会重复；地图在 pane 隐藏时加载会卡住；
 先 `resize_window` 钉住宽高再 eval，否则可能读到 0×0；eval 拿到的 computed style 可能是旧值，
