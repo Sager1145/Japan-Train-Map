@@ -1118,6 +1118,12 @@ def cycle_and_tails(edges):
 # (函館線 via 駒ヶ岳 against via 渡島砂原), so this does not reach them.
 SKIP_PASSES_M = 400.0
 
+# How close a station has to anchor to a track group to count as standing on it.
+# `split_by_track_group` decides where a display part changes track group with
+# this same number, and the skip test below has to agree with it: the track an
+# edge is JUDGED on must be the track it will be DRAWN on.
+TRACK_GROUP_KEEP_M = 250.0
+
 
 def longest_path(edges, weight):
     """The heaviest leaf-to-leaf path through a component — its trunk."""
@@ -1193,14 +1199,68 @@ def tree_decompose(edges, weight):
     return parts
 
 
+def anchors_in_one_track_group(graph, points, a, b, start, end,
+                               limit=TRACK_GROUP_KEEP_M):
+    """Re-anchor A and B onto ONE track group, the way the drawing will.
+
+    A railway's N02 sections are not always one connected graph, and the nearest
+    track to a platform can belong to a fragment the next station's track cannot
+    be reached from — so `path_between` has nothing to return even though both
+    stations are plainly on this railway. 東北線 is the case that exposed it: its
+    sections fall into 389 + 8 + 3 groups, the 8 being the 上野–日暮里 corridor,
+    which comes within 21.8 m of the main group at 日暮里 without touching it, and
+    日暮里's platform is the only one on that island.
+
+    Nothing downstream draws from that island: `anchor_part` puts every part on
+    the ONE group its stations mostly project to and re-projects the rest into
+    it, and `split_by_track_group` lets a station stay with a run it can still be
+    anchored within `limit` of. This does the same, so the skip test judges the
+    track the line will actually be drawn on rather than declining to answer.
+
+    Returns (start, end) on a shared group, or (None, None) when neither station
+    can be anchored on the other's group — which is a railway drawn as two
+    separate strokes (阪急今津線, severed at 西宮北口 in 1984), where the edge
+    across the break is a question about track that is not there.
+    """
+    group_a = graph.component[start["section"]]
+    group_b = graph.component[end["section"]]
+    if group_a == group_b:
+        return None, None
+    options = []
+    moved = graph.project(points[b], component=group_a)
+    if moved is not None and moved["distance_m"] <= limit:
+        options.append((moved["distance_m"], 0, start, moved))
+    moved = graph.project(points[a], component=group_b)
+    if moved is not None and moved["distance_m"] <= limit:
+        options.append((moved["distance_m"], 1, moved, end))
+    if not options:
+        return None, None
+    # Closest re-anchoring wins; the rank keeps the choice a function of the
+    # data when two are equally close, never of iteration order.
+    _distance, _rank, chosen_start, chosen_end = min(options, key=lambda o: o[:2])
+    return chosen_start, chosen_end
+
+
 def stations_passed_by_cut(graph, points, a, b, others, tolerance_m=SKIP_PASSES_M):
-    """Stations of the same line whose platform the A–B track runs past."""
+    """Stations of the same line whose platform the A–B track runs past.
+
+    Returns None — not an empty list — when the track cannot be cut at all, so
+    that "no station is passed" and "nobody could tell" stay different answers.
+    Reading the second as the first is what kept 東北線's 王子–日暮里 and
+    東十条–日暮里 alive: both end at the one station whose platform sits on an
+    8-section island, `path_between` had nothing to return for either, and the
+    caller read the empty list as a clean bill of health for a service edge that
+    redraws the 尾久支線 a second and third time.
+    """
     start, end = graph.project(points[a]), graph.project(points[b])
     if start is None or end is None:
-        return []
+        return None
     cut = graph.path_between(start, end)
     if cut is None:
-        return []
+        start, end = anchors_in_one_track_group(graph, points, a, b, start, end)
+        cut = None if start is None else graph.path_between(start, end)
+    if cut is None:
+        return None
     coords = cut[0]
     passed = []
     for uid in others:
@@ -1262,16 +1322,31 @@ def drop_skip_station_edges(edges, passes=None, keep=frozenset(), shield=frozens
 
     An edge is only dropped while the rest of the graph still connects its two
     ends, so nothing is ever severed from the line.
+
+    Returns (kept, dropped, unjudged). `unjudged` is the edges whose track could
+    not be cut at all: the test ABSTAINS on those rather than clearing them, and
+    saying so is the point — an abstention that reads as "passes nothing" is
+    indistinguishable from a verdict, which is how two 東北線 pseudo-edges lived
+    through every rebuild until a topology check found them drawn.
     """
     working = list(edges)
     dropped = []
-    order = sorted(edges, key=lambda edge: -len(passes(edge[0], edge[1])) if passes else 0)
+    unjudged = []
+    verdicts = {}
+    if passes is not None:
+        verdicts = {pair: passes(pair[0], pair[1]) for pair in edges}
+    order = sorted(
+        edges, key=lambda edge: -len(verdicts.get(edge) or ()) if passes else 0
+    )
     for pair in order:
         if passes is None:
             break
         if pair in keep:
             continue
-        skipped = passes(pair[0], pair[1])
+        skipped = verdicts[pair]
+        if skipped is None:
+            unjudged.append(pair)
+            continue
         if not skipped:
             continue
         if (
@@ -1293,7 +1368,70 @@ def drop_skip_station_edges(edges, passes=None, keep=frozenset(), shield=frozens
             continue
         working = remaining
         dropped.append((pair, skipped))
-    return working, dropped
+    return working, dropped, unjudged
+
+
+# An audited junction the survey could not put at a station: "日暮里附近(252m)"
+# means the branch leaves the corridor 252 m from 日暮里, so 日暮里 is the station
+# it hangs off even though the junction is not 日暮里 itself.
+OFFSET_JUNCTION = re.compile(r"^(.+?)附近\((\d+(?:\.\d+)?)m\)$")
+
+
+def lone_branch_hops(part, names, uid_by_name, within_m=SKIP_PASSES_M):
+    """The hops that reach a ONE-station audited part hung off offset junctions.
+
+    `audited_hops` reads a part's own intervals off consecutive members, and a
+    part with one station has none — yet the hop that reaches it is just as much
+    an interval the partition says will be drawn. 東北線's 尾久支線 is that part:
+    `stations: ["尾久"]`, hung off `王子附近(814m)` and `日暮里附近(252m)`. Its
+    hops run the 支線 alongside the 電車線, so the skip test sees 尾久–日暮里 pass
+    55 m from 西日暮里 and 315 m from 田端 and reads the branch's own interval as
+    a duplicate of the electric line's hops. Nothing else holds it: 尾久 is not a
+    member of any multi-station part, so neither `keep` nor `shield` had heard of
+    it, and until the track-group blind spot above was closed the test never got
+    as far as an answer.
+
+    A junction has to be AT the station it names — within the same window the
+    test itself uses to decide that a track and a platform belong together — or
+    the hop the contracted graph files is not the part's interval but that
+    interval plus a lead-in along somebody else's track. 王子附近(814m) is the
+    case: cut, 王子–尾久 leaves 王子 northward for the 井堀 junction, turns back
+    past its own platform and runs 3.234 km to cover 1.4, which the topology
+    check reads as a 146° corner and a 1,635 m fold. Drawing the branch from
+    王子 is a decision about where its junction goes, and that belongs to a
+    session that can author the junction, not to a trust boundary in here.
+
+    The part's `stations` list is filed SORTED, not in path order, so with more
+    than one member there is no telling which end a junction attaches to, and
+    guessing is not this builder's call. With exactly one member there is
+    nothing to guess. A junction that names a station of this line outright is
+    left to the existing rules — the part is drawable as it stands, and 東北線's
+    上野–日暮里 variant, whose third junction is `秋葉原附近(244m)`, must not turn
+    the electric line's 上野–秋葉原 skip edge into a protected hop.
+
+    Nationwide this names five hops, every one a real audited edge and none of
+    them a hop this test drops today: 京葉線 西船橋–二俣新町, 鶴見線 武蔵白石–大川,
+    山陰線 仙崎–長門市, 福武線 福井城址大名町–福井駅, and 東北線 尾久–日暮里.
+    """
+    junctions = part.get("junctions") or []
+    if len(names) != 1 or not junctions:
+        return set()
+    if any(
+        not OFFSET_JUNCTION.match(name) and name in uid_by_name for name in junctions
+    ):
+        return set()
+    only = uid_by_name[names[0]]
+    hops = set()
+    for junction in junctions:
+        match = OFFSET_JUNCTION.match(junction)
+        if match is None or match.group(1) not in uid_by_name:
+            continue
+        if float(match.group(2)) > within_m:
+            continue
+        anchor = uid_by_name[match.group(1)]
+        if anchor != only:
+            hops.add(tuple(sorted((anchor, only))))
+    return hops
 
 
 def plan_parts(
@@ -1352,6 +1490,7 @@ def plan_parts(
             audited_hops |= {
                 tuple(sorted(pair)) for pair in zip(members, members[1:])
             }
+            audited_hops |= lone_branch_hops(part, names, uid_by_name)
             if part.get("type") not in ("rejoin_variant", "terminal_branch"):
                 continue
             if len(members) < 2:
@@ -1369,11 +1508,11 @@ def plan_parts(
 
     prefix = []
     if passes is not None:
-        edges, dropped = drop_skip_station_edges(
+        edges, dropped, unjudged = drop_skip_station_edges(
             edges, passes=passes, keep=audited_hops, shield=audited_interiors
         )
+        name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
         for (a, b), skipped in dropped:
-            name = (lambda uid: station_by_uid[uid]["station_name"]) if station_by_uid else str
             over = (
                 name(skipped[0])
                 if len(skipped) == 1
@@ -1382,6 +1521,17 @@ def plan_parts(
             prefix.append(
                 f"{name(a)}–{name(b)} runs past {over} — service edge over track "
                 f"the order already draws, not a second alignment"
+            )
+        if unjudged:
+            # Kept, and said out loud. These are the edges whose two stations
+            # anchor on track groups that neither join nor come within
+            # TRACK_GROUP_KEEP_M of each other, so there is no track to ask the
+            # question of; the edge stays, and the note is what stops the
+            # silence from reading as a clean verdict.
+            prefix.append(
+                "skip test could not cut track for "
+                + ", ".join(f"{name(a)}–{name(b)}" for a, b in sorted(unjudged))
+                + " — kept unjudged, not cleared"
             )
 
     pieces = components(edges)
