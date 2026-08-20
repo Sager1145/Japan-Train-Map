@@ -151,8 +151,7 @@ async function buildStationIndexesSliced(collection) {
       t0 = now();
     }
   }
-  stationCandidatesIndex = candidates;
-  stationNameByCode = nameByCode;
+  AppDatasets.installStationIndexes(candidates, nameByCode);
 }
 
 // Display coordinates of a train's UNAMBIGUOUS stops (single name candidate or

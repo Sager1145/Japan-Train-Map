@@ -22,6 +22,7 @@
 //                                   CLIENT_ID, fetchJson/fetchText)
 //   app-dates.js             §6     date grouping/sorting + UI date state
 //   app-dom.js               §8     the cached DOM element table (`els`)
+//   app-datasets.js          §7     loaded country datasets + station indexes
 //   app-state.js                    core mutable state owner + actions
 //   app.js  (this file)      §7,9–10  API client & HAS_BACKEND flag, boot
 //                                   sequence, SSE live refresh + prebuild
@@ -67,22 +68,6 @@
 //  §7.  App-data loading (the API client itself lives in app-api.js)
 // =========================================================================
 
-// Data is now served by the backend instead of being embedded in the page.
-let railSectionsGeoJson,
-  stationsGeoJson,
-  defaultTrainStore,
-  matchedRoutesGeoJson,
-  matchedStopsGeoJson;
-let stationCandidatesIndex;
-// N02_005c -> N02_005 station name. The station name is a per-station constant
-// (see jsonspec §13.4): it is kept ONCE on each stop, and route_sections carry
-// only codes — their from/to names are resolved from this map on load and
-// stripped from the persisted/exported JSON so the archive doesn't repeat every
-// station name in both the stops and the sections.
-let stationNameByCode = new Map();
-function stationNameForCode(code) {
-  return (code && stationNameByCode.get(String(code))) || "";
-}
 // Tracks the in-flight (or resolved) rail-sections fetch. rail-sections.json is
 // ~12 MB raw / 2.4 MB gzipped and is consumed ONLY by the route solver, which
 // runs after the map is already on screen — so it is fetched in parallel with
@@ -114,13 +99,15 @@ async function loadAppData() {
   // the small datasets, then parse it in yielding chunks (same path as
   // rail-sections) so it interleaves with paint/input instead of freezing.
   const stationsTextReady = fetchText(stationsApiForCountry(activeCountry));
-  [defaultTrainStore, matchedRoutesGeoJson, matchedStopsGeoJson] =
-    await Promise.all([
-      fetchJson("default-trains"),
-      fetchJson("matched-routes"),
-      fetchJson("matched-stops"),
-    ]);
-  stationsGeoJson = await parseFeatureCollectionChunked(await stationsTextReady);
+  const [defaultStore, matchedRoutes, matchedStops] = await Promise.all([
+    fetchJson("default-trains"),
+    fetchJson("matched-routes"),
+    fetchJson("matched-stops"),
+  ]);
+  AppDatasets.installSeedData({ defaultStore, matchedRoutes, matchedStops });
+  AppDatasets.installStations(
+    await parseFeatureCollectionChunked(await stationsTextReady),
+  );
 
   // Build the two station-resolution indexes in ~12 ms slices so this no
   // longer lands as one long synchronous task at the tail of boot Block 1
@@ -152,7 +139,7 @@ async function loadAppData() {
 // share station names (松山, 板橋, 岡山 …), so the failure would not look like
 // an error, it would look like a route.
 async function reloadSolverDatasetsForCountrySwitch() {
-  railSectionsGeoJson = null;
+  AppDatasets.clearRailSections();
   railSectionsReady = null;
   railSectionsTextReady = null;
   RouteService.invalidateDataset();
@@ -171,8 +158,10 @@ async function reloadSolverDatasetsForCountrySwitch() {
       err,
     ),
   );
-  stationsGeoJson = await parseFeatureCollectionChunked(
-    await fetchText(stationsApiForCountry(activeCountry)),
+  AppDatasets.installStations(
+    await parseFeatureCollectionChunked(
+      await fetchText(stationsApiForCountry(activeCountry)),
+    ),
   );
   await buildStationIndexesSliced(stationsGeoJson);
 }
@@ -248,8 +237,9 @@ async function ensureRailSectionsLoaded() {
         railSectionsTextReady = fetchText(api);
         text = await railSectionsTextReady;
       }
-      const data = await parseFeatureCollectionChunked(text);
-      railSectionsGeoJson = data;
+      const data = AppDatasets.installRailSections(
+        await parseFeatureCollectionChunked(text),
+      );
       // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
       // download promise would otherwise keep it resident for the whole session,
       // which matters on memory-tight iPhones.

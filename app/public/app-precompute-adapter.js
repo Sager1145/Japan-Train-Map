@@ -7,10 +7,12 @@
 
 async function precomputeTrainStoreParts(host) {
   activeCountry = host.country;
-  railSectionsGeoJson = host.railSections;
-  stationsGeoJson = host.stations;
-  matchedRoutesGeoJson = { type: "FeatureCollection", features: [] };
-  matchedStopsGeoJson = host.matchedStops;
+  AppDatasets.installRailSections(host.railSections);
+  AppDatasets.installStations(host.stations);
+  AppDatasets.installMatchedData({
+    matchedRoutes: { type: "FeatureCollection", features: [] },
+    matchedStops: host.matchedStops,
+  });
   await buildStationIndexesSliced(stationsGeoJson);
 
   const store = parseImportedCanonicalStore(host.trainStoreText);
