@@ -464,29 +464,81 @@ function mergeDrawnIndices(keepIdx, runs, nSeg, extraIdx) {
 // tier; only needs to exceed the train count.
 const ROUTE_SORT_TIER = 1e6;
 
+function readDeckRouteRecordCache(signature) {
+  const bundle = signature ? _deckRecordsCacheBySig.get(signature) : null;
+  if (bundle) _deckHasOverlaps = bundle.hasOverlaps;
+  return bundle;
+}
+
+function createDeckRouteBuildState(items) {
+  _deckHasOverlaps = false;
+  return {
+    overlap: getDeckOverlapMapCached(items),
+    records: [],
+    expandRecords: [],
+    groupInfo: new Map(),
+    drawnLenByTid: new Map(),
+  };
+}
+
+function assignDeckRouteSortKeys(records, drawnLenByTid) {
+  const sortTrains = [];
+  const sortSeen = new Set();
+  records.forEach((record) => {
+    const trainId = record.train && record.train.id;
+    if (sortSeen.has(trainId)) return;
+    sortSeen.add(trainId);
+    sortTrains.push(record.train);
+  });
+  sortTrains.sort(
+    (a, b) =>
+      Math.round(drawnLenByTid.get(b.id) || 0) -
+        Math.round(drawnLenByTid.get(a.id) || 0) ||
+      compareTrainsByDateAndDeparture(b, a),
+  );
+  const sortRank = new Map(sortTrains.map((train, index) => [train.id, index]));
+  records.forEach((record) => {
+    record.sortKey =
+      (record.nopick ? 0 : ROUTE_SORT_TIER) +
+      (sortRank.get(record.train && record.train.id) || 0);
+  });
+}
+
+function publishDeckRouteRecordBundle({
+  signature,
+  spacingPx,
+  records,
+  expandRecords,
+  groupInfo,
+  pendingDeferredFit,
+}) {
+  const bundle = {
+    records,
+    expandRecords,
+    groupInfo,
+    spacingPx,
+    hasOverlaps: _deckHasOverlaps,
+  };
+  if (pendingDeferredFit) bundle._pendingFit = pendingDeferredFit;
+  if (signature) _deckCachePut(_deckRecordsCacheBySig, signature, bundle);
+  if (bundle._pendingFit) scheduleFitCurveWorker(bundle);
+  return bundle;
+}
+
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
   const spacingPx = currentOverlapSpacingPx();
   // Fast path (zoom/pan OR returning to an already-built scope): geometry,
   // styles, runs, shift vectors, lane multipliers and pixel spacing are all
   // unchanged. MapLibre owns the pixel translation across view changes.
-  const cachedBundle = sig ? _deckRecordsCacheBySig.get(sig) : null;
-  if (cachedBundle) {
-    // Per-scope flags must be restored on a cross-scope cache hit (they are
-    // module-level state written by the build below).
-    _deckHasOverlaps = cachedBundle.hasOverlaps;
-    return cachedBundle;
-  }
-  const overlap = getDeckOverlapMapCached(items);
-  _deckHasOverlaps = false;
-  const records = [];
-  const expandRecords = [];
-  const groupInfo = new Map();
+  const cachedBundle = readDeckRouteRecordCache(sig);
+  if (cachedBundle) return cachedBundle;
+  const { overlap, records, expandRecords, groupInfo, drawnLenByTid } =
+    createDeckRouteBuildState(items);
   // Total drawn ridden meters per train — the primary input of the painter's
   // order assigned after the build (see the line-sort-key pass below). Run
   // lengths can't serve: on a shared corridor every member's run has
   // IDENTICAL geometry, so they tie exactly where the order matters.
-  const drawnLenByTid = new Map();
   items.forEach((item) => {
     const train = item.train;
     const feature = item.feature;
@@ -1088,42 +1140,18 @@ function buildDeckRouteRecords(items) {
   // the later date under the earlier (repeat rides of one interval show the
   // first traversal — the same earliest-first convention as the fan lanes).
   // Per-TRAIN ranks: every record of a train shares one rank.
-  const sortTrains = [];
-  const sortSeen = new Set();
-  records.forEach((r) => {
-    const rid = r.train && r.train.id;
-    if (sortSeen.has(rid)) return;
-    sortSeen.add(rid);
-    sortTrains.push(r.train);
-  });
-  // Whole-meter lengths: the same interval ridden in opposite directions
-  // sums the same segment set in reverse order, so raw float totals differ
-  // by noise — which would decide the primary key and starve the date
-  // tie-break.
-  sortTrains.sort(
-    (a, b) =>
-      Math.round(drawnLenByTid.get(b.id) || 0) -
-        Math.round(drawnLenByTid.get(a.id) || 0) ||
-      compareTrainsByDateAndDeparture(b, a),
-  );
-  const sortRank = new Map(sortTrains.map((t, i) => [t.id, i]));
-  records.forEach((r) => {
-    r.sortKey =
-      (r.nopick ? 0 : ROUTE_SORT_TIER) +
-      (sortRank.get(r.train && r.train.id) || 0);
-  });
+  // Whole-meter length ranking makes opposite-direction traversals tie before
+  // the date/order fallback is applied.
+  assignDeckRouteSortKeys(records, drawnLenByTid);
 
-  const bundle = {
+  return publishDeckRouteRecordBundle({
+    signature: sig,
+    spacingPx,
     records,
     expandRecords,
     groupInfo,
-    spacingPx,
-    hasOverlaps: _deckHasOverlaps,
-  };
-  if (pendingDeferredFit) bundle._pendingFit = pendingDeferredFit;
-  if (sig) _deckCachePut(_deckRecordsCacheBySig, sig, bundle);
-  if (bundle._pendingFit) scheduleFitCurveWorker(bundle);
-  return bundle;
+    pendingDeferredFit,
+  });
 }
 
 

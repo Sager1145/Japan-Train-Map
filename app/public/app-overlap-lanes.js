@@ -638,7 +638,7 @@ function smoothCorridorCurve(line) {
 // fitCurveMinRadius, then an open cubic B-spline produces a C2-continuous curve.
 // fitCurvePrecision changes output sampling only — it can never reintroduce a
 // source corner into either the displayed debug curve or the direction field.
-function smoothCorridorCurveUncached(line) {
+function normalizeFitCurveInputs(line) {
   if (!line || line.length < 2) return null;
   const precision = Math.max(
     0.5,
@@ -674,6 +674,29 @@ function smoothCorridorCurveUncached(line) {
     cum.push(cum[i - 1] + distanceMeters(line[i - 1], line[i]));
   const total = cum[cum.length - 1];
   if (!(total > 0)) return null;
+  return {
+    precision,
+    requestedMinRadius,
+    minRadius,
+    minDetail,
+    maxDeviation,
+    cum,
+    total,
+  };
+}
+
+function smoothCorridorCurveUncached(line) {
+  const inputs = normalizeFitCurveInputs(line);
+  if (!inputs) return null;
+  const {
+    precision,
+    requestedMinRadius,
+    minRadius,
+    minDetail,
+    maxDeviation,
+    cum,
+    total,
+  } = inputs;
   // Same binary-search sampler as RailMapGeometry.curvePointAt, kept inline:
   // the corridor solver must stay runnable in the standalone fit-curve test
   // VM, which loads this file without the railmap family (or a window).
