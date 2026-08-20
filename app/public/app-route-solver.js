@@ -4,6 +4,11 @@
 //  Part of the app-*.js family split out of the old single-file app.js:
 //  plain classic scripts sharing one global lexical scope, loaded in the
 //  order defined by index.html (the module map lives in app.js's header).
+//
+//  `distanceMeters` — the great-circle distance this file measures every gap,
+//  straight-line chord and path length with — is not declared here. It lives
+//  in app-route-simplify.js, the one leaf the fit worker also loads, and
+//  reaches this file through the shared classic-script scope.
 // =========================================================================
 
 // =========================================================================
@@ -1345,28 +1350,4 @@ function reconstructPath(previous, sourceKey, targetKey) {
 function graphGridKey(coord, cellSize) {
   const [lon, lat] = normalizeGraphCoord(coord);
   return `${Math.floor(lon / cellSize)},${Math.floor(lat / cellSize)}`;
-}
-
-// Canonical great-circle distance for the solver family, and the bare global
-// that app-overlap-lanes.js / app-deck-records.js / app-route-graph.js resolve
-// to through the shared classic-script scope.
-//
-// Two deliberate mirrors of this exact body exist where that scope does not
-// reach: app-fit-worker.js (a Worker) and test/fit-curve-invariants.test.js
-// (a vm harness). test/distance-meters-parity.test.js fails if any of the
-// three drifts. rail-network.js's same-named function is a DIFFERENT,
-// equirectangular algorithm (~0.1125% longer) and is not part of this set.
-function distanceMeters(a, b) {
-  const lon1 = Number(a[0]);
-  const lat1 = Number(a[1]);
-  const lon2 = Number(b[0]);
-  const lat2 = Number(b[1]);
-  const radius = 6371000;
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lon2 - lon1) * Math.PI) / 180;
-  const x =
-    Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return 2 * radius * Math.asin(Math.sqrt(x));
 }

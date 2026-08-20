@@ -4,30 +4,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-// Exact copy of the production haversine (app-route-solver.js /
-// app-fit-worker.js), so the curves solved under test are numerically the
-// same as the worker's — the harness used to substitute an equirectangular
-// approximation here, which quietly broke the "mirrors the worker" claim.
-function distanceMeters(a, b) {
-  const lon1 = Number(a[0]);
-  const lat1 = Number(a[1]);
-  const lon2 = Number(b[0]);
-  const lat2 = Number(b[1]);
-  const radius = 6371000;
-  const p1 = (lat1 * Math.PI) / 180;
-  const p2 = (lat2 * Math.PI) / 180;
-  const dp = ((lat2 - lat1) * Math.PI) / 180;
-  const dl = ((lon2 - lon1) * Math.PI) / 180;
-  const x =
-    Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return 2 * radius * Math.asin(Math.sqrt(x));
-}
+// `distanceMeters` is NOT stubbed into these contexts. The production
+// haversine is declared by app-route-simplify.js, which every context below
+// runs as its first file, so the curves solved under test go through the very
+// same function the worker calls — exactly as app-fit-worker.js gets it from
+// its own importScripts of that file. This harness used to carry a copy of the
+// body (and, before that, an equirectangular approximation, which quietly
+// broke the "mirrors the worker" claim); reading the real one removes both
+// failure modes.
 
 function loadHooks(settings = {}) {
   const context = vm.createContext({
     console,
     location: { search: "" },
-    distanceMeters,
     APPLIED_FIT_CURVE_SETTINGS: settings,
   });
   const pub = path.join(__dirname, "..", "public");
@@ -55,7 +44,6 @@ function loadOverlapMapHooks() {
   const context = vm.createContext({
     console,
     location: { search: "" },
-    distanceMeters,
     APPLIED_FIT_CURVE_SETTINGS: {},
     cachedRouteDateActive: false,
     selectedDate: null,

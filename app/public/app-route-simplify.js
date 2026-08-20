@@ -24,6 +24,44 @@
 const M_PER_DEG_LON = 111320;
 const M_PER_DEG_LAT = 110540;
 
+// The ONE great-circle distance of the render/solver plane: haversine on a
+// sphere of radius 6371000 m. It lives in this file for the same reason the
+// scales above do — this is the only leaf that BOTH the page and the fit
+// worker load, so one declaration reaches every caller:
+//
+//   page     index.html loads this file (#21) before app-overlap-lanes.js,
+//            app-deck-records.js, app-route-graph.js and app-route-solver.js,
+//            which all resolve the bare global through the shared classic-
+//            script scope; app-route-service.js hands it on to
+//            stationRouteResolver and routeSolverApi.
+//   worker   app-fit-worker.js already does importScripts("app-route-simplify.js").
+//   tests    test/fit-curve-invariants.test.js already runs this file into its
+//            vm context.
+//
+// It used to be declared in app-route-solver.js and copied verbatim into the
+// worker and that vm harness; the copies are gone because nothing needed them.
+//
+// NOT the same function as rail-network.js's same-named one, which is
+// equirectangular on M_PER_DEG_LON for both axes and reads ~0.1125% longer.
+// Do not merge the two: every threshold in rail-network.js was tuned against
+// its numbers, and swapping this one in there once quietly broke the fit-curve
+// harness's "mirrors the worker" guarantee.
+// test/distance-meters-parity.test.js pins both facts.
+function distanceMeters(a, b) {
+  const lon1 = Number(a[0]);
+  const lat1 = Number(a[1]);
+  const lon2 = Number(b[0]);
+  const lat2 = Number(b[1]);
+  const radius = 6371000;
+  const p1 = (lat1 * Math.PI) / 180;
+  const p2 = (lat2 * Math.PI) / 180;
+  const dp = ((lat2 - lat1) * Math.PI) / 180;
+  const dl = ((lon2 - lon1) * Math.PI) / 180;
+  const x =
+    Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * radius * Math.asin(Math.sqrt(x));
+}
+
 // --- Route geometry simplification (pre-render decimation) -----------------
 // Ridden routes are exact slices of the complete display network. Preserve
 // every canonical vertex: zoom hierarchy is achieved by removing complete
