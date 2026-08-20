@@ -314,8 +314,20 @@ test("network LOD is paint-time, never a tile-parse zoom filter", () => {
   assert.deepEqual(plain(lines.filter), ["!=", ["get", "suspended"], 1]);
   assert.deepEqual(plain(suspendedLines.filter), ["==", ["get", "suspended"], 1]);
   assert.equal(stations.filter, undefined);
-  assert.equal(style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance, 0.5);
-  assert.equal(style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance, 0.5);
+  // One number, on both sources: a ridden route is an exact slice of the line
+  // under it and the two must be generalised identically or they part company
+  // at every corner. Its size is derived in railmap-style.js from
+  // RAILWAY_STYLE.minCornerRadiusPx and measured by
+  // scripts/validation/validate-corner-radius.mjs.
+  assert.equal(win.RailMapStyle.SEGMENT_SIMPLIFY_TOLERANCE_PX, 0.0625);
+  assert.equal(
+    style.sources[win.RailMapStyle.SEGMENTS_SOURCE].tolerance,
+    win.RailMapStyle.SEGMENT_SIMPLIFY_TOLERANCE_PX,
+  );
+  assert.equal(
+    style.sources[win.RailMapStyle.TRAIN_ROUTES_SOURCE].tolerance,
+    win.RailMapStyle.SEGMENT_SIMPLIFY_TOLERANCE_PX,
+  );
   assert.equal(lines.paint["line-opacity"][0], "step");
   assert.equal(stations.paint["circle-opacity"][0], "step");
   assert.equal(stations.paint["circle-opacity"].at(-2), 14);

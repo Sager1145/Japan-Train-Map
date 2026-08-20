@@ -61,6 +61,28 @@
     // Rail stroke = a quarter of that. Derived, never set independently.
     railWidthToStationDiameter: RAIL_WIDTH_TO_STATION_DIAMETER,
     railWidthPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER,
+    // The smallest radius a corner is allowed to PRESENT on screen, and so
+    // the promise the source tolerance below is set to keep: where the
+    // surveyed alignment turns on a curve at least this wide, the drawn line
+    // still turns on a curve there rather than on one vertex.
+    //
+    // One stroke width, because the pen decides the floor. Every railway here
+    // is drawn `line-join: round`, which rounds the OUTER edge of the stroke
+    // to half its width about the vertex — so under W/2 there is nothing a
+    // radius could add that the ink has not already drawn. At R = W the INNER
+    // edge has radius W/2 too, both boundaries of the ink are arcs of the same
+    // order, and a right angle's inner edge stands 0.414 × W/2 ≈ 0.62 px clear
+    // of where the mitred apex would be — about 1.2 device pixels on a 2×
+    // display, the first radius that is visible at all.
+    //
+    // A screen-space token like the rest, not an absolute pixel count: it
+    // rides railwayScale() with the stroke it is a multiple of, so the
+    // proportion a reader actually judges — how round the corner is against
+    // how wide the line is — is the same at z6 as at z18.
+    // scripts/validation/validate-corner-radius.mjs measures the drawn
+    // corners against this number, the way validate-railway-topology.mjs
+    // measures real corridors against parallelGapPx.
+    minCornerRadiusPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER,
     // The clear map a reader sees between two DISTINCT railways that share one
     // corridor, edge to edge. Half of the lane contract — centre-to-centre is
     // railWidthPx + this (parallelLaneCentreDistancePx) — and the number
@@ -81,6 +103,61 @@
     // How near a junction the geometry pipeline must stop grooming.
     junctionProtectionPx: 6,
   });
+
+  // ───────────────── how far off the surveyed line the map may draw ─────────────────
+  // MapLibre runs every GeoJSON source through geojson-vt, which scores each
+  // vertex once and then, per zoom, keeps only those whose score clears
+  // `tolerance` CSS PIXELS. The number is therefore not a quality dial: it is
+  // literally how far the drawn line is allowed off the track it stands for,
+  // and — because Douglas–Peucker keeps the point that deviates MOST and drops
+  // the transition points either side of it — how much CURVE the map is
+  // allowed to spend on a single vertex. Generalisation does not roughen an
+  // arc, it replaces the arc with its extremal polyline; pull far enough back
+  // and a surveyed 400 m curve is drawn as one kink.
+  //
+  // So the setting follows from minCornerRadiusPx above. An arc of radius R
+  // turning Θ, reduced to the two chords that meet at its apex, still stands
+  //
+  //     R × (1 − cos(Θ/4))
+  //
+  // off the arc, and the simplifier keeps a vertex only when it stands off by
+  // more than the tolerance. At the shape a reader calls a corner — Θ = 90° —
+  // and at the tightest radius the map promises to show — R = one stroke,
+  // 1.5 px since the 2026-08-20 retune halved it — that is
+  // 1.5 × 0.0761 = 0.114 px. Any tolerance at or above it lets a right angle
+  // of the smallest promised radius be drawn as a bare kink. The promise
+  // travels with the pen: derive this from railWidthPx, never from a
+  // remembered pixel count, or a later retune quietly breaks it.
+  //
+  // geojson-vt is not quite Douglas–Peucker, either: a vertex's score is its
+  // distance to the chord of the sub-range that its own recursion split, not
+  // to the coarser chord that actually survives, so scores UNDER-state and
+  // vertices a true DP would keep get dropped. Measured across all five
+  // packages by scripts/validation/validate-corner-radius.mjs, the drawn line
+  // runs up to 1.6× the nominal tolerance off the surveyed one, which puts the
+  // usable ceiling at 0.114 / 1.6 = 0.071 px. A sixteenth of a pixel is the
+  // clean binary fraction under it, and measurement agrees with the algebra:
+  // at half a pixel the five packages hand thousands of visible curves to a
+  // single vertex, at 0.125 px 612, and at 0.0625 px twelve — every one of
+  // them a 30–36° bend on z6 or z8 where the alignment itself turns 23–37°,
+  // so the drawn line is not inventing a corner sharper than the ground, only
+  // spending a wide bend on one vertex. The drawn line's worst offset from the
+  // surveyed one falls with it, 0.80 px → 0.11 px.
+  //
+  // Going one step finer clears those twelve, and is still rejected: 0.03125
+  // buys them with 16% more vertices everywhere while sitting BELOW what the
+  // promise asks for. The tolerance is set by the radius the map promises,
+  // not by driving a residue count to zero.
+  // 姨捨's switchback, whose out-and-back is 174 m, is drawn as a switchback
+  // from z10 rather than from z12; below that the excursion is thinner than
+  // the stroke and no setting can show it.
+  //
+  // The floor is a rendering limit, not a taste: at tolerance 0 geojson-vt
+  // fed one z6 tile 155,574 vertices and MapLibre dropped it, which is the
+  // blank square over Kanto that f0b845e was fixing when it reached for half
+  // a pixel. A sixteenth leaves that tile at 9,720 — 3.4× today's 2,818 and
+  // 16× clear of the count that broke.
+  const SEGMENT_SIMPLIFY_TOLERANCE_PX = 0.0625;
   // The network under the map is a per-COUNTRY package (jp-2025 / tw-2025), so
   // the credit carried on its source is per-country too — crediting N02 for
   // Taiwanese geometry would be a false licence declaration. Japan's station
@@ -790,10 +867,7 @@
       type: "geojson",
       data: network ? network.segments : EMPTY_FC,
       attribution: railAttributionForCountry(opts.country),
-      // Simplify very slightly (0.5 px tolerance) to prevent geojson-vt from
-      // dropping complex/dense tiles at low zoom levels, while keeping the
-      // coordinates virtually identical to the canonical lines on screen.
-      tolerance: 0.5,
+      tolerance: SEGMENT_SIMPLIFY_TOLERANCE_PX,
     };
     sources[STATIONS_SOURCE] = {
       type: "geojson",
@@ -803,12 +877,14 @@
       type: "geojson",
       data: network ? network.stationLabels || EMPTY_FC : EMPTY_FC,
     };
-    // Ridden routes use exact slices of the same complete network lines and
-    // therefore keep the same unsimplified coordinates at every zoom.
+    // Ridden routes use exact slices of the same complete network lines, so
+    // they must be generalised by the SAME number: two tolerances would let
+    // the ridden stroke and the line under it part company at every corner,
+    // which is the one thing a ride overlay may never do.
     sources[TRAIN_ROUTES_SOURCE] = {
       type: "geojson",
       data: EMPTY_FC,
-      tolerance: 0.5,
+      tolerance: SEGMENT_SIMPLIFY_TOLERANCE_PX,
     };
     sources[TRAIN_PICK_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[TRAIN_PICK_FAN_SOURCE] = { type: "geojson", data: EMPTY_FC };
@@ -1561,6 +1637,7 @@
     railwayScaleAt,
     railwayScreenPaintEntries,
     RAILWAY_STYLE,
+    SEGMENT_SIMPLIFY_TOLERANCE_PX,
     evaluateScreenValue,
     stationFill,
     stationStroke,
