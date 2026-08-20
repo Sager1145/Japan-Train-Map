@@ -1342,25 +1342,6 @@ function reconstructPath(previous, sourceKey, targetKey) {
   return path;
 }
 
-function normalizeGraphCoord(coord) {
-  // AppCore.quant5 is the single owner of the N02 5-decimal grid rule: graph
-  // nodes, stats edge keys, deck segment keys and the build-time station
-  // expansion must all quantize identically or cross-module coordinate
-  // identities drift apart.
-  return [
-    window.AppCore.quant5(Number(coord[0])),
-    window.AppCore.quant5(Number(coord[1])),
-  ];
-}
-
-// Hot enough (two calls per drawn route segment — ~700k per full-Japan
-// repaint) that the intermediate array normalizeGraphCoord returns is worth
-// skipping. Same quant5 rule, same bytes.
-function coordKey(coord) {
-  const quant5 = window.AppCore.quant5;
-  return quant5(Number(coord[0])) + "," + quant5(Number(coord[1]));
-}
-
 function graphGridKey(coord, cellSize) {
   const [lon, lat] = normalizeGraphCoord(coord);
   return `${Math.floor(lon / cellSize)},${Math.floor(lat / cellSize)}`;

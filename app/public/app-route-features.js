@@ -10,17 +10,6 @@
 //  §30.  Geometry helpers & matched-route feature assembly
 // =========================================================================
 
-// Normalized lines are a pure function of the (immutable) geometry object, so
-// memoize per geometry. refreshRouteVertexSnap re-walks every matched route on
-// EACH overlap rebuild, and the route-graph builders re-walk rail features, and
-// all of them previously re-ran normalizeGraphCoord (toFixed rounding) over the
-// same constant coordinates every pass. Every caller only READS the returned
-// arrays (segKeys / bbox / graph edges / flat() copies are built into fresh
-// structures; none mutate a coordinate pair or a line array), so sharing the
-// cached arrays is behavior-identical. WeakMap-keyed so entries drop with the
-// feature geometry. Empty results are not cached (cheap, and Point-without-
-// coordinates is already screened out above).
-const _geometryLinesCache = new WeakMap();
 // Where a drawn hop finishes, so the next hop can be asked to continue from
 // the same rail rather than re-choosing a display part at the junction.
 function lastGeometryCoordinate(geometry) {
@@ -29,21 +18,6 @@ function lastGeometryCoordinate(geometry) {
   return last && last.length ? last[last.length - 1] : null;
 }
 
-function iterateGeometryLines(geometry) {
-  if (!geometry || !geometry.coordinates) return [];
-  const memo = _geometryLinesCache.get(geometry);
-  if (memo) return memo;
-  let result;
-  if (geometry.type === "LineString")
-    result = [geometry.coordinates.map(normalizeGraphCoord)];
-  else if (geometry.type === "MultiLineString")
-    result = geometry.coordinates.map((line) => line.map(normalizeGraphCoord));
-  else if (geometry.type === "Point")
-    result = [[normalizeGraphCoord(geometry.coordinates)]];
-  else return [];
-  _geometryLinesCache.set(geometry, result);
-  return result;
-}
 
 class MinHeap {
   constructor() {

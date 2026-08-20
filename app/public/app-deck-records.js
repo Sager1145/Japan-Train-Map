@@ -1344,22 +1344,6 @@ function handleDeckMarkerClick(info) {
   }
 }
 
-// Direction-independent key of one drawn route segment. Deliberately NOT
-// AppCore.edgeKey5: this key's historical byte format orders the two node
-// keys as STRINGS (Array.sort), while edgeKey5 orders numerically — the
-// overlap caches keyed on this exact format must not change. It still sits on
-// the shared 5-decimal grid because coordKey quantizes via AppCore.quant5.
-// Built once per drawn segment (~350k times on a full-Japan store), so it
-// compares the two node keys directly instead of allocating a two-element
-// array and running Array.sort on it. Array.sort's default comparator orders
-// by the elements' string values, which for two strings is exactly `<=` —
-// the emitted bytes are unchanged.
-function routeCoordinateSegmentKey(a, b) {
-  const ka = coordKey(a);
-  const kb = coordKey(b);
-  return ka <= kb ? ka + "|" + kb : kb + "|" + ka;
-}
-
 function getComputedPassThroughFeatures(train) {
   const explicitKeys = new Set();
   (train.stops || []).forEach((stop) =>
