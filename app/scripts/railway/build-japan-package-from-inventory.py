@@ -3915,7 +3915,10 @@ def build(args) -> None:
         encoding="utf-8",
     )
     destination = STAGING_DIR / "jp-2025.staging.json"
-    destination.write_text(json.dumps(package, ensure_ascii=False) + "\n", encoding="utf-8")
+    destination.write_text(
+        json.dumps(node_number_style(package), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"jp: {len(lines)} lines -> {destination.relative_to(APP_DIR)}")
     for line in lines:
@@ -4014,6 +4017,30 @@ def platform_midpoint(platform, geometry_lib):
     if len(coords) > 3 and coords[0] == coords[-1]:
         return outline_midpoint(coords, geometry_lib)
     return arc_midpoint(coords, geometry_lib)
+
+
+def node_number_style(value):
+    """Render an integral float as an integer, the way JSON.stringify does.
+
+    This builder writes staging with Python's json.dumps; everything that
+    publishes a package (promote-lines, recompute-package-derived,
+    finalize-japan-package) writes it with Node's JSON.stringify. Python spells
+    a float that happens to be whole as `4.0` and Node spells it `4`. Every
+    consumer parses them to the same number, so nothing downstream cares — but
+    a check that compares the two files as TEXT lights up on every line that
+    happens to carry one. A 2026-08-19 review spent three days on fourteen
+    "drifted" lines that were only ever this, and the drift list had been
+    carried forward through five batches before anyone compared the values
+    instead of the bytes. Normalising here means a text diff between a staging
+    build and a published package means what it appears to mean.
+    """
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, list):
+        return [node_number_style(item) for item in value]
+    if isinstance(value, dict):
+        return {key: node_number_style(item) for key, item in value.items()}
+    return value
 
 
 def main() -> None:
