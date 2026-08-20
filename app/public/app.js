@@ -18,6 +18,8 @@
 //   app-display-features.js  §4     basemap opacity, endpoint labels,
 //                                   deck hover/tooltip
 //   app-route-simplify.js    §5     Douglas-Peucker pre-render decimation
+//   app-api.js               §7     backend API client (URLs, HAS_BACKEND,
+//                                   CLIENT_ID, fetchJson/fetchText)
 //   app-dates.js             §6     date grouping/sorting + UI date state
 //   app-dom.js               §8     the cached DOM element table (`els`)
 //   app-state.js                    core mutable state owner + actions
@@ -62,60 +64,8 @@
 // =========================================================================
 
 // =========================================================================
-//  §7.  Backend API client & app-data loading
+//  §7.  App-data loading (the API client itself lives in app-api.js)
 // =========================================================================
-
-// Document-relative (not root-absolute) so every API call — including the
-// train-store save/load — resolves next to index.html. This keeps the app
-// working when it is served from a sub-path (e.g. behind a reverse proxy at
-// /something/) instead of only from the domain root.
-const API_BASE = "./api";
-const APP_RUNTIME_CONFIG = window.APP_RUNTIME_CONFIG || {
-  hasBackend: true,
-  apiFileSuffix: "",
-};
-// True on the Node/Express deployment, whose backend answers the write/live
-// endpoints — /api/events (SSE live-refresh) and PUT/DELETE /api/train-store
-// (server autosave / clear). The GitHub Pages STATIC build has no backend, so
-// the deploy workflow rewrites this line to `false`; the app then skips those
-// backend-only calls instead of firing requests that 404 on a static host. The
-// read-only dataset/seed GETs (fetchJson, loadTrainStoreFromServer) are served
-// as plain files on Pages and stay enabled either way. Local-file save/load via
-// the File System Access API is independent of this flag.
-const HAS_BACKEND = APP_RUNTIME_CONFIG.hasBackend !== false;
-function apiResourceUrl(path) {
-  return `${API_BASE}/${path}${APP_RUNTIME_CONFIG.apiFileSuffix || ""}`;
-}
-function apiEndpointUrl(path) {
-  return `${API_BASE}/${path}`;
-}
-// A per-tab id sent with every store write (X-Client-Id). The server echoes it
-// in the SSE "store-changed" event so this tab can ignore the write it just
-// made and only react to changes from *other* sources (another tab, or an AI
-// agent calling /api/agent/import).
-const CLIENT_ID =
-  (window.crypto && window.crypto.randomUUID && window.crypto.randomUUID()) ||
-  `c_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-const fetchJson = async (path, options) => {
-  // Use the browser's default HTTP cache. The server sends a weak ETag +
-  // Cache-Control: max-age on every dataset, so reloads revalidate to a 304 (or
-  // serve straight from cache within max-age) instead of re-downloading the full
-  // multi-MB payload. The old `cache: "no-store"` defeated all of that.
-  const res = await fetch(apiResourceUrl(path), options);
-  if (!res.ok)
-    throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
-  return res.json();
-};
-// Same request semantics as fetchJson but returns the raw text WITHOUT the
-// atomic native JSON.parse. Used for rail-sections so its ~1.1 s parse can be
-// deferred and chunked (see parseFeatureCollectionChunked / ensureRailSectionsLoaded)
-// instead of blocking the main thread the instant the 12 MB body arrives.
-const fetchText = async (path) => {
-  const res = await fetch(apiResourceUrl(path));
-  if (!res.ok)
-    throw new Error(`Failed to load ${path}: ${res.status} ${res.statusText}`);
-  return res.text();
-};
 
 // Data is now served by the backend instead of being embedded in the page.
 let railSectionsGeoJson,
