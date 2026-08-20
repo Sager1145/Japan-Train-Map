@@ -29,7 +29,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import zlib from "node:zlib";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { laneRowsForPackage } from "./build-parallel-corridors.mjs";
@@ -103,20 +102,10 @@ function main() {
           );
 
     if (reportOnly) continue;
-    // The sidecar is reconciled even when recomputation changed nothing:
-    // promote-lines.mjs writes the .json and leaves the .gz alone, so "derived
-    // fields were already correct" is exactly the case where a stale sidecar
-    // survives unnoticed.
-    const gzPath = `${file}.gz`;
-    const gzip = zlib.gzipSync(raw, { level: 9, mtime: 0 });
-    const sidecarStale =
-      !fs.existsSync(gzPath) || !zlib.gunzipSync(fs.readFileSync(gzPath)).equals(Buffer.from(raw));
-    if (raw !== before) fs.writeFileSync(file, raw);
-    if (sidecarStale) fs.writeFileSync(gzPath, gzip);
-    if (raw !== before || sidecarStale)
-      process.stdout.write(
-        `  wrote ${raw !== before ? `${country}-2025.json and ` : ""}${country}-2025.json.gz\n`,
-      );
+    if (raw !== before) {
+      fs.writeFileSync(file, raw);
+      process.stdout.write(`  wrote ${country}-2025.json\n`);
+    }
   }
 }
 

@@ -236,20 +236,3 @@ test("every session builds exactly one country", () => {
   for (const session of sessions) assert.ok(rowsForSession(session).length > 0);
 });
 
-test("every published package's gzip sidecar matches its json byte for byte", () => {
-  // Found in S02: promote-lines.mjs writes the .json and recompute skipped the
-  // sidecar whenever recomputation changed nothing, which is precisely when a
-  // sidecar left over from the previous package survives. A sidecar that
-  // decompresses to different bytes is a package the server may serve instead
-  // of the one on disk.
-  for (const country of ["jp", "tw", "hk", "mo", "kr"]) {
-    const file = path.join(APP_DIR, "public", "rail", `${country}-2025.json`);
-    const sidecar = `${file}.gz`;
-    if (!fs.existsSync(file) || !fs.existsSync(sidecar)) continue;
-    assert.deepEqual(
-      zlib.gunzipSync(fs.readFileSync(sidecar)),
-      fs.readFileSync(file),
-      `${country}-2025.json.gz`,
-    );
-  }
-});

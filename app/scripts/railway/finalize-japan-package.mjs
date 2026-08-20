@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -167,7 +166,6 @@ pkg.stats = {
 
 const raw = `${JSON.stringify(pkg)}\n`;
 fs.writeFileSync(PACKAGE_PATH, raw);
-fs.writeFileSync(`${PACKAGE_PATH}.gz`, zlib.gzipSync(raw, { level: 9, mtime: 0 }));
 console.log(
   `jp: ${pkg.lines.length} lines, ${pkg.stats.intervals} intervals, ` +
     `${pkg.stats.stations} platforms, ${structureRows} structure rows ` +
