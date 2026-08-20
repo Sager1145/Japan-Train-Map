@@ -11,9 +11,9 @@
 //  the finished view object that buildMileageStatsView() returns and writes
 //  markup; nothing here decides what a kilometre counts towards.
 //
-//  Direction of dependency: app-stats.js (orchestration) calls INTO this
-//  file — runMileageStatsJob() awaits the view, then hands it to
-//  renderMileageStatsDom(). Nothing here calls back into the aggregator.
+//  Direction of dependency: this view/controller calls the model in
+//  app-stats.js, receives a completed view model, and renders it. The model
+//  never calls back into this file.
 // =========================================================================
 
 function formatStatDuration(minutes) {
@@ -189,7 +189,7 @@ function renderMileageStatsDom(view) {
   //    breakdown (依線路 button) so a near-100% figure is auditable line by
   //    line; 新幹線 and 地下鐵 list all member lines including unridden ones.
   rows.innerHTML =
-    activeStatCategories().map((c) => {
+    (view.categories || []).map((c) => {
       const tot = s.totals.byMask.get(c.mask) || 0;
       const rid = s.riddenByMask.get(c.mask) || 0;
       const pct = tot > 0 ? (100 * rid) / tot : 0;
@@ -213,6 +213,72 @@ function renderMileageStatsDom(view) {
     serviceRowsHtml(s.services) +
     timeRow +
     topSegmentsHtml(s.topSegments);
+}
+
+async function runMileageStatsJob() {
+  const token = ++_statsJobToken;
+  const headline = document.getElementById("stats-headline");
+  const rows = document.getElementById("stats-rows");
+  if (!headline || !rows) return;
+  if (!activeCountryHasRouteSolver()) {
+    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.unavailableCountry"))}</div>`;
+    rows.innerHTML = "";
+    return;
+  }
+  if (!railSectionsGeoJson) {
+    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.loading"))}</div>`;
+    rows.innerHTML = "";
+    ensureRailSectionsLoaded()
+      .then(() => scheduleMileageStats())
+      .catch(() => {});
+    return;
+  }
+  if (!_statsEdgeIndex) {
+    await ensureStatsEdgeIndexAsync();
+    if (token !== _statsJobToken || !_statsEdgeIndex) return;
+  }
+  const idx = _statsEdgeIndex;
+  pruneStatsTrainCache();
+  const trains = trainStore.trains || [];
+  const entries = [];
+  let t0 = performance.now();
+  for (const train of trains) {
+    entries.push(collectTrainStatsEntry(train, idx));
+    if (performance.now() - t0 > 12) {
+      await _statsYield();
+      if (token !== _statsJobToken) return;
+      t0 = performance.now();
+    }
+  }
+  const superseded = Symbol("stats-superseded");
+  const yieldPoint = async () => {
+    await _statsYield();
+    if (token !== _statsJobToken) throw superseded;
+  };
+  try {
+    const view = await buildMileageStatsView(idx, trains, entries, yieldPoint);
+    await yieldPoint();
+    renderMileageStatsDom(view);
+  } catch (err) {
+    if (err !== superseded) throw err;
+  }
+}
+
+function mileageStatsTabActive() {
+  const card = document.getElementById("mileage-stats");
+  return Boolean(card) && !card.classList.contains("tab-hidden");
+}
+
+let _statsRenderTimer = null;
+function scheduleMileageStats() {
+  if (!mileageStatsTabActive()) return;
+  if (_statsRenderTimer) clearTimeout(_statsRenderTimer);
+  _statsRenderTimer = setTimeout(() => {
+    _statsRenderTimer = null;
+    runMileageStatsJob().catch((err) =>
+      console.warn("mileage stats job failed", err),
+    );
+  }, 400);
 }
 
 // ── 最常乘坐區間 rows, one per category ───────────────────────────────────────

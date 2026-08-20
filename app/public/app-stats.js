@@ -716,7 +716,7 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
     stats.services = serviceGroupStats(dayTrains, dayEntries);
     daily = { date: dateLabel(selectedDate), trainCount: dayTrains.length, stats };
   }
-  return { overall, daily };
+  return { overall, daily, categories: activeStatCategories() };
 }
 
 
@@ -1006,85 +1006,4 @@ async function buildStatsEdgeIndexSliced() {
     lineTotByCat,
     lineOperator,
   };
-}
-
-async function runMileageStatsJob() {
-  const token = ++_statsJobToken;
-  const headline = document.getElementById("stats-headline");
-  const rows = document.getElementById("stats-rows");
-  if (!headline || !rows) return;
-  // The coverage graph is built from the Japan-only N02 datasets; for any
-  // other active country say so instead of downloading the 12 MB
-  // rail-sections file to compute a meaningless all-zero table.
-  if (!activeCountryHasRouteSolver()) {
-    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.unavailableCountry"))}</div>`;
-    rows.innerHTML = "";
-    return;
-  }
-  if (!railSectionsGeoJson) {
-    headline.innerHTML = `<div class="stats-loading">${escapeHtml(I18N.t("stats.loading"))}</div>`;
-    rows.innerHTML = "";
-    ensureRailSectionsLoaded()
-      .then(() => scheduleMileageStats())
-      .catch(() => {});
-    return;
-  }
-  if (!_statsEdgeIndex) {
-    await ensureStatsEdgeIndexAsync();
-    if (token !== _statsJobToken || !_statsEdgeIndex) return;
-  }
-  const idx = _statsEdgeIndex;
-  pruneStatsTrainCache();
-  const trains = trainStore.trains || [];
-  const entries = [];
-  let t0 = performance.now();
-  for (const train of trains) {
-    entries.push(collectTrainStatsEntry(train, idx));
-    if (performance.now() - t0 > 12) {
-      await _statsYield();
-      if (token !== _statsJobToken) return; // superseded by a newer schedule
-      t0 = performance.now();
-    }
-  }
-  // The per-train loop above yields on budget, but the aggregate → containment
-  // → daily → DOM tail used to run as ONE synchronous task — exactly the
-  // block _statsYield exists to break up. Yield between the phases and abandon
-  // stale work as soon as a newer schedule takes the token.
-  const superseded = Symbol("stats-superseded");
-  const yieldPoint = async () => {
-    await _statsYield();
-    if (token !== _statsJobToken) throw superseded;
-  };
-  try {
-    const view = await buildMileageStatsView(idx, trains, entries, yieldPoint);
-    await yieldPoint();
-    renderMileageStatsDom(view);
-  } catch (err) {
-    if (err !== superseded) throw err;
-  }
-}
-
-// Debounced: renderAll fires on every store mutation; the time-sliced job
-// re-runs once things settle. Per-train caching means an unchanged train
-// costs one signature check, so a full refresh is a few ms of merged Sets.
-// The mileage-stats panel lives entirely inside its own workspace tab. When
-// that tab is hidden there is nothing to show, so the job is skipped — which is
-// what keeps the 12 MB rail-sections parse (runMileageStatsJob lazy-loads it)
-// OFF the boot path on the static/iPhone deploy, whose default tab is the 列車
-// list. setActiveWorkspaceTab() re-schedules the moment the 統計 tab is opened,
-// and renderAll() keeps it live while it stays open.
-function mileageStatsTabActive() {
-  const card = document.getElementById("mileage-stats");
-  return Boolean(card) && !card.classList.contains("tab-hidden");
-}
-let _statsRenderTimer = null;
-function scheduleMileageStats() {
-  if (!mileageStatsTabActive()) return;
-  if (_statsRenderTimer) clearTimeout(_statsRenderTimer);
-  _statsRenderTimer = setTimeout(() => {
-    _statsRenderTimer = null;
-    runMileageStatsJob().catch((err) =>
-      console.warn("mileage stats job failed", err),
-    );
-  }, 400);
 }
