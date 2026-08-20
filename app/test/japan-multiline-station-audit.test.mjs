@@ -29,7 +29,14 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   // in N02, 3e-9 m apart, and ties-to-even rounded the two copies into different
   // NODE_DP cells; keyed tie-proof they are one railway and 札幌 leaves the
   // multi-line set entirely.
-  assert.equal(report.summary.multi_display_line_groups, 873);
+  // 874 on 2026-08-21: 東十条 is drawn by two strokes again — not by a skip
+  // edge this time, but because the 尾久支線 stroke starts there. Its junction
+  // is 井堀信号場 815 m north of 王子, N02 files no 信号場 in its Station layer,
+  // and compact-v1 can only begin a stroke at a station, so the registered
+  // extension (evidence/station-platform-oku-branch.json) hangs the branch off
+  // the station on the 赤羽 side of that junction. 東十条 is a real junction of
+  // the two strokes and shares one dot, which is what this contract checks.
+  assert.equal(report.summary.multi_display_line_groups, 874);
   assert.ok(report.summary.audited_station_groups >= report.summary.multi_display_line_groups);
   assert.equal(report.summary.fix_required, 0);
 

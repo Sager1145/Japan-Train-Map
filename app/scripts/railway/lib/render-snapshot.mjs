@@ -373,8 +373,28 @@
 // island 122 m from its own platform and now stands on 6;7; 大糸線 and
 // 篠ノ井線 no longer share a source coordinate there, which is correct — they
 // are two different islands and the audit classifies the pair C.
+//
+// 2026-08-20 (official line colours, all five countries): geometry, counts and
+// station dots are untouched — every difference is a colour. jp's line-level
+// colour coverage goes from 71 to 477 of 597 canonical lines (26 official + 394
+// documented + 57 candidate) after reading ja.wikipedia's 日本の鉄道ラインカラー一覧
+// and, for the residue nothing else colours, each line's own article; and every
+// country now carries `colorReference` (the operator's published value) beside
+// the `color` / `colorDark` display variants, which move HSL lightness only,
+// far enough to clear 3:1 against this app's map surfaces. tw / hk / kr / mo had
+// no dark variant at all before, and 37 of their strokes did not clear the
+// surface they were drawn on.
+// 2026-08-21 — 651 lines still, structure rows 18129 → 18127. Three station
+// dots move onto the platform their own line serves and one branch changes the
+// station it hangs from, so geometry moves while nothing is added or removed:
+// 立川 leaves the 中央線 platform section N02 files twice for 青梅線 (the
+// interval stops running down the 青梅短絡線, 314 m → 9.4 m from a way named
+// 青梅線), 姫路 drops 48 m south onto the island 播但線 and 姫新線 actually use
+// (52.5 → 4.2 m, and the elbow the old dot forced goes 70.7° → 20.1°), the
+// 尾久 支線 hangs from 東十条 instead of 王子 so its 146° fold is gone
+// geometrically, and 鶯谷 returns to the 電車線 where its trains run.
 export const EXPECTED_RENDER_HASH =
-  "e25339229079e8e1819316ba7ba2538e20003eca0b4f88bfb9b13bc4e85a14f3";
+  "71670a37c719e8eb1beb51ef1b3cfc62fa39800de47d5a04556600afdaa955fd";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 
