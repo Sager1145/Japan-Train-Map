@@ -63,6 +63,11 @@ function scheduleStoreSaveRetry() {
 // mutations (visible toggles, field edits, ride_segment toggles) no longer
 // pays one — let alone two — full serializations on the synchronous path.
 let storeSaveDirty = false;
+let persistenceStateChanged = null;
+
+function setPersistenceStateChangedListener(listener) {
+  persistenceStateChanged = typeof listener === "function" ? listener : null;
+}
 
 // --- Read-only recovery mode -----------------------------------------------
 // Entered when a SAVED store exists but cannot be loaded (fails validation,
@@ -291,7 +296,7 @@ async function flushUserStoreSave() {
       clearTimeout(storeSaveRetryTimer);
       storeSaveRetryTimer = null;
       setStatus(els.jsonStatus, I18N.t("status.autosaveLocalOk"), "ok");
-      updateDataSourceUi();
+      if (persistenceStateChanged) persistenceStateChanged();
     } catch (error) {
       console.warn("Autosave to browser storage (IndexedDB) failed.", error);
       if (error instanceof UserStoreConflictError) {
@@ -417,6 +422,14 @@ async function flushPersistence() {
  * @property {Function} enterRecoveryMode
  * @property {Function} exitRecoveryMode
  * @property {Function} resetForCountry
+ * @property {Function} readUserStore
+ * @property {Function} writeUserStore
+ * @property {Function} seedStoredRoutes
+ * @property {Function} pickLocalJson
+ * @property {Function} defaultStore
+ * @property {Function} fallbackStore
+ * @property {Function} fallbackLabel
+ * @property {Function} markClean
  * @property {boolean} recoveryMode
  */
 
@@ -429,6 +442,16 @@ const PersistenceService = Object.freeze({
   enterRecoveryMode: enterStoreRecoveryMode,
   exitRecoveryMode: exitStoreRecoveryMode,
   resetForCountry: resetPersistenceStateForCountrySwitch,
+  readUserStore: readUserStoreAll,
+  writeUserStore: writeUserStoreChunks,
+  seedStoredRoutes: seedRouteCacheEntries,
+  pickLocalJson: pickLocalJsonFile,
+  defaultStore: getDefaultTrainStore,
+  fallbackStore: countryFallbackStore,
+  fallbackLabel: countryFallbackLabel,
+  markClean() {
+    storeSaveDirty = false;
+  },
   get recoveryMode() {
     return storeRecoveryMode;
   },
@@ -1314,7 +1337,7 @@ async function writeLocalJsonFile(
   return true;
 }
 
-async function openLocalJsonFile() {
+async function pickLocalJsonFile() {
   if (supportsFileSystemAccess()) {
     const [handle] = await window.showOpenFilePicker({
       multiple: false,
@@ -1328,16 +1351,10 @@ async function openLocalJsonFile() {
     if (!handle) return;
     localJsonFileHandle = handle;
     const file = await handle.getFile();
-    // replaceTrainStoreFromJsonText() already finishes with finalizeProgressiveLoad()
-    // -> renderAll(), so an extra renderAll() here is a redundant full repaint
-    // (and full store re-serialization). Don't double-render.
-    await replaceTrainStoreFromJsonText(
-      await file.text(),
-      I18N.t("src.localJson", { name: file.name }),
-    );
-    return;
+    return { text: await file.text(), name: file.name };
   }
 
   els.localJsonFileInput.value = "";
   els.localJsonFileInput.click();
+  return null;
 }

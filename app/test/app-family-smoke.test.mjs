@@ -962,6 +962,40 @@ test("precomputed sample geometry replaces stale warmed geometry", () => {
   });
 });
 
+test("import controller coordinates local file reads with progressive import", async () => {
+  const { context } = loadAppFamily();
+  const result = await vm.runInContext(
+    `(async () => {
+      const originalReplace = replaceTrainStoreFromJsonText;
+      let received = null;
+      replaceTrainStoreFromJsonText = async (text, label) => {
+        received = { text, label };
+      };
+      window.showOpenFilePicker = async () => [{
+        getFile: async () => ({
+          name: "trips.json",
+          text: async () => "{\\"schema_version\\":\\"1.3\\"}",
+        }),
+      }];
+      window.showSaveFilePicker = async () => null;
+      try {
+        const opened = await ImportController.openLocalJson();
+        return { opened, received };
+      } finally {
+        replaceTrainStoreFromJsonText = originalReplace;
+      }
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    opened: true,
+    received: {
+      text: '{"schema_version":"1.3"}',
+      label: "src.localJson",
+    },
+  });
+});
+
 test("out-and-back geometry keeps the later cross-day traversal", () => {
   const { context } = loadAppFamily();
   const result = vm.runInContext(

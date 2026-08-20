@@ -116,7 +116,7 @@ async function runProgressiveAppend(
   // whole overlap/offset rebuild). Append mode has no finalize step and keeps
   // the default repaint so its imported lines settle to final styling.
   if (finalRender) renderAll();
-  if (persistEachStep) saveTrainStore();
+  if (persistEachStep) PersistenceService.scheduleSave();
   return appendedIds;
 }
 
@@ -164,7 +164,7 @@ function finalizeProgressiveLoad(
   if (showAllDates) selectedDate = ALL_DATES;
   reconcileSelectedDate();
   validateTrainStore(buildCanonicalTrainStore());
-  if (finalPersist) saveTrainStore();
+  if (finalPersist) PersistenceService.scheduleSave();
   renderAll();
   // The load allowed the regional-graph cache to grow to its transient budget to
   // avoid rebuilding regions mid-pass; settle it back to the steady budget now.
@@ -217,7 +217,7 @@ async function replaceTrainStoreFromJsonText(jsonText, sourceLabel = "JSON") {
     // The user explicitly replaced the store and every train loaded — if this
     // session was in read-only recovery, autosave may resume (finalize below
     // persists this replacement).
-    exitStoreRecoveryMode();
+    PersistenceService.exitRecoveryMode();
     finalizeProgressiveLoad(appendedIds, { finalPersist: true });
     setStatus(
       els.importStatus,
@@ -666,14 +666,14 @@ const CURATED_DATASET_BUTTONS = [
 // Bring the user's own saved data back on screen (leaves sample mode). The
 // sample view is discarded; the IndexedDB store was never touched by it.
 async function restoreUserStore({ bootLoadOptions = null } = {}) {
-  const userData = await readUserStoreAll();
+  const userData = await PersistenceService.readUserStore();
   if (!userData) {
     userStoreAvailable = false;
     updateDataSourceUi();
     setStatus(els.importStatus, I18N.t("status.noUserStore"), "warn");
     return false;
   }
-  seedRouteCacheEntries(userData.routes);
+  PersistenceService.seedStoredRoutes(userData.routes);
   dataSourceMode = "user";
   sampleModeDate = null;
   userStoreAvailable = true;
@@ -688,7 +688,7 @@ async function restoreUserStore({ bootLoadOptions = null } = {}) {
     },
   );
   // The stored data restored cleanly — recovery mode (if any) is over.
-  exitStoreRecoveryMode();
+  PersistenceService.exitRecoveryMode();
   updateDataSourceUi();
   return true;
 }
@@ -697,14 +697,14 @@ async function restoreUserStore({ bootLoadOptions = null } = {}) {
 // with) as the user's own data, then switch to user mode with autosave on.
 async function saveCurrentAsUserStore() {
   const canonical = buildCanonicalTrainStore();
-  await writeUserStoreChunks(canonical, { force: true });
+  await PersistenceService.writeUserStore(canonical, { force: true });
   // An explicit, confirmed overwrite of the user store supersedes whatever
   // failed to load — recovery mode (if any) ends here.
-  exitStoreRecoveryMode();
+  PersistenceService.exitRecoveryMode();
   userStoreAvailable = canonical.trains.length > 0;
   dataSourceMode = "user";
   sampleModeDate = null;
-  storeSaveDirty = false;
+  PersistenceService.markClean();
   updateDataSourceUi();
   setStatus(
     els.jsonStatus,
@@ -716,9 +716,9 @@ async function saveCurrentAsUserStore() {
 // Static-deploy boot: the user's own data wins; otherwise ONE RANDOM sample
 // day; built-in defaults only if the sample is unreachable.
 async function bootStaticData(bootLoadOptions) {
-  const userData = await readUserStoreAll();
+  const userData = await PersistenceService.readUserStore();
   if (userData) {
-    seedRouteCacheEntries(userData.routes);
+    PersistenceService.seedStoredRoutes(userData.routes);
     dataSourceMode = "user";
     userStoreAvailable = true;
     await replaceTrainStoreFromStoreProgressive(
@@ -753,8 +753,8 @@ async function bootStaticData(bootLoadOptions) {
     sampleModeDate = null;
     updateDataSourceUi();
     await replaceTrainStoreFromStoreProgressive(
-      countryFallbackStore(),
-      countryFallbackLabel(),
+      PersistenceService.fallbackStore(),
+      PersistenceService.fallbackLabel(),
       { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
     );
     updateDataSourceUi();
@@ -765,7 +765,7 @@ async function bootStaticData(bootLoadOptions) {
   sampleModeDate = null;
   updateDataSourceUi();
   await replaceTrainStoreFromStoreProgressive(
-    getDefaultTrainStore(),
+    PersistenceService.defaultStore(),
     I18N.t("src.builtinDefault"),
     { ...bootLoadOptions, persistEachStep: false, finalPersist: false },
   );

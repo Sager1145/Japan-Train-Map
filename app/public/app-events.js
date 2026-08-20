@@ -731,7 +731,7 @@ function bindEvents() {
       try {
         fitActiveCountryOverview();
         setImportProgress(0, 1, I18N.t("prog.openingLocal"));
-        await openLocalJsonFile();
+        await ImportController.openLocalJson();
         // Opening a local file replaces the store; persist it to the server now.
         await flushServerStoreSave();
       } catch (error) {
@@ -784,9 +784,9 @@ function bindEvents() {
     if (!file) return;
     if (importBusy()) return;
     try {
-      // No trailing renderAll(): replaceTrainStoreFromJsonText() already
+      // No trailing renderAll(): ImportController.replaceJson() already
       // repaints once via finalizeProgressiveLoad().
-      await replaceTrainStoreFromJsonText(
+      await ImportController.replaceJson(
         await file.text(),
         I18N.t("src.localJson", { name: file.name }),
       );
