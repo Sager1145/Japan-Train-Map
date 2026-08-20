@@ -33,6 +33,63 @@ function renderAll({ updateJsonTextarea = true } = {}) {
   if (updateJsonTextarea) scheduleExportTextareaRefresh();
 }
 
+// Named mutation results keep persistence and rendering explicit. Controllers
+// choose the smallest safe result; this dispatcher is the single place that
+// translates it into view refreshes and a debounced save.
+const MutationResults = Object.freeze({
+  trainCollectionChanged: Object.freeze({
+    persist: true,
+    reconcileDate: true,
+    dates: true,
+    list: true,
+    importTarget: true,
+    editor: true,
+    routes: true,
+    stats: true,
+    exportJson: true,
+  }),
+  trainOrderChanged: Object.freeze({
+    persist: true,
+    list: true,
+    routes: true,
+    exportJson: true,
+  }),
+  trainDetailsChanged: Object.freeze({
+    persist: true,
+    list: true,
+    editor: true,
+    routes: true,
+    stats: true,
+    exportJson: true,
+  }),
+  routeChanged: Object.freeze({
+    persist: true,
+    editor: true,
+    routes: true,
+    stats: true,
+    exportJson: true,
+  }),
+  visibilityChanged: Object.freeze({
+    persist: true,
+    list: true,
+    routes: true,
+    exportJson: true,
+  }),
+});
+
+function applyMutationResult(result) {
+  if (!result) return;
+  if (result.reconcileDate) reconcileSelectedDate();
+  if (result.persist) PersistenceService.scheduleSave();
+  if (result.dates) perfMeasure("renderDateButtons", renderDateButtons);
+  if (result.list) perfMeasure("renderTrainList", renderTrainList);
+  if (result.importTarget) updateImportTarget();
+  if (result.editor) perfMeasure("renderEditor", renderEditor);
+  if (result.routes) perfMeasure("renderTrainLayers", renderTrainLayers);
+  if (result.stats) scheduleMileageStats();
+  if (result.exportJson) scheduleExportTextareaRefresh();
+}
+
 // Human-readable label for a date bucket used in buttons / titles.
 function dateLabel(date) {
   if (date === ALL_DATES) return I18N.t("date.all");

@@ -348,7 +348,7 @@ function saveSelectedFields() {
     validateTrainStore(temp);
     AppActions.replaceTrainStore(temp);
     selectedTrainId = next.id;
-    persistAndRender();
+    applyMutationResult(MutationResults.trainDetailsChanged);
     setStatus(els.fieldStatus, I18N.t("status.fieldsSaved"), "ok");
   } catch (error) {
     setStatus(els.fieldStatus, error.message, "err");
@@ -370,7 +370,7 @@ function addStopToSelected() {
   };
   applyStationMetadata(stop, train);
   train.stops.push(stop);
-  persistAndRender();
+  applyMutationResult(MutationResults.routeChanged);
 }
 
 function normalizeStopValue(field, value) {
@@ -515,5 +515,5 @@ function mutateStop(index, action) {
     renderStopsTable(train);
     return;
   }
-  persistAndRender();
+  applyMutationResult(MutationResults.routeChanged);
 }

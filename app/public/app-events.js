@@ -943,7 +943,7 @@ function bindEvents() {
     AppActions.replaceTrainStore(getDefaultTrainStore());
     selectedTrainId = null;
     focusedTrainId = null;
-    persistAndRender();
+    applyMutationResult(MutationResults.trainCollectionChanged);
     setStatus(els.jsonStatus, I18N.t("status.resetDefaults"), "ok");
   });
   document

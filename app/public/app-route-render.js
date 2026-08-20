@@ -17,7 +17,7 @@ function rebuildSelectedRoute() {
 
   train.route_sections = getRideRouteSectionsForTrain(train);
 
-  persistAndRender();
+  applyMutationResult(MutationResults.routeChanged);
   setStatus(
     els.fieldStatus,
     I18N.t("status.routeSectionsRebuilt", {

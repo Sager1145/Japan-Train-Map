@@ -996,6 +996,56 @@ test("import controller coordinates local file reads with progressive import", a
   });
 });
 
+test("mutation results refresh only their declared view surfaces", () => {
+  const { context } = loadAppFamily();
+  const result = vm.runInContext(
+    `(() => {
+      const originals = {
+        renderDateButtons,
+        renderTrainList,
+        updateImportTarget,
+        renderEditor,
+        renderTrainLayers,
+        scheduleMileageStats,
+        scheduleExportTextareaRefresh,
+      };
+      const calls = {
+        dates: 0, list: 0, importTarget: 0, editor: 0,
+        routes: 0, stats: 0, exportJson: 0,
+      };
+      renderDateButtons = () => { calls.dates += 1; };
+      renderTrainList = () => { calls.list += 1; };
+      updateImportTarget = () => { calls.importTarget += 1; };
+      renderEditor = () => { calls.editor += 1; };
+      renderTrainLayers = () => { calls.routes += 1; };
+      scheduleMileageStats = () => { calls.stats += 1; };
+      scheduleExportTextareaRefresh = () => { calls.exportJson += 1; };
+      try {
+        applyMutationResult({ list: true, routes: true });
+        return calls;
+      } finally {
+        renderDateButtons = originals.renderDateButtons;
+        renderTrainList = originals.renderTrainList;
+        updateImportTarget = originals.updateImportTarget;
+        renderEditor = originals.renderEditor;
+        renderTrainLayers = originals.renderTrainLayers;
+        scheduleMileageStats = originals.scheduleMileageStats;
+        scheduleExportTextareaRefresh = originals.scheduleExportTextareaRefresh;
+      }
+    })()`,
+    context,
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    dates: 0,
+    list: 1,
+    importTarget: 0,
+    editor: 0,
+    routes: 1,
+    stats: 0,
+    exportJson: 0,
+  });
+});
+
 test("out-and-back geometry keeps the later cross-day traversal", () => {
   const { context } = loadAppFamily();
   const result = vm.runInContext(

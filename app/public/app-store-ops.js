@@ -38,7 +38,7 @@ function addTrain(train) {
   trainStore.trains.push(candidate);
   selectedTrainId = candidate.id;
   focusedTrainId = candidate.id;
-  persistAndRender();
+  applyMutationResult(MutationResults.trainCollectionChanged);
 }
 
 function duplicateTrain(trainId) {
@@ -51,7 +51,7 @@ function duplicateTrain(trainId) {
   trainStore.trains.push(copy);
   selectedTrainId = copy.id;
   focusedTrainId = copy.id;
-  persistAndRender();
+  applyMutationResult(MutationResults.trainCollectionChanged);
 }
 
 function deleteTrain(trainId) {
@@ -63,7 +63,7 @@ function deleteTrain(trainId) {
     trainStore.trains[Math.min(index, trainStore.trains.length - 1)]?.id ||
     null;
   if (focusedTrainId === trainId) focusedTrainId = null;
-  persistAndRender();
+  applyMutationResult(MutationResults.trainCollectionChanged);
 }
 
 function deleteAllTrains() {
@@ -71,7 +71,7 @@ function deleteAllTrains() {
   AppActions.resetTrainStore();
   selectedTrainId = null;
   focusedTrainId = null;
-  persistAndRender();
+  applyMutationResult(MutationResults.trainCollectionChanged);
 }
 
 function toggleTrainVisibility(trainId) {
@@ -85,9 +85,7 @@ function toggleTrainVisibility(trainId) {
   // renderTrainLayers pass because overlapping parallel routes share global
   // offset slots that must be recomputed when the visible set changes. Saving
   // is debounced (no synchronous full serialization here).
-  saveTrainStore();
-  perfMeasure("renderTrainList", renderTrainList);
-  perfMeasure("renderTrainLayers", renderTrainLayers);
+  applyMutationResult(MutationResults.visibilityChanged);
 }
 
 function moveTrain(trainId, direction) {
@@ -97,7 +95,7 @@ function moveTrain(trainId, direction) {
   if (index < 0 || next < 0 || next >= trainStore.trains.length) return;
   const [train] = trainStore.trains.splice(index, 1);
   trainStore.trains.splice(next, 0, train);
-  persistAndRender();
+  applyMutationResult(MutationResults.trainOrderChanged);
 }
 
 // =========================================================================
@@ -839,12 +837,4 @@ function uniqueId(seed) {
 
 function getTrain(id = selectedTrainId) {
   return trainStore.trains.find((t) => t.id === id);
-}
-
-function persistAndRender() {
-  // Keep the date filter pointing at something renderable after add / delete
-  // / edit so a removed date can't leave the list stuck on an empty bucket.
-  reconcileSelectedDate();
-  saveTrainStore();
-  renderAll();
 }
