@@ -161,7 +161,10 @@ test("Tokyo and Osaka metro lines use verified official line colours", () => {
   for (const [id, color] of expected) {
     const line = pkg.lines.find((candidate) => candidate.id === id);
     assert.ok(line, `missing ${id}`);
-    assert.equal(line.color, color, id);
+    // The package preserves the operator-published value verbatim even when
+    // the light/dark display variant needs a luminance-only adjustment to stay
+    // visible on this app's map surface.
+    assert.equal(line.colorReference, color, id);
     assert.match(line.colorSource, /^https:\/\//, id);
   }
 });

@@ -1884,6 +1884,7 @@
       const lineId = compactLine.id;
       const stationCount = compactLine.stations.length;
       const featureColor = compactLine.color || DEFAULT_LINE_COLOR;
+      const featureColorDark = compactLine.colorDark || featureColor;
       const visibilityKm = groupLengthKm.get(visibilityGroupKey(compactLine));
       const lineMinZoom = minZoomForLength(visibilityKm);
       const stationIds = compactLine.stations.map(
@@ -1913,7 +1914,8 @@
         alignmentRole: compactLine.alignmentRole || null,
         alignmentDirection: compactLine.alignmentDirection || null,
         rank: compactLine.rank,
-        color: compactLine.color,
+        color: featureColor,
+        colorDark: featureColorDark,
         // A split part is the SAME railway as its parent and has no badge file
         // of its own — the art is named after the railway, not the stroke. So a
         // trailing `-2`/`-3` resolves to the parent's badge; without this,
@@ -1961,6 +1963,7 @@
         name: compactLine.name,
         operator: compactLine.operator,
         color: featureColor,
+        colorDark: featureColorDark,
         minz: lineMinZoom,
         isHSR: compactLine.isHSR ? 1 : 0,
         isLoop: compactLine.isLoop ? 1 : 0,
@@ -2061,6 +2064,7 @@
             nameRoma: station.nameRoma || "",
             stationGroupId: station.stationGroupId || "",
             color: featureColor,
+            colorDark: featureColorDark,
             colorKey: featureColor.slice(1).toLowerCase(),
             // Set by the interchange pass below, which needs every line read
             // before it can answer how many railways call here.

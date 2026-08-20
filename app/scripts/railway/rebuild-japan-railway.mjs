@@ -12,6 +12,7 @@ run("node", ["scripts/railway/repair-doubling-back-intervals.mjs"]);
 run("python3", ["scripts/migrations/restore-n02-loop-line-geometry.py"]);
 run("node", ["scripts/railway/build-parallel-corridors.mjs", "--country", "jp"]);
 run("node", ["scripts/railway/finalize-japan-package.mjs"]);
+run("python3", ["scripts/railway/apply-display-colours.py", "--country", "jp"]);
 run("node", ["scripts/validation/validate-railway-topology.mjs", "--country", "jp", "--strict"]);
 run("node", [
   "scripts/validation/validate-station-render-anchoring.mjs",

@@ -95,7 +95,7 @@ const CORRIDOR_MIN_LENGTH_METERS = 800;
 // asserts the two copies agree, so the mirror cannot drift.
 const RENDER_STYLE = Object.freeze({
   stationDiameterPx: 6,
-  railWidthPx: 3,
+  railWidthPx: 1.5,
   parallelGapPx: 1.2,
   // …and the scale ramp those weights ride: full weight from this zoom in,
   // then base^(zoom − anchor) down to a floor.

@@ -394,18 +394,36 @@ const RailOperatorBranding = (() => {
 
   const LINE_LOGOS = Object.freeze({
     // Japanese lines whose package art was rejected (or missing) but which
-    // publish an official line symbol of their own. Verified 2026-08-10:
+    // have a verified passenger-facing badge. Verified 2026-08-20:
     // 北勢線 carries the official 三岐鉄道 route letter H (the package art was
     // the pre-1944 北勢鉄道 predecessor mark); the 丸ノ内線 branch uses its
     // dedicated Mb identity rather than the trunk line's M symbol;
-    // 京都市営地下鉄東西線 uses its official vermillion T symbol; 北海道
-    // 新幹線 uses the JR Hokkaido Shinkansen pictogram supplied for this line.
+    // 京都市営地下鉄東西線 uses its official vermillion T symbol.
+    //
+    // JR publishes no per-route Shinkansen symbol. The passenger-facing mark
+    // on signage is the operating company's own Shinkansen pictogram, and the
+    // route itself is identified by its line colour and name. Each Shinkansen
+    // railway therefore resolves to its operator's official pictogram, which
+    // the package's own art is a raster of, rather than to the JR company
+    // mark the operator fallback would otherwise supply. Lines sharing an
+    // operator share a pictogram, and the two operator-owned halves of
+    // 北陸新幹線 each show the pictogram of the company running that half.
     "jp-三岐鉄道-北勢線": "/rail/line-logos/sangi-hokusei.svg",
     "jp-東京地下鉄-4号線丸ノ内線分岐線":
       "/rail/line-logos/tokyo-metro-marunouchi-branch.svg",
     "jp-京都市-東西線": "/rail/line-logos/kyoto-tozai.svg",
     "jp-北海道旅客鉄道-北海道新幹線":
-      "/rail/line-logos/hokkaido-shinkansen.svg",
+      "/rail/line-logos/shinkansen-jr-hokkaido.svg",
+    "jp-東日本旅客鉄道-東北新幹線": "/rail/line-logos/shinkansen-jr-east.svg",
+    "jp-東日本旅客鉄道-上越新幹線": "/rail/line-logos/shinkansen-jr-east.svg",
+    "jp-東日本旅客鉄道-北陸新幹線": "/rail/line-logos/shinkansen-jr-east.svg",
+    "jp-東海旅客鉄道-東海道新幹線":
+      "/rail/line-logos/shinkansen-jr-central.svg",
+    "jp-西日本旅客鉄道-山陽新幹線": "/rail/line-logos/shinkansen-jr-west.svg",
+    "jp-西日本旅客鉄道-北陸新幹線": "/rail/line-logos/shinkansen-jr-west.svg",
+    "jp-九州旅客鉄道-九州新幹線": "/rail/line-logos/shinkansen-jr-kyushu.svg",
+    "jp-九州旅客鉄道-西九州新幹線":
+      "/rail/line-logos/shinkansen-jr-kyushu.svg",
     "tw-trtc-bl": "/rail/line-logos/trtc-bl.svg",
     "tw-trtc-r": "/rail/line-logos/trtc-r.svg",
     "tw-trtc-r-xinbeitou": "/rail/line-logos/trtc-r.svg",

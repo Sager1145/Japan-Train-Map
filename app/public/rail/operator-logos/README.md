@@ -7,16 +7,19 @@ scope is verified against the corresponding line. The old package flag merely
 meant that an image existed: 65 of its 349 images were actually company marks,
 generic Shinkansen marks, regional JR codes applied beyond their official
 scope, historical predecessor marks, or a parent-company mark. The audited
-runtime therefore treats 284 images as line badges; four further routes carry
-an official line symbol through the branding override table (北勢線 uses the
+runtime therefore treats 284 images as line badges; twelve further route
+records carry a verified passenger-facing badge through the branding override
+table (北勢線 uses the
 三岐鉄道 route letter H from [Commons File:SG number-H.svg](https://commons.wikimedia.org/wiki/File:SG_number-H.svg),
 CC BY-SA 4.0 by 渡海千明, stored as `../line-logos/sangi-hokusei.svg`; the
 丸ノ内線分岐線 reuses the package's Marunouchi M badge; 京都市営地下鉄東西線
 uses its official vermillion T from [Commons File:Subway KyotoTozai.svg](https://commons.wikimedia.org/wiki/File:Subway_KyotoTozai.svg),
-CC0, stored as `../line-logos/kyoto-tozai.svg`; 北海道新幹線 uses the
-[JR Hokkaido Shinkansen pictogram](https://commons.wikimedia.org/wiki/File:Shinkansen_jrh.svg),
-CC BY-SA 4.0 by KANAO22, supplied as `Shinkansen_jrh.svg` and stored unchanged
-as `../line-logos/hokkaido-shinkansen.svg`). 仙台市's two subway lines
+CC0, stored as `../line-logos/kyoto-tozai.svg`; and the nine Shinkansen route
+records each take the official Shinkansen pictogram of the company operating
+them, because JR publishes no per-route Shinkansen symbol — the five
+`../line-logos/shinkansen-jr-*.svg` assets, each stored unchanged and
+documented in [`../line-logos/README.md`](../line-logos/README.md)).
+仙台市's two subway lines
 publish official N/T symbols, but no Commons or official-site asset exists to
 source them from, so they deliberately keep the bureau mark. The remaining routes
 go through the exact operator fallback. In total, 597 of 600 Japanese routes
@@ -56,9 +59,9 @@ to its 山陽線 section — so that route falls back to the JR九州 mark.
 sources. Their three lines deliberately retain the established color-swatch
 fallback instead of using a fabricated or unrelated mark.
 
-The complete mapping was re-audited against those live sources on 2026-08-10,
-including a visual pass over all 407 displayed assets. Automated popup tests
-verify the 284 accepted line badges, the four line-symbol overrides, all
+The complete mapping was re-audited against those live sources on 2026-08-20,
+including a visual pass over the displayed assets. Automated popup tests
+verify the 284 accepted package badges, the twelve line-badge overrides, all
 fallback decisions, the 89 downloaded operator assets, their image signatures,
 and the exact operator-to-manifest assignment.
 

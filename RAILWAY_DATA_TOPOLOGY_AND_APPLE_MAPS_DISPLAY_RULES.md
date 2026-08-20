@@ -1473,25 +1473,27 @@ unchecked_valid_tile_count = 0
 
 `app/public/railmap-style.js` 是数值实现的唯一源，测试负责锁定经视觉测量确认的契约；本文不建立第二套独立 token。
 
-目标全权重基准（2026-08-13 更新）为：
+目标全权重基准（2026-08-20 更新，取代 2026-08-13 的 `2.5 CSS px` 目标）为：
 
 ```text
 station diameter: 6 CSS px
-rail core width: 2.5 CSS px
-rail core / station diameter: 5 / 12 ≈ 0.4167
-station diameter / rail core: 2.4
+rail core width: 1.5 CSS px
+rail core / station diameter: 1 / 4 = 0.25
+station diameter / rail core: 4
 parallel edge-to-edge gap: 1.2 CSS px
-network casing edge per side: 0.6 CSS px
+network casing edge per side: 0.3 CSS px
+ridden route base weight: 2 CSS px（× RIDDEN_WIDTH_SCALE 1.18 = 2.36）
+selection casing edge per side: 0.7 CSS px
 full-weight zoom anchor: z7
 minimum scale: 1/3
 ```
 
-`2.5 CSS px` 是全权重下的规范 core token，不是建议范围。当前实现中任何仍为 `3 CSS px`、或继续由 `stationDiameter × 0.5` 推导出的 rail core 都属于待修正旧值；实现、独立契约测试、验证器和来源说明必须同步改为 `2.5`，不得只修改本文。
+`1.5 CSS px` 是全权重下的规范 core token，不是建议范围：这是 2026-08-20 按产品决定把整条铁路减半的结果（旧 core `3 px` 的一半），理由是日本城市走廊常有四到六条铁路并行，`3 px` 下 lane 尚未分开线束就已焊成色带。实现中任何仍为 `3 CSS px` 或 `2.5 CSS px` 的 rail core 都属于待修正旧值；实现、独立契约测试、验证器和来源说明必须同步，不得只修改本文。
 
-此次减小只针对 railway coloured core：车站直径保持 `6px`，平行线 edge-to-edge gap 保持 `1.2px`，network casing 单侧保持 `0.6px`。因此车站相对线路更突出，并行线中心距在全权重下为：
+此次减半同时作用于 coloured core、casing、已乘坐线和选中 casing——它们互为比例，只减其一会让 keyline 或已乘坐线反客为主。两处**故意不减**：平行线 edge-to-edge gap 保持 `1.2px`（它是“两条铁路读作两条”所需的空白，与线粗无关），车站直径保持 Apple 实测的 `6px`（读者靠圆点找车站；过粗的是线不是站，`4px` 的中间方案已于 2026-08-20 按产品决定退回 `6px`）。因此 `station diameter / rail core` 由 2 变为 4，是本次唯一被有意打破的比例；并行线中心距在全权重下为：
 
 ```text
-parallel centre distance = 2.5 + 1.2 = 3.7 CSS px
+parallel centre distance = 1.5 + 1.2 = 2.7 CSS px
 ```
 
 除非新的 Apple Maps 全量 tile 审计、可读性测试和产品决定共同支持，不得由单条线路或单个国家私自恢复较粗 core。无障碍/高对比模式如需加粗，必须作为显式主题 profile，不能改变默认 token。
@@ -2294,8 +2296,8 @@ Remaining manual decision:
 - 无 cluster、屏幕合并、数字聚合或跨 lane 胶囊；
 - 低缩放少点只能由独立 LOD 解释；
 - 单线实心、换乘白心规则稳定；
-- 默认全权重 railway core 为 `2.5 CSS px`，车站直径仍为 `6 CSS px`；
-- 全权重平行中心距按 `2.5 + 1.2 = 3.7 CSS px` 计算；
+- 默认全权重 railway core 为 `1.5 CSS px`，车站直径仍为 `6 CSS px`（2026-08-20 只减半线宽的 retune，见 §14）；
+- 全权重平行中心距按 `1.5 + 1.2 = 2.7 CSS px` 计算；
 - 非零 lane 的点和线使用同一 offset；
 - 有轨电车/轻轨等密集网络没有按 route 或方向展开常驻平行线；
 - NetworkDisplayGroup 的每条唯一支线均可见，共用 edge 只绘制一次；

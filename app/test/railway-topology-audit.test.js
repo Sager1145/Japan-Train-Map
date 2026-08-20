@@ -390,7 +390,7 @@ test("the official network is drawn, and what is not is accounted for", async ()
   );
 });
 
-test("railway weight is screen-space and half a station circle", async () => {
+test("railway weight is screen-space and a fixed fraction of a station circle", async () => {
   const { RENDER_STYLE } = await auditPromise;
   const source = fs.readFileSync(
     path.join(__dirname, "../public/railmap-style.js"),
@@ -425,10 +425,13 @@ test("railway weight is screen-space and half a station circle", async () => {
   assert.equal(RENDER_STYLE.fullWeightZoom, style.RAILWAY_FULL_WEIGHT_ZOOM);
   assert.equal(RENDER_STYLE.weightZoomBase, style.RAILWAY_WEIGHT_ZOOM_BASE);
   assert.equal(RENDER_STYLE.minWeightScale, style.RAILWAY_MIN_WEIGHT_SCALE);
-  // The contract itself: a rail stroke is half the station circle it threads.
+  // The contract itself: a rail stroke is a fixed fraction of the station
+  // circle it threads — a quarter of it since the 2026-08-20 retune halved
+  // the stroke and left the station dot where it was (it was half of it,
+  // at twice the stroke, before).
   assert.equal(
     RENDER_STYLE.railWidthPx,
-    RENDER_STYLE.stationDiameterPx * 0.5,
+    RENDER_STYLE.stationDiameterPx * 0.25,
   );
   // …and both are painted as that token through railwayScale() and nothing
   // else: no second ramp, no per-layer rescaling on the way to the paint

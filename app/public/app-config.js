@@ -291,8 +291,13 @@ const {
 } = window.AppCore;
 const DEFAULT_TRAIN_COLOR = "#d9364f";
 // Single source of truth for the default route style numbers (railprint's
-// glowing-line spec: ridden lines draw from a 4px base, zoom-scaled).
-const DEFAULT_TRAIN_WEIGHT = 4;
+// glowing-line spec: ridden lines draw from a 2px base, zoom-scaled).
+// Halved from 4 on 2026-08-20 together with the network stroke it is drawn
+// over (railmap-style.js RAILWAY_STYLE): a ride reads as a ride because it is
+// heavier than the field beneath it, and that is a RATIO — one of the two
+// halving alone would either bury the ride or leave it a ribbon over a thread.
+// The dash rhythm in railmap-style.js keys off this number too.
+const DEFAULT_TRAIN_WEIGHT = 2;
 
 // N02 "institution type" (事業者種別, field N02_002) classifies a line's
 // operator. The default route policy allows all five classes; a train may

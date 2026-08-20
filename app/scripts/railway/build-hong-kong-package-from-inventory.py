@@ -47,6 +47,9 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[2]
 INVENTORY = APP_DIR / "data" / "raw" / "railway" / "hk" / "rebuild-inventory"
 TRACK_DATA = APP_DIR / "data" / "raw" / "railway" / "hk" / "hk-track-alignments.json"
+RACECOURSE_ALIGNMENT = (
+    APP_DIR / "data" / "raw" / "railway" / "hk" / "eal-racecourse-alignment.json"
+)
 STAGING = APP_DIR / "data" / "staging" / "hk-2025.staging.json"
 
 PACKAGE_VERSION = "2025.3.0"
@@ -207,6 +210,44 @@ def build(selected: set[str] | None):
                 LIGHT_RAIL_RANK if "-lr-" in line_id else HEAVY_RAIL_RANK,
                 stations,
                 route,
+            )
+        )
+
+    # The 2026-08-13 inventory predates the Racecourse correction. Keep the
+    # rejoining variant in the reproducible staging build from its retained,
+    # source-documented alignment instead of letting an inventory rebuild
+    # silently remove the station and branch again.
+    racecourse_id = "hk-mtr-eal-rac"
+    if not selected or racecourse_id in selected:
+        source = json.loads(RACECOURSE_ALIGNMENT.read_text("utf-8"))
+        colour = colours["hk-mtr-eal-low"]
+        lines.append(
+            builder.compact_line(
+                racecourse_id,
+                "EAL-RAC",
+                "東鐵綫",
+                "East Rail Line",
+                "MTR",
+                colour["render_color_hex"],
+                HEAVY_RAIL_RANK,
+                [
+                    {
+                        "group": "hk-official-mtr-sht", "zh": "沙田",
+                        "zh_hans": "沙田", "en": "Sha Tin", "alias": "MTR-SHT",
+                        "lon": 114.1876419, "lat": 22.3828402,
+                    },
+                    {
+                        "group": "hk-official-mtr-rac", "zh": "馬場",
+                        "zh_hans": "马场", "en": "Racecourse", "alias": "MTR-RAC",
+                        "lon": 114.2029649, "lat": 22.4004416,
+                    },
+                    {
+                        "group": "hk-official-mtr-uni", "zh": "大學",
+                        "zh_hans": "大学", "en": "University", "alias": "MTR-UNI",
+                        "lon": 114.2100545, "lat": 22.4133852,
+                    },
+                ],
+                source["coordinates"],
             )
         )
 

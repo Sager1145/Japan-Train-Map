@@ -384,7 +384,12 @@ test("Sanying Line uses the official 12-stop order and both official interchange
   // audit inventory's colours/line-colours.csv, which stores them lower case,
   // and finalize-japan-package.mjs already lower-cased Japan's. One convention
   // across all five countries; the colour itself is unchanged.
-  assert.equal(line.color, "#4eb7d5");
+  //
+  // Since 2026-08-20 the operator's published value lives in `colorReference`
+  // and `color` / `colorDark` are its theme display variants — 新北捷運's
+  // #4eb7d5 is too pale to hold 3:1 against the light map surface, so the light
+  // stroke is darkened to the same hue (apply-display-colours.py).
+  assert.equal(line.colorReference, "#4eb7d5");
   assert.deepEqual(
     line.stations.map((station) => station[1]),
     [

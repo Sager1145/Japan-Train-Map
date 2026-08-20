@@ -931,8 +931,9 @@
           networkCasingColor(theme),
         );
       }
-      // The network's colours are composited against the surface they sit on,
-      // so a surface change is a colour change (see networkLineColor).
+      // The network carries a pre-audited variant for each map surface, so a
+      // surface change selects the matching package colour (see
+      // networkLineColor).
       if (m.getLayer(SEGMENTS_LAYER)) {
         m.setPaintProperty(SEGMENTS_LAYER, "line-color-transition", transition);
         m.setPaintProperty(SEGMENTS_LAYER, "line-color", networkLineColor(theme));

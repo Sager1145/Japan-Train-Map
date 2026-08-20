@@ -25,10 +25,20 @@
 
 - **收敛成一套共享 lib**（`scripts/railway/lib/`，参数按 §12.1 的 geometry profile 给）——
   一致性最好，但会同时改动四个已经稳定、审计全绿的国家包，回归面最大。
+  **建包层倒角有一个已实测的反作用**：tw 的 `round_polyline_corners` +
+  `enforce_min_corner_radius` 会把线重采样成很短的边 —— 阿里山線 现在中位边长 **10.6 m**、
+  **48.6%** 的边短于 10 m、p10 只有 **4.3 m**（jp 对照：中位 46.1 m、4.7%、15.9 m）。
+  而「短边 + 中等折角 + 小矢高」正是 `MICRO_KINK_SCALES` 的噪声判据本身，
+  **建包层的倒角亲手制造了渲染层无法与噪声区分的图形**。把 jp 652 条线推进这条管线之前，
+  必须先说明这个耦合怎么解。
 - **只给 jp 补一套**（移植 tw 的实现）—— 回归面最小，但五国从三套变四套，
   以后每条新规则都要写四遍。
-- **不动建包层，改在渲染层**（`rail-network.js`）—— 单点改动、五国同时受益，
-  但违反 §12「每档 LOD 只算一次并缓存」的代价要算清楚：渲染层每次 boot 都要重算 385k 顶点。
+- **不动建包层，改在渲染层**（`rail-network.js`）—— 单点改动、五国同时受益。
+  **注意不要凭直觉给这条记一笔不存在的开销**：`smoothMicroKinks` 本来就在
+  `displayPartsForLine` 里、五国每次 boot 全量跑，改它的阈值**不是新增一趟**。
+  实测 jp `buildNetworkFromCompactPackage` 中位 395.6 ms（本机 7 次），
+  并行会话报告改阈值后 430.7 → 453.2 ms（+22.5 ms / +5.2%），tw +0.8 ms，
+  hk/mo/kr 在噪声内 —— 缓存层级一个没动，§12 没有被违反。
 
 选哪个都可以，**但必须写明为什么，以及被否决的两个各自的代价**。
 
@@ -111,6 +121,16 @@ const RailNetwork = require('./app/public/rail-network.js');
 tw/hk/kr 在**建包阶段**做过 Chaikin / Bezier / Laplacian，jp 一次都没做过。
 这**指向**「jp 的尖角在包几何里就已经存在，不是渲染参数问题」——但这是**假设**，
 阶段 3 必须用数据判定，不许直接抄这句当结论。
+
+上表 ≥20° 合计 **3,976** 个折角（12+25+92+247+1,121+2,479）。
+**并行会话报告有一批未合并的平滑工作**（在隔离 worktree 里，写这份 prompt 时尚未落地）：
+给 `smoothMicroKinks` 加第二层门槛，自报 jp ≥20° 折角 3,976 → 1,508（−62%），
+最大横向位移 2.998 m 由构造保证，≥110° 一档不动。**这是他人的自报数字，本文未复核**
+（只有 ≥110° = 12 与本文实测一致）。它给出的两条实现细节值得照抄进你的验收：
+矢高上限要对**整段塌缩跨度**测量，不是只测被删掉的那个角（缺这条保护时 tw 阿里山線
+累积漂移 9.59 m）；≥110° 一档与九处真スイッチバック 必须逐个点名保住，不能只报总数。
+若你启动时它已经落地，说明根因 (a)（包内数字化噪声）已被处理掉大半，
+剩下的题目主要是 (c)（缺圆角）—— 先在**你自己的 HEAD 上重测**，再决定还要做什么。
 
 **审计基线**（改动后这三个数只能变好，不能变差）：
 
@@ -292,7 +312,7 @@ npm test && npm run lint
 node scripts/validation/validate-railway-topology.mjs
 node scripts/validation/validate-station-render-anchoring.mjs
 node scripts/validation/validate-basemap-alignment.mjs --strict
-node scripts/railway/build-parallel-corridors.mjs      # 几何一变必须重跑派生表
+node scripts/railway/recompute-package-derived.mjs --country jp   # 几何一变必须重跑派生表
 ```
 
 - `EXPECTED_RENDER_HASH`（`app/scripts/railway/lib/render-snapshot.mjs:351`）只能在
@@ -300,6 +320,19 @@ node scripts/railway/build-parallel-corridors.mjs      # 几何一变必须重�
 - 已乘坐线路是同一套路径的切片（§7.5），几何一变必须确认已乘线跟随，并重跑
   `npm run precompute`（及 tw/hk/mo/kr 变体）确认产物一致或说明差异。
 - 三个 `PYTHONHASHSEED` 各建一次，涉及重建的产物必须逐字节相同。
+
+**三个已知会安静地毁掉产物的坑**（并行会话 2026-08-20 踩出来的，动手前先记住）：
+
+- **重跑派生表用 `recompute-package-derived.mjs`，不要直接用 `build-parallel-corridors.mjs`。**
+  后者只写 `.json`，把 `.json.gz` 边车留在陈旧状态；而 `.gz` 是 gitignored 的，
+  **git 不会告诉你**，线上读到的会是旧 `lanes`。
+- **不要跑整条 `npm run rebuild:railway:jp`。** step 1 的 `split-interleaved-branches.mjs`
+  对未改动的基线包跑一遍就会让 `logo` 从 381 掉到 378（中央線-2 / 南武線-2 / 小泉線-2）——
+  它先 `delete branch.logo` 再 `inheritLineMetadata`，而 `logo` 不在 `TOPOLOGY_FIELDS` 里，
+  永远补不回来。要重跑就跳过 step 1。
+- **不要跑 `promote-lines --all --prune`。** `data/staging/jp-2025.staging.json` 是多会话共享的
+  单点，随时可能只装着某个批次的几条线（曾只有 8 条）；`--prune` 会把不在 staging 里的
+  600 多条当作「builder 不再产出」剪掉。
 
 ### 阶段 7 · 验收（不接受「看起来顺滑」）
 

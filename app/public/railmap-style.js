@@ -25,21 +25,30 @@
   // units) are not an option: they make the network read as hairlines
   // nationwide and as ribbons in a city.
   //
-  // The rail stroke is pinned to HALF the station circle it threads, so the
-  // dots always read as beads on a wire rather than as blobs on a thread —
-  // and because none of these is scaled by zoom on its way to the paint
-  // properties, that ratio, and every other proportion here, holds at every
-  // zoom by construction rather than by a ramp keeping them in step.
+  // The rail stroke is pinned to a FIXED FRACTION of the station circle it
+  // threads, so the dots always read as beads on a wire rather than as blobs
+  // on a thread — and because none of these is scaled by zoom on its way to
+  // the paint properties, that ratio, and every other proportion here, holds
+  // at every zoom by construction rather than by a ramp keeping them in step.
   // Apple Maps desktop Transit reference, measured 2026-08-12 against macOS
   // 「地圖」→ 大眾運輸 at 東京駅, city view (scale bar: 500 m across ~98 screenshot
   // px, i.e. ≈5.1 m per point, z≈13.7): an ordinary transit line reads at
-  // about 2.8 pt and its station bead at about 6.2 pt, a ratio of ≈2.2. The
-  // earlier note in this file put those at 4 px / 8 px, which was a Retina
-  // DEVICE-pixel reading of the same screenshots — half again too heavy once
-  // it reached a CSS pixel. 6 / 3 keeps the exact 1:2 rail/station proportion
-  // this file is built on and lands inside the measured band.
+  // about 2.8 pt and its station bead at about 6.2 pt, a ratio of ≈2.2, and
+  // this file drew 3 px / 6 px against it until 2026-08-20.
+  //
+  // 2026-08-20 retune, by request: HALF that weight — for the STROKE ONLY.
+  // Japan's network is four to six railways deep through every city Apple's
+  // reference view never has to draw at once, and at 3 px the bundles welded
+  // shut into bands of colour long before the lanes could separate them. The
+  // stroke is now 1.5 px, deliberately BELOW Apple's measured band, while the
+  // bead STAYS at the measured 6 px: the dot is how a reader finds a station,
+  // and it was the line that was too heavy, not the station. That puts the
+  // bead at four strokes rather than two — the one proportion in this file the
+  // retune deliberately broke. Everything else here is a proportion of the
+  // stroke, so halving it halved the drawn railway everywhere: keyline,
+  // suspended dash, lane offsets and the rides above them.
   const STATION_DIAMETER_PX = 6;
-  const RAIL_WIDTH_TO_STATION_DIAMETER = 0.5;
+  const RAIL_WIDTH_TO_STATION_DIAMETER = 0.25;
   const RAILWAY_STYLE = Object.freeze({
     // Diameter of an ordinary network station dot.
     stationDiameterPx: STATION_DIAMETER_PX,
@@ -49,7 +58,7 @@
     // at — a ring that kept its absolute width while the dot shrank would
     // swallow the colour it is supposed to separate.
     stationRingPx: STATION_DIAMETER_PX / 8,
-    // Rail stroke = half that. Derived, never set independently.
+    // Rail stroke = a quarter of that. Derived, never set independently.
     railWidthToStationDiameter: RAIL_WIDTH_TO_STATION_DIAMETER,
     railWidthPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER,
     // The clear map a reader sees between two DISTINCT railways that share one
@@ -57,15 +66,18 @@
     // railWidthPx + this (parallelLaneCentreDistancePx) — and the number
     // scripts/validation/validate-railway-topology.mjs measures the real corridors
     // against. Screen-space like everything else here: this many pixels at z6
-    // and the same many at z18.
+    // and the same many at z18. Deliberately NOT halved with the stroke in the
+    // 2026-08-20 retune: this is the clear map the eye needs to read two
+    // railways as two, and a finer line needs no less of it than a fat one.
     parallelGapPx: 1.2,
     // A quiet edge on either side of the coloured core separates railways
     // from roads and from one another without turning them into glowing
-    // selection strokes. This is the full-scale edge width on ONE side.
-    networkCasingEdgePx: 0.6,
+    // selection strokes. This is the full-scale edge width on ONE side, held
+    // at a fifth of the core so the halved stroke halves ink and all.
+    networkCasingEdgePx: 0.3,
     // Selected rides use the same restrained edge rhythm. The previous halo
     // was more than twice the coloured line's total width.
-    selectionCasingEdgePx: 1.4,
+    selectionCasingEdgePx: 0.7,
     // How near a junction the geometry pipeline must stop grooming.
     junctionProtectionPx: 6,
   });
@@ -99,47 +111,27 @@
   }
 
   // ───────────────────── ridden/unridden paint constants (style.ts) ──────────────────────
-  // The "all railway lines" field draws at FULL opacity, in colours that were
-  // composited against the map surface BEFORE they were painted: each line
-  // keeps its operator's hue, deepened toward the background exactly as far as
-  // a line-opacity of NETWORK_COLOR_STRENGTH would have taken it.
-  //
-  // Baking the blend rather than setting an alpha is the whole point. A
-  // translucent network stacks wherever two railways cross, wherever a line
-  // doubles back, and wherever the basemap underneath happens to be dark, so
-  // one line reads as several different colours along its own length. Solid
-  // colour holds still — and the field still recedes behind the ridden routes,
-  // which sit above it at heavier weight.
+  // The "all railway lines" field draws at FULL opacity in the theme-specific
+  // colour carried by the active country's rail package. The package keeps the
+  // sourced hue and adjusts only lightness where the original would disappear
+  // into this app's light or dark surface. Never blend again at paint time: the
+  // audited HEX must remain the HEX MapLibre draws.
   const UNRIDDEN_OPACITY = 1;
-  // How far each line's own hue is carried before the surface starts showing
-  // through it. Apple's Transit view draws its lines at their full operator
-  // colour and lets WEIGHT, not paleness, decide what recedes; at 0.82 every
-  // line here arrived visibly chalked, which read as a printing fault rather
-  // than as depth. A tenth of the surface is enough to stop pure #FF0000-class
-  // hues vibrating against the map and to keep the field a step behind a
-  // ridden route drawn over it.
-  const NETWORK_COLOR_STRENGTH = 0.9;
   const RIDDEN_WIDTH_SCALE = 1.18;
 
-  // colour × strength + surface × (1 - strength), per channel, at paint time:
-  // the blend has to be an expression because the hue is per-feature and the
-  // surface is per-theme, and neither is known when the other is chosen.
-  function networkLineColor(theme) {
-    const surface =
-      MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"].background;
-    const channel = (index) => [
-      "+",
-      ["*", ["at", index, ["var", "line"]], NETWORK_COLOR_STRENGTH],
-      ["*", ["at", index, ["var", "surface"]], 1 - NETWORK_COLOR_STRENGTH],
-    ];
+  function featureLineColor(theme) {
+    if (theme !== "dark")
+      return ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR];
     return [
-      "let",
-      "line",
-      ["to-rgba", ["to-color", ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR]]],
-      "surface",
-      ["to-rgba", ["to-color", surface]],
-      ["rgb", channel(0), channel(1), channel(2)],
+      "coalesce",
+      ["get", "colorDark"],
+      ["get", "color"],
+      DEFAULT_LINE_COLOR,
     ];
+  }
+
+  function networkLineColor(theme) {
+    return featureLineColor(theme);
   }
 
   // Apple Maps uses a fine surface-coloured keyline around transit strokes.
@@ -160,12 +152,17 @@
   // MapLibre measures `line-dasharray` in LINE WIDTHS, not pixels, so the same
   // pair of numbers on two strokes of different weight draws two different
   // rhythms. This map already has one dash — the cross-day continuation of an
-  // overnight train, [1.6, 1.4] on a 4 × 1.18 px stroke — so the rhythm is
-  // fixed in PIXELS here and every dashed layer divides by its own width to
-  // reach it. Two dashes that differed would read as two meanings.
+  // overnight train, [1.6, 1.4] on a DEFAULT_TRAIN_WEIGHT × 1.18 px stroke —
+  // so the rhythm is fixed in PIXELS here and every dashed layer divides by
+  // its own width to reach it. Two dashes that differed would read as two
+  // meanings. The reference weight follows app-config.js's
+  // DEFAULT_TRAIN_WEIGHT (2 since the 2026-08-20 half-weight retune): pinning
+  // the rhythm in pixels keeps the two dashed layers in step with EACH OTHER,
+  // but the mark:width proportion is what makes a dash read as a dash, and
+  // that only holds if the reference moves when the strokes do.
   const DASH_RATIO = Object.freeze([1.6, 1.4]);
-  const DASH_REFERENCE_WIDTH_PX = 4 * RIDDEN_WIDTH_SCALE;
-  // ≈ 7.55 px on, 6.61 px off.
+  const DASH_REFERENCE_WIDTH_PX = 2 * RIDDEN_WIDTH_SCALE;
+  // ≈ 3.78 px on, 3.30 px off.
   const DASH_PX = Object.freeze(
     DASH_RATIO.map((ratio) => ratio * DASH_REFERENCE_WIDTH_PX),
   );
@@ -175,7 +172,7 @@
   // token times railwayScale(), so a dash expressed as a multiple of the width
   // is carried down by the same factor and the on:off:width proportion is the
   // same at z4 as at z18. The narrowest these lines are ever drawn is z4
-  // (railwayScale 0.354, core 1.06 px), where the dash is still 2.7 px long —
+  // (railwayScale 0.354, core 0.53 px), where the dash is still 1.34 px long —
   // and below that minZoomForLength has already taken them off the map.
   function dashArrayForWidth(widthPx) {
     return DASH_PX.map((px) => Number((px / widthPx).toFixed(4)));
@@ -309,7 +306,7 @@
       "case",
       ["==", ["get", "interchange"], 1],
       colors.stationRing,
-      ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
+      featureLineColor(theme),
     ];
   }
 
@@ -317,7 +314,7 @@
     return [
       "case",
       ["==", ["get", "interchange"], 1],
-      ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR],
+      featureLineColor(theme),
       networkCasingColor(theme),
     ];
   }
@@ -346,7 +343,7 @@
 
   // A line's name in the line's own hue, pulled toward the label ink until it
   // is readable as TEXT rather than as a coloured smear: the pale end of an
-  // operator palette (yellow, light green) is a fine 3 px stroke and an
+  // operator palette (yellow, light green) is a fine 1.5 px stroke and an
   // illegible 10 px word. Same composite shape as networkLineColor, different
   // anchor — text needs contrast against the surface, a stroke needs identity.
   const LINE_LABEL_INK_STRENGTH = 0.55;
@@ -360,7 +357,7 @@
     return [
       "let",
       "line",
-      ["to-rgba", ["to-color", ["coalesce", ["get", "color"], DEFAULT_LINE_COLOR]]],
+      ["to-rgba", ["to-color", featureLineColor(theme)]],
       "ink",
       ["to-rgba", ["to-color", ink]],
       ["rgb", channel(0), channel(1), channel(2)],
@@ -876,7 +873,8 @@
       filter: IN_SERVICE_FILTER,
       layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
       paint: {
-        // Theme-dependent: _applyThemePaint recomposites this on a switch.
+        // Theme-specific: both values are audited package colours, not runtime
+        // blends, so the displayed HEX remains deterministic.
         "line-color": networkLineColor(theme),
         // Do not put this zoom gate in a layer FILTER. GeoJSON filters are
         // evaluated while individual source tiles are parsed, so neighbouring
@@ -1217,7 +1215,7 @@
         // On the ramp with every other rail weight: the halo has to keep
         // showing the same PROPORTION of dark either side of the line it
         // marks, or "selected" reads differently at every zoom. The casing
-        // is only 1.4 px per side at full scale, matching Apple's restrained
+        // is only 0.7 px per side at full scale, matching Apple's restrained
         // selected-transit outline instead of the old oversized white ribbon.
         "line-width": riddenSelectionCasingWidth(),
       },

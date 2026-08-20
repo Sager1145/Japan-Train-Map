@@ -323,7 +323,7 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // shared end of two strokes.
     ["jp", 10215],
     ["tw", 586],
-    ["hk", 450],
+    ["hk", 453],
     ["mo", 17],
   ]);
 });

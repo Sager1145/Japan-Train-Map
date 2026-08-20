@@ -90,16 +90,24 @@ test("apple_maps_transit_line_weight_and_casing", () => {
     zoom,
     {},
   );
-  // Measured off macOS 「地圖」→ 大眾運輸 at 東京駅 city view, 2026-08-12:
-  // an ordinary transit line reads at ~2.8 pt there and its bead at ~6.2 pt.
-  // These two literals are the contract, deliberately NOT read back from
+  // Measured off macOS 「地圖」→ 大眾運輸 at 東京駅 city view, 2026-08-12: an
+  // ordinary transit line reads at ~2.8 pt there and its bead at ~6.2 pt, and
+  // this map drew 3 px / 6 px against it until 2026-08-20, when the whole
+  // railway was halved by request — Japan stacks four to six railways through
+  // corridors Apple's reference never draws at once, and at 3 px they welded
+  // shut. These literals are the contract, deliberately NOT read back from
   // RAILWAY_STYLE — a test that derives the number it is checking cannot fail
   // when the number moves.
-  assert.equal(core, 3);
-  assert.ok(Math.abs((outer - core) / 2 - 0.6) <= 1e-9);
-  // …and the bead is exactly twice the stroke, at the same zoom, from the
-  // same built style: the "beads on a wire" proportion is what makes the
-  // retune a retune rather than two independent numbers drifting.
+  assert.equal(core, 1.5);
+  assert.ok(Math.abs((outer - core) / 2 - 0.3) <= 1e-9);
+  // The keyline is a FIFTH of the core either side, the proportion it held at
+  // the old weight (0.6 on 3): halving the stroke had to halve its edge too,
+  // or the quiet separator becomes the thickest thing about a fine line.
+  assert.ok(Math.abs((outer - core) / 2 / core - 0.2) <= 1e-9);
+  // The bead did NOT follow the stroke down: it stays at the 6 px Apple's
+  // Transit view was measured at, which puts it at four strokes rather than
+  // two. That is the retune's one deliberate asymmetry — the line was what
+  // read too heavy, and a station a reader cannot find is not a lighter map.
   const dot = byId.get(style.STATIONS_LAYER);
   const radius = style.evaluateScreenValue(
     dot.paint["circle-radius"],
@@ -107,11 +115,39 @@ test("apple_maps_transit_line_weight_and_casing", () => {
     {},
   );
   assert.equal(radius * 2, 6);
-  assert.equal(radius * 2, core * 2);
-  // Within the band this project read off Apple's Transit view. A future
-  // retune may move inside it; leaving it is a decision, not a typo.
-  assert.ok(core >= 2.4 && core <= 3.4, `line core ${core} px is outside the Apple Transit band`);
+  assert.ok(Math.abs(radius * 2 - core / 0.25) <= 1e-9);
+  // The stroke sits at half the band this project read off Apple's Transit
+  // view — the whole point of the 2026-08-20 retune, so landing back on
+  // Apple's own number would undo it — while the bead stays inside it.
+  assert.ok(core >= 1.2 && core <= 1.7, `line core ${core} px is outside the halved band`);
   assert.ok(radius * 2 >= 5.2 && radius * 2 <= 7.0, `station bead ${radius * 2} px is outside the Apple Transit band`);
+});
+
+test("all_railway_lines_use_the_exact_theme_package_colour", () => {
+  for (const country of COUNTRIES) {
+    for (const theme of ["light", "dark"]) {
+      const expected =
+        theme === "dark"
+          ? [
+              "coalesce",
+              ["get", "colorDark"],
+              ["get", "color"],
+              RailNetwork.DEFAULT_LINE_COLOR,
+            ]
+          : ["coalesce", ["get", "color"], RailNetwork.DEFAULT_LINE_COLOR];
+      const built = style.buildBaseStyle({ country, theme });
+      const byId = new Map(built.layers.map((layer) => [layer.id, layer]));
+      for (const layerId of [
+        style.SEGMENTS_LAYER,
+        style.SEGMENTS_SUSPENDED_LAYER,
+      ]) {
+        const actual = JSON.parse(
+          JSON.stringify(byId.get(layerId).paint["line-color"]),
+        );
+        assert.deepEqual(actual, expected);
+      }
+    }
+  }
 });
 
 test("apple_maps_selected_route_casing_is_restrained", () => {
@@ -119,7 +155,9 @@ test("apple_maps_selected_route_casing_is_restrained", () => {
   const byId = new Map(built.layers.map((layer) => [layer.id, layer]));
   const route = byId.get(style.TRAIN_ROUTES_LAYER);
   const casing = byId.get(style.TRAIN_SEL_CASING_LAYER);
-  const feature = { width: 4 };
+  // The default ride weight (app-config.js DEFAULT_TRAIN_WEIGHT), halved with
+  // the network stroke on 2026-08-20.
+  const feature = { width: 2 };
   const zoom = 14;
   const core = style.evaluateScreenValue(
     route.paint["line-width"],
@@ -132,7 +170,7 @@ test("apple_maps_selected_route_casing_is_restrained", () => {
     feature,
   );
   assert.ok(core > style.RAILWAY_STYLE.railWidthPx);
-  assert.equal(Math.round(((outer - core) / 2) * 10) / 10, 1.4);
+  assert.equal(Math.round(((outer - core) / 2) * 10) / 10, 0.7);
   assert.ok(outer < core * 2);
 });
 
@@ -187,6 +225,46 @@ test("single_line_station_is_solid_circle", () => {
     ["get", "color"],
     "#7C8A82",
   ]);
+});
+
+function relativeLuminance(hex) {
+  const channels = hex
+    .slice(1)
+    .match(/../g)
+    .map((value) => parseInt(value, 16) / 255)
+    .map((value) =>
+      value <= 0.04045
+        ? value / 12.92
+        : ((value + 0.055) / 1.055) ** 2.4,
+    );
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrast(left, right) {
+  const values = [relativeLuminance(left), relativeLuminance(right)].sort(
+    (a, b) => b - a,
+  );
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+test("every_japan_line_has_non_black_non_white_contrasting_theme_colours", () => {
+  const { pkg, network } = packageAndNetwork("jp");
+  const forbidden = new Set(["#000000", "#ffffff"]);
+  for (const line of pkg.lines) {
+    assert.match(line.color, /^#[0-9a-f]{6}$/);
+    assert.match(line.colorDark, /^#[0-9a-f]{6}$/);
+    assert.match(line.colorReference, /^#[0-9a-f]{6}$/);
+    assert.ok(!forbidden.has(line.color), `${line.id} light is black/white`);
+    assert.ok(!forbidden.has(line.colorDark), `${line.id} dark is black/white`);
+    assert.ok(contrast(line.color, "#f2f3f0") >= 3, `${line.id} light disappears into the map`);
+    assert.ok(contrast(line.colorDark, "#0c0c0c") >= 3, `${line.id} dark disappears into the map`);
+  }
+  for (const feature of [
+    ...network.segments.features,
+    ...network.stations.features,
+  ]) {
+    assert.match(feature.properties.colorDark, /^#[0-9a-f]{6}$/);
+  }
 });
 
 test("labels_may_dedupe_without_merging_markers", () => {
@@ -454,8 +532,8 @@ test("underground_structure_is_preserved_without_guessing_other_countries", () =
   const casing = byId.get(style.SEGMENTS_SUSPENDED_CASING_LAYER).paint[
     "line-dasharray"
   ];
-  const coreWidth = 3;
-  const casingWidth = 3 + 0.6 * 2;
+  const coreWidth = 1.5;
+  const casingWidth = 1.5 + 0.3 * 2;
   for (let index = 0; index < 2; index += 1)
     assert.ok(
       Math.abs(core[index] * coreWidth - casing[index] * casingWidth) < 0.01,
@@ -463,7 +541,8 @@ test("underground_structure_is_preserved_without_guessing_other_countries", () =
         casing[index] * casingWidth
       } px on the casing`,
     );
-  // Same rhythm as the map's only other dash, the cross-day train.
-  assert.ok(Math.abs(core[0] * coreWidth - 1.6 * 4 * 1.18) < 0.01);
-  assert.ok(Math.abs(core[1] * coreWidth - 1.4 * 4 * 1.18) < 0.01);
+  // Same rhythm as the map's only other dash, the cross-day train — whose
+  // reference stroke is DEFAULT_TRAIN_WEIGHT (2) × RIDDEN_WIDTH_SCALE.
+  assert.ok(Math.abs(core[0] * coreWidth - 1.6 * 2 * 1.18) < 0.01);
+  assert.ok(Math.abs(core[1] * coreWidth - 1.4 * 2 * 1.18) < 0.01);
 });

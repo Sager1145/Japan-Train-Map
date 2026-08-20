@@ -89,13 +89,15 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   assert.equal(packageImages.length - linesWithBadges.length, 65);
 });
 
-test("rejected or missing package art may use a verified official line symbol", () => {
+test("rejected or missing package art may use a verified line badge", () => {
   const { branding } = loadPopup();
   // 北勢線: package art was the pre-1944 北勢鉄道 predecessor mark; the line's
   // official 三岐鉄道 route letter is H. 丸ノ内線分岐線: no package art; the
   // branch publishes its own Marunouchi Mb badge. 京都市東西線: no package
-  // art; the line publishes its official vermillion T symbol. 北海道新幹線:
-  // use the supplied JR Hokkaido Shinkansen pictogram.
+  // art; the line publishes its official vermillion T symbol. Shinkansen
+  // railways carry the official Shinkansen pictogram of the company that runs
+  // them, which is the passenger-facing mark JR actually publishes; JR has no
+  // per-route Shinkansen symbol, so the route is identified by colour + name.
   const overrides = new Map([
     ["jp-三岐鉄道-北勢線", "/rail/line-logos/sangi-hokusei.svg"],
     [
@@ -105,7 +107,24 @@ test("rejected or missing package art may use a verified official line symbol", 
     ["jp-京都市-東西線", "/rail/line-logos/kyoto-tozai.svg"],
     [
       "jp-北海道旅客鉄道-北海道新幹線",
-      "/rail/line-logos/hokkaido-shinkansen.svg",
+      "/rail/line-logos/shinkansen-jr-hokkaido.svg",
+    ],
+    ["jp-東日本旅客鉄道-東北新幹線", "/rail/line-logos/shinkansen-jr-east.svg"],
+    ["jp-東日本旅客鉄道-上越新幹線", "/rail/line-logos/shinkansen-jr-east.svg"],
+    ["jp-東日本旅客鉄道-北陸新幹線", "/rail/line-logos/shinkansen-jr-east.svg"],
+    [
+      "jp-東海旅客鉄道-東海道新幹線",
+      "/rail/line-logos/shinkansen-jr-central.svg",
+    ],
+    ["jp-西日本旅客鉄道-山陽新幹線", "/rail/line-logos/shinkansen-jr-west.svg"],
+    ["jp-西日本旅客鉄道-北陸新幹線", "/rail/line-logos/shinkansen-jr-west.svg"],
+    [
+      "jp-九州旅客鉄道-九州新幹線",
+      "/rail/line-logos/shinkansen-jr-kyushu.svg",
+    ],
+    [
+      "jp-九州旅客鉄道-西九州新幹線",
+      "/rail/line-logos/shinkansen-jr-kyushu.svg",
     ],
   ]);
   for (const [lineId, expected] of overrides) {
@@ -123,14 +142,68 @@ test("rejected or missing package art may use a verified official line symbol", 
       `${lineId} override asset exists`,
     );
   }
-  const hokkaidoPictogram = fs.readFileSync(
-    path.join(PUBLIC_DIR, "rail", "line-logos", "hokkaido-shinkansen.svg"),
+  // Every Shinkansen railway in the package resolves to the official
+  // Shinkansen pictogram of the company operating it. 北陸新幹線 is stored as
+  // two operator records and each half follows its own operator, so the pair
+  // deliberately shows two different pictograms.
+  const shinkansenPictograms = new Map([
+    ["北海道旅客鉄道", "/rail/line-logos/shinkansen-jr-hokkaido.svg"],
+    ["東日本旅客鉄道", "/rail/line-logos/shinkansen-jr-east.svg"],
+    ["東海旅客鉄道", "/rail/line-logos/shinkansen-jr-central.svg"],
+    ["西日本旅客鉄道", "/rail/line-logos/shinkansen-jr-west.svg"],
+    ["九州旅客鉄道", "/rail/line-logos/shinkansen-jr-kyushu.svg"],
+  ]);
+  const shinkansenLines = JAPAN_NETWORK.lines.filter((line) =>
+    line.name.includes("新幹線"),
   );
-  assert.equal(
-    crypto.createHash("sha256").update(hokkaidoPictogram).digest("hex"),
-    "5a633494bdb618d5591f06fc13905f9cc6782acb6c4fbadb1199f4599f7dd52c",
-    "the supplied Shinkansen_jrh.svg stays byte-for-byte unchanged",
+  assert.equal(shinkansenLines.length, 9);
+  for (const line of shinkansenLines) {
+    assert.equal(
+      overrides.get(line.id),
+      shinkansenPictograms.get(line.operator),
+      `${line.operator} ${line.name} uses its operator's Shinkansen pictogram`,
+    );
+  }
+  // The five pictograms are the supplied Commons assets, stored unchanged: no
+  // recolouring, cropping or redrawing of the operators' artwork.
+  const pictogramDigests = new Map([
+    [
+      "shinkansen-jr-hokkaido.svg",
+      "5a633494bdb618d5591f06fc13905f9cc6782acb6c4fbadb1199f4599f7dd52c",
+    ],
+    [
+      "shinkansen-jr-east.svg",
+      "4248acd9bc349cf0270d311132094353ac0ae67602ab68acf9b9a8442590c99a",
+    ],
+    [
+      "shinkansen-jr-central.svg",
+      "7682d8e2db1aaae5ffffb604af34f420a27c359c5edd2ad38c8f903a58c57a9e",
+    ],
+    [
+      "shinkansen-jr-west.svg",
+      "aaecbde8de64d2e190f691a200d7b6c92759cf9ed33d38365d22dbde0a1b7de3",
+    ],
+    [
+      "shinkansen-jr-kyushu.svg",
+      "20fce2cc5be5dc6edd7c6c108787f3721883f3a3fbebc20533aa404e88f12c90",
+    ],
+  ]);
+  assert.deepEqual(
+    [...new Set(shinkansenPictograms.values())].sort(),
+    [...pictogramDigests.keys()]
+      .map((asset) => `/rail/line-logos/${asset}`)
+      .sort(),
   );
+  for (const [asset, digest] of pictogramDigests) {
+    const pictogram = fs.readFileSync(
+      path.join(PUBLIC_DIR, "rail", "line-logos", asset),
+    );
+    assert.equal(
+      crypto.createHash("sha256").update(pictogram).digest("hex"),
+      digest,
+      `${asset} stays byte-for-byte the supplied Commons pictogram`,
+    );
+  }
 });
 
 test("every non-line image falls back to the exact operator, never a parent or predecessor", () => {
@@ -153,6 +226,14 @@ test("every non-line image falls back to the exact operator, never a parent or p
     "jp-東京地下鉄-4号線丸ノ内線分岐線",
     "jp-京都市-東西線",
     "jp-北海道旅客鉄道-北海道新幹線",
+    "jp-東日本旅客鉄道-東北新幹線",
+    "jp-東日本旅客鉄道-上越新幹線",
+    "jp-東日本旅客鉄道-北陸新幹線",
+    "jp-西日本旅客鉄道-北陸新幹線",
+    "jp-東海旅客鉄道-東海道新幹線",
+    "jp-西日本旅客鉄道-山陽新幹線",
+    "jp-九州旅客鉄道-九州新幹線",
+    "jp-九州旅客鉄道-西九州新幹線",
   ]);
   const coveredLines = missingBadgeLines.filter(
     (line) =>
@@ -179,7 +260,7 @@ test("every non-line image falls back to the exact operator, never a parent or p
   // carried one.
   assert.equal(missingBadgeLines.length, 335);
   assert.equal(new Set(missingBadgeLines.map((line) => line.operator)).size, 124);
-  assert.equal(coveredLines.length, 328);
+  assert.equal(coveredLines.length, 320);
   for (const line of coveredLines) {
     const logo = branding.operatorLogo(line.operator);
     assert.match(

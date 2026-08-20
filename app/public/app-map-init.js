@@ -132,23 +132,17 @@ function buildMapLayersControl(hasBasemap) {
 
   // Latest desired state of the 全部鐵路線 overlay. Its geometry model is
   // already loaded because ridden routes use it too; ensureNetwork() still
-  // covers recovery after a failed request and country-switch races.
-  //
-  // TEMPORARY (Apple Maps 全部鐵路線 visual rebuild): the ridden-trip layers
-  // start HIDDEN and 全部鐵路線 starts ON, so the rebuilt network overlay is
-  // what a fresh load shows and can be compared against macOS Maps Transit
-  // without ridden routes drawn on top of it. Flip these four defaults back
-  // to true / allRailways back to false to restore the shipping behaviour;
-  // nothing else in the ridden pipeline was touched.
-  let networkOverlayWanted = true;
+  // covers recovery after a failed request and country-switch races. Keep the
+  // complete-network overlay off by default so the existing ridden-route data
+  // is the map's primary display instead of being hidden beneath every railway.
+  let networkOverlayWanted = false;
   const toggles = [
-    ["map.routes", (v) => RailMap.setVisible(v), false],
-    ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), false],
-    ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), false],
-    ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), false],
-    // 全部線路（全國路網 + 車站點）：ON by default during the visual rebuild.
+    ["map.routes", (v) => RailMap.setVisible(v), true],
+    ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
+    ["map.terminals", (v) => RailMap.setMarkerVisibility("terminal", v), true],
+    ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
     // The complete-line model is shared with ridden routes, while this switch
-    // controls only the background network and station layers.
+    // controls only the optional background network and station layers.
     [
       "map.allRailways",
       (v) => {
@@ -169,7 +163,7 @@ function buildMapLayersControl(hasBasemap) {
           RailMap.setNetworkStationsVisible(false);
         }
       },
-      true,
+      false,
     ],
   ];
   const toggleLabels = [];

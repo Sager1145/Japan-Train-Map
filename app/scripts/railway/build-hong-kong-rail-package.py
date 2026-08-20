@@ -503,8 +503,10 @@ def build_hong_kong(html_path: Path, csv_path: Path, track_path: Path, tram_trac
         source_aliases = [heavy["stations"][[s["ID"] for s in heavy["stations"]].index(i)]["alias"] for i in source_line["stationIDs"]]
         variants = [(alias, source_line["nameTC"], source_line["name"], source_aliases, source_aliases)]
         if alias == "EAL":
-            # ONE railway with a branch, not two railways. 東鐵綫 runs to 羅湖;
-            # 落馬洲 hangs off 上水. Both rows therefore carry the LINE's name,
+            # ONE railway with three display paths, not three railways. 東鐵綫
+            # runs to 羅湖; 落馬洲 hangs off 上水; 馬場 is the event-day
+            # rejoining variant 沙田→馬場→大學 and bypasses 火炭. Every row
+            # therefore carries the LINE's name,
             # which is what makes the renderer treat their shared 34 km as a
             # trunk and its branch — drawn over the same coordinates — instead
             # of as two independent railways to be pulled into parallel lanes
@@ -512,6 +514,15 @@ def build_hong_kong(html_path: Path, csv_path: Path, track_path: Path, tram_trac
             variants = branch_variants(
                 ("EAL-LOW", "東鐵綫", "East Rail Line", list(reversed(direction_rows[("EAL", "DT")]))),
                 ("EAL-LMC", direction_rows[("EAL", "LMC-UT")]),
+            )
+            variants.append(
+                (
+                    "EAL-RAC",
+                    "東鐵綫",
+                    "East Rail Line",
+                    ["SHT", "RAC", "UNI"],
+                    ["SHT", "RAC", "UNI"],
+                )
             )
         elif alias == "TKL":
             # Same shape: 將軍澳綫 runs to 寶琳, 康城 hangs off 將軍澳.

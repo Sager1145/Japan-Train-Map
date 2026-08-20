@@ -22,8 +22,11 @@
 // full opacity, ridden lines full color, railprint-scale station dots). The
 // versioned key intentionally orphans v1 saved settings, whose numbers were
 // tuned for the old faded-raster look.
-const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
-const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v3";
+// v5 (2026-08-20): the railway halved its weight, so the sizes that were
+// tuned AGAINST the old weight are re-seeded on migration (RESEEDED_ON_MIGRATION
+// below) while every other saved preference carries over untouched.
+const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v5";
+const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
 const DISPLAY_DEFAULTS = {
   theme: "system", // system preference, explicit light, or explicit dark
   uiMode: "auto", // automatic terminal detection, or an explicit mobile/desktop UI
@@ -32,7 +35,12 @@ const DISPLAY_DEFAULTS = {
   // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
   // so the slider was a do-nothing control lying to the user.)
   dimOpacity: 0.18, // opacity of trains not on the selected date
-  terminalRadius: 6, // px radius (at z12) of origin / destination markers
+  // px radius of origin / destination markers. Retuned 6 → 4 on 2026-08-20
+  // with the halved line weights: the endpoint dot earns its emphasis by
+  // being the largest mark on the route, and against a 2.36 px ride a 12 px
+  // disc stopped reading as a terminus and started reading as a blot. Two
+  // thirds of the old size keeps it clearly above the 6 px stop circles.
+  terminalRadius: 4,
   // Legacy numeric range retained so existing saved display settings remain
   // valid; it now controls the black center inside intermediate stop markers.
   stopRadius: 5,
@@ -61,6 +69,10 @@ const DISPLAY_DEFAULTS = {
 };
 // Live working copy (mutated by the UI; seeded from localStorage on boot).
 const DISPLAY = { ...DISPLAY_DEFAULTS };
+// Keys whose SAVED value is dropped when a payload is carried over from
+// PREVIOUS_DISPLAY_STORAGE_KEY — the ones this version retuned, and only
+// those. Everything else a reader has adjusted survives the version bump.
+const RESEEDED_ON_MIGRATION = new Set(["terminalRadius"]);
 const FIT_CURVE_SETTING_KEYS = [
   "fitCurvePrecision",
   "fitCurveMinRadius",
@@ -344,9 +356,11 @@ function loadDisplaySettings() {
         for (const k of Object.keys(DISPLAY_DEFAULTS)) {
           const def = DISPLAY_DEFAULTS[k];
           const v = parsed[k];
-          // Keep existing visual preferences while deliberately seeding the new
-          // much broader v3 curve-fit defaults for users upgrading from v2.
-          if (migrated && k.indexOf("fitCurve") === 0) continue;
+          // Keep existing visual preferences, except the handful this version
+          // deliberately re-seeds: a saved size tuned against the previous
+          // line weights would land on the new map as the one mark that never
+          // got the memo. (v3 did the same for the curve-fit numbers.)
+          if (migrated && RESEEDED_ON_MIGRATION.has(k)) continue;
           if (typeof def === "boolean") {
             if (typeof v === "boolean") DISPLAY[k] = v;
           } else if (typeof def === "string") {

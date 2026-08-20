@@ -11,7 +11,7 @@
 > 假定值一定是六位数字；完整规则见第一部分 §2.3。
 
 > 本文档分为**两大部分**，各自独立编号：
-> **第一部分（§1–§17）** 描述列车 JSON 的格式、字段、导入/导出与校验；
+> **第一部分（§1–§18）** 描述列车 JSON 的格式、字段、导入/导出、校验与程序值穷举表；
 > **第二部分（§2–§23，数据源）** 描述底层日本 N02、台湾 TDX/PTX 与 OSM 底图数据源及其字段语义。
 > 引用「第 N 节」时按所在部分理解；跨部分引用会写明「数据源部分」。
 
@@ -38,6 +38,7 @@
 15. 校验规则摘要
 16. 完整示例
 17. 实现必须遵守的核心规则
+18. 程序内可用值穷举表（公司、运营者、线路、站点代码、站名、物理站序）
 
 **第二部分 · 数据源（日本 N02 / 台湾 TDX/PTX / OSM）规范**
 
@@ -1446,6 +1447,107 @@ origin / destination / passenger_stop 匹配失败
 16. `n02_station_code` 是 1.3 的历史兼容键：日本值为 N02_005c，台湾值为官方 TDX `StationUID`；不得混入 OSM id 或 `tw-official-*` 几何分组 ID。
 17. 台湾 route policy 的 N02 事业者种别字段不参与过滤；路线名、运营者、站序、站点与 geometry 只采用官方 TDX/PTX 数据。
 18. 实际乘坐区间内必须列出所有物理经过站；不停靠站标为 `pass_through`，matched route 按这些相邻站逐段切分。
+19. 生成 JSON 时应优先从 §18 的程序值穷举表选择 `company`、`operator_names`、`line_names`、官方站点代码与规范站名；`display_line_id`、geometry/group id 和附录明确排除的非 canonical 值不得写入 train JSON。
+
+---
+
+## 18. 程序内可用值穷举表
+
+为了让人工或 AI 生成器能使用**当前程序真正包含的值**，本规范包含两个由程序数据机械生成的
+规范性附录：
+
+- [`jsonspec-values.md`](./jsonspec-values.md)：人类可读的完整表，逐地区列出运营者→推荐
+  `company`、程序接受的公司别名、bundled 行程实际出现的 `train_type` / `company`、全部线路、
+  每条线路的物理站序、全部合法 canonical 站点代码、规范站名、多语言名称和线路/运营者关系。
+- [`jsonspec-values.json`](./jsonspec-values.json)：同一数据的机器可读版本，适合直接提供给 AI、
+  脚本查表或在生成 JSON 前做枚举校验。
+
+二者均由以下程序从当前 rail package、solver station/section 数据、station readings、运营者品牌
+映射和 bundled train stores 生成：
+
+```bash
+node app/scripts/validation/build-jsonspec-value-catalog.mjs
+```
+
+检查附录是否与当前程序数据一致：
+
+```bash
+node app/scripts/validation/build-jsonspec-value-catalog.mjs --check
+```
+
+### 18.1 可直接用于 canonical JSON 的目录字段
+
+机器目录的主要路径如下：
+
+| 生成目标字段 | 穷举目录路径 | 使用规则 |
+| --- | --- | --- |
+| train `company` | `countries.{jp,tw,hk,mo,kr}.recommended_company_values` | 当前程序按正式运营者推导的推荐乘客向值；直通车可用 `/` 连接多个值 |
+| 可接受公司别名 | `countries.*.accepted_company_aliases` | `input_value` 是程序已知输入别名，`normalized_company_value` 是规范化结果 |
+| `preferred_operator_names` / section `operator_names` | `countries.*.operator_names` | 必须使用正式运营者名，不要用乘客向 `company` 简称代替 |
+| `preferred_line_names` / section `line_names` | `countries.*.line_names` | 使用当前 solver/rail package 的正式线路名 |
+| `n02_station_code` 及 section 端点代码 | `countries.*.stations[].code` | 只包含匹配 schema 1.3 格式的 canonical 值 |
+| stop `name` | `countries.*.stations[].canonical_name` | 与 `code` 配对使用；其它语言/读法在 `localized_names` |
+| 无码站名 fallback | `countries.*.station_name_fallbacks` | 穷举 station-readings 的全部按名查找项；没有 canonical code 时只能保留可靠站名并写 `null` |
+| 站点所属线/运营者 | `countries.*.stations[].line_names` / `operator_names` | 用于同名站消歧和 section 硬约束 |
+| 相邻物理站序 | `countries.*.lines[].station_sequence` | 按数组顺序生成完整 stops 与相邻 route sections |
+| 可选线路颜色 | `countries.*.lines[].color` | 需要沿用程序线路色时可作为 `style.color` |
+| 当前行程示例值 | `countries.*.observed_train_values` | 仅表示 bundled JSON 中出现过；`company` / `train_type` 仍是开放字符串 |
+
+常用查询示例：
+
+```bash
+# 日本全部推荐 company
+jq '.countries.jp.recommended_company_values' jsonspec-values.json
+
+# 台湾全部正式线路名与运营者名
+jq '.countries.tw.lines[] | {line_name, operator_name}' jsonspec-values.json
+
+# 按站名查香港 canonical 代码
+jq '.countries.hk.stations[] | select(.names | index("金鐘")) | {code, canonical_name, line_names}' jsonspec-values.json
+
+# 查看韩国某线路的完整物理站序
+jq '.countries.kr.lines[] | select(.line_name == "경부선") | .station_sequence' jsonspec-values.json
+```
+
+### 18.2 开放字符串与“全部可能值”的边界
+
+`company`、`train_type`、`number` 在 schema 中是开放 string，因此不存在理论上的封闭全集：
+
+- `recommended_company_values` 穷举当前程序可以从 rail operator 推导出的推荐值；
+- `accepted_company_aliases` 穷举程序显式维护的输入别名；
+- `observed_train_values` 穷举当前 bundled train JSON 实际出现值；
+- 新的合法公司、列车类型或真实车次仍可写入，不能因为未出现在附录中就判定 schema 非法；
+- `operator_names`、`line_names` 和 station code 则应以当前地区 rail package / solver 目录为准，
+  否则可能无法约束或解析路线。
+
+列车车次、停靠方式和时刻不能从 rail network 穷举或推断，仍须依据对应日期的官方时刻表或
+可靠行程事实。附录中的线路物理站序只说明轨道网络顺序，不说明某班列车是否停车。
+
+### 18.3 站点目录状态与禁止值
+
+每个 `stations[]` 记录带有：
+
+- `in_solver_network=true`：代码存在于当前 solver station 数据，优先用于生成行程；
+- `in_station_readings=true`：代码有站名/多语言读法；
+- 只有 readings、没有 solver 的代码仍是程序内已知值，但当前 package 可能无法寻路；
+- `lines[].station_sequence[].canonical_code_candidates` 为空时，生成 JSON 必须写 `null`，不得复制
+  rail package 的 geometry/group id；
+- 候选多于一个时，必须结合线路变体、分支与运营者消歧，不能任取一个。
+
+程序数据中存在、但不符合 schema 1.3 代码正则的值不会混入 `stations[].code`。它们完整列在
+`countries.*.excluded_noncanonical_station_codes`，用途是审计数据问题；这些值**绝对禁止**写入
+`n02_station_code` / `from_n02_station_code` / `to_n02_station_code`。
+
+`display_line_id` 仅用来识别 rail package 的线路变体；`tw-official-*` / `hk-official-*` /
+`mo-official-*` / `kr-official-*` 等 geometry/group id 也仅供内部关联。二者都不是 canonical
+`line_names` 或站点代码。
+
+### 18.4 可重复性与更新规则
+
+`jsonspec-values.json` 保存所有输入文件的相对路径与 SHA-256，且不写入墙钟生成时间，因此相同
+程序数据会产生字节一致的附录。任何 rail package、station/section、station readings、运营者品牌
+映射或 bundled train store 变化后，都必须重新运行生成器并提交两个附录；禁止手工维护其中的
+公司、线路或站点表，以免与程序实际可解析值漂移。
 
 ---
 
@@ -1702,7 +1804,7 @@ geometrySource.syntheticConnectors = 0
 | 站名 / 路线名 | 官方繁中 `nameTC` / 简中 `nameSC` / 英文 `name`；电车取官方站表三语行 |
 | 运营者 | `MTR`（重铁与全部 11 条轻铁路线）与 `香港電車`（港岛电车）两个 canonical company 值 |
 | 几何 | LandsD iB1000 官方制图几何为权威；公开 iB1000 把地下铁路隧道并入通用 `TUR`，这些未分类地下区间由 OSM 路线关系作 ODbL 连续性补充；电车轨道整体取自 OSM `route=tram` 关系 |
-| 当前打包产物 | `app/public/rail/hk-2025.json`，`country: "HK"`，27 条线路（12 重铁分支 + 11 轻铁路线 + 4 条电车轨道） |
+| 当前打包产物 | `app/public/rail/hk-2025.json`，`country: "HK"`，28 条线路（13 重铁显示路径，含东铁马场再并入支线 + 11 轻铁路线 + 4 条电车轨道） |
 | 求解数据集 | `rail-sections-hk.json` / `stations-hk.json`：全网统一 `institution_type_code: "4"`、`railway_class_code: "21"`；统计分类先按 `operator == 香港電車` 分出电车，MTR 内部再按线名 `輕鐵` 前缀区分重铁 / 轻铁 |
 | 坐标系 | WGS84 |
 | 许可 | DATA.GOV.HK 条款（MTR 与香港电车开放数据）+ LandsD HKMS 2.0 开放制图 + ODbL（OSM 补充段与电车轨道）；`geometrySource` 保留 providers / license / sourceSha256 |

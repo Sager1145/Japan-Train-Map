@@ -51,7 +51,7 @@ function assertCompactPackage(country, expectedLineCount) {
   const network = RailNetwork.buildNetworkFromCompactPackage(pkg);
   assert.equal(network.lineById.size, expectedLineCount);
   // One feature per line, plus one per lane where independent railways share
-  // a corridor — the Light Rail routes and the two 東鐵綫 branches all run the
+  // a corridor — the Light Rail routes and the three 東鐵綫 display paths run the
   // same tracks, so most of the network is laned.
   assert.equal(
     new Set(network.segments.features.map((feature) => feature.properties.lineId)).size,
@@ -77,10 +77,10 @@ function maximumChordDeviationMetres(geometry) {
 }
 
 test("Hong Kong package contains the complete MTR and Light Rail display network", () => {
-  const pkg = assertCompactPackage("hk", 27);
+  const pkg = assertCompactPackage("hk", 28);
   const ids = new Set(pkg.lines.map((line) => line.id));
   for (const id of [
-    "hk-mtr-ael", "hk-mtr-drl", "hk-mtr-eal-low", "hk-mtr-eal-lmc",
+    "hk-mtr-ael", "hk-mtr-drl", "hk-mtr-eal-low", "hk-mtr-eal-lmc", "hk-mtr-eal-rac",
     "hk-mtr-isl", "hk-mtr-ktl", "hk-mtr-sil", "hk-mtr-tcl",
     "hk-mtr-tkl-poa", "hk-mtr-tkl-lhp", "hk-mtr-tml", "hk-mtr-twl",
   ])
@@ -92,10 +92,18 @@ test("Hong Kong package contains the complete MTR and Light Rail display network
 
   const loWu = pkg.lines.find((line) => line.id === "hk-mtr-eal-low");
   const lokMaChau = pkg.lines.find((line) => line.id === "hk-mtr-eal-lmc");
+  const racecourse = pkg.lines.find((line) => line.id === "hk-mtr-eal-rac");
   assert.equal(loWu.stations.at(-1)[1], "羅湖");
   assert.equal(lokMaChau.stations.at(-1)[1], "落馬洲");
   assert.ok(!loWu.stations.some((row) => row[1] === "落馬洲"));
   assert.ok(!lokMaChau.stations.some((row) => row[1] === "羅湖"));
+  assert.deepEqual(
+    racecourse.stations.map((row) => row[1]),
+    ["沙田", "馬場", "大學"],
+    "the event-day variant rejoins the main line and bypasses 火炭",
+  );
+  assert.equal(racecourse.segments.length, 2);
+  assert.ok(!racecourse.stations.some((row) => row[1] === "火炭"));
   const airportCurve = pkg.lines.find((line) => line.id === "hk-mtr-ael").segments[2][2];
   assert.ok(maximumChordDeviationMetres(airportCurve) > 1_000);
   assert.match(pkg.geometrySource.method, /OSM route relation/);
@@ -129,6 +137,14 @@ test("Hong Kong ships isolated solver, reading and sample datasets", () => {
   assert.ok(readings.byCode["hk-mtr-tml:hk-official-mtr-wks"]);
   assert.equal(readings.byCode["TML-MTR-WKS"].en, "Wu Kai Sha");
   assert.equal(readings.byCode["AEL-MTR-KOW"].zh_Hans, "九龙");
+  assert.equal(readings.byCode["EAL-RAC-MTR-RAC"].zh_Hans, "马场");
+  assert.equal(readings.byCode["hk-mtr-eal-rac:hk-official-mtr-rac"].en, "Racecourse");
+
+  const racecourse = stations.features.find(
+    (feature) => feature.properties.n02_station_code === "EAL-RAC-MTR-RAC",
+  );
+  assert.ok(racecourse, "Racecourse must be available to the route solver");
+  assert.equal(racecourse.properties.station_name, "馬場");
 });
 
 test("Hong Kong station snap stubs stay short and on the running line", () => {
