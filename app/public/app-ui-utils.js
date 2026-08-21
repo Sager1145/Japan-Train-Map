@@ -181,6 +181,22 @@ function buildPortableHtml() {
   return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }
 
+// Hand a Blob to the browser's downloader. Split out of downloadText because
+// the video export already HAS a Blob (megabytes of encoded frames) and
+// turning it back into a string to re-wrap it would be absurd.
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoked on a turn of the loop, not immediately: Safari has been observed
+  // to cancel a download whose object URL is released in the same task.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 function downloadText(filename, text, type) {
   const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);

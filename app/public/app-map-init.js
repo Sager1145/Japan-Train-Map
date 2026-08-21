@@ -604,15 +604,21 @@ async function initMap(mapAssetsReady) {
 
   // Marker LOD is handled by the pass layers' minzoom (no re-render); zoom
   // only re-layouts the endpoint labels (their overlap layout is pixel-space).
+  // Playback drives the camera with a jumpTo PER FRAME, and every jumpTo
+  // fires movestart/move/moveend. Relaying out the endpoint labels sixty
+  // times a second — a pixel-space overlap pass over the whole scope — is
+  // pure waste, so the player owns them: it skips these while it runs and
+  // relays out once when it stops.
   map.on("zoomend", () => {
-    if (!cachedOrderedTrains.length) return;
+    if (!cachedOrderedTrains.length || Playback.isDrivingCamera()) return;
     updateEndpointLabels();
   });
 
   // Endpoint labels clamp themselves inside the viewport (pixel-space), so a
   // pan that carries a labelled station toward the edge needs a re-layout.
   map.on("moveend", () => {
-    if (cachedOrderedTrains.length) updateEndpointLabels();
+    if (cachedOrderedTrains.length && !Playback.isDrivingCamera())
+      updateEndpointLabels();
   });
 
   // Clamp the map over Japan; minZoom depends on the pixel viewport.

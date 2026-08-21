@@ -90,7 +90,14 @@ function smoothFitBounds(bounds, opts) {
 // the set to trains not hidden by their card toggle — the whole-day fit
 // honours it, while an explicit single-train fit (selection, 定位 button)
 // frames the train regardless.
-function fitTrainsBounds(trains, { onlyVisible = false } = {}) {
+// `maxZoom` defaults to the long-standing 11 so every existing caller is
+// unchanged; playback's closing fit passes a higher cap, because a day spent
+// inside one city frames far tighter than 11 and would otherwise end the run
+// on a view of half the region.
+function fitTrainsBounds(
+  trains,
+  { onlyVisible = false, maxZoom = 11, duration } = {},
+) {
   if (!map) return;
   const list = (trains || []).filter(
     (train) => train && (!onlyVisible || train.visible !== false),
@@ -99,9 +106,11 @@ function fitTrainsBounds(trains, { onlyVisible = false } = {}) {
   list.forEach((train) => {
     getMatchedRouteFeatures(train).forEach((feature) => features.push(feature));
   });
+  const fitOpts =
+    duration === undefined ? { maxZoom } : { maxZoom, duration };
   const bounds = featureCollectionBounds(features);
   if (bounds) {
-    smoothFitBounds(bounds, { maxZoom: 11 });
+    smoothFitBounds(bounds, fitOpts);
     return;
   }
   const points = [];
@@ -112,7 +121,7 @@ function fitTrainsBounds(trains, { onlyVisible = false } = {}) {
     }),
   );
   const ptBounds = latLngPointsBounds(points);
-  if (ptBounds) smoothFitBounds(ptBounds, { maxZoom: 11 });
+  if (ptBounds) smoothFitBounds(ptBounds, fitOpts);
 }
 
 // Single-train entry point — still called by the 定位 button (app-events.js).

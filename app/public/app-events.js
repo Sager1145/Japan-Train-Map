@@ -678,6 +678,9 @@ function bindEvents() {
       renderAll();
     });
   }
+  // ── §2b itinerary playback ──
+  Playback.bindUi();
+  PlaybackVideo.bindUi();
   // ── §3 train CRUD ──
   document
     .getElementById("add-train")

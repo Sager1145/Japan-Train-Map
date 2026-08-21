@@ -234,6 +234,27 @@
   // audited HEX must remain the HEX MapLibre draws.
   const UNRIDDEN_OPACITY = 1;
   const RIDDEN_WIDTH_SCALE = 1.18;
+  // How far the playback trail stands proud of the ride on EACH side, in
+  // full-scale pixels (it rides railwayScale like every other weight).
+  const PLAYBACK_TRAIL_EDGE_PX = 0.9;
+  // …and how far the ink casing stands proud of THAT. A covered stretch has
+  // to read as lit against the SAME hue it is drawn in — the train's own
+  // colour is already on the map under it — so the signal cannot be colour.
+  // It is weight plus an outline, which is the treatment this map already
+  // uses to say "this one" (see TRAIN_SEL_CASING_LAYER).
+  const PLAYBACK_TRAIL_CASING_PX = 0.9;
+  const PLAYBACK_TRANSPARENT = "rgba(0,0,0,0)";
+  // Playback station beads, as multiples of an ordinary network station's
+  // radius: every stop on the running train is beaded, a stop already reached
+  // is filled in the train's colour, and the one just reached swells. All
+  // three ride railwayScale like every other mark on this map.
+  const PLAYBACK_STATION_SCALE = 1.5;
+  const PLAYBACK_STATION_DONE_SCALE = 1.9;
+  const PLAYBACK_STATION_CURRENT_SCALE = 2.9;
+  const PLAYBACK_HEAD_SCALE = 2.6;
+  const PLAYBACK_HEAD_HALO_SCALE = 4.4;
+  // Only ever seen if a trail is uploaded before its train's colour is known.
+  const PLAYBACK_FALLBACK_COLOR = "#1f6feb";
 
   function featureLineColor(theme) {
     if (theme !== "dark")
@@ -531,6 +552,75 @@
       RIDDEN_WIDTH_SCALE,
     ]);
   }
+  // The playback trail's own weight: the ride's full-scale stroke plus a
+  // constant, so it stays one visible step above the line it covers at every
+  // zoom. It cannot reuse riddenLineWidth(): that reads ["get","width"] off a
+  // route record, and the trail source carries no records.
+  function playbackTrailWidth() {
+    return railwayScale(
+      RAILWAY_STYLE.railWidthPx * RIDDEN_WIDTH_SCALE + PLAYBACK_TRAIL_EDGE_PX * 2,
+    );
+  }
+
+  function playbackCasingWidth() {
+    return railwayScale(
+      RAILWAY_STYLE.railWidthPx * RIDDEN_WIDTH_SCALE +
+        (PLAYBACK_TRAIL_EDGE_PX + PLAYBACK_TRAIL_CASING_PX) * 2,
+    );
+  }
+
+  // Covered stretch in the train's own colour, uncovered stretch fully
+  // transparent so the ordinary route line shows through untouched. `t` is
+  // progress along THIS feature (0..1). The stops must stay strictly
+  // ascending, hence the clamp and the feather width — a gradient whose two
+  // inner stops collide is a style-validation error, not a rounding artifact.
+  function playbackTrailGradient(color, t) {
+    const feather = 0.004;
+    // The four stops must be STRICTLY ascending or MapLibre rejects the whole
+    // expression — so the head is held a full feather clear of both ends,
+    // never merely inside them. t=0 under a bare `max(feather, …)` produced
+    // stops [0, 0, 0.008, 1] and a style-validation error on the first frame.
+    const p = Math.max(2 * feather, Math.min(1 - 2 * feather, Number(t) || 0));
+    return [
+      "interpolate",
+      ["linear"],
+      ["line-progress"],
+      0,
+      color,
+      p - feather,
+      color,
+      p + feather,
+      PLAYBACK_TRANSPARENT,
+      1,
+      PLAYBACK_TRANSPARENT,
+    ];
+  }
+
+  // Radius of the "already reached" beads: the one the head just passed is
+  // drawn bigger, and `pulse` (1 → 0 over the moment after a crossing) lifts
+  // it further so arriving at a station READS as an event rather than as a
+  // colour change. Index-driven, so advancing a station is one paint update.
+  function playbackStationDoneRadius(currentIndex, pulse) {
+    const swell = PLAYBACK_STATION_CURRENT_SCALE * (1 + 0.45 * (pulse || 0));
+    return railwayScale([
+      "case",
+      ["==", ["get", "idx"], currentIndex],
+      RAILWAY_STYLE.stationRadiusPx * swell,
+      RAILWAY_STYLE.stationRadiusPx * PLAYBACK_STATION_DONE_SCALE,
+    ]);
+  }
+
+  // Names of stations already reached read at full ink; the ones still ahead
+  // stay quiet, so the label field itself shows how far the train has got.
+  function playbackStationTextColor(currentIndex, theme) {
+    return [
+      "case",
+      ["<=", ["get", "idx"], currentIndex],
+      networkLabelTextColor(theme),
+      MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"].casing,
+    ];
+  }
+
   function riddenSelectionCasingWidth() {
     return railwayScale([
       "+",
@@ -662,6 +752,31 @@
   const TRAIN_HOVER_LAYER = "train-routes-hover";
   const TRAIN_SEL_CASING_LAYER = "train-routes-sel-casing";
   const TRAIN_SEL_LAYER = "train-routes-sel";
+  // Playback trail: the stretch of the playing train the head has already
+  // covered, drawn over its own route line. Two layers on one source because
+  // `line-gradient` is evaluated per FEATURE against that feature's own
+  // line-progress — it cannot say "run 0 is finished and run 1 is half done".
+  // So finished runs draw flat in the DONE layer and only the run under the
+  // head carries the gradient.
+  const PLAYBACK_SOURCE = "train-playback-src";
+  const PLAYBACK_DONE_LAYER = "train-playback-done";
+  const PLAYBACK_HEAD_LAYER = "train-playback-head";
+  // The playing train's STOPPING stations (pass-throughs excluded upstream),
+  // named on the map and lit one after another as the head reaches them.
+  const PLAYBACK_CASING_DONE_LAYER = "train-playback-casing-done";
+  const PLAYBACK_CASING_HEAD_LAYER = "train-playback-casing-head";
+  const PLAYBACK_STATIONS_SOURCE = "train-playback-stations";
+  const PLAYBACK_STATION_LAYER = "train-playback-station";
+  const PLAYBACK_STATION_DONE_LAYER = "train-playback-station-done";
+  const PLAYBACK_STATION_LABEL_LAYER = "train-playback-station-label";
+  // The moving train itself. A LAYER rather than a maplibregl.Marker, because
+  // a Marker is a DOM element beside the canvas and canvas.captureStream()
+  // only ever sees the canvas — a DOM playhead is simply absent from the
+  // exported video. Keeping one implementation for both means what is
+  // recorded is exactly what was watched.
+  const PLAYBACK_HEAD_SOURCE = "train-playback-head-src";
+  const PLAYBACK_HEAD_HALO_LAYER = "train-playback-head-halo";
+  const PLAYBACK_HEAD_DOT_LAYER = "train-playback-head-dot";
   const TRAIN_PASS_LAYER = "train-pass-dot";
   const TRAIN_STOPS_LAYER = "train-stops-dot";
   // One label layer per role tier — see the MIN_ZOOM block above for why the
@@ -926,6 +1041,19 @@
     sources[TRAIN_MARKERS_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[FIT_CURVES_SOURCE] = { type: "geojson", data: EMPTY_FC };
     sources[HOVER_REGIONS_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    // lineMetrics is what makes ["line-progress"] resolvable, and it is the
+    // whole reason the trail can advance without re-uploading geometry: the
+    // per-frame update is one setPaintProperty on the gradient, never a
+    // setData. Same tolerance as the routes it covers, or the trail and the
+    // line under it would part company at corners.
+    sources[PLAYBACK_SOURCE] = {
+      type: "geojson",
+      data: EMPTY_FC,
+      lineMetrics: true,
+      tolerance: SEGMENT_SIMPLIFY_TOLERANCE_PX,
+    };
+    sources[PLAYBACK_STATIONS_SOURCE] = { type: "geojson", data: EMPTY_FC };
+    sources[PLAYBACK_HEAD_SOURCE] = { type: "geojson", data: EMPTY_FC };
     // Pass-through dot LOD: below this zoom the (numerous) white dots simply
     // don't draw — a layer property, so crossing it re-renders nothing.
     const passMinzoom = Math.max(0, Number(opts.passMinzoom || 0));
@@ -1457,6 +1585,159 @@
         "line-width": riddenLineWidth(),
       },
     });
+    // ── §8b playback trail — the part of the playing train already covered ──
+    // Both layers ride the same weight ramp as the ride under them, one step
+    // wider so the covered stretch reads as lit rather than as a second line
+    // beside the first. Colours are constants rewritten per train by
+    // RailMap.setPlaybackTrail: `line-gradient` forbids a data-driven
+    // line-color, so the train's hue is baked into the expression instead of
+    // read from the feature.
+    layers.push({
+      id: PLAYBACK_CASING_DONE_LAYER,
+      type: "line",
+      source: PLAYBACK_SOURCE,
+      filter: ["==", ["get", "state"], "done"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": themeColors.casing,
+        "line-opacity": 0.9,
+        "line-width": playbackCasingWidth(),
+      },
+    });
+    layers.push({
+      id: PLAYBACK_CASING_HEAD_LAYER,
+      type: "line",
+      source: PLAYBACK_SOURCE,
+      filter: ["==", ["get", "state"], "head"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        // The casing has to end exactly where the colour does, so it runs the
+        // SAME gradient — one alpha ramp at one place, in the ink colour.
+        "line-gradient": playbackTrailGradient(themeColors.casing, 0),
+        "line-opacity": 0.9,
+        "line-width": playbackCasingWidth(),
+      },
+    });
+    layers.push({
+      id: PLAYBACK_DONE_LAYER,
+      type: "line",
+      source: PLAYBACK_SOURCE,
+      filter: ["==", ["get", "state"], "done"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        // Data-driven, unlike the head layer: a playback queue lights one
+        // train after another and each keeps its own hue, so the finished
+        // stretches cannot share a single constant. (line-gradient forbids
+        // a data-driven colour, which is exactly why the head is its own
+        // layer rather than a state of this one.)
+        "line-color": ["coalesce", ["get", "color"], PLAYBACK_FALLBACK_COLOR],
+        "line-opacity": 1,
+        "line-width": playbackTrailWidth(),
+      },
+    });
+    layers.push({
+      id: PLAYBACK_HEAD_LAYER,
+      type: "line",
+      source: PLAYBACK_SOURCE,
+      filter: ["==", ["get", "state"], "head"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-gradient": playbackTrailGradient(PLAYBACK_FALLBACK_COLOR, 0),
+        "line-opacity": 1,
+        "line-width": playbackTrailWidth(),
+      },
+    });
+    // Every stopping station of the running train, beaded on the line it
+    // stops at. Both bead layers read the same features; which stations count
+    // as reached is a FILTER on the pre-uploaded index, so the head crossing
+    // a platform costs one setFilter and two paint updates — never a setData.
+    layers.push({
+      id: PLAYBACK_STATION_LAYER,
+      type: "circle",
+      source: PLAYBACK_STATIONS_SOURCE,
+      paint: {
+        "circle-color": MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"]
+          .stationRing,
+        "circle-radius": railwayScale(
+          RAILWAY_STYLE.stationRadiusPx * PLAYBACK_STATION_SCALE,
+        ),
+        "circle-stroke-color": ["get", "color"],
+        "circle-stroke-width": railwayScale(RAILWAY_STYLE.stationRingPx * 2),
+      },
+    });
+    layers.push({
+      id: PLAYBACK_STATION_DONE_LAYER,
+      type: "circle",
+      source: PLAYBACK_STATIONS_SOURCE,
+      filter: ["<=", ["get", "idx"], -1],
+      paint: {
+        "circle-color": ["get", "color"],
+        "circle-radius": playbackStationDoneRadius(-1, 0),
+        "circle-stroke-color": MAP_SURFACE_COLORS[
+          theme === "dark" ? "dark" : "light"
+        ].stationRing,
+        "circle-stroke-width": railwayScale(RAILWAY_STYLE.stationRingPx * 2),
+      },
+    });
+    // Names need glyphs, and glyphs arrive with the basemap — same contract
+    // the network labels keep (§5). Without a basemap the beads still light;
+    // the player bar names the station instead.
+    if (basemap && basemap.glyphs) {
+      layers.push({
+        id: PLAYBACK_STATION_LABEL_LAYER,
+        type: "symbol",
+        source: PLAYBACK_STATIONS_SOURCE,
+        layout: {
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-font": NETWORK_LABEL_FONT,
+          "text-size": 12,
+          "text-variable-anchor": ["left", "right", "top", "bottom"],
+          "text-radial-offset": 0.9,
+          "text-justify": "auto",
+          "text-padding": 2,
+          // Pushed last of all the label layers, and MapLibre places in
+          // REVERSE draw order — so where a district is too dense to name
+          // everything, the running train's own stops are what survives.
+          "text-allow-overlap": false,
+          "symbol-sort-key": ["get", "idx"],
+        },
+        paint: {
+          "text-color": playbackStationTextColor(-1, theme),
+          "text-halo-color": networkLabelHaloColor(theme),
+          "text-halo-width": 1.4,
+        },
+      });
+    }
+    // The train, above everything it is travelling over. A soft halo under a
+    // solid bead: the halo is what keeps it findable when the route beneath
+    // it happens to be the same hue.
+    layers.push({
+      id: PLAYBACK_HEAD_HALO_LAYER,
+      type: "circle",
+      source: PLAYBACK_HEAD_SOURCE,
+      paint: {
+        "circle-color": ["get", "color"],
+        "circle-opacity": 0.3,
+        "circle-radius": railwayScale(
+          RAILWAY_STYLE.stationRadiusPx * PLAYBACK_HEAD_HALO_SCALE,
+        ),
+      },
+    });
+    layers.push({
+      id: PLAYBACK_HEAD_DOT_LAYER,
+      type: "circle",
+      source: PLAYBACK_HEAD_SOURCE,
+      paint: {
+        "circle-color": ["get", "color"],
+        "circle-radius": railwayScale(
+          RAILWAY_STYLE.stationRadiusPx * PLAYBACK_HEAD_SCALE,
+        ),
+        "circle-stroke-color": MAP_SURFACE_COLORS[
+          theme === "dark" ? "dark" : "light"
+        ].stationRing,
+        "circle-stroke-width": railwayScale(RAILWAY_STYLE.stationRingPx * 2.4),
+      },
+    });
     // ── §9 hover expand — the fanned copies of a hovered group's courses ──
     // HOVER-EXPAND: while the pointer is on an overlapped stretch, that
     // group's trains draw temporarily fanned into date-ordered parallel
@@ -1830,6 +2111,21 @@
     RIDDEN_PASS_LABEL_MIN_ZOOM,
     TRAIN_SEL_PASS_LAYER,
     TRAIN_SEL_STOPS_LAYER,
+    PLAYBACK_SOURCE,
+    PLAYBACK_DONE_LAYER,
+    PLAYBACK_HEAD_LAYER,
+    PLAYBACK_CASING_DONE_LAYER,
+    PLAYBACK_CASING_HEAD_LAYER,
+    PLAYBACK_STATIONS_SOURCE,
+    PLAYBACK_STATION_LAYER,
+    PLAYBACK_STATION_DONE_LAYER,
+    PLAYBACK_STATION_LABEL_LAYER,
+    PLAYBACK_HEAD_SOURCE,
+    PLAYBACK_HEAD_HALO_LAYER,
+    PLAYBACK_HEAD_DOT_LAYER,
+    playbackTrailGradient,
+    playbackStationDoneRadius,
+    playbackStationTextColor,
     FIT_CURVES_CASING_LAYER,
     FIT_CURVES_LAYER,
     HOVER_REGIONS_FILL_LAYER,

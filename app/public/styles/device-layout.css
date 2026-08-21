@@ -729,3 +729,67 @@ html[data-ui-mode="desktop"] .map-layers-control .map-basemap-field {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The playback bar clears the mobile tab bar and the bottom sheet's collapsed
+   detent; on mobile the sidebar is a BOTTOM drawer, so the horizontal inset
+   that centres the bar on desktop must be dropped. */
+/* On mobile the menu is a BOTTOM sheet, so the bar clears --sidebar-size
+   rather than the left inset — it rides the detent up and down and always
+   sits just inside the uncovered map, which is the area the playback camera
+   centres the train in. The cap matches sidebarViewportPadding's own 55%
+   ceiling: past the full detent the map is covered outright, and a bar that
+   kept following would leave the screen. */
+html[data-ui-mode="mobile"] .playback-bar {
+  left: 10px;
+  right: 10px;
+  /* The desktop bar is `width: max-content` inside a max-width cap; dropping
+     the cap without dropping that would let the bar size to its content and
+     run off a phone screen. Here the two insets define the width. */
+  width: auto;
+  max-width: none;
+  bottom: min(calc(var(--sidebar-size) + 12px), calc(55dvh + 12px));
+}
+
+/* Three rows on a phone: transport + current station, then the train, then
+   the speed. Ordered rather than re-nested so the markup stays one row and
+   the desktop layout keeps reading in DOM order. */
+html[data-ui-mode="mobile"] .playback-row {
+  flex-wrap: wrap;
+}
+
+html[data-ui-mode="mobile"] .playback-station {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+html[data-ui-mode="mobile"] .playback-label {
+  order: 8;
+  flex-basis: 100%;
+}
+
+html[data-ui-mode="mobile"] .playback-speed {
+  order: 9;
+  flex-basis: 100%;
+  justify-content: space-between;
+}
+
+html[data-ui-mode="mobile"] .playback-speed input[type="range"] {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+html[data-ui-mode="mobile"] .playback-btn {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* On a phone the summary takes its own line so the three selects and the two
+   buttons each keep a full-size touch target. */
+html[data-ui-mode="mobile"] .playback-export-summary {
+  flex-basis: 100%;
+}
+
+html[data-ui-mode="mobile"] .playback-field select {
+  min-height: 40px;
+}

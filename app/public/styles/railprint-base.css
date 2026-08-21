@@ -2721,3 +2721,274 @@ html[data-theme="dark"] .maplibregl-ctrl button .maplibregl-ctrl-icon {
   border-left-color: var(--white);
 }
 
+
+/* ---- Itinerary playback -------------------------------------------------
+   The transport bar floats over the UNCOVERED map — inset from the left by
+   the live --sidebar-size so it centres in the same area the playback camera
+   centres the running train in, and it follows the menu opening, collapsing
+   or being dragged for free.
+
+   z-index sits between the map (#map isolates its own stack, so its internal
+   900-tier chrome cannot escape) and the sidebar at 70: the bar must cover
+   map controls and must never cover the menu. */
+.playback-bar {
+  position: absolute;
+  z-index: 65;
+  left: var(--sidebar-size);
+  right: 0;
+  bottom: 18px;
+  width: max-content;
+  max-width: min(760px, calc(100% - var(--sidebar-size) - 32px));
+  margin: 0 auto;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--white);
+  color: var(--ink);
+  border: var(--hairline);
+  border-radius: var(--radius-card);
+  font-size: var(--font-md);
+  transition:
+    left 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#app.sidebar-dragging .playback-bar {
+  transition: none;
+}
+
+.playback-bar[hidden] {
+  display: none;
+}
+
+.playback-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.playback-btn {
+  min-height: 32px;
+  min-width: 34px;
+  padding: 4px 10px;
+  border: var(--hairline);
+  border-radius: var(--radius-button);
+  background: var(--white);
+  color: var(--ink);
+  font-size: var(--font-md);
+  cursor: pointer;
+}
+
+.playback-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.playback-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  min-width: 68px;
+}
+
+/* The one element that grows: the train label is the only variable-length
+   content, so it takes the slack and truncates instead of pushing the
+   controls off the bar. */
+.playback-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-speed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.playback-speed input[type="range"] {
+  width: 108px;
+  accent-color: var(--accent);
+}
+
+.playback-speed-value {
+  min-width: 40px;
+  text-align: right;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* scaleX on a fixed-width track: the fill is repainted every frame, and
+   transform is the only property that costs nothing to animate. */
+.playback-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--rail-dim);
+  overflow: hidden;
+}
+
+.playback-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* (The playhead is a MAP LAYER, not a DOM marker — see app-playback.js. A DOM
+   element beside the canvas is invisible to canvas.captureStream(), which is
+   how the video export reads the map.) */
+
+/* Recording banner — its own row under the progress rule, so nothing in the
+   transport above it moves when a recording starts. */
+.playback-recording {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-recording[hidden] {
+  display: none;
+}
+
+.playback-recording-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--danger, #d9364f);
+  animation: playback-rec-pulse 1.4s ease-in-out infinite;
+}
+
+.playback-recording-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes playback-rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playback-recording-dot {
+    animation: none;
+  }
+}
+
+/* The station just reached. Always present in the bar because the map's own
+   labels are collision-managed and a dense district can drop one. */
+.playback-station {
+  flex: 0 0 auto;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-station[hidden] {
+  display: none;
+}
+
+/* Finished-file state: the pulsing REC dot goes quiet and the row becomes an
+   offer to save. */
+.playback-recording.is-ready .playback-recording-dot {
+  background: var(--ok, #1c7c4a);
+  animation: none;
+}
+
+.playback-recording a.playback-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.playback-recording a.playback-btn[hidden] {
+  display: none;
+}
+
+/* Live recording preview: the composite canvas itself, scaled to a thumbnail.
+   Its aspect comes from the chosen output shape, so the box is sized by the
+   canvas rather than fixed. */
+.playback-preview {
+  flex: 0 0 auto;
+  display: inline-flex;
+  height: 34px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: var(--hairline);
+  background: var(--map-bg);
+}
+
+.playback-preview[hidden] {
+  display: none;
+}
+
+.playback-preview-canvas {
+  height: 100%;
+  width: auto;
+  display: block;
+}
+
+/* Export settings row. Wraps rather than scrolls: on a narrow map the three
+   fields drop onto their own lines instead of pushing the buttons out. */
+.playback-export-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.playback-export-options[hidden] {
+  display: none;
+}
+
+.playback-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.playback-field select {
+  min-height: 28px;
+  padding: 2px 6px;
+  border: var(--hairline);
+  border-radius: var(--radius-button);
+  background: var(--white);
+  color: var(--ink);
+  font-size: var(--font-md);
+}
+
+.playback-export-summary {
+  flex: 1 1 12em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}

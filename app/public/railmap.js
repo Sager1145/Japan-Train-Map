@@ -113,6 +113,19 @@
     TRAIN_PASS_LABEL_LAYER,
     TRAIN_SEL_PASS_LAYER,
     TRAIN_SEL_STOPS_LAYER,
+    PLAYBACK_SOURCE,
+    PLAYBACK_DONE_LAYER,
+    PLAYBACK_HEAD_LAYER,
+    PLAYBACK_CASING_HEAD_LAYER,
+    PLAYBACK_STATIONS_SOURCE,
+    PLAYBACK_STATION_LAYER,
+    PLAYBACK_STATION_DONE_LAYER,
+    PLAYBACK_STATION_LABEL_LAYER,
+    PLAYBACK_HEAD_SOURCE,
+    PLAYBACK_HEAD_DOT_LAYER,
+    playbackTrailGradient,
+    playbackStationDoneRadius,
+    playbackStationTextColor,
     FIT_CURVES_CASING_LAYER,
     FIT_CURVES_LAYER,
     HOVER_REGIONS_FILL_LAYER,
@@ -192,6 +205,12 @@
     _hoverDebugState: null,
     _selectedTrainId: null,
     _hoverTrainId: null,
+    _playbackRuns: [],
+    _playbackDone: [],
+    _playbackRunIndex: -1,
+    _playbackStationIndex: -1,
+    _playbackStationPulse: 0,
+    _playbackColor: "#1f6feb",
     _expandedGroup: null,
     _expandedTids: [], // the hovered group's train set (expand target)
     _engagedTids: [], // trains whose true-track lines are currently hidden
@@ -445,6 +464,202 @@
       // Selection spotlight: fade the non-selected trains (lines + dots) to
       // SELECT_DIM — same paint-only mechanism as the hover dim.
       this._applyHoverDim();
+    },
+    // ── playback trail ──
+    // The playing train's covered stretch. `runs` are its CONTIGUOUS ridden
+    // paths (one per run, so a route with an unridden middle never gets a
+    // chord drawn across the hole). Geometry is uploaded once per run change;
+    // advancing the head inside a run is a single gradient repaint, which is
+    // what keeps a 60 fps playhead off the GeoJSON worker entirely.
+    // `doneRuns` are the stretches EARLIER trains in the queue already
+    // covered — [{ coords, color }] — so a day's itinerary stays lit behind
+    // the running train instead of resetting at every change of train.
+    // `runs` is the current train's own set of contiguous runs.
+    setPlaybackTrail(doneRuns, runs, color) {
+      this._playbackDone = Array.isArray(doneRuns) ? doneRuns : [];
+      this._playbackRuns = Array.isArray(runs) ? runs : [];
+      this._playbackColor = color || "#1f6feb";
+      this._playbackRunIndex = -1;
+      this.setPlaybackProgress(0, 0);
+      return this;
+    },
+    // Per FRAME. Re-uploads only when the head crosses into a new run.
+    setPlaybackProgress(runIndex, t) {
+      const m = this._map;
+      if (!m) return this;
+      const idx = Math.max(0, Math.min(this._playbackRuns.length - 1, runIndex | 0));
+      if (idx !== this._playbackRunIndex) {
+        this._playbackRunIndex = idx;
+        const features = [];
+        this._playbackDone.forEach((run) => {
+          if (!run || !run.coords || run.coords.length < 2) return;
+          features.push({
+            type: "Feature",
+            properties: { state: "done", color: run.color || this._playbackColor },
+            geometry: { type: "LineString", coordinates: run.coords },
+          });
+        });
+        for (let i = 0; i <= idx; i += 1) {
+          const line = this._playbackRuns[i];
+          if (!line || line.length < 2) continue;
+          features.push({
+            type: "Feature",
+            properties: {
+              state: i === idx ? "head" : "done",
+              color: this._playbackColor,
+            },
+            geometry: { type: "LineString", coordinates: line },
+          });
+        }
+        const src = this._src(PLAYBACK_SOURCE);
+        if (src) src.setData({ type: "FeatureCollection", features });
+      }
+      if (m.getLayer(PLAYBACK_HEAD_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_HEAD_LAYER,
+          "line-gradient",
+          playbackTrailGradient(this._playbackColor, t),
+        );
+      // The casing ends where the colour ends, so it takes the same ramp.
+      if (m.getLayer(PLAYBACK_CASING_HEAD_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_CASING_HEAD_LAYER,
+          "line-gradient",
+          playbackTrailGradient(MAP_SURFACE_COLORS[this._theme].casing, t),
+        );
+      return this;
+    },
+    // The running train's stopping stations. `stations` are
+    // [{ coord, name, color }] in running order; the index they are uploaded
+    // with is what every later "reached up to here" update filters on.
+    setPlaybackStations(stations) {
+      const list = Array.isArray(stations) ? stations : [];
+      // The bead + halo colours were baked at style-build time, and the theme
+      // switch pass does not know about these layers (it has nothing to
+      // repaint while playback is idle and the source is empty). Restamping
+      // them here is what stops a playback started AFTER a theme switch from
+      // drawing the previous theme's beads.
+      this._restampPlaybackStationTheme();
+      const src = this._src(PLAYBACK_STATIONS_SOURCE);
+      if (src)
+        src.setData({
+          type: "FeatureCollection",
+          features: list.map((st, idx) => ({
+            type: "Feature",
+            properties: {
+              idx,
+              name: st.name || "",
+              color: st.color || this._playbackColor,
+            },
+            geometry: { type: "Point", coordinates: st.coord },
+          })),
+        });
+      this._playbackStationIndex = -2; // force the next update through
+      this.setPlaybackStationIndex(-1, 0);
+      return this;
+    },
+    // Which stations have been reached, and how hot the newest one is. `pulse`
+    // decays 1 → 0 over the moment after an arrival; while it is moving this
+    // repaints per frame, and once it settles the call is a no-op.
+    setPlaybackStationIndex(index, pulse) {
+      const m = this._map;
+      if (!m) return this;
+      const idx = Number.isFinite(index) ? index : -1;
+      const p = Math.max(0, Math.min(1, Number(pulse) || 0));
+      const settled = p === 0 && this._playbackStationPulse === 0;
+      if (idx === this._playbackStationIndex && settled) return this;
+      const advanced = idx !== this._playbackStationIndex;
+      this._playbackStationIndex = idx;
+      this._playbackStationPulse = p;
+      if (m.getLayer(PLAYBACK_STATION_DONE_LAYER)) {
+        if (advanced)
+          m.setFilter(PLAYBACK_STATION_DONE_LAYER, ["<=", ["get", "idx"], idx]);
+        m.setPaintProperty(
+          PLAYBACK_STATION_DONE_LAYER,
+          "circle-radius",
+          playbackStationDoneRadius(idx, p),
+        );
+      }
+      if (advanced && m.getLayer(PLAYBACK_STATION_LABEL_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_STATION_LABEL_LAYER,
+          "text-color",
+          playbackStationTextColor(idx, this._theme),
+        );
+      return this;
+    },
+    _restampPlaybackStationTheme() {
+      const m = this._map;
+      if (!m) return;
+      const colors = MAP_SURFACE_COLORS[this._theme === "dark" ? "dark" : "light"];
+      if (m.getLayer(PLAYBACK_STATION_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_STATION_LAYER,
+          "circle-color",
+          colors.stationRing,
+        );
+      if (m.getLayer(PLAYBACK_STATION_DONE_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_STATION_DONE_LAYER,
+          "circle-stroke-color",
+          colors.stationRing,
+        );
+      if (m.getLayer(PLAYBACK_HEAD_DOT_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_HEAD_DOT_LAYER,
+          "circle-stroke-color",
+          colors.stationRing,
+        );
+      if (m.getLayer(PLAYBACK_STATION_LABEL_LAYER))
+        m.setPaintProperty(
+          PLAYBACK_STATION_LABEL_LAYER,
+          "text-halo-color",
+          networkLabelHaloColor(this._theme),
+        );
+    },
+    // The train's own position, pushed every frame. One point through the
+    // GeoJSON worker is sub-millisecond, and keeping the playhead ON the
+    // canvas is what lets canvas.captureStream() record it.
+    setPlaybackHead(coord, color) {
+      const src = this._src(PLAYBACK_HEAD_SOURCE);
+      if (!src) return this;
+      if (!coord) {
+        src.setData(EMPTY_FC);
+        return this;
+      }
+      src.setData({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { color: color || this._playbackColor },
+            geometry: { type: "Point", coordinates: coord },
+          },
+        ],
+      });
+      return this;
+    },
+    clearPlayback() {
+      // Already clear: skip the two setData calls. They are not free — a
+      // dirtied source keeps Style.loaded() false until the next render, and
+      // the map methods that check it (addLayer above all) throw meanwhile.
+      // Playback stops from inside renderTrainLayers, which goes straight on
+      // to re-issue the route layers, so clearing twice would put that push
+      // in exactly that window.
+      if (!this._playbackRuns.length && this._playbackRunIndex < 0)
+        return this;
+      this._playbackRuns = [];
+      this._playbackDone = [];
+      this._playbackRunIndex = -1;
+      this._playbackStationIndex = -1;
+      this._playbackStationPulse = 0;
+      const src = this._src(PLAYBACK_SOURCE);
+      if (src) src.setData(EMPTY_FC);
+      const stations = this._src(PLAYBACK_STATIONS_SOURCE);
+      if (stations) stations.setData(EMPTY_FC);
+      const head = this._src(PLAYBACK_HEAD_SOURCE);
+      if (head) head.setData(EMPTY_FC);
+      return this;
     },
     // Date-scope dim as PAINT state: records carry their train's date in
     // `tdate`; the active date + dim value live in the opacity expressions.

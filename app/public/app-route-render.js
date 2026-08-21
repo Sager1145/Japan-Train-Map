@@ -101,6 +101,11 @@ function trainEmphasisLevel(train) {
 // layers + focus-boost paint expressions.)
 
 function renderTrainLayers() {
+  // A repaint means the date scope, the selection, the list filter or the
+  // store itself moved — all four invalidate the queue playback froze when it
+  // started, so the run ends here rather than continuing against geometry
+  // that no longer matches what it queued.
+  Playback.notifyExternalRender();
   // A concrete selected date now always scopes the map: that date's trains
   // stay solid and other dates draw half-transparent (dimmed) — they are NOT
   // removed. The optional "地圖僅顯示當前日期" checkbox is a stricter override
