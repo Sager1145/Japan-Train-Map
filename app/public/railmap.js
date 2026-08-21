@@ -108,6 +108,9 @@
     TRAIN_SEL_LAYER,
     TRAIN_PASS_LAYER,
     TRAIN_STOPS_LAYER,
+    TRAIN_TERMINAL_LABEL_LAYER,
+    TRAIN_STOP_LABEL_LAYER,
+    TRAIN_PASS_LABEL_LAYER,
     TRAIN_SEL_PASS_LAYER,
     TRAIN_SEL_STOPS_LAYER,
     FIT_CURVES_CASING_LAYER,
@@ -319,6 +322,13 @@
       // stopMarkerZoomGate), so RailMap owns the crossing itself. The
       // per-frame check is a float compare; setFilter runs only on the flip.
       this._applyMarkerSelectionFilters();
+      // §7b is staged at the boot state, so this only has to catch an intent
+      // recorded before attach() — and on a slow boot the style may still be
+      // layer-less here, in which case the staged state already stands and the
+      // one-shot re-assert covers a toggle that landed in between.
+      this._applyRiddenLabelVisibility();
+      if (!map.getLayer(TRAIN_TERMINAL_LABEL_LAYER))
+        map.once("styledata", () => this._applyRiddenLabelVisibility());
       map.on("zoom", () => {
         const gated = stopMarkerZoomGate(map.getZoom()) != null;
         if (gated !== this._stopMarkersGated)
@@ -720,6 +730,29 @@
         this._setVisibility(TRAIN_PASS_LAYER, vis);
         this._setVisibility(TRAIN_SEL_PASS_LAYER, vis);
       }
+      // A name without its bead would be a place, not a station — the same
+      // rule the network's own labels follow.
+      this._applyRiddenLabelVisibility();
+    },
+    // The ridden markers' own station names (§7b). They stand in for the
+    // network's labels rather than joining them, so they draw exactly when
+    // rn-stations-label does NOT — otherwise one station would be named twice
+    // by two layers that disagree about which platform holds the name, and the
+    // two copies sit far enough apart that the collision pass keeps both.
+    // With 全部鐵路線 booting off, this is the map's DEFAULT state.
+    _applyRiddenLabelVisibility() {
+      const shown = this._markerVisibility || {
+        stop: true,
+        terminal: true,
+        pass: true,
+      };
+      const named = !this._networkStationsVisibleWanted;
+      const vis = (on) => (named && on !== false ? "visible" : "none");
+      // The cross-day diamond's name rides in the terminal tier, with the
+      // boundary it marks.
+      this._setVisibility(TRAIN_TERMINAL_LABEL_LAYER, vis(shown.terminal));
+      this._setVisibility(TRAIN_STOP_LABEL_LAYER, vis(shown.stop));
+      this._setVisibility(TRAIN_PASS_LABEL_LAYER, vis(shown.pass));
     },
     setNetworkVisible(v) {
       this._networkVisibleWanted = Boolean(v);
@@ -744,6 +777,8 @@
       // bead would be a place, not a station.
       for (const layer of [STATIONS_LAYER, STATIONS_LABEL_LAYER])
         this._setVisibility(layer, visibility);
+      // …and when they go, the rides' own names take over naming the map.
+      this._applyRiddenLabelVisibility();
     },
     // Fetch + build + upload the active country's network package when it was
     // not supplied at attach time, or retry after a failed boot/country load.
@@ -1023,6 +1058,20 @@
           "text-halo-color",
           networkLabelHaloColor(theme),
         );
+      }
+      // The rides' own station names are the same ink on the same surface —
+      // they name the map whenever the network's labels are switched off, so
+      // they have to flip with it too.
+      for (const id of [
+        TRAIN_TERMINAL_LABEL_LAYER,
+        TRAIN_STOP_LABEL_LAYER,
+        TRAIN_PASS_LABEL_LAYER,
+      ]) {
+        if (!m.getLayer(id)) continue;
+        m.setPaintProperty(id, "text-color-transition", transition);
+        m.setPaintProperty(id, "text-color", networkLabelTextColor(theme));
+        m.setPaintProperty(id, "text-halo-color-transition", transition);
+        m.setPaintProperty(id, "text-halo-color", networkLabelHaloColor(theme));
       }
     },
     _applyEffectiveFade(duration) {

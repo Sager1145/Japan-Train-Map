@@ -450,6 +450,27 @@
   const STATION_LABEL_MIN_ZOOM = 12;
   const LINE_LABEL_MIN_ZOOM = 12;
 
+  // ── the ride's own station names ──
+  // The map's DEFAULT state is the rides alone: 全部鐵路線 boots off, which
+  // takes rn-stations-label with it, and a ride then crossed a country with no
+  // named place on it at any zoom. So the ridden markers carry names of their
+  // own — drawn exactly when the network's are not, so no station is ever
+  // named twice by two layers that disagree about which platform holds it.
+  //
+  // Three floors, because the three roles are three densities. A ride has
+  // exactly two ends, so naming them costs almost nothing and they appear
+  // early; its intermediate stops are a handful per train; the stations it
+  // merely rolled through are every station on the line, and are worth naming
+  // only once the view is about one district. Each floor is a LAYER minzoom
+  // rather than one layer with a zoom expression, because filter/layout zoom
+  // is only evaluated at tile parse in this MapLibre build — the same finding
+  // that made the stop-dot LOD a re-applied filter (see stopMarkerZoomGate) —
+  // and because a zero-opacity label would still hold its space in the
+  // collision pass and silently suppress the name of a station that IS shown.
+  const RIDDEN_TERMINAL_LABEL_MIN_ZOOM = 8;
+  const RIDDEN_STOP_LABEL_MIN_ZOOM = 10;
+  const RIDDEN_PASS_LABEL_MIN_ZOOM = 13;
+
   function networkLabelTextColor(theme) {
     return theme === "dark" ? "rgb(236,238,240)" : "rgb(28,30,32)";
   }
@@ -643,6 +664,11 @@
   const TRAIN_SEL_LAYER = "train-routes-sel";
   const TRAIN_PASS_LAYER = "train-pass-dot";
   const TRAIN_STOPS_LAYER = "train-stops-dot";
+  // One label layer per role tier — see the MIN_ZOOM block above for why the
+  // tiers are three layers rather than one.
+  const TRAIN_TERMINAL_LABEL_LAYER = "train-terminal-label";
+  const TRAIN_STOP_LABEL_LAYER = "train-stop-label";
+  const TRAIN_PASS_LABEL_LAYER = "train-pass-label";
   const TRAIN_SEL_PASS_LAYER = "train-sel-pass-dot";
   const TRAIN_SEL_STOPS_LAYER = "train-sel-stops-dot";
   const FIT_CURVES_CASING_LAYER = "train-fit-curves-casing";
@@ -848,6 +874,7 @@
   //   §5  names          line labels, then station labels
   //   §6  trains         ridden routes, cross-day dashes, pick + fan lanes
   //   §7  train dots     pass-through, stop and cross-day markers
+  //   §7b ridden names   the ride's own stations, named by role tier
   //   §8  selection      dark casing + the selected line and its dots
   //   §9  hover expand   the fanned copies of a hovered group's courses
   //   §10 debug          fitted curves, then hover regions (always last)
@@ -1306,6 +1333,98 @@
       },
       paint: { "icon-opacity": ["get", "alpha"] },
     });
+    // ── §7b ridden names — the ride's own stations, named ──
+    // Same "text needs glyphs" rule as §5: without a basemap the rides draw
+    // unlabelled rather than logging a styleglyphsmissing error per frame.
+    // RailMap shows this group only while the network's own names are hidden
+    // (setNetworkStationsVisible), and each tier follows the dot it names, so
+    // hiding 通過站 hides the pass-through names with it.
+    if (basemap && basemap.glyphs) {
+      // The name is elected onto exactly ONE marker per station
+      // (markerLabelWinners); every other record carries "" and is filtered
+      // out here, so the collision pass only ever sees names that will draw.
+      const riddenStationLabel = (id, roleFilter, minzoom, baseSize) => ({
+        id,
+        type: "symbol",
+        source: TRAIN_MARKERS_SOURCE,
+        minzoom,
+        filter: ["all", roleFilter, ["!=", ["get", "name"], ""]],
+        layout: {
+          // Staged VISIBLE, unlike every other optional layer here, because
+          // this group is the exact complement of rn-stations-label — which is
+          // staged hidden — and the map boots with 全部鐵路線 off. Baking the
+          // boot state in is also the only way it survives a slow boot: the
+          // readiness wait gives up after 9 s, so RailMap can attach before the
+          // style has layers and _setVisibility silently drops on a layer that
+          // does not exist yet (the same trap the network overlay documents).
+          visibility: "visible",
+          "text-field": ["coalesce", ["get", "name"], ""],
+          "text-font": NETWORK_LABEL_FONT,
+          // The same shallow ramp the network's names ride: text is not a
+          // mark, so it never thins with railwayScale().
+          "text-size": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            minzoom,
+            baseSize,
+            16,
+            baseSize + 2,
+          ],
+          "text-variable-anchor": ["left", "right", "top", "bottom"],
+          "text-radial-offset": 0.8,
+          "text-justify": "auto",
+          "text-padding": 2,
+          "text-allow-overlap": false,
+          "text-ignore-placement": false,
+        },
+        paint: {
+          "text-color": networkLabelTextColor(theme),
+          "text-halo-color": networkLabelHaloColor(theme),
+          "text-halo-width": 1.2,
+          "text-halo-blur": 0.2,
+          // The date scope's dim, which is baked into every record's alpha —
+          // but NOT the selection spotlight the dots follow. A station name
+          // is a PLACE, and the place a non-selected ride passed is still
+          // where you are; fading it would also be a lie about which train
+          // owns it, since the name belongs to whichever record won the
+          // election, not to the train that happened to be picked.
+          "text-opacity": ["get", "alpha"],
+        },
+      });
+      // Weakest tier first: MapLibre places symbols in REVERSE draw order, so
+      // pushing pass → stop → terminal means a boarding/alighting station
+      // claims its space before an intermediate stop, which claims it before a
+      // station merely rolled through. The whole group is pushed before the
+      // playback labels, which therefore still outrank all of it.
+      layers.push(
+        riddenStationLabel(
+          TRAIN_PASS_LABEL_LAYER,
+          ["==", ["get", "role"], "pass"],
+          RIDDEN_PASS_LABEL_MIN_ZOOM,
+          10,
+        ),
+      );
+      layers.push(
+        riddenStationLabel(
+          TRAIN_STOP_LABEL_LAYER,
+          ["==", ["get", "role"], "stop"],
+          RIDDEN_STOP_LABEL_MIN_ZOOM,
+          10,
+        ),
+      );
+      // The cross-day break station rides with the terminals: it is where one
+      // day's travel ended and the next began, which is a boundary of the
+      // same kind.
+      layers.push(
+        riddenStationLabel(
+          TRAIN_TERMINAL_LABEL_LAYER,
+          ["in", ["get", "role"], ["literal", ["terminal", "xday"]]],
+          RIDDEN_TERMINAL_LABEL_MIN_ZOOM,
+          11,
+        ),
+      );
+    }
     // ── §8 selection — dark casing, the selected line and its dots ──
     // C3 — DARK selection casing UNDER the selected line, the line's own hue on
     // top; the dark halo peeking out reads as "selected" on the light basemap.
@@ -1703,6 +1822,12 @@
     TRAIN_SEL_LAYER,
     TRAIN_PASS_LAYER,
     TRAIN_STOPS_LAYER,
+    TRAIN_TERMINAL_LABEL_LAYER,
+    TRAIN_STOP_LABEL_LAYER,
+    TRAIN_PASS_LABEL_LAYER,
+    RIDDEN_TERMINAL_LABEL_MIN_ZOOM,
+    RIDDEN_STOP_LABEL_MIN_ZOOM,
+    RIDDEN_PASS_LABEL_MIN_ZOOM,
     TRAIN_SEL_PASS_LAYER,
     TRAIN_SEL_STOPS_LAYER,
     FIT_CURVES_CASING_LAYER,

@@ -1385,6 +1385,11 @@ function deckMarkerRecord(feature, train, opts, kind) {
     alpha: s.fillOpacity,
     category,
     role,
+    // The station's own name. With the national network switched off the map
+    // draws rides over blank ground and rn-stations-label goes with the
+    // network it belongs to, so the ride's own stops are the only thing left
+    // that knows what these places are called.
+    name: typeof p.name === "string" ? p.name : "",
     focusScale: role === "terminal" ? 1 : 0.5,
     feature,
     train,

@@ -610,3 +610,177 @@ test("ridden_marks_are_the_network_marks_one_step_up", () => {
   );
 });
 
+// ─────────────── the ride's own station names (§7b) ───────────────
+// 全部鐵路線 boots OFF, which takes rn-stations-label with it, so the default
+// map is rides over unnamed ground. These layers are what name it — and they
+// are the network labels' exact complement, never their companion: one station,
+// one name, from whichever layer is the one drawing.
+
+// Dot LOD as app-map-init passes it (PASSTHROUGH_MIN_ZOOM / STOP_MIN_ZOOM in
+// app-state.js), so the "a name never precedes its dot" check below is against
+// the same numbers the running map uses.
+const DOT_LOD = Object.freeze({ passMinzoom: 9, stopMinzoom: 7 });
+
+function riddenLabelLayers() {
+  const built = style.buildBaseStyle({
+    country: "jp",
+    theme: "light",
+    basemap: JSON.parse(JSON.stringify(GLYPH_BASEMAP)),
+    ...DOT_LOD,
+  });
+  const order = built.layers.map((layer) => layer.id);
+  const byId = new Map(built.layers.map((layer) => [layer.id, layer]));
+  return {
+    built,
+    byId,
+    order,
+    terminal: byId.get(style.TRAIN_TERMINAL_LABEL_LAYER),
+    stop: byId.get(style.TRAIN_STOP_LABEL_LAYER),
+    pass: byId.get(style.TRAIN_PASS_LABEL_LAYER),
+  };
+}
+
+test("ridden_stations_are_named_when_the_network_is_not", () => {
+  const { byId, terminal, stop, pass } = riddenLabelLayers();
+  for (const layer of [terminal, stop, pass]) {
+    assert.ok(layer, "every ridden name tier must be staged");
+    assert.equal(layer.type, "symbol");
+    assert.equal(layer.source, style.TRAIN_MARKERS_SOURCE);
+    assert.ok(layer.layout["text-field"], "a label layer must carry text");
+    // Same rule as the network's names: text, never a badge.
+    assert.equal(layer.layout["icon-image"], undefined);
+    // Staged VISIBLE, because the network's own names are staged hidden and
+    // the two are complements. A slow boot leaves RailMap unable to set
+    // either, so the staged pair IS the boot state.
+    assert.equal(layer.layout.visibility, "visible");
+  }
+  assert.equal(
+    byId.get(style.STATIONS_LABEL_LAYER).layout.visibility,
+    "none",
+    "the network's names must stay the hidden half of the pair",
+  );
+});
+
+test("ridden_names_are_absent_without_glyphs", () => {
+  const built = style.buildBaseStyle({ country: "jp", theme: "light" });
+  const ids = new Set(built.layers.map((layer) => layer.id));
+  for (const id of [
+    style.TRAIN_TERMINAL_LABEL_LAYER,
+    style.TRAIN_STOP_LABEL_LAYER,
+    style.TRAIN_PASS_LABEL_LAYER,
+  ])
+    assert.equal(ids.has(id), false);
+  // …and the dots they would have named are still there.
+  assert.equal(ids.has(style.TRAIN_STOPS_LAYER), true);
+});
+
+test("ridden_name_tiers_are_ordered_by_role_and_never_precede_their_dot", () => {
+  const { byId, order, terminal, stop, pass } = riddenLabelLayers();
+  // A ride has two ends, a handful of stops, and every station it rolled
+  // through: the rarer the role, the earlier it may be named.
+  assert.ok(terminal.minzoom < stop.minzoom);
+  assert.ok(stop.minzoom < pass.minzoom);
+  // A name must never appear for a station whose own dot is still gated away.
+  assert.ok(pass.minzoom >= byId.get(style.TRAIN_PASS_LAYER).minzoom);
+  assert.ok(stop.minzoom >= DOT_LOD.stopMinzoom);
+  // MapLibre places symbols in REVERSE draw order, so the strongest tier is
+  // pushed LAST and claims its space first. Terminals outrank stops outrank
+  // pass-throughs; the playing train's own stops outrank all of them.
+  const at = (id) => order.indexOf(id);
+  assert.ok(at(style.TRAIN_PASS_LABEL_LAYER) < at(style.TRAIN_STOP_LABEL_LAYER));
+  assert.ok(
+    at(style.TRAIN_STOP_LABEL_LAYER) < at(style.TRAIN_TERMINAL_LABEL_LAYER),
+  );
+  assert.ok(
+    at(style.TRAIN_TERMINAL_LABEL_LAYER) <
+      at(style.PLAYBACK_STATION_LABEL_LAYER),
+  );
+  // …and above the network's own names, which they replace.
+  assert.ok(at(style.STATIONS_LABEL_LAYER) < at(style.TRAIN_PASS_LABEL_LAYER));
+});
+
+function loadGeometry() {
+  const context = { window: {}, console };
+  context.window.RailNetwork = RailNetwork;
+  context.globalThis = context;
+  vm.createContext(context);
+  for (const file of [
+    "railmap-basemap.js",
+    "railmap-style.js",
+    "railmap-geometry.js",
+  ])
+    vm.runInContext(
+      fs.readFileSync(path.join(__dirname, "../public", file), "utf8"),
+      context,
+      { filename: file },
+    );
+  return context.window.RailMapGeometry;
+}
+
+const geometry = loadGeometry();
+
+function markerRecord(name, role, position, tid) {
+  return {
+    position,
+    radius: 4,
+    lineWidth: 1,
+    fillColor: [255, 255, 255],
+    lineColor: [0, 0, 0],
+    alpha: 1,
+    category: role === "pass" ? "pass" : "stop",
+    role,
+    name,
+    train: { id: tid },
+    tdate: "2026-07-03",
+    dspan: "|2026-07-03|",
+  };
+}
+
+test("one_station_is_named_once_however_many_trains_call_there", () => {
+  const TOKYO = [139.7671, 35.6812];
+  const records = [
+    // 東京 as three trains see it: the same platform twice, and a fourth-of-a-
+    // kilometre away the subway's own — the distance that makes the collision
+    // pass keep BOTH copies, which is why the election exists.
+    markerRecord("東京", "pass", TOKYO, "t1"),
+    markerRecord("東京", "stop", TOKYO, "t2"),
+    markerRecord("東京", "terminal", [TOKYO[0] + 0.003, TOKYO[1]], "t3"),
+    // …the black core of t2's stop, which is not a station of its own.
+    markerRecord("東京", "stop-center", TOKYO, "t2"),
+    // A different station keeps its own name.
+    markerRecord("有楽町", "stop", [139.7634, 35.6751], "t2"),
+    // A same-named station in another prefecture is another place.
+    markerRecord("東京", "stop", [135.5, 34.7], "t4"),
+  ];
+  const named = geometry
+    .markerRecordsToFC(records)
+    .features.filter((f) => f.properties.name)
+    .map((f) => [f.properties.name, f.properties.role]);
+  assert.deepEqual(named, [
+    // The terminal wins 東京 outright: a station where a ride begins or ends
+    // is named at the terminal tier's zoom, not the pass tier's.
+    ["東京", "terminal"],
+    ["有楽町", "stop"],
+    ["東京", "stop"],
+  ]);
+});
+
+test("a_marker_that_lost_the_name_still_draws_its_dot", () => {
+  const TOKYO = [139.7671, 35.6812];
+  const records = [
+    markerRecord("東京", "terminal", TOKYO, "t1"),
+    markerRecord("東京", "stop", TOKYO, "t2"),
+  ];
+  const fc = geometry.markerRecordsToFC(records);
+  // The election is a LABEL right and nothing else — same contract as
+  // rail-network.js's own: every mark still ships, in place, unchanged.
+  assert.equal(fc.features.length, 2);
+  assert.deepEqual(
+    fc.features.map((f) => f.geometry.coordinates),
+    [TOKYO, TOKYO],
+  );
+  assert.deepEqual(
+    fc.features.map((f) => f.properties.role),
+    ["terminal", "stop"],
+  );
+});

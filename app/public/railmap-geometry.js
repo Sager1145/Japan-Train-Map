@@ -738,7 +738,80 @@
     return "rgb(" + arr[0] + "," + arr[1] + "," + arr[2] + ")";
   }
 
+  // ── which ridden marker carries the station's name ──
+  // A station reached by twenty trains ships twenty marker records, and every
+  // one of them knows the same name; 東京 is also several platforms hundreds
+  // of metres apart, so MapLibre's collision pass cannot merge them either —
+  // at z14 two copies of 東京 sit four hundred pixels apart and BOTH fit. So
+  // the name is a right that exactly one record wins, the same way
+  // rail-network.js elects one platform per complex for the network's own
+  // labels. Nothing else about a record changes: every dot still draws.
+  //
+  // Rank decides who wins, because the roles are named at different zooms: a
+  // station where a ride BEGINS or ENDS outranks one it stopped at, which
+  // outranks one it merely rolled through — so a place that is a terminal for
+  // one train and a pass-through for another is named at the terminal's zoom.
+  // "stop-center" is absent on purpose: it is the black core of a stop whose
+  // own record already holds the name.
+  const MARKER_LABEL_RANK = { terminal: 0, xday: 0, stop: 1, pass: 2 };
+  // ~600 m of longitude at Japanese latitudes — the same distance
+  // rail-network.js treats as "one place being named twice". A cell grid plus
+  // its eight neighbours, so a pair straddling a cell edge still merges.
+  const MARKER_LABEL_CELL_DEG = 0.0055;
+  const MARKER_LABEL_MERGE_DEG = MARKER_LABEL_CELL_DEG;
+
+  function markerLabelWinners(records) {
+    // key -> { rank, index }, key being name + cell. The neighbour scan below
+    // is what makes the cell an optimisation rather than the rule.
+    const accepted = new Map();
+    const winners = new Set();
+    for (let i = 0; i < records.length; i += 1) {
+      const m = records[i];
+      const rank = MARKER_LABEL_RANK[m.role || m.category];
+      if (rank === undefined) continue;
+      const name = m.name;
+      if (!name) continue;
+      const lon = m.position[0];
+      const lat = m.position[1];
+      const cx = Math.floor(lon / MARKER_LABEL_CELL_DEG);
+      const cy = Math.floor(lat / MARKER_LABEL_CELL_DEG);
+      let held = null;
+      for (let dx = -1; dx <= 1 && !held; dx += 1)
+        for (let dy = -1; dy <= 1 && !held; dy += 1) {
+          const bucket = accepted.get(`${cx + dx}|${cy + dy}`);
+          if (!bucket) continue;
+          for (const other of bucket) {
+            if (other.name !== name) continue;
+            if (
+              Math.abs(other.lon - lon) <= MARKER_LABEL_MERGE_DEG &&
+              Math.abs(other.lat - lat) <= MARKER_LABEL_MERGE_DEG
+            ) {
+              held = other;
+              break;
+            }
+          }
+        }
+      if (held) {
+        // Same place, already named — unless this record names it earlier.
+        if (rank < held.rank) {
+          winners.delete(held.index);
+          winners.add(i);
+          held.rank = rank;
+          held.index = i;
+        }
+        continue;
+      }
+      const key = `${cx}|${cy}`;
+      let bucket = accepted.get(key);
+      if (!bucket) accepted.set(key, (bucket = []));
+      bucket.push({ name, lon, lat, rank, index: i });
+      winners.add(i);
+    }
+    return winners;
+  }
+
   function markerRecordsToFC(records) {
+    const labelled = markerLabelWinners(records);
     return {
       type: "FeatureCollection",
       features: records.map((m, i) => ({
@@ -757,6 +830,9 @@
           fill: rgbCss(m.fillColor),
           stroke: rgbCss(m.lineColor),
           alpha: m.alpha != null ? m.alpha : 1,
+          // Empty on every record that lost the election above, so the label
+          // layers can filter the source down to the names they will draw.
+          name: labelled.has(i) ? m.name || "" : "",
         },
       })),
     };
