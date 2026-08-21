@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 import RailCore
 import SwiftUI
 
@@ -32,6 +33,14 @@ final class RailNetworkStore {
         /// The zoom below which this line is not drawn — the web app's own
         /// rule, ported in `RailCore.Visibility`, not a performance knob.
         let minZoom: Int
+        /// The threshold this app actually uses: the ported rule plus the rank
+        /// term. See `NetworkLOD` — it is deliberately stricter than the web
+        /// app at low zoom, and deliberately not in `RailCore`.
+        let lodMinZoom: Double
+        /// Bounding box in projected map space, computed once at decode time
+        /// so the per-rebuild off-screen test is a rectangle intersection
+        /// rather than a walk over 394,285 coordinates.
+        let mapRect: MKMapRect
         /// One polyline per station-to-station interval, exactly as the web
         /// app draws them.
         let intervals: [[Coordinate]]
@@ -86,7 +95,9 @@ final class RailNetworkStore {
         let package = try CompactPackage.load(contentsOf: url)
         let minZoomByLineId = Visibility.minZoomByLineId(package)
         let lines = package.lines.map { line in
-            DrawnLine(
+            let intervals = CompactPackage.decodeIntervals(line)
+            let lengthKm = line.segments.reduce(0) { $0 + $1.distanceKm }
+            return DrawnLine(
                 id: line.id,
                 name: line.name,
                 nameRoma: line.nameRoma,
@@ -96,10 +107,29 @@ final class RailNetworkStore {
                 colorDarkHex: (line.colorDark ?? line.color ?? "#7a7a7a").lowercased(),
                 rank: line.rank,
                 minZoom: minZoomByLineId[line.id] ?? 0,
-                intervals: CompactPackage.decodeIntervals(line)
+                lodMinZoom: NetworkLOD.minZoom(lengthKm: lengthKm, rank: line.rank),
+                mapRect: Self.boundingRect(of: intervals),
+                intervals: intervals
             )
         }
         return (lines, ContinuousClock.now - started)
+    }
+
+    /// Union of every vertex, in projected map space.
+    ///
+    /// `MKMapRect` rather than a latitude/longitude box because the off-screen
+    /// test compares against `MKMapView.visibleMapRect`, and converting one
+    /// rect per line per rebuild would undo the point of precomputing it.
+    private nonisolated static func boundingRect(of intervals: [[Coordinate]]) -> MKMapRect {
+        var rect = MKMapRect.null
+        for interval in intervals {
+            for point in interval {
+                let mapPoint = MKMapPoint(
+                    CLLocationCoordinate2D(latitude: point.lat, longitude: point.lon))
+                rect = rect.union(MKMapRect(origin: mapPoint, size: MKMapSize(width: 0, height: 0)))
+            }
+        }
+        return rect
     }
 
     enum LoadError: LocalizedError {

@@ -196,12 +196,21 @@ struct ContentView: View {
             // measurements, not estimates — the MKMapView rewrite exists
             // because of the gap between these two rows.
             if let render {
-                LabeledContent("Zoom", value: String(format: "%.1f", render.zoom))
+                LabeledContent(
+                    "Zoom",
+                    value: render.threshold < render.zoom - 0.01
+                        // The budget had to raise the bar, so the map is
+                        // showing less than the zoom alone would allow. Say
+                        // so rather than leaving it a silent decision.
+                        ? String(format: "%.1f (drawing to %.1f)", render.zoom, render.threshold)
+                        : String(format: "%.1f", render.zoom)
+                )
                 LabeledContent(
                     "Drawn",
                     value: "\(render.visibleLines) lines · \(render.overlays) overlays · "
                         + "\(render.vertices) vertices"
                 )
+                LabeledContent("Off screen", value: "\(render.culledOffScreen) lines culled")
                 LabeledContent("Rebuild", value: "\(render.buildMilliseconds) ms")
             }
         case .failed(let message):

@@ -28,6 +28,16 @@ import SwiftUI
 /// Geometry is untouched. The vertices submitted are exactly the ones
 /// `RailCore.decodeIntervals` produces, which is exactly what the JavaScript
 /// draws — this changes only how they are handed to MapKit.
+extension RailNetworkStore.DrawnLine: LODLine {}
+
+/// One line's decimated geometry, kept with the line so the vertex budget can
+/// shed the least important rather than simply the last built.
+private struct LineBuild: LODBuild {
+    let line: RailNetworkStore.DrawnLine
+    let polylines: [MKPolyline]
+    var drawnVertexCount: Int { polylines.reduce(0) { $0 + $1.pointCount } }
+}
+
 struct RailMapView: UIViewRepresentable {
     var lines: [RailNetworkStore.DrawnLine]
     /// Whether the network is drawn. Kept separate from `lines` on purpose:
@@ -48,6 +58,13 @@ struct RailMapView: UIViewRepresentable {
         var overlays: Int
         var vertices: Int
         var buildMilliseconds: Int
+        /// Lines whose bounding box never met the build rect. A large number
+        /// here is the off-screen cull earning its keep; a zero at a city zoom
+        /// would mean it is not working.
+        var culledOffScreen: Int = 0
+        /// The threshold actually in force. Below `zoom` when the vertex
+        /// budget had to raise the bar — worth seeing rather than guessing at.
+        var threshold: Double = 0
     }
 
     func makeUIView(context: Context) -> MKMapView {
@@ -103,6 +120,9 @@ struct RailMapView: UIViewRepresentable {
         /// pan gesture; rebuilding when the integer zoom changes puts it at
         /// the handful of moments where what is drawn actually changes.
         private var builtForZoom: Int?
+        /// The rect the current overlays were built for — the visible one plus
+        /// its padding. Panning inside it does no work; leaving it rebuilds.
+        private var builtRect: MKMapRect = .null
 
         func update(
             lines: [RailNetworkStore.DrawnLine], showsNetwork: Bool, on mapView: MKMapView
@@ -187,46 +207,61 @@ struct RailMapView: UIViewRepresentable {
 
             let zoom = Self.zoomLevel(of: mapView)
             let bucket = Int(zoom.rounded())
-            guard bucket != builtForZoom else { return }
+            let visibleRect = mapView.visibleMapRect
+            // Rebuild when the zoom tier changes, or when the map has been
+            // panned past what was built for. Panning within the padded rect
+            // is free, which is what keeps the gesture smooth.
+            guard bucket != builtForZoom || !builtRect.contains(visibleRect) else { return }
             builtForZoom = bucket
+            let buildRect = NetworkLOD.buildRect(for: visibleRect)
+            builtRect = buildRect
 
             let started = ContinuousClock.now
 
-            // Level of detail is the web app's own rule (RailCore.Visibility),
-            // not an iOS invention: a line whose group is short drops out of
-            // the wide views. Reproducing it is what keeps the two apps
-            // showing the same railway at the same zoom.
-            let visible = lines.filter { (minZoomByLineId[$0.id] ?? 0) <= bucket }
+            // What is eligible: near enough to be seen, important enough for
+            // this zoom. See NetworkLOD — that policy is deliberately stricter
+            // than the web app's at low zoom, and deliberately outside the
+            // ported tier, because there is no JavaScript to check it against.
+            let selection = NetworkLOD.select(from: lines, zoom: zoom, buildRect: buildRect)
 
-            // Decimation, unlike the LOD rule, IS ours. MapLibre runs every
-            // source through geojson-vt with a pixel tolerance; MapKit has no
-            // equivalent, so the same idea is applied here — drop vertices
-            // that cannot move the drawn line by as much as half a pixel at
-            // this zoom. Bounded that way it cannot change what a reader sees,
-            // only how much work the GPU is asked to do to show it.
+            // Decimation, unlike the visibility rule, IS ours. MapLibre gets
+            // it free from geojson-vt; MapKit has no equivalent, so the same
+            // idea is applied here — drop vertices that cannot move the drawn
+            // line by as much as half a pixel at this zoom. Bounded that way
+            // it cannot change what a reader sees, only what the GPU is asked
+            // to do to show it.
             let epsilon = Self.metresPerPixel(zoom: zoom, latitude: mapView.region.center.latitude) * 0.5
 
-            var byColor: [String: [MKPolyline]] = [:]
-            var colors: [String: UIColor] = [:]
-            var vertices = 0
+            let builds: [LineBuild] = selection.lines.map { line in
+                var polylines: [MKPolyline] = []
+                for interval in line.intervals where interval.count >= 2 {
+                    let kept = Geometry.douglasPeuckerIndices(interval, epsilonMeters: epsilon)
+                    let points = kept.map { interval[$0].clLocation }
+                    guard points.count >= 2 else { continue }
+                    polylines.append(MKPolyline(coordinates: points, count: points.count))
+                }
+                return LineBuild(line: line, polylines: polylines)
+            }
+
+            // The budget is applied to what decimation actually produced, not
+            // to the stored vertex count. Budgeting on the raw count cut a
+            // national view of Japan from 262 lines to 7, by weighing 394,285
+            // stored vertices against a budget meant for the ~12,000 drawn.
+            let fitted = NetworkLOD.fitToBudget(builds, zoom: zoom)
+            let visible = fitted.kept.map(\.line)
 
             // One palette or the other, chosen once per rebuild rather than
             // per line: mixing them would be a map half in each mode.
             let dark = mapView.traitCollection.userInterfaceStyle == .dark
 
-            for line in visible {
-                let key = dark ? line.colorDarkHex : line.colorHex
-                colors[key] = UIColor(dark ? line.colorDark : line.color)
-                for interval in line.intervals {
-                    guard interval.count >= 2 else { continue }
-                    let kept = Geometry.douglasPeuckerIndices(
-                        interval, epsilonMeters: epsilon)
-                    let points = kept.map { interval[$0].clLocation }
-                    guard points.count >= 2 else { continue }
-                    vertices += points.count
-                    byColor[key, default: []].append(
-                        MKPolyline(coordinates: points, count: points.count))
-                }
+            var byColor: [String: [MKPolyline]] = [:]
+            var colors: [String: UIColor] = [:]
+            var vertices = 0
+            for build in fitted.kept {
+                let key = dark ? build.line.colorDarkHex : build.line.colorHex
+                colors[key] = UIColor(dark ? build.line.colorDark : build.line.color)
+                byColor[key, default: []].append(contentsOf: build.polylines)
+                vertices += build.drawnVertexCount
             }
 
             mapView.removeOverlays(mapView.overlays)
@@ -241,9 +276,9 @@ struct RailMapView: UIViewRepresentable {
 
             let elapsed = ContinuousClock.now - started
             NSLog(
-                "railmap: z=%.2f bucket=%d lines=%d/%d overlays=%d vertices=%d %dms",
-                zoom, bucket, visible.count, lines.count, overlays.count, vertices,
-                elapsed.milliseconds)
+                "railmap: z=%.2f thr=%.1f lines=%d/%d (culled %d) overlays=%d vertices=%d %dms",
+                zoom, fitted.threshold, visible.count, lines.count,
+                selection.culledOffScreen, overlays.count, vertices, elapsed.milliseconds)
             // Deferred: a rebuild can be triggered from inside updateUIView,
             // and writing SwiftUI state during a view update is undefined
             // behaviour — in practice the panel simply never showed the
@@ -253,7 +288,9 @@ struct RailMapView: UIViewRepresentable {
                 visibleLines: visible.count,
                 overlays: overlays.count,
                 vertices: vertices,
-                buildMilliseconds: elapsed.milliseconds
+                buildMilliseconds: elapsed.milliseconds,
+                culledOffScreen: selection.culledOffScreen,
+                threshold: fitted.threshold
             )
             DispatchQueue.main.async { [onRender] in onRender(stats) }
         }
