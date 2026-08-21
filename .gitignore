@@ -110,3 +110,8 @@ app/data/raw/railway/hk/rebuild-inventory.zip
 # Agent worktrees: real git checkouts, so an unqualified `git add` picks them
 # up as embedded repositories.
 .claude/worktrees/
+
+# Installed skill packs. Editor tooling that arrives with a plugin install,
+# not project source — .claude/launch.json stays tracked because the dev-server
+# preview reads it.
+.claude/skills/
