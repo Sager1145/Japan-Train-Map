@@ -214,7 +214,12 @@ function filterStationCandidatesNear(
   });
 }
 
-function resolveRouteEndpointStationCandidates(endpoint, train, allowedCodes) {
+function resolveRouteEndpointStationCandidates(
+  endpoint,
+  train,
+  allowedCodes,
+  sectionLineNames,
+) {
   const candidates = resolveStationCandidates(endpoint);
   const name = typeof endpoint === "string" ? endpoint : stopName(endpoint);
   const code = typeof endpoint === "string" ? null : stopStationCode(endpoint);
@@ -245,8 +250,25 @@ function resolveRouteEndpointStationCandidates(endpoint, train, allowedCodes) {
   // Keep the exact code as a fallback, but add nearby same-name candidates in
   // the preferred institution class so Dijkstra can infer the real railroad
   // between distant stop pairs.
-  if (nearbySameNamePreferred.length) {
-    return dedupeStationFeatures([...candidates, ...nearbySameNamePreferred]);
+  //
+  // Those additions are OTHER PLATFORMS, and where the section names its own
+  // line they are other platforms of a line this train does not run on. At
+  // 岸里玉出 the 高野線 stands on 1・2番線 and the 南海本線 on 3・4番線, 178 m
+  // apart; N02 files both under both names, and the walk in from 天下茶屋 is
+  // 60 m shorter down the 高野線 side, so a 南海本線 ride ended on the 高野線's
+  // island and the drawn hop swung a 151 m chord out to reach it. A named line
+  // is the answer to "which platform" (R13), so keep only the additions that
+  // belong to it — and when the endpoint code names the WRONG line, the
+  // addition that matches the section still comes through, which is what this
+  // expansion exists for.
+  const sectionLines = new Set(sectionLineNames || []);
+  const sameStationLineAdditions = sectionLines.size
+    ? nearbySameNamePreferred.filter((feature) =>
+        sectionLines.has(stationLineName(feature)),
+      )
+    : nearbySameNamePreferred;
+  if (sameStationLineAdditions.length) {
+    return dedupeStationFeatures([...candidates, ...sameStationLineAdditions]);
   }
 
   if (preferredCandidates.length) return candidates;

@@ -2086,6 +2086,7 @@ app/public/railmap-style.js
 app/public/rail/*.sources.md
 app/scripts/validation/validate-railway-topology.mjs
 app/scripts/validation/validate-station-render-anchoring.mjs
+app/scripts/validation/validate-route-station-approach.mjs
 app/scripts/railway/lib/parallel-corridors.mjs
 app/scripts/railway/build-parallel-corridors.mjs
 app/scripts/railway/collapse-branch-services.mjs
@@ -2104,6 +2105,7 @@ outputs/railway-audit/railway-audit.json
 ```bash
 node scripts/validation/validate-railway-topology.mjs
 node scripts/validation/validate-station-render-anchoring.mjs --all
+node scripts/validation/validate-route-station-approach.mjs
 node --test test/railway-parallel-corridors.test.js
 node --test test/apple-maps-railway-contract.test.js
 npm test

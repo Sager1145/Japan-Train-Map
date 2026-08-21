@@ -1294,16 +1294,21 @@ function getRegionalRouteGraph(bbox) {
 // by the bbox helper and the on-graph solver so the from/to lookup pattern
 // lives in exactly one place).
 function resolveSectionEndpoints(section, train, allowedCodes) {
+  // A section that names its line has already said which railway calls here,
+  // so the endpoint expansion may only reach for platforms belonging to it.
+  const lineNames = normalizedRouteSectionHintValues(section.line_names);
   return {
     fromStations: routeSolverApi.resolveEndpointCandidates(
       { name: section.from, n02_station_code: section.from_n02_station_code },
       train,
       allowedCodes,
+      lineNames,
     ),
     toStations: routeSolverApi.resolveEndpointCandidates(
       { name: section.to, n02_station_code: section.to_n02_station_code },
       train,
       allowedCodes,
+      lineNames,
     ),
   };
 }

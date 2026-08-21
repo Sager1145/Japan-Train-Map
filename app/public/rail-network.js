@@ -1594,6 +1594,15 @@
   // is wrong with the data and should not be hidden.
   const ENDPOINT_SNAP_METERS = 260;
 
+  // A hinted line this far from one of the hop's platforms is not the track the
+  // train stood on — no station in these packages puts its own line more than a
+  // platform's width away, and the anchoring audit holds every one of them at
+  // zero. Above it, look wider; below it, the hint wins.
+  const HINTED_LINE_MAX_REACH_METERS = 60;
+  // And only take the wider answer if it actually arrives, rather than trading
+  // one wrong railway for a nearer wrong railway.
+  const REPLACEMENT_MAX_REACH_METERS = 25;
+
   function snapEndpoint(coordinates, index, rawPoint, projectedDistance) {
     if (!rawPoint || projectedDistance > ENDPOINT_SNAP_METERS) return;
     coordinates[index] = [rawPoint[0], rawPoint[1]];
@@ -1650,11 +1659,9 @@
 
     const canonicalLines = [];
     const usedLineIds = [];
-    for (const rawCoordinates of rawLines) {
-      const rawStart = rawCoordinates[0];
-      const rawEnd = rawCoordinates[rawCoordinates.length - 1];
+    const bestFitFor = (lines, rawStart, rawEnd) => {
       let best = null;
-      for (const line of candidates) {
+      for (const line of lines) {
         // Both endpoints must land on the SAME part. Parts are separate
         // railways (a trunk and its branch), so allowing one endpoint on each
         // is exactly the "train turns onto the wrong line" bug: the slice
@@ -1704,6 +1711,34 @@
           if (!best || candidate.score < best.score) best = candidate;
         }
       }
+      return best;
+    };
+    const reach = (fit) =>
+      fit ? Math.max(fit.start.distance, fit.end.distance) : Infinity;
+
+    for (const rawCoordinates of rawLines) {
+      const rawStart = rawCoordinates[0];
+      const rawEnd = rawCoordinates[rawCoordinates.length - 1];
+      let best = bestFitFor(candidates, rawStart, rawEnd);
+
+      // The hint names the RAILWAY the solver rode; it cannot make a line
+      // reach a platform it does not serve. Where the package draws that
+      // railway under another line's name — the 品鶴線 is 総武線-3 since the
+      // 東京 rebuild, so a 湘南新宿ライン hop hinted 東海道線 landed on the
+      // 相鉄直通線 106 m away — the drawn ride has to follow the rail rather
+      // than the name, or snapEndpoint below turns the difference into a
+      // right-angle chord into the station.
+      //
+      // Only when the hinted stroke is not at the platform AT ALL, and only
+      // for a replacement that genuinely reaches both stops. Anything in
+      // between is a disagreement about WHICH platform, which the hint is
+      // still the better judge of, and which the route-approach audit reports
+      // rather than papers over.
+      if (reach(best) > HINTED_LINE_MAX_REACH_METERS) {
+        const anywhere = bestFitFor(network.lineById.values(), rawStart, rawEnd);
+        if (reach(anywhere) <= REPLACEMENT_MAX_REACH_METERS) best = anywhere;
+      }
+
       // Endpoint display coordinates may deliberately bridge a station marker
       // to its surveyed track. The characterized packages stay below 500 m;
       // 1.5 km leaves room for future rural station corrections while still

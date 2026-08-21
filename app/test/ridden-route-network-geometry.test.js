@@ -93,3 +93,51 @@ for (const country of ["jp", "tw", "hk", "mo"]) {
     );
   });
 }
+
+// Drawn hops reach their platforms along the rail, not by a chord swung off it.
+//
+// canonicalizeRouteFeature ends a hop at the PROJECTION of the solver's
+// platform point onto the display line, then snapEndpoint overwrites that last
+// vertex with the platform point itself. Where both name the same platform the
+// move is metres and invisible; where the display line is a different track
+// from the one the train used, the same line of code draws a right-angle jog
+// into the station. validate-route-station-approach.mjs measures the sideways
+// distance that jog covers; this pins how many are left, so a data or renderer
+// change cannot quietly add one.
+//
+// The seven in jp are three known faults, all of them the drawn line being on
+// track the train did not use:
+//   大崎 → 西大井 (×2)   no display line reaches both — the 大崎支線 through
+//                        the 蛇窪信号場 is not drawn, so the hop keeps the
+//                        solver's own path and its 502 m station approach
+//   新改 (×2)            a switchback station whose spur N02 never surveyed:
+//                        the package draws one straight 137 m edge from the
+//                        main line to the platform, the same gap 阿里山線's
+//                        reversal tails had before OSM filled them in
+//   東京 area (×3)       成田エクスプレス and 踊り子 stop rows list 有楽町 and
+//                        浜松町, which have no platform on the 東京トンネル the
+//                        train runs through, and 品川's package anchor and the
+//                        solver's platform pick differ by 48 m
+//
+// 岸里玉出 was the fourth until 2026-08-21. N02 filed the 高野線's 1・2番線
+// under 南海本線 as well, and the walk in from 天下茶屋 is 60 m shorter down
+// that side, so a 南海本線 ride ended on the 高野線's island 178 m away. The
+// mis-filed row is gone from stations.json and a route_section that names its
+// line no longer expands its endpoints onto another line's platforms, so both
+// hops now arrive along the rail they are drawn on.
+test("no ridden hop reaches its platform by a chord off the rail", async () => {
+  const { auditCountry, COUNTRIES } = await import(
+    "../scripts/validation/validate-route-station-approach.mjs"
+  );
+  const budget = { jp: 7, tw: 0, hk: 0, mo: 0, kr: 0 };
+  for (const country of COUNTRIES) {
+    const report = auditCountry(country);
+    if (!report) continue;
+    const errors = report.findings.filter((row) => row.severity === "ERROR");
+    assert.ok(
+      errors.length <= budget[country],
+      `${country} grew to ${errors.length} route-approach errors (budget ${budget[country]}):\n` +
+        errors.map((row) => `  ${row.train} #${row.segment} ${row.detail}`).join("\n"),
+    );
+  }
+});
