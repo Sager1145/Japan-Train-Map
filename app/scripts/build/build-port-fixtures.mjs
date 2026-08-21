@@ -30,7 +30,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -117,6 +117,23 @@ const ADVERSARIAL_COORDS = [
   [180, -90], // range limits
   [0.00001, 0.000004], // smallest representable / rounds to zero
 ];
+
+const packageCache = new Map();
+
+/** Reads and caches one country's compact package. */
+function railPackage(country) {
+  if (!packageCache.has(country))
+    packageCache.set(
+      country,
+      JSON.parse(
+        fs.readFileSync(
+          path.join(APP_DIR, "public", "rail", `${country}-2025.json`),
+          "utf8",
+        ),
+      ),
+    );
+  return packageCache.get(country);
+}
 
 // ── fixture builders ────────────────────────────────────────────────────
 
@@ -293,7 +310,55 @@ function serialize(name, fixture) {
   return `${JSON.stringify({ fixture: name, ...fixture }, null, 2)}\n`;
 }
 
+// Fixture modules. Anything dropped into scripts/build/port-fixtures/ is
+// picked up here, which is the whole reason the directory exists: porting work
+// runs in parallel, and a registry every contributor has to edit is a file
+// every contributor has to merge. A module exports:
+//
+//     export const name = "dates.json";
+//     export function build({ RailNetwork, AppCore, js, railPackage, APP_DIR }) {
+//       return { describes, contract, cases };
+//     }
+//
+// `build` returns the same shape the built-in fixtures do, and the same rule
+// applies: the expected value is whatever the JavaScript returns today.
+async function loadFixtureModules() {
+  const dir = path.join(SCRIPT_DIR, "port-fixtures");
+  if (!fs.existsSync(dir)) return [];
+  const files = fs
+    .readdirSync(dir)
+    .filter((file) => file.endsWith(".mjs"))
+    .sort();
+  const loaded = [];
+  for (const file of files) {
+    const module = await import(pathToFileURL(path.join(dir, file)).href);
+    if (!module.name || typeof module.build !== "function") {
+      console.error(`  ! ${file} exports no { name, build } — skipped`);
+      continue;
+    }
+    loaded.push(module);
+  }
+  return loaded;
+}
+
 const built = build();
+
+for (const module of await loadFixtureModules()) {
+  if (built[module.name]) {
+    console.error(
+      `  ! ${module.name} is already built in — rename the module's fixture`,
+    );
+    process.exitCode = 1;
+    continue;
+  }
+  built[module.name] = module.build({
+    RailNetwork,
+    AppCore,
+    js,
+    railPackage,
+    APP_DIR,
+  });
+}
 const check = process.argv.includes("--check");
 let changed = 0;
 
