@@ -68,8 +68,10 @@ test("only audited Japanese line badges stay ahead of operator fallbacks", () =>
   // 381/316 on 2026-08-19: 東北線 loses the two strokes the 尾久 支線's skip
   // edges produced, and a split part carries its parent railway's badge, so
   // the JR East family shows two badge-carrying strokes fewer.
-  assert.equal(packageImages.length, 381);
-  assert.equal(linesWithBadges.length, 316);
+  // 382/317 on 2026-08-21: 東北線-5 (埼京線) is one more stroke in the JR East
+  // family, and a split part carries its parent railway's badge.
+  assert.equal(packageImages.length, 382);
+  assert.equal(linesWithBadges.length, 317);
   for (const line of linesWithBadges) {
     const existingLogo = `/rail/logos/${line.id.replace(/(?:-p?\d+)+$/, "")}.png`;
     const existingLogoPath = path.join(PUBLIC_DIR, existingLogo.replace(/^\//, ""));

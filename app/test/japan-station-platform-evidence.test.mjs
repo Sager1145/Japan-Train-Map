@@ -78,7 +78,9 @@ function pointToOutline(point, coords) {
  *
  * A row names the SOURCE line, and a source line can be drawn as several
  * display strokes (高野線 and 高野線-2). All of them inherit the pick, so all
- * of them are held to it.
+ * of them are held to it — except a stroke the evidence singles out by its own
+ * station sequence in `display_part_platforms`, which the builder applies
+ * after the assignment and which is reported here as the dot's real target.
  */
 function drawnDots(sourceLine, stationGroup) {
   const [operator, name] = sourceLine.split("␟");
@@ -86,10 +88,39 @@ function drawnDots(sourceLine, stationGroup) {
   const found = [];
   for (const line of pkg.lines) {
     if (!forms.has(line.operator) || line.name !== name) continue;
+    const names = line.stations.map((station) => station[1]);
     for (const station of line.stations)
-      if (station[0] === stationGroup) found.push({ id: line.id, point: [station[2], station[3]] });
+      if (station[0] === stationGroup)
+        found.push({
+          id: line.id,
+          point: [station[2], station[3]],
+          partTarget: partPlatformTarget(sourceLine, names, station[1]),
+        });
   }
   return found;
+}
+
+/**
+ * The platform one stroke is registered to use at one station, if any.
+ *
+ * `display_part_platforms` rows match a stroke by its exact station sequence in
+ * either direction — a drawing direction is not a fact — which is how 高野線's
+ * 汐見橋線 stroke keeps terminating on the 南海本線 island while the main
+ * stroke stands on 高野線 1・2番線 178 m away.
+ */
+function partPlatformTarget(sourceLine, stationNames, stationName) {
+  for (const row of assignments.display_part_platforms) {
+    if (row.line !== sourceLine) continue;
+    const wanted = row.match_stations;
+    const forward = stationNames.length === wanted.length
+      && stationNames.every((name, index) => name === wanted[index]);
+    const backward = stationNames.length === wanted.length
+      && stationNames.every((name, index) => name === wanted[wanted.length - 1 - index]);
+    if (!forward && !backward) continue;
+    const target = row.platform_midpoints[stationName];
+    if (target) return target;
+  }
+  return null;
 }
 
 test("every registered platform assignment is the feature the package drew", () => {
@@ -107,17 +138,25 @@ test("every registered platform assignment is the feature the package drew", () 
     assert.ok(dots.length > 0, `${key} is not drawn anywhere in the package`);
     // The pick is exact: the builder pins a registered group's dot to the
     // chosen feature's own midpoint instead of re-projecting it onto track.
-    const rejected = candidates.filter(
-      (candidate) => metres(candidate.midpoint, row.prefer_midpoint_near) > 1,
+    assert.ok(
+      candidates.some(
+        (candidate) => metres(candidate.midpoint, row.prefer_midpoint_near) <= 1,
+      ),
+      `${key} names a target no candidate is 1 m from`,
     );
-    assert.ok(rejected.length > 0, `${key} names a target no candidate is 1 m from`);
     for (const dot of dots) {
-      const chosen = metres(dot.point, row.prefer_midpoint_near);
+      const target = dot.partTarget || row.prefer_midpoint_near;
+      const rejected = candidates.filter(
+        (candidate) => metres(candidate.midpoint, target) > 1,
+      );
+      assert.ok(rejected.length > 0, `${key} names a target no candidate is 1 m from`);
+      const chosen = metres(dot.point, target);
       for (const other of rejected)
         assert.ok(
           chosen < metres(dot.point, other.midpoint),
-          `${dot.id} at ${row.station}: dot is ${chosen.toFixed(1)} m from the chosen ` +
-            `feature and ${metres(dot.point, other.midpoint).toFixed(1)} m from a rejected ` +
+          `${dot.id} at ${row.station}: dot is ${chosen.toFixed(1)} m from the ` +
+            `${dot.partTarget ? "stroke's registered" : "chosen"} feature and ` +
+            `${metres(dot.point, other.midpoint).toFixed(1)} m from a rejected ` +
             "one — the assignment is not being honoured",
         );
     }

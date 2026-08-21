@@ -107,7 +107,10 @@ test("every Japanese package line is seam-free before it reaches the renderer", 
   // in different NODE_DP cells — the only contact between the 函館 and 旭川
   // halves — so the track graph never joined them. Keyed tie-proof they are one
   // railway, 函館 → 旭川, and the 砂原支線 renumbers 函館線-3 → 函館線-2.
-  assert.equal(pkg.lines.length, 651);
+  // 652 on 2026-08-21: 埼京線 becomes 東北線-5. It was the head of 東北線's own
+  // station order — 北与野 … 北赤羽, then 赤羽 and the 東北本線 — which left the
+  // branch with no 大宮 and the trunk carrying 1.7 km of 埼京線 it never runs.
+  assert.equal(pkg.lines.length, 652);
 
   let intervalCount = 0;
   for (const line of pkg.lines) {

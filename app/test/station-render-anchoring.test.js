@@ -321,7 +321,12 @@ test("test_station_anchor_is_protected_from_smoothing", () => {
     // join into one railway once the 苗穂 junction point stops rounding into two
     // NODE_DP cells, so 札幌 keeps one row instead of the two it held as the
     // shared end of two strokes.
-    ["jp", 10215],
+    // +2 on 2026-08-21 (埼京線 split): 東北線-5 seats 大宮 and 赤羽, the two
+    // junctions it shares with the trunk. 大宮's row is the point of the split
+    // — the branch stands on 19・20番線, 104 m west of the 宇都宮線 island the
+    // trunk anchors on, which is what stops the ride bending across the
+    // station to reach its own platform.
+    ["jp", 10217],
     ["tw", 586],
     ["hk", 453],
     ["mo", 17],

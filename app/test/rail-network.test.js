@@ -131,9 +131,17 @@ const EXPECTED_COUNTS = Object.freeze({
   // line and its segment feature go with the merge, and 札幌 loses the second
   // station row it held as the shared end of two strokes. `groups` does not
   // move: 札幌 was always one physical station group, drawn twice.
-  segments: 657,
-  stations: 10215,
-  lines: 651,
+  // 658/10217/652 on 2026-08-21 (埼京線 split): 東北線's station order held
+  // 埼京線 welded to the front of the 東北本線 trunk and therefore had no 大宮
+  // on the branch at all, so a ride there was drawn on the 宇都宮線 alignment
+  // with a 98 m chord across the station to reach 19・20番線. 東北線-5 is that
+  // branch as its own railway, 大宮 to 赤羽, anchored on the west platform it
+  // shares with 川越線. +1 line and +1 segment feature for the stroke, +2
+  // station rows for its two junction seats (大宮 and 赤羽, each already a row
+  // on the trunk). `groups` holds still — both are the same physical station.
+  segments: 658,
+  stations: 10217,
+  lines: 652,
   groups: 9039,
 });
 test("compact rail package produces the characterized render model", async () => {

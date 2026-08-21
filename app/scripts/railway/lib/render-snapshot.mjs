@@ -393,8 +393,29 @@
 // (52.5 → 4.2 m, and the elbow the old dot forced goes 70.7° → 20.1°), the
 // 尾久 支線 hangs from 東十条 instead of 王子 so its 146° fold is gone
 // geometrically, and 鶯谷 returns to the 電車線 where its trains run.
+// 2026-08-21 (埼京線 split) — 652 lines, 10217 station rows, structure rows
+// 18127 → 18142. 埼京線 leaves 東北線's station order, where it sat welded to
+// the front of the 東北本線 trunk with no 大宮 of its own, and becomes 東北線-5:
+// 大宮 → 北与野 → … → 赤羽, with 大宮 → 北与野 rebuilt from N02's own west
+// platform and its 27-vertex section, and 大宮 anchored on 19・20番線 — the
+// west-side platform 川越線 already uses — rather than on the 宇都宮線 island
+// 104 m east. Every other interval moves line without changing a vertex. The
+// structure rows grow because spans that crossed the old interval boundaries
+// are re-emitted clipped to the new ones; nothing is added or lost.
+// 2026-08-21 (registered platform picks) — 652 lines still, station and
+// structure ROW COUNTS unchanged. Two strokes stop opening their first interval
+// with a chord across the station to the platform group their own trains use:
+// 高野線's 岸里玉出 dot moves 178 m east off 南海本線's 3・4番線 island onto the
+// 高野線's own 1・2番線 (1.5 m from the OSM platform area tagged ref=1, against
+// 142 m before), 0.923 km → 0.802 km and 83.7 m → 10.1 m from the nearest OSM
+// track at its worst; and 東海道線-2 — the 大阪→福島 stroke, which IS the
+// 梅田貨物線 — moves 185 m west onto うめきた 21–24番のりば, 0.871 km → 0.698 km,
+// its five structure rows re-based across the replaced edge because they ended
+// at exactly the old total. 高野線-2 (汐見橋線) and the 東海道線 trunk keep the
+// platforms they had, so both stations are drawn as two dots — which is what
+// the operators publish.
 export const EXPECTED_RENDER_HASH =
-  "71670a37c719e8eb1beb51ef1b3cfc62fa39800de47d5a04556600afdaa955fd";
+  "14831fd5fda33a4395ab05496a195929dfcf329593222ee524c5b6bbf40aaee2";
 
 const SNAPSHOT_DECIMAL_PLACES = 10;
 

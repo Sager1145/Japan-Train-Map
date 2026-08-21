@@ -335,6 +335,27 @@ test("a junction shared by two sibling strokes is one point, not two", () => {
       (a[0] - b[0]) * 111320 * Math.cos((a[1] * Math.PI) / 180),
       (a[1] - b[1]) * 111320,
     );
+  // The other exemption, and for the same reason. 埼京線 (東北線-5) calls at
+  // 大宮 19・20番線 on the WEST side of the station while 宇都宮線・京浜東北線
+  // use the eastern islands 104 m away — two platform groups N02 surveys
+  // separately, and two markers the reference maps draw separately. One shared
+  // dot would put the 埼京線 stroke through track its trains never touch, which
+  // is the defect the branch split exists to remove.
+  // 岸里玉出 is the third, and the plainest: 南海 lists 高野線ホーム as
+  // 1・2番線 and the 汐見橋線 as 6番線, four platforms apart at opposite ends
+  // of a station whose transfer walk is long enough that 南海 sends passengers
+  // to 天下茶屋 instead. The 東連絡線 and 西連絡線 that once closed the delta
+  // between them were lifted in 1993, so nothing runs from one to the other
+  // here; one shared dot would draw a junction that no longer exists.
+  // 大阪 is the fourth. The 大阪→福島 stroke is the 梅田貨物線, and since the
+  // うめきたエリア opened in 2023 it calls at 21–24番のりば, underground and
+  // 185 m west of the surface islands the main line stands on. One shared dot
+  // would start the branch on a platform its trains cannot reach.
+  const SEPARATE_PLATFORMS = new Set([
+    "jp-東日本旅客鉄道-東北線:002914",
+    "jp-南海電気鉄道-高野線:007517",
+    "jp-西日本旅客鉄道-東海道線:007068",
+  ]);
   const families = new Map();
   for (const line of pkg.lines) {
     if (line.alignmentRole) continue;
@@ -352,6 +373,7 @@ test("a junction shared by two sibling strokes is one point, not two", () => {
       }
     for (const [group, places] of seats) {
       if (places.length < 2) continue;
+      if (SEPARATE_PLATFORMS.has(`${base}:${group}`)) continue;
       for (const other of places.slice(1)) {
         const gap = metres(places[0].at, other.at);
         assert.ok(
