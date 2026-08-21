@@ -54,8 +54,19 @@ function routeSegmentStyleValues(
 const RP_INK_RGB = [26, 26, 26]; // tokens.ink
 const RP_WHITE_RGB = [255, 255, 255];
 
+// The ring around every dot on a ride is the network's own station ring
+// (RAILWAY_STYLE.stationRingPx, an eighth of the station diameter), times the
+// reader's 標記邊框粗細 multiplier — never a whole pixel of its own. It used to
+// round to an integer, which drew a 1 px ring around a 6 px dot beside the
+// network's 0.75 px ring around the same 6 px dot.
+function markerRingWidth(scale) {
+  return RAILWAY_STYLE_TOKENS.stationRingPx * scale * DISPLAY.markerStrokeScale;
+}
+
 function stopCenterRadius(outerRadius) {
-  const requested = Number(DISPLAY.stopRadius || 5) * 0.4;
+  const requested =
+    Number(DISPLAY.stopRadius || DISPLAY_DEFAULTS.stopRadius) *
+    STOP_CENTRE_SLIDER_SCALE;
   // Keep the stop visibly filled while retaining enough white around the
   // center to distinguish it from the solid origin/destination marker.
   return Math.max(0.75, Math.min(Number(outerRadius) * 0.72, requested));
@@ -78,10 +89,7 @@ function stopMarkerStyleValues(
   const alpha = 1;
   return {
     radius: focused ? baseRadius + boost : baseRadius,
-    lineWidth: Math.max(
-      1,
-      Math.round((focused ? 2 : 1) * DISPLAY.markerStrokeScale),
-    ),
+    lineWidth: markerRingWidth(focused ? 2 : 1),
     fill: isBoundary ? RP_INK_RGB : RP_WHITE_RGB,
     strokeCol: isBoundary ? RP_WHITE_RGB : RP_INK_RGB,
     fillOpacity: alpha,
@@ -102,7 +110,7 @@ function passThroughMarkerStyleValues(
     radius: focused
       ? DISPLAY.passRadius + Math.round(DISPLAY.focusBoost / 2)
       : DISPLAY.passRadius,
-    lineWidth: Math.max(1, Math.round(DISPLAY.markerStrokeScale)),
+    lineWidth: markerRingWidth(1),
     fill: RP_WHITE_RGB,
     strokeCol: RP_INK_RGB,
     fillOpacity: alpha,

@@ -28,6 +28,19 @@ export const SHARED_DIR = path.join(PUBLIC_DIR, "..", "shared");
 
 // app-core keeps the long-standing /app-core.js browser URL, while its source
 // lives in shared/ so server and build tools do not import presentation code.
+// The map core is NOT stubbed. app-config.js / app-display-values.js /
+// app-style.js read their sizes out of RailMapStyle.RAILWAY_STYLE — the one
+// token block every railway weight and station dot on this map comes from — so
+// a stub here would be a second copy of exactly the numbers that block exists
+// to keep single. These three modules are plain classic scripts that publish
+// globals off `window` and touch no browser API at evaluation time, so the
+// sandbox loads the real files, in the browser's own order, before the family.
+const RAILMAP_MODULES = [
+  "rail-network.js",
+  "railmap-basemap.js",
+  "railmap-style.js",
+];
+
 export function resolveAppScript(name) {
   return name === "app-core.js"
     ? path.join(SHARED_DIR, name)
@@ -38,11 +51,13 @@ export function resolveAppScript(name) {
 // lexical scope. Replay EXACTLY the <script src> list from index.html — the
 // single source of truth for load order — so every consumer stays in lockstep
 // when app modules are added, removed, or reordered. The default filter keeps
-// app-core.js and the app-*.js family and skips the browser-only libraries
-// the sandbox stubs instead (vendor/maplibre, i18n*.js, rail-network.js,
-// railmap*.js). A caller-supplied `filter` replaces both that selection and
-// the app-family completeness guard (check-undefined-globals keeps EVERY root
-// script that exists on disk, not just the app family).
+// app-core.js and the app-*.js family and skips the browser-only libraries the
+// sandbox supplies for itself instead (vendor/maplibre and i18n*.js are
+// stubbed; rail-network.js, railmap-basemap.js and railmap-style.js are
+// EVALUATED — see RAILMAP_MODULES). A caller-supplied `filter` replaces both
+// that selection and the app-family completeness guard
+// (check-undefined-globals keeps EVERY root script that exists on disk, not
+// just the app family).
 export function readOrderedAppScripts({ filter } = {}) {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
   const scripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) =>
@@ -188,7 +203,14 @@ export function makeSandbox({
   sandbox.window = sandbox;
   sandbox.self = sandbox;
   sandbox.globalThis = sandbox;
-  return vm.createContext(sandbox);
+  const context = vm.createContext(sandbox);
+  for (const name of RAILMAP_MODULES)
+    vm.runInContext(
+      fs.readFileSync(path.join(PUBLIC_DIR, name), "utf8"),
+      context,
+      { filename: name },
+    );
+  return context;
 }
 
 // Evaluate the (already ordered) scripts inside the context, sharing one

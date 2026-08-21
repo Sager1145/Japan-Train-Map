@@ -1530,7 +1530,9 @@ unchecked_valid_tile_count = 0
 
 ## 14. 当前样式 token 和缩放契约
 
-`app/public/railmap-style.js` 是数值实现的唯一源，测试负责锁定经视觉测量确认的契约；本文不建立第二套独立 token。
+`app/public/railmap-style.js` 的 `RAILWAY_STYLE` 是数值实现的唯一源，测试负责锁定经视觉测量确认的契约；本文不建立第二套独立 token。
+
+这一个 token 块同时管两层：**全部铁路线**（路网）和**已乘坐路线**。2026-08-21 起后者不再自带数值——`app-config.js` 的 `DEFAULT_TRAIN_WEIGHT`、`app-display-values.js` 的 marker 半径、`app-style.js` 的 marker 环宽全部从 `RAILWAY_STYLE` 推导（`window.RailMapStyle.RAILWAY_STYLE`，见 `RAILWAY_STYLE_TOKENS`）。同一块 token 也是**全部国家共用**的：切换 jp / tw / hk / mo / kr 只换数据、颜色与出处声明，不换任何尺寸；`buildBaseStyle()` 在五国之间逐层 paint/layout 必须完全相等，由 `test/apple-maps-railway-contract.test.js` 的 `one_token_block_serves_every_country` 锁定，跨文件推导由 `test/app-family-smoke.test.mjs` 锁定。任何国家、任何图层不得私设尺寸字面量。
 
 目标全权重基准（2026-08-20 更新，取代 2026-08-13 的 `2.5 CSS px` 目标）为：
 
@@ -1542,6 +1544,11 @@ station diameter / rail core: 4
 parallel edge-to-edge gap: 1.2 CSS px
 network casing edge per side: 0.3 CSS px
 ridden route base weight: 2 CSS px（× RIDDEN_WIDTH_SCALE 1.18 = 2.36）
+ridden terminal (起訖站) dot diameter: 8 CSS px
+ridden intermediate / pass dot diameter: 6 CSS px（＝路網站點直徑）
+ridden stop centre dot diameter: 4 CSS px
+marker ring per side: 0.75 CSS px（＝路網 stationRingPx）
+ridden emphasis ratio（線寬與起訖站點共用）: 4 / 3
 selection casing edge per side: 0.7 CSS px
 full-weight zoom anchor: z7
 minimum scale: 1/3
@@ -1554,6 +1561,8 @@ minimum scale: 1/3
 ```text
 parallel centre distance = 1.5 + 1.2 = 2.7 CSS px
 ```
+
+已乘坐层不是第二套系统：它的线宽和起讫站圆点，就是路网的线宽和车站圆点各**上抬一档**，档差 `RIDDEN_EMPHASIS_RATIO = 4/3`（`1.5 → 2 px`、`半径 3 → 4 px`）；中途停靠站与通过站直接**等于**路网站点直径 `6 px`——底图已经在同一个位置画过那个圆点，两层不得对“一个车站有多大”给出两种答案。停靠站中心黑点是站点半径的 `2/3`（直径 `4 px`）。2026-08-21 顺带修正一处旧值：已乘坐 marker 的环宽原为 `Math.round(...)` 得到的整 `1 px`，现改为路网自己的 `stationRingPx = 0.75 px`，这是本次唯一的可见变化。
 
 除非新的 Apple Maps 全量 tile 审计、可读性测试和产品决定共同支持，不得由单条线路或单个国家私自恢复较粗 core。无障碍/高对比模式如需加粗，必须作为显式主题 profile，不能改变默认 token。
 

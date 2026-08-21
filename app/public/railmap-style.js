@@ -47,8 +47,31 @@
   // retune deliberately broke. Everything else here is a proportion of the
   // stroke, so halving it halved the drawn railway everywhere: keyline,
   // suspended dash, lane offsets and the rides above them.
+  //
+  // The tokens cover BOTH railway layers this map draws — the whole network
+  // ("全部鐵路線") and the rides recorded on top of it ("已乘坐路線") — and
+  // they are the same numbers in every country. Nothing downstream is allowed
+  // a size of its own: the ride weight the 線路粗細 slider scales, the dots on
+  // a recorded call, and the ring around them all read from here (app-config.js
+  // DEFAULT_TRAIN_WEIGHT, app-display-values.js DISPLAY_DEFAULTS,
+  // app-style.js), so one edit in this block moves every line and every
+  // station dot on jp / tw / hk / mo / kr at once. A country that wants its
+  // own weight does not get one; a second literal anywhere is a bug.
   const STATION_DIAMETER_PX = 6;
   const RAIL_WIDTH_TO_STATION_DIAMETER = 0.25;
+  // How far the RIDDEN layer stands above the field it is drawn over — one
+  // third again, applied to the two marks that carry the ride: its stroke, and
+  // the dot on the station where the reader boarded or alighted. A ride is
+  // drawn INSIDE its line's own lane, in the train's colour over the line's,
+  // so weight is what separates "this railway exists" from "I rode it"; the
+  // endpoint dot is the same statement at the two ends of that stroke. One
+  // ratio rather than two literals, because they answer the same question —
+  // split it only when the two are deliberately given different emphasis.
+  const RIDDEN_EMPHASIS_RATIO = 4 / 3;
+  // The black centre inside an intermediate stop's dot: two thirds of the dot
+  // it sits in, which leaves a ring of white wide enough that a stop still
+  // reads as a different mark from the solid endpoint dot.
+  const STOP_CENTRE_TO_STATION_RADIUS = 2 / 3;
   const RAILWAY_STYLE = Object.freeze({
     // Diameter of an ordinary network station dot.
     stationDiameterPx: STATION_DIAMETER_PX,
@@ -100,6 +123,22 @@
     // Selected rides use the same restrained edge rhythm. The previous halo
     // was more than twice the coloured line's total width.
     selectionCasingEdgePx: 0.7,
+    // ── the ridden layer, in the same units and off the same two constants ──
+    // A recorded ride's stroke BEFORE the reader's 線路粗細 multiplier and
+    // before RIDDEN_WIDTH_SCALE — the seed app-config.js's DEFAULT_TRAIN_WEIGHT
+    // takes, so the ride thins and thickens with the network instead of
+    // drifting from it.
+    riddenWidthPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER *
+      RIDDEN_EMPHASIS_RATIO,
+    riddenEmphasisRatio: RIDDEN_EMPHASIS_RATIO,
+    // Dots on a recorded ride. An intermediate call and a pass-through are an
+    // ordinary station dot — stationRadiusPx, the very circle the network drew
+    // there — so the two layers cannot disagree about how big a station is;
+    // only the boarding/alighting pair is enlarged, by the same one step the
+    // ride's stroke takes over the field's.
+    stationTerminalRadiusPx: (STATION_DIAMETER_PX / 2) * RIDDEN_EMPHASIS_RATIO,
+    stationStopCentreRadiusPx:
+      (STATION_DIAMETER_PX / 2) * STOP_CENTRE_TO_STATION_RADIUS,
     // How near a junction the geometry pipeline must stop grooming.
     junctionProtectionPx: 6,
   });

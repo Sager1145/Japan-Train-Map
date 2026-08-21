@@ -546,3 +546,67 @@ test("underground_structure_is_preserved_without_guessing_other_countries", () =
   assert.ok(Math.abs(core[0] * coreWidth - 1.6 * 2 * 1.18) < 0.01);
   assert.ok(Math.abs(core[1] * coreWidth - 1.4 * 2 * 1.18) < 0.01);
 });
+
+test("one_token_block_serves_every_country", () => {
+  // 全部國家/地圖共用一套 style. Switching country switches DATA — a package,
+  // its colours, its attribution — and never a size: the drawn weight of a
+  // line, a station dot, a ride or the ring around it is the same number in
+  // jp / tw / hk / mo / kr, because all of them come out of the single
+  // RAILWAY_STYLE block. Compare the built LAYERS (paint, layout and the zoom
+  // gates), which is where every size lands; sources legitimately differ,
+  // since that is where the per-country credit lives.
+  const drawing = (built) =>
+    JSON.parse(
+      JSON.stringify(
+        built.layers.map((layer) => ({
+          id: layer.id,
+          type: layer.type,
+          minzoom: layer.minzoom,
+          maxzoom: layer.maxzoom,
+          filter: layer.filter,
+          layout: layer.layout,
+          paint: layer.paint,
+        })),
+      ),
+    );
+  for (const theme of ["light", "dark"]) {
+    const reference = drawing(style.buildBaseStyle({ country: "jp", theme }));
+    for (const country of COUNTRIES.filter((name) => name !== "jp")) {
+      assert.deepEqual(
+        drawing(style.buildBaseStyle({ country, theme })),
+        reference,
+        `${country} draws at a different weight from jp in the ${theme} theme`,
+      );
+    }
+  }
+});
+
+test("ridden_marks_are_the_network_marks_one_step_up", () => {
+  // The ridden layer ("已乘坐路線") is not a second style system: its stroke
+  // and its endpoint dot are the network's own stroke and station dot, taken
+  // one step up, and its intermediate calls are the network's station dot
+  // unchanged. Literals on purpose, like the weights above — a test that
+  // derives what it checks cannot fail when the number moves. The consumers
+  // (app-config.js DEFAULT_TRAIN_WEIGHT, app-display-values.js) are checked
+  // against these same tokens in test/app-family-smoke.test.mjs.
+  const tokens = style.RAILWAY_STYLE;
+  assert.equal(tokens.riddenWidthPx, 2);
+  assert.equal(tokens.stationTerminalRadiusPx * 2, 8);
+  assert.equal(tokens.stationStopCentreRadiusPx * 2, 4);
+  assert.equal(tokens.stationRingPx, 0.75);
+  // …and the steps themselves, so a later retune of the network carries the
+  // rides with it instead of leaving them behind.
+  const ratio = 4 / 3;
+  assert.ok(Math.abs(tokens.riddenWidthPx / tokens.railWidthPx - ratio) <= 1e-9);
+  assert.ok(
+    Math.abs(
+      tokens.stationTerminalRadiusPx / tokens.stationRadiusPx - ratio,
+    ) <= 1e-9,
+  );
+  assert.ok(
+    Math.abs(
+      tokens.stationStopCentreRadiusPx / tokens.stationRadiusPx - 2 / 3,
+    ) <= 1e-9,
+  );
+});
+

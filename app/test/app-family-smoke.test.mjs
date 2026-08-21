@@ -1139,3 +1139,48 @@ test("最常乘坐區間 drops sections contained in a more-ridden one", () => {
     overlap: ["AC", "BD"],
   });
 });
+
+test("every ridden weight and station dot comes from the one railway token block", () => {
+  // 全部鐵路線 and 已乘坐路線 are drawn by two different modules, and used to
+  // carry two different sets of numbers — a 2 px ride and a 1 px marker ring
+  // beside a 1.5 px network stroke and its 0.75 px station ring. They now read
+  // the SAME block (railmap-style.js RAILWAY_STYLE), so retuning the railway
+  // there moves the rides, their dots and their rings with it, in every
+  // country. This test walks the real family and asserts the app side holds no
+  // size of its own.
+  const { context } = loadAppFamily();
+  const sizes = vm.runInContext(
+    `({
+      tokens: RAILWAY_STYLE_TOKENS,
+      weight: DEFAULT_TRAIN_WEIGHT,
+      terminal: DISPLAY_DEFAULTS.terminalRadius,
+      pass: DISPLAY_DEFAULTS.passRadius,
+      centre: stopCenterRadius(DISPLAY_DEFAULTS.passRadius),
+      stopRing: stopMarkerStyleValues(true, false, {}).lineWidth,
+      terminalRing: stopMarkerStyleValues(true, true, {}).lineWidth,
+      passRing: passThroughMarkerStyleValues(true, {}).lineWidth,
+      stopRadius: stopMarkerStyleValues(true, false, {}).radius,
+      terminalRadius: stopMarkerStyleValues(true, true, {}).radius,
+      passRadius: passThroughMarkerStyleValues(true, {}).radius,
+      route: routeSegmentStyleValues({ visible: true }, true, {}).width,
+    })`,
+    context,
+  );
+  const tokens = sizes.tokens;
+  assert.ok(tokens && tokens.railWidthPx > 0);
+  // The ride's stroke, before the reader's 線路粗細 multiplier.
+  assert.equal(sizes.weight, tokens.riddenWidthPx);
+  assert.equal(sizes.route, tokens.riddenWidthPx);
+  // An intermediate call and a pass-through ARE the network's station dot.
+  assert.equal(sizes.pass, tokens.stationRadiusPx);
+  assert.equal(sizes.stopRadius, tokens.stationRadiusPx);
+  assert.equal(sizes.passRadius, tokens.stationRadiusPx);
+  // Only the boarding/alighting dot is enlarged, by the ride's own step.
+  assert.equal(sizes.terminal, tokens.stationTerminalRadiusPx);
+  assert.equal(sizes.terminalRadius, tokens.stationTerminalRadiusPx);
+  assert.equal(sizes.centre, tokens.stationStopCentreRadiusPx);
+  // Every ring on a ride is the network's station ring, never a whole pixel.
+  assert.equal(sizes.stopRing, tokens.stationRingPx);
+  assert.equal(sizes.terminalRing, tokens.stationRingPx);
+  assert.equal(sizes.passRing, tokens.stationRingPx);
+});

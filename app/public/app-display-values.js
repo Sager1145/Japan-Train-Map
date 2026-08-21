@@ -40,6 +40,12 @@
 // below) while every other saved preference carries over untouched.
 const DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v5";
 const PREVIOUS_DISPLAY_STORAGE_KEY = "n02-train-manager-display-settings-v4";
+// 停靠站中心黑點 keeps a legacy 2..16 slider range from before it meant a
+// radius, so the stored number is this many times the radius it sets. Read by
+// the default below, by the slider's read-out (app-display-settings.js) and by
+// stopCenterRadius() (app-style.js) — the factor used to be spelled 0.4 in all
+// three.
+const STOP_CENTRE_SLIDER_SCALE = 0.4;
 const DISPLAY_DEFAULTS = {
   theme: "system", // system preference, explicit light, or explicit dark
   uiMode: "auto", // automatic terminal detection, or an explicit mobile/desktop UI
@@ -48,16 +54,19 @@ const DISPLAY_DEFAULTS = {
   // (unriddenOpacity was removed: unridden intervals are hidden entirely now,
   // so the slider was a do-nothing control lying to the user.)
   dimOpacity: 0.18, // opacity of trains not on the selected date
-  // px radius of origin / destination markers. Retuned 6 → 4 on 2026-08-20
-  // with the halved line weights: the endpoint dot earns its emphasis by
-  // being the largest mark on the route, and against a 2.36 px ride a 12 px
-  // disc stopped reading as a terminus and started reading as a blot. Two
-  // thirds of the old size keeps it clearly above the 6 px stop circles.
-  terminalRadius: 4,
+  // px radius of the origin / destination markers: the ONE dot on a ride that
+  // is deliberately bigger than the station dot the network already drew
+  // there, by the same step the ride's stroke takes over the network's.
+  terminalRadius: RAILWAY_STYLE_TOKENS.stationTerminalRadiusPx,
   // Legacy numeric range retained so existing saved display settings remain
-  // valid; it now controls the black center inside intermediate stop markers.
-  stopRadius: 5,
-  passRadius: 3, // px radius (at z12) of pass-through markers (railprint unridden dot = 3 @ z12)
+  // valid (the slider's value is STOP_CENTRE_SLIDER_SCALE × the radius it
+  // sets); it controls the black center inside intermediate stop markers.
+  stopRadius:
+    RAILWAY_STYLE_TOKENS.stationStopCentreRadiusPx / STOP_CENTRE_SLIDER_SCALE,
+  // Intermediate calls and pass-throughs are drawn at exactly the network's
+  // own station diameter — the ride must not disagree with the map underneath
+  // it about how big a station is.
+  passRadius: RAILWAY_STYLE_TOKENS.stationRadiusPx,
   markerStrokeScale: 1, // multiplies every marker's stroke width
   focusBoost: 2, // extra line width / marker radius for the selected train
   mapOpacity: 1, // basemap visibility; lower fades the map toward pure white (railprint: no fade)

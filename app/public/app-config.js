@@ -289,15 +289,24 @@ const {
   trainDayBreaks,
   trainHasCrossDayTimes,
 } = window.AppCore;
+// ONE token block decides how heavy the railway reads — the stroke of a line
+// nobody has ridden, the stroke of a ride over it, the diameter of a station
+// dot under either, and the ring around it. It lives in railmap-style.js
+// (RAILWAY_STYLE), it is stated in CSS pixels at full scale, and it is the
+// SAME block for jp / tw / hk / mo / kr: switching country switches data, never
+// sizes. The app family reads it through this alias so nothing down here ever
+// restates a size as a literal — see DEFAULT_TRAIN_WEIGHT below,
+// app-display-values.js's marker radii and app-style.js's rings.
+const RAILWAY_STYLE_TOKENS = window.RailMapStyle.RAILWAY_STYLE;
 const DEFAULT_TRAIN_COLOR = "#d9364f";
-// Single source of truth for the default route style numbers (railprint's
-// glowing-line spec: ridden lines draw from a 2px base, zoom-scaled).
-// Halved from 4 on 2026-08-20 together with the network stroke it is drawn
-// over (railmap-style.js RAILWAY_STYLE): a ride reads as a ride because it is
-// heavier than the field beneath it, and that is a RATIO — one of the two
-// halving alone would either bury the ride or leave it a ribbon over a thread.
-// The dash rhythm in railmap-style.js keys off this number too.
-const DEFAULT_TRAIN_WEIGHT = 2;
+// The weight every ridden route draws from, before the reader's 線路粗細
+// multiplier and RIDDEN_WIDTH_SCALE. It is NOT a number of its own: a ride
+// reads as a ride because it is heavier than the field beneath it, and that is
+// a RATIO, so the token block that sets the network stroke sets this too
+// (railmap-style.js RAILWAY_STYLE.riddenWidthPx = railWidthPx × 4/3). Retuning
+// the railway there moves the rides with it, in every country, and the dash
+// rhythm in railmap-style.js keys off the same token.
+const DEFAULT_TRAIN_WEIGHT = RAILWAY_STYLE_TOKENS.riddenWidthPx;
 
 // N02 "institution type" (事業者種別, field N02_002) classifies a line's
 // operator. The default route policy allows all five classes; a train may
