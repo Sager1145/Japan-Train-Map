@@ -42,7 +42,16 @@ final class RailMapController {
     // MARK: - the map registers itself here
 
     /// Set by ``RailMapView.Coordinator`` once its `MKMapView` exists.
-    @ObservationIgnored weak var mapView: MKMapView?
+    ///
+    /// Deliberately paired with an observable flag: the control stack contains
+    /// an `MKCompassButton`, which cannot be constructed without a map view, so
+    /// the interface has to *know* when one arrives rather than reading a
+    /// non-observable reference and never being told.
+    @ObservationIgnored weak var mapView: MKMapView? {
+        didSet { isMapReady = mapView != nil }
+    }
+
+    private(set) var isMapReady = false
 
     // MARK: - commands
 

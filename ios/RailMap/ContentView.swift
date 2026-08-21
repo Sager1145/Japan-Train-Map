@@ -1,34 +1,32 @@
 import CoreLocation
+import MapKit
 import RailCore
 import SwiftUI
 
-/// The railway drawn over Apple Maps, in the two shapes iOS asks for.
+/// The railway over Apple Maps, in the two shapes iOS asks for.
 ///
-/// The split is by size class rather than by device idiom, which matters on
-/// iPad: a window narrowed to a slide-over is compact and wants the phone
-/// layout even though `UIDevice` still says iPad. Asking the environment what
-/// shape the window *is* gets that right for free, including mid-drag as the
-/// reader resizes it.
+/// The compact case follows Apple Maps' own presentation model rather than a
+/// panel of our own: **a full-screen map with exactly one resident sheet**.
+/// The sheet is never dismissed and never stacked — its *content* is swapped —
+/// which is why it is presented with a constant binding and interactive
+/// dismissal disabled. Using the system sheet rather than a hand-rolled panel
+/// buys the real detent physics, the rubber-banding, the glass, the
+/// accessibility and the keyboard avoidance, none of which a custom drag
+/// gesture reproduces convincingly.
 ///
-///   tall   the panel is a sheet over the map, dragged between three stops
-///   wide   the same tabs live at the foot of a sidebar, always open
+/// The layout is chosen by the window's shape, not the device. A phone in
+/// landscape has almost no height for a sheet but plenty of width for a
+/// sidebar, and it reports a *compact* horizontal size class on every model
+/// but the largest — so size class alone would put a sheet there and leave the
+/// map a letterbox.
 ///
-/// The choice is made on the window's shape, not the device. A phone in
-/// landscape has almost no height to spend on a bottom sheet but plenty of
-/// width to spare, so it gets the sidebar — the same layout as iPad, for the
-/// same reason. A phone in landscape also reports a *compact* horizontal size
-/// class on every model but the largest, so size class alone would put a sheet
-/// there and leave the map a letterbox.
+///   tall windows   a resident sheet over the map
+///   wide windows   the same tabs at the foot of a sidebar
 ///
-/// The sidebar is a plain `HStack` rather than `NavigationSplitView` because a
-/// split view collapses to a stack at compact width — which is exactly the
-/// case this exists to serve. Building it directly means one layout behaves
-/// the same way on both devices instead of two that nearly do.
-///
-/// The map's own controls are down the right edge in both, because they act on
-/// the map rather than on the app. In the sheet layout they ride above the
-/// panel: it publishes its height and they keep clear of it, so a control is
-/// never slid under and left looking present but unreachable.
+/// The map's controls run down the right edge in both, and in the sheet
+/// layout they ride above it — at full height they are removed rather than
+/// pushed off screen. A control the sheet slides over is one that stops
+/// working without ever looking broken.
 struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -36,40 +34,98 @@ struct ContentView: View {
     @State private var controller = RailMapController()
     @State private var country = "mo"
     @State private var render: RailMapView.RenderStats?
-    @State private var tab = BottomBar<AnyView>.Tab.network
-    @State private var detent = BottomBar<AnyView>.Detent.collapsed
-    @State private var panelHeight: CGFloat = 96
+    @State private var tab = Tab.network
+    @State private var detent: PresentationDetent = .height(collapsedHeight)
+
+    private static let collapsedHeight: CGFloat = 92
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case network, layers, info
+        var id: String { rawValue }
+
+        var symbol: String {
+            switch self {
+            case .network: "tram.fill"
+            case .layers: "square.3.layers.3d"
+            case .info: "chart.bar.doc.horizontal"
+            }
+        }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .network: "Network"
+            case .layers: "Layers"
+            case .info: "Detail"
+            }
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            // Wider than tall, or a regular-width window: sidebar. Otherwise
-            // the sheet. Read from the geometry so a rotation or an iPad
-            // window resize switches layouts as it happens.
+            // Wider than tall, or a regular-width window: sidebar. Read from
+            // the geometry so a rotation or an iPad window resize switches
+            // layouts as it happens.
             if geometry.size.width > geometry.size.height || horizontalSizeClass == .regular {
                 sidebarLayout
             } else {
-                sheetLayout
+                sheetLayout(in: geometry)
             }
         }
         .task(id: country) { store.load(country: country) }
     }
 
-    // MARK: - tall windows: a sheet over the map
+    // MARK: - tall windows: the resident sheet
 
-    private var sheetLayout: some View {
+    private func sheetLayout(in geometry: GeometryProxy) -> some View {
         ZStack(alignment: .bottomTrailing) {
             map
 
-            MapControlBar(controller: controller) { controller.fitToNetwork() }
+            // Above the sheet, derived from the detent rather than measured.
+            //
+            // Measuring was the first attempt and it does not work: the sheet
+            // is presented in its own context, so a GeometryReader inside it
+            // reports `.global` coordinates in that context's space, not the
+            // map's. The reading never reached this view and the controls sat
+            // under the sheet. The detent is the honest source here — it is
+            // what actually decides the height.
+            controlStack
                 .padding(.trailing, 12)
-                // The panel's live height, not its resting height, so the
-                // controls travel with the drag rather than jumping when it
-                // settles.
-                .padding(.bottom, panelHeight + 12)
+                .padding(.bottom, sheetClearance(in: geometry) + 12)
+        }
+        .sheet(isPresented: .constant(true)) {
+            sheetContent
+                .presentationDetents(
+                    [.height(Self.collapsedHeight), .fraction(0.45), .large],
+                    selection: $detent
+                )
+                .presentationDragIndicator(.visible)
+                // The map stays live behind the sheet at every detent short of
+                // full height — this is a map app, and a sheet that freezes the
+                // map is one that has to be dismissed before the app is usable.
+                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.45)))
+                .interactiveDismissDisabled()
+                .presentationCornerRadius(20)
+        }
+    }
 
-            BottomBar(selection: $tab, detent: $detent, height: $panelHeight) { tab in
-                AnyView(tabContent(tab))
-            }
+    private var sheetContent: some View {
+        VStack(spacing: 0) {
+            tabContent(tab)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            tabRow
+        }
+    }
+
+    /// How much room the sheet takes at the bottom of the map.
+    ///
+    /// At full height the sheet covers the map, so the controls are not moved
+    /// out of the way — they are removed (see ``controlStack``); pushing them
+    /// off the top of the screen instead would leave them present but
+    /// unreachable, which is the failure this is here to avoid.
+    private func sheetClearance(in geometry: GeometryProxy) -> CGFloat {
+        switch detent {
+        case .fraction(0.45): geometry.size.height * 0.45
+        default: Self.collapsedHeight
         }
     }
 
@@ -80,13 +136,8 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 tabContent(tab)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
                 Divider()
-
-                // The sidebar's own bottom bar. Same tabs as the sheet's; no
-                // detents, because a sidebar is already the width the reader
-                // chose and nothing is covering the map.
-                sidebarTabRow
+                tabRow
             }
             // Narrower on a phone, where the map has little enough width as it
             // is; a fixed 320 would eat half of a landscape iPhone.
@@ -97,20 +148,32 @@ struct ContentView: View {
 
             ZStack(alignment: .bottomTrailing) {
                 map
-                MapControlBar(controller: controller) { controller.fitToNetwork() }
-                    .padding(12)
+                controlStack.padding(12)
             }
         }
-        // The sidebar runs to the screen edge; its contents do not, or the
-        // notch clips the tab row in landscape.
         .ignoresSafeArea(edges: .bottom)
     }
 
-    private var sidebarTabRow: some View {
+    // MARK: - shared parts
+
+    /// Withheld until the map exists: `MKCompassButton` cannot be built
+    /// without an `MKMapView`, and showing the stack without it would leave a
+    /// gap that fills in a frame later.
+    @ViewBuilder
+    private var controlStack: some View {
+        if detent != .large, controller.isMapReady, let mapView = controller.mapView {
+            MapControlBar(mapView: mapView, controller: controller) {
+                controller.fitToNetwork()
+            }
+        }
+    }
+
+    private var tabRow: some View {
         HStack(spacing: 0) {
-            ForEach(BottomBar<AnyView>.Tab.allCases) { entry in
+            ForEach(Tab.allCases) { entry in
                 Button {
                     tab = entry
+                    if detent == .height(Self.collapsedHeight) { detent = .fraction(0.45) }
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: entry.symbol).font(.system(size: 18))
@@ -118,20 +181,19 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .foregroundStyle(tab == entry ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                    .contentShape(Rectangle())
+                    .contentShape(.rect)
+                    .accessibilityHidden(true)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(Text(entry.title))
                 .accessibilityAddTraits(tab == entry ? [.isSelected] : [])
             }
         }
         .padding(.vertical, 6)
-        .background(.bar)
     }
 
-    // MARK: - tabs
-
     @ViewBuilder
-    private func tabContent(_ tab: BottomBar<AnyView>.Tab) -> some View {
+    private func tabContent(_ tab: Tab) -> some View {
         switch tab {
         case .network:
             List(RailNetworkStore.countries, id: \.code) { entry in
@@ -145,7 +207,7 @@ struct ContentView: View {
                             Image(systemName: "checkmark").foregroundStyle(.tint)
                         }
                     }
-                    .contentShape(Rectangle())
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
             }
@@ -167,11 +229,9 @@ struct ContentView: View {
             .scrollContentBackground(.hidden)
 
         case .info:
-            List {
-                statusRows
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            List { statusRows }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
         }
     }
 
@@ -193,15 +253,11 @@ struct ContentView: View {
                     + "\(lines.reduce(0) { $0 + $1.vertexCount }) vertices · \(elapsed.milliseconds) ms"
             )
             // What the renderer actually submitted, at this zoom. These are
-            // measurements, not estimates — the MKMapView rewrite exists
-            // because of the gap between these two rows.
+            // measurements, not estimates.
             if let render {
                 LabeledContent(
                     "Zoom",
                     value: render.threshold < render.zoom - 0.01
-                        // The budget had to raise the bar, so the map is
-                        // showing less than the zoom alone would allow. Say
-                        // so rather than leaving it a silent decision.
                         ? String(format: "%.1f (drawing to %.1f)", render.zoom, render.threshold)
                         : String(format: "%.1f", render.zoom)
                 )
@@ -217,8 +273,6 @@ struct ContentView: View {
             Text(message).foregroundStyle(.red)
         }
     }
-
-    // MARK: - map
 
     private var map: some View {
         RailMapView(
