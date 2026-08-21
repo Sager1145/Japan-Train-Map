@@ -78,9 +78,33 @@ The differences that have actually bitten, all of which compile silently:
 | `String(139)` → `"139"` | `String(139.0)` → `"139.0"` | `JSNumber.string` |
 | `Math.round` ties toward +∞ | `.rounded()` ties away from zero | `JSNumber.round` |
 | strings compare by UTF-16 code unit | `String` compares by canonical equivalence | `JSNumber.stringLessOrEqual`, or `String.utf16` |
-| `Math.hypot` | `sqrt(x*x + y*y)` differs in the last bit | `hypot` |
+| `Math.hypot` | **`hypot` is wrong on ~36% of real inputs** | `JSMath.hypot` |
+| `Math.cos` | Darwin's differs on ~4% of real latitudes | `JSMath.cos` |
 | `x ** 2` | `pow(x, 2)` may differ in the last bit | measure it |
 | months are 0-based | `DateComponents.month` is 1-based | pin `Calendar`/`TimeZone` |
+
+### V8 does not call libm
+
+This table used to recommend `hypot` for `Math.hypot`. That was wrong, and the
+mileage-statistics port measured it — over 5,000 real coordinate pairs:
+
+    Darwin cos          209 / 5000 disagree with V8, worst 1 ULP
+    Darwin hypot      1,819 / 5000 disagree with V8, worst 2 ULP
+    sqrt(x*x + y*y)   1,827 / 5000 disagree with V8, worst 3 ULP
+
+V8 implements both itself: `Math.hypot` is max-scaling plus Kahan summation,
+and `Math.cos` is its own fdlibm port. `RailCore.JSMath` carries both — use it
+rather than the platform's.
+
+Whether it matters depends on what the answer feeds. A distance *compared*
+against a threshold usually absorbs a last-bit difference — grooming and
+Douglas–Peucker both match bit for bit using the platform `cos`, because the
+vertices they return are copied rather than computed. A distance *summed* over
+377,620 edges cannot absorb anything, and mileage totals are exactly that.
+
+So: measure before reaching for `JSMath`, and say what you measured. If the
+platform function agrees on your inputs, the simpler code is the better code;
+if it does not, this is why.
 
 ## Writing the test
 
