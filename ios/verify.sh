@@ -26,8 +26,13 @@ repo=$(cd "$here/.." && pwd)
 # so the build directory has to live off the synced volume.
 scratch=${SCRATCH:-${TMPDIR:-/tmp}railkit-verify}
 
-: "${DEVELOPER_DIR:=/Applications/Xcode-beta.app/Contents/Developer}"
-export DEVELOPER_DIR
+# Prefer the beta toolchain when it is installed, because that is what this
+# port is developed against — but only when it is actually there, or CI (and
+# anyone with a plain Xcode) inherits a path that does not exist.
+if [ -z "${DEVELOPER_DIR:-}" ] && [ -d /Applications/Xcode-beta.app ]; then
+    DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+    export DEVELOPER_DIR
+fi
 
 run_js=1
 run_swift=1

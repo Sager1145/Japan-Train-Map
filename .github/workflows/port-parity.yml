@@ -1,0 +1,88 @@
+# Keeps the Swift port honest.
+#
+# The port is verified rather than reviewed: port-fixtures/*.json holds inputs
+# and the answers the JavaScript gives, and the Swift has to reproduce them.
+# That only means anything while the fixtures still describe the JavaScript, so
+# the cheap half of the check — "did the reference implementation move without
+# the fixtures being regenerated?" — runs on every push, on Linux.
+#
+# The Swift half needs a macOS runner, which costs about ten times as much per
+# minute, so it runs only when iOS code or the fixtures actually change (and on
+# demand). That is a deliberate trade, not an oversight: a stale fixture makes
+# every Swift result meaningless, so catching it early is worth far more than
+# re-running the Swift suite on a change that cannot affect it.
+
+name: Port parity
+
+on:
+  push:
+    branches: [main, swift-ios-port]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: port-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixtures:
+    name: Fixtures still describe the JavaScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      # The reference implementation first. A fixture generated from behaviour
+      # that has since moved is worse than no fixture: it reports agreement
+      # with something the web app no longer does.
+      - name: Web app tests
+        working-directory: app
+        run: npm test
+
+      - name: Lint
+        working-directory: app
+        run: npm run lint
+
+      # --check regenerates into memory and fails if any answer moved. If this
+      # is red, that is not a broken build — it is a list of answers the Swift
+      # port now has to be re-verified against. Regenerate deliberately and
+      # read the diff.
+      - name: Fixtures match the code that generated them
+        working-directory: app
+        run: node scripts/build/build-port-fixtures.mjs --check
+
+  swift:
+    name: RailCore matches the fixtures
+    runs-on: macos-15
+    timeout-minutes: 30
+    # Skipped on pushes that cannot affect it; always available by hand.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'pull_request' ||
+      github.ref == 'refs/heads/swift-ios-port'
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show toolchain
+        run: swift --version && xcodebuild -version
+
+      # --core: RailCore, the parity suite, and the rule that RailCore may
+      # import Foundation and nothing else. The simulator app build is left to
+      # the machine doing the work; it is the slowest step and it cannot fail
+      # for a reason the parity suite would not already have caught.
+      - name: Parity suite
+        working-directory: ios
+        run: SCRATCH="${RUNNER_TEMP}/railkit" ./verify.sh --core
