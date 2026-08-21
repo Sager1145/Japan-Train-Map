@@ -10,9 +10,17 @@ phase. There are no remote dependencies.
     ios/
       RailMap.xcodeproj      the app
       RailMap/               SwiftUI shell — the only place MapKit is imported
+        ContentView          picks the layout from the window's shape
+        BottomBar            tabs + three drag detents (tall windows)
+        MapControlBar        the map's own controls, down the right edge
+        RailMapView          MKMapView, batched overlays
+        NetworkLOD           what is drawn at a zoom — ours, not a port
+        GlassStyle           Liquid Glass on 26+, material below
       RailKit/               local package
         Sources/RailCore/    the ported pure tier (Foundation only)
         Tests/RailCoreTests/ parity against the JavaScript, via port-fixtures/
+      PORTING.md             how a function gets ported
+      verify.sh              the gate
       copy-rail-packages.sh  build phase: app/public/rail → app bundle
 
 Built and run against **Xcode 27.0 beta (27A5237l), Swift 6.4, iOS 27 SDK**,
@@ -81,6 +89,34 @@ have been read by both renderers; MapKit has no style spec, so the design
 tokens have to become renderer parameters instead. That is a real loss and it
 is worth being explicit about it.
 
+## The interface
+
+Two layouts, chosen by the window's shape rather than the device. A phone in
+landscape has almost no height for a bottom sheet but plenty of width for a
+sidebar, and it reports a *compact* horizontal size class on every model but
+the largest — so size class alone would put a sheet there and leave the map a
+letterbox.
+
+    tall windows   a sheet over the map, dragged between three stops
+    wide windows   the same tabs at the foot of a sidebar, always open
+
+The sidebar is a plain `HStack`, not `NavigationSplitView`, which collapses to
+a stack at compact width — exactly the case it would be needed for.
+
+The map's controls run down the right edge in both, because they act on the map
+rather than on the app: network, 定位, zoom in, zoom out, compass, and the
+device's own position. That last is new here. The web app's 定位 (`fit-selected`)
+frames the *selected railway* and says nothing about where the reader is
+standing, so the two are separate buttons rather than one with two meanings.
+In the sheet layout the panel publishes its live height and the controls keep
+clear of it — a control the panel slides over is one that stops working without
+ever looking broken.
+
+Dark mode is not just a darker basemap. The packages carry a `colorDark` per
+line (`rail-network.js` reads `colorDark || color`), so the overlays are rebuilt
+with the other palette when the trait flips. Ignoring it would make dark mode a
+different map rather than a darker one.
+
 ## Performance: what the simulator said, and what fixed it
 
 The first version drew one SwiftUI `MapPolyline` per station interval. On
@@ -125,10 +161,39 @@ Japan (652 lines / 9,568 intervals / 394,285 vertices), measured on the iPhone
 
 Package decode is unchanged at ~270 ms and happens off the main actor.
 
-Rebuilds are keyed to the integer zoom bucket, so panning within a zoom level
-does no work at all; only crossing a bucket boundary re-decimates. What is
-still unmeasured is a sustained pinch across many buckets in quick succession —
-that is the next thing to put a number on rather than assume.
+### Then: only what the zoom warrants, and only what is on screen
+
+Batching made a national view *possible*; it was still drawing 262 lines over a
+basemap that, at z4, is a country outline with a few motorways. `NetworkLOD`
+adds three rules — and lives outside `RailCore` on purpose, because there is no
+JavaScript to check it against and mixing a policy of our own into the ported
+tier would make the parity fixtures meaningless.
+
+1. **A line waits for both its length and its rank.** The web app hides by
+   group length alone, which is enough over a vector basemap that can draw a
+   hairline. Requiring both leaves the trunk corridors at a national view and
+   holds branches back until there is a map under them to make sense of.
+2. **Nothing far off screen is built.** The build covers the visible rect plus
+   half a screen each way and is remembered, so panning inside it does no work.
+3. **A vertex budget is the backstop**, shedding least-important first, so the
+   worst case is a function of the budget rather than of the data.
+
+| Japan, national view | batched only | with LOD |
+| --- | ---: | ---: |
+| lines drawn | 262 | **33** |
+| drawn vertices | 12,433 | **3,192** |
+| rebuild | 98 ms | **19 ms** |
+
+Panned away from Japan, all 652 lines cull to nothing rather than being built
+off screen.
+
+The budget was wrong on the first attempt, instructively: applied to the
+*stored* vertex count it cut that same view to 7 lines, weighing 394,285 stored
+vertices against a budget meant for the ~12,000 actually drawn. It now runs
+after decimation, on what the lines will really cost.
+
+Still unmeasured: a sustained pinch across many zoom tiers in quick succession.
+That is the next thing to put a number on rather than assume.
 
 ## Two environment notes that cost time
 
@@ -154,8 +219,18 @@ correction for the covered countries.
 
 ## What is not here yet
 
-The pure tier is 20 files; four are ported. Route solving, overlap lanes,
-corridor smoothing and mileage statistics are not, and neither is any of the
-persistence, import or playback. The order to continue in, and the reasoning
-behind it, is in [`../REFACTOR_FOR_SWIFT_FORK_PROMPT.md`](../REFACTOR_FOR_SWIFT_FORK_PROMPT.md)
-§四 Phase 7.
+The pure tier is 20 files. Ported and verified: coordinates and keys, haversine
+distance, Douglas–Peucker, compact-package intervals, the visibility ladder,
+station-dot level of detail, micro-kink grooming, operator branding, the date
+rules, and `canonicalizeRouteFeature` — 50 parity tests over roughly 8,600
+fixture cases.
+
+Not ported: the route solver, overlap lanes and corridor smoothing, mileage
+statistics, display parts, station resolution, the train model and validation,
+and the i18n catalogs — several of those are in flight. Nothing of persistence,
+import, the editor or playback exists yet, and playback's video export has no
+MapKit equivalent at all, so it will be new work rather than a port.
+
+The order to continue in, and the reasoning behind it, is in
+[`../REFACTOR_FOR_SWIFT_FORK_PROMPT.md`](../REFACTOR_FOR_SWIFT_FORK_PROMPT.md)
+§四 Phase 7, and the recipe for one port is [`PORTING.md`](PORTING.md).
