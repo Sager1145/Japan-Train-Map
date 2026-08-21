@@ -109,7 +109,7 @@ struct BottomBar<Content: View>: View {
                         .padding(.bottom, geometry.safeAreaInsets.bottom)
                 }
                 .frame(height: live, alignment: .top)
-                .background(.regularMaterial, in: PanelShape())
+                .railGlass(in: PanelShape())
                 .clipShape(PanelShape())
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.12), radius: 8, y: -2)
                 .contentShape(Rectangle())

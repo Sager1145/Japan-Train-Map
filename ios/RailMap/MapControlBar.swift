@@ -28,6 +28,9 @@ struct MapControlBar: View {
     private static let width: CGFloat = 44
 
     var body: some View {
+        // Grouped so the capsules read as one piece of material rather than
+        // four separate slabs stacked up the edge of the map.
+        RailGlassGroup(spacing: 12) {
         VStack(spacing: 12) {
             ControlGroup {
                 // Rail network on/off. The web app makes the network opt-in
@@ -87,6 +90,7 @@ struct MapControlBar: View {
                 }
             }
         }
+        }
         .frame(width: Self.width)
         // Hugs its content vertically so the ZStack can pin it to the bottom
         // corner instead of centring a full-height column.
@@ -111,18 +115,23 @@ struct MapControlBar: View {
 
 /// One capsule of buttons.
 ///
-/// `.regularMaterial` rather than a fixed colour is what makes the stack
-/// legible over both a pale city and dark water, and it follows light and dark
-/// mode without this file knowing which is in effect.
+/// Glass rather than a fixed colour is what makes the stack legible over both
+/// a pale city and dark water, and it follows light and dark mode without this
+/// file knowing which is in effect. The corner radius is the continuous curve
+/// the system uses for floating controls, not a circular one — on a 44-point
+/// capsule the difference is visible.
 private struct ControlGroup<Content: View>: View {
     @ViewBuilder var content: Content
+
+    private var shape: some Shape { RoundedRectangle(cornerRadius: 20, style: .continuous) }
 
     var body: some View {
         VStack(spacing: 0) { content }
             .frame(width: 44)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+            // Interactive: these are pressed, and glass that does not respond
+            // to the finger is a texture rather than a control.
+            .railGlass(in: shape, interactive: true)
+            .clipShape(shape)
     }
 }
 
