@@ -213,7 +213,8 @@ struct ContentView: View {
 
     private var map: some View {
         RailMapView(
-            lines: controller.showsNetwork ? lines : [],
+            lines: lines,
+            showsNetwork: controller.showsNetwork,
             controller: controller
         ) { render = $0 }
         .ignoresSafeArea()

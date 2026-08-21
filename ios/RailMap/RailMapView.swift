@@ -30,6 +30,11 @@ import SwiftUI
 /// draws — this changes only how they are handed to MapKit.
 struct RailMapView: UIViewRepresentable {
     var lines: [RailNetworkStore.DrawnLine]
+    /// Whether the network is drawn. Kept separate from `lines` on purpose:
+    /// hiding the network used to be expressed by passing an empty list, which
+    /// made showing it again indistinguishable from loading a country, so the
+    /// map re-framed itself and threw away wherever the reader had panned to.
+    var showsNetwork: Bool
     /// The wire to the control bar, which lives elsewhere in the layout — at
     /// the bottom of the screen on iPhone, at the foot of the sidebar on iPad.
     var controller: RailMapController
@@ -76,7 +81,7 @@ struct RailMapView: UIViewRepresentable {
     func updateUIView(_ mapView: MKMapView, context: Context) {
         context.coordinator.onRender = onRender
         context.coordinator.controller = controller
-        context.coordinator.update(lines: lines, on: mapView)
+        context.coordinator.update(lines: lines, showsNetwork: showsNetwork, on: mapView)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -88,38 +93,49 @@ struct RailMapView: UIViewRepresentable {
 
         private var lines: [RailNetworkStore.DrawnLine] = []
         private var minZoomByLineId: [String: Int] = [:]
+        private var showsNetwork = true
+        /// Set only when a genuinely new set of lines arrives. Framing the map
+        /// is a reasonable thing to do when a country finishes loading and a
+        /// rude thing to do at any other time.
+        private var framePending = false
         /// The zoom bucket the current overlays were built for. Rebuilding on
         /// every region change would put a full decimation pass inside the
         /// pan gesture; rebuilding when the integer zoom changes puts it at
         /// the handful of moments where what is drawn actually changes.
         private var builtForZoom: Int?
 
-        func update(lines: [RailNetworkStore.DrawnLine], on mapView: MKMapView) {
-            guard lines.map(\.id) != self.lines.map(\.id) else { return }
-            // A country switch passes through an empty list while the next
-            // package decodes. Clearing the map for that moment is right, but
-            // reporting it is not: the panel would show "0 lines" as the last
-            // measurement of a map that is about to be full.
-            guard !lines.isEmpty else {
-                // Two things arrive here: the moment between countries while
-                // the next package decodes, and the network being switched
-                // off from the control bar. Both mean "draw nothing", and
-                // neither is worth reporting as a measurement of zero.
-                self.lines = []
-                mapView.removeOverlays(mapView.overlays)
-                builtForZoom = nil
-                return
-            }
-            self.lines = lines
-            self.minZoomByLineId = Dictionary(
-                uniqueKeysWithValues: lines.map { ($0.id, $0.minZoom) })
-            builtForZoom = nil
-            rebuild(on: mapView)
-            if let region = Self.region(covering: lines) {
-                // Also handed to the controller so the 定位 button frames what
-                // is actually drawn rather than a remembered extent.
+        func update(
+            lines: [RailNetworkStore.DrawnLine], showsNetwork: Bool, on mapView: MKMapView
+        ) {
+            let linesChanged = lines.map(\.id) != self.lines.map(\.id)
+            let visibilityChanged = showsNetwork != self.showsNetwork
+            guard linesChanged || visibilityChanged else { return }
+
+            self.showsNetwork = showsNetwork
+
+            if linesChanged {
+                self.lines = lines
+                self.minZoomByLineId = Dictionary(
+                    uniqueKeysWithValues: lines.map { ($0.id, $0.minZoom) })
+
+                // A new country's extent, handed to the controller so the 定位
+                // button frames what is actually loaded rather than a
+                // remembered extent — and kept even while the network is
+                // hidden, so the button still works.
+                let region = Self.region(covering: lines)
                 let controller = self.controller
                 DispatchQueue.main.async { controller?.fitRegion = region }
+
+                // Frame only for a real dataset, and only once. An empty list
+                // is the gap between countries, not something to look at.
+                framePending = !lines.isEmpty
+            }
+
+            builtForZoom = nil
+            rebuild(on: mapView)
+
+            if framePending, let region = Self.region(covering: lines) {
+                framePending = false
                 mapView.setRegion(region, animated: false)
             }
         }
@@ -156,6 +172,14 @@ struct RailMapView: UIViewRepresentable {
         }
 
         private func rebuild(on mapView: MKMapView) {
+            // Switched off from the control bar: clear the map and leave the
+            // camera exactly where the reader put it.
+            guard showsNetwork else {
+                mapView.removeOverlays(mapView.overlays)
+                builtForZoom = nil
+                return
+            }
+
             // Before the first layout pass the view has no width, and the
             // zoom derived from it is nonsense — it was reading z = -8 and
             // culling every line. Wait for a real size.
