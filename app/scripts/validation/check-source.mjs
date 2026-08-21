@@ -29,6 +29,9 @@ const SKIPPED_DIRECTORIES = new Set([
   // which promote-lines.mjs takes one session's lines. Generated output, and
   // re-parsing a 9 MB package on every lint buys nothing.
   "staging",
+  // The dev server's gzip cache (app/.cache/gzip): compressed copies of files
+  // this pass already checks at their source.
+  ".cache",
 ]);
 const checked = { javascript: 0, json: 0, references: 0 };
 

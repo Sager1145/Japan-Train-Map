@@ -28,6 +28,11 @@ function createApp({
   dataDir = path.join(__dirname, "..", "data"),
   publicDir = path.join(__dirname, "..", "public"),
   sharedDir = path.join(__dirname, "..", "shared"),
+  // Where the gzip copies of the files above are kept. Deliberately outside
+  // every served directory: a compressed copy sitting next to its source is a
+  // second, invisible answer to the same request, and one that went stale
+  // cost a session hours of chasing a browser cache that was innocent.
+  cacheDir = path.join(__dirname, "..", ".cache", "gzip"),
   logger = console,
   now,
   heartbeatMs,
@@ -44,7 +49,7 @@ function createApp({
     trainStores[name] = store;
     AGENT_IMPORT_COUNTRY_STORES[country] = store;
   }
-  const { serveGzippable } = createFileDelivery({ logger });
+  const { serveGzippable } = createFileDelivery({ logger, cacheDir });
   const liveEvents = createLiveEvents({ now, heartbeatMs });
 
   for (const [route, file] of Object.entries(DATA_FILES)) {
@@ -118,7 +123,7 @@ function createApp({
       }
 
       // Deliberately NOT serveGzippable: user data must never be cached (no
-      // ETag, no-store) and never gets a .gz sidecar written next to it.
+      // ETag, no-store) and never leaves a compressed copy on disk.
       res.type("application/json");
       res.setHeader("Cache-Control", "no-store");
       streamFile(res, store.filePath, {

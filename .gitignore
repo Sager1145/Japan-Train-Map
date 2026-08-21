@@ -5,7 +5,11 @@ __pycache__/
 # Installed dependencies are recreated from package-lock.json.
 app/node_modules/
 
-app/data/*.json.gz
+# The dev server's gzip cache: one compressed copy per (file, size, mtime),
+# rebuilt on demand and pruned when a source changes. It sits outside every
+# served directory on purpose — a compressed copy next to its source is a
+# second answer to the same request, and a stale one wins silently.
+app/.cache/
 
 # Precomputed sample data (manifest + one JSON per train, ~8 MB).
 # Regenerated from train-store.json by app/scripts/build/precompute-train-parts.mjs —
@@ -32,17 +36,19 @@ app/data/tokyo-limited-express-loop-data/
 app/data/*.staging/
 app/data/*.previous/
 
-# Lazily generated gzip sidecars for large static assets (rail package, basemap,
-# logo credits). Regenerated on demand by server.js; never committed.
+# Gzip sidecars beside the files they compress. Nothing writes these any more —
+# server.js keeps its copies in app/.cache/ — but the rules stay so a leftover
+# from an older checkout, or a hand-run `gzip`, cannot be committed by accident.
+app/data/*.json.gz
 app/public/**/*.json.gz
+app/public/**/*.js.gz
+app/public/**/*.css.gz
+app/shared/**/*.js.gz
 
 # Perf-work scratch: pre-edit backups + a one-off failure-analysis script.
 # Safe to delete once the optimizations are verified.
 app/.perf-backup/
 app/data/analyze-failures.js
-app/public/**/*.js.gz
-app/public/**/*.css.gz
-app/shared/**/*.js.gz
 
 # Static GitHub Pages build output. The glob also covers the numbered copies
 # ("_site 10/", "_site 42/" …) that accumulate when the bundle is duplicated

@@ -18,6 +18,7 @@ async function createFixture() {
   const dataDir = path.join(root, "data");
   const publicDir = path.join(root, "public");
   const sharedDir = path.join(root, "shared");
+  const cacheDir = path.join(root, "cache");
   await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(publicDir, { recursive: true });
   await fs.mkdir(sharedDir, { recursive: true });
@@ -52,7 +53,7 @@ async function createFixture() {
     JSON.stringify({ static: true }),
   );
 
-  return { root, dataDir, publicDir, sharedDir };
+  return { root, dataDir, publicDir, sharedDir, cacheDir };
 }
 
 async function withServer(run) {
@@ -66,6 +67,7 @@ async function withServer(run) {
     dataDir: fixture.dataDir,
     publicDir: fixture.publicDir,
     sharedDir: fixture.sharedDir,
+    cacheDir: fixture.cacheDir,
     logger,
     now: () => FIXED_NOW,
     heartbeatMs: 1000,
@@ -181,7 +183,7 @@ test("health endpoint preserves the API listing contract", async () => {
 });
 
 test("datasets preserve gzip, cache, ETag, and 304 behavior", async () => {
-  await withServer(async ({ baseUrl, dataDir }) => {
+  await withServer(async ({ baseUrl, cacheDir, dataDir }) => {
     const response = await fetch(`${baseUrl}/api/stations`, {
       headers: { "Accept-Encoding": "gzip" },
     });
@@ -194,7 +196,19 @@ test("datasets preserve gzip, cache, ETag, and 304 behavior", async () => {
       file: "stations.json",
       values: [1, 2, 3],
     });
-    await fs.access(path.join(dataDir, "stations.json.gz"));
+    // The compressed copy lives in the cache directory, never beside the
+    // source: a .gz sidecar in a served directory is a second answer to the
+    // same request, and the one that goes stale is the one that wins.
+    await assert.rejects(
+      fs.access(path.join(dataDir, "stations.json.gz")),
+      /ENOENT/,
+    );
+    assert.equal(
+      (await fs.readdir(cacheDir)).filter((name) =>
+        name.startsWith("stations.json-"),
+      ).length,
+      1,
+    );
 
     const unchanged = await fetch(`${baseUrl}/api/stations`, {
       headers: { "If-None-Match": response.headers.get("etag") },
@@ -601,6 +615,46 @@ test("a dead local process cannot strand the cross-process lock", async () => {
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+// A source can move BACKWARDS in time — a .bak restored with `mv`, a
+// `git checkout`, an rsync --times — and the compressed copy has to follow it.
+// The old sidecar reused itself whenever its own mtime was >= the source's,
+// which read a restored-older file as fresh and served the superseded bytes to
+// every later request, including from a browser sending cache: "no-store".
+test("a source restored to an older mtime is recompressed, not reused", async () => {
+  await withServer(async ({ baseUrl, cacheDir, dataDir }) => {
+    const filePath = path.join(dataDir, "stations.json");
+    const first = await fetch(`${baseUrl}/api/stations`, {
+      headers: { "Accept-Encoding": "gzip" },
+    });
+    assert.equal(first.headers.get("content-encoding"), "gzip");
+    assert.deepEqual(await responseJson(first), {
+      file: "stations.json",
+      values: [1, 2, 3],
+    });
+
+    const restored = { file: "stations.json", values: [9] };
+    await fs.writeFile(filePath, JSON.stringify(restored));
+    const past = new Date("2020-01-01T00:00:00.000Z");
+    await fs.utimes(filePath, past, past);
+
+    const second = await fetch(`${baseUrl}/api/stations`, {
+      headers: { "Accept-Encoding": "gzip" },
+    });
+    assert.equal(second.headers.get("content-encoding"), "gzip");
+    assert.deepEqual(await responseJson(second), restored);
+    assert.notEqual(second.headers.get("etag"), first.headers.get("etag"));
+
+    // And the copy it replaced is gone: one live entry per source, however
+    // many times the file changes while the server runs.
+    assert.equal(
+      (await fs.readdir(cacheDir)).filter((name) =>
+        name.startsWith("stations.json-"),
+      ).length,
+      1,
+    );
+  });
 });
 
 test("sample data and static assets preserve validation and delivery headers", async () => {
