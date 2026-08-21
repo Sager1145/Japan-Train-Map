@@ -32,4 +32,20 @@ for country in jp tw hk mo kr; do
     cp -p "$package" "$target_dir/$country-2025.json"
 done
 
-echo "copied 5 rail packages into $target_dir"
+# The string catalog goes in as raw JSON, under a .json name, and it lives in
+# ios/Resources rather than ios/RailMap on purpose.
+#
+# Inside the target's synchronized folder Xcode would recognise a .xcstrings
+# file and *compile* it into per-language .lproj/Localizable.strings, and the
+# raw JSON would never reach the bundle. RailCore needs the raw file: the
+# lookup rules here are the web app's, not Foundation's — a four-language
+# fallback chain, a country-variant key rule, and {name} placeholders that
+# String(format:) does not speak. NSLocalizedString implements none of that.
+catalog="$here/Resources/Localizable.xcstrings"
+if [ ! -f "$catalog" ]; then
+    echo "error: missing $catalog — run: cd app && node scripts/build/build-port-fixtures.mjs" >&2
+    exit 1
+fi
+cp -p "$catalog" "$target_dir/Localizable.json"
+
+echo "copied 5 rail packages and the string catalog into $target_dir"
