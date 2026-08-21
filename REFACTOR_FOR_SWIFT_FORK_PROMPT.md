@@ -240,6 +240,13 @@ P 层名单（这 14,369 行是分叉的真正资产，也是最该被讲清楚�
 
 ### Phase 7 · Xcode 脚手架（策略已定：**全原生**，见 §六）
 
+> **2026-08-21：本阶段已按用户指示提前开工**，工程在分支 `swift-ios-port` 的 `ios/`。
+> 原计划要求 Phase 0–6 全做完再动 Swift，实际是 Phase 0（基线）＋ Phase 6 的机制
+> （黄金夹具，4 份 / 1,502 例）先落地，然后直接建工程。
+> **这个顺序被实测证明是对的**：夹具在第一次运行就抓到两处 JS/Swift 不一致
+> （见 `ios/README.md`），如果先写完 Swift 再补夹具，这两处会先变成线上缺陷。
+> Phase 1–5 仍然欠着，且仍然要做。
+
 **这一阶段起才允许写 Swift。Phase 0–6 全部完成之前不要建工程。**
 
 1. **工程骨架**：Xcode 工程 + 本地 SPM 包，按 §二 的分层建 target，
@@ -281,11 +288,21 @@ P 层名单（这 14,369 行是分叉的真正资产，也是最该被讲清楚�
 
 ## 五、JS → Apple 技术映射
 
+> **2026-08-21 更新：底图定为 Apple Maps（MapKit），不用 MapLibre Native。**
+> 理由不只是「原生」：这个项目的绘制规则本来就是**从 Apple Maps 量出来的**——
+> `railmap-style.js` 的笔宽与站点直径是对着 macOS「地圖」→ 大眾運輸 在東京駅实测的
+> （见该文件 21–59 行）。把铁路放回它当初对标的底图上，是更短的路。
+> **代价要说清楚**：MapLibre style JSON 本来可以两端共读，MapKit 没有 style spec，
+> 所以 §四 Phase 1 的「图层清单数据化」对 iOS 端**不再直接可用**——设计 token 要
+> 变成渲染参数。这是实打实的损失，不是可以糊弄过去的细节。
+
 | 现在 | iOS 端 | 注意事项 |
 | --- | --- | --- |
-| MapLibre GL JS（vendored 1.4 MB） | **MapLibre Native iOS**（SPM: `MapLibre`） | 同一套 style spec；**表达式支持逐条核实**（Phase 1.2） |
-| GeoJSON source + `setData` | `MLNShapeSource` | 语义接近，更新频率策略要重测 |
-| `line-gradient` + `line-progress` 尾迹 | 同名属性 | 记忆里踩过两个坑，移植时重现 |
+| MapLibre GL JS（vendored 1.4 MB） | **MapKit**（`Map` + `MapPolyline`，SwiftUI） | 无第三方依赖；style spec 不通用，S 层改走渲染参数 |
+| positron 底图 | `.mapStyle(.standard(emphasis: .muted, pointsOfInterest: .excludingAll))` | `.muted` 是 MapKit 自己的「我下面被叠东西了」；不排除 POI 的话苹果自家交通线会和我们抢墨 |
+| GeoJSON source + `setData` | 每区间一条 `MapPolyline` | **已实测**：jp 652 线 / 9,568 区间 / 394,285 顶点能画出来，解码 280 ms；持续平移缩放的帧率**尚未测量** |
+| WGS84 坐标 | 直接用，无需换算 | 已实测：瓦片请求带 `vertical_datum=wgs84`，澳门轻轨叠在西灣大橋上位置正确 |
+| `line-gradient` + `line-progress` 尾迹 | MapKit 无渐变笔画 | **降级项**：尾迹要改成分段着色或自绘 overlay，按新功能排期 |
 | IndexedDB | SQLite (GRDB) 或 Core Data | 行程库有**分片写入**逻辑，别照抄分片，原生直接整存 |
 | `fetch` + Express 后端 | 优先 **bundle 内文件**；远端才 `URLSession` | `_site` 已证明**零后端可跑**（`hasBackend:false`），iOS 走离线优先 |
 | SSE (`app-live-refresh.js`) | 单机版不需要 | 端口留空实现 |
