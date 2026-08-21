@@ -17,10 +17,17 @@ final class RailNetworkStore {
         let name: String
         let nameRoma: String?
         let color: Color
-        /// Kept alongside the resolved `Color` because the renderer batches
+        /// The operator's dark-mode colour where it publishes one. The
+        /// packages have always carried this — `rail-network.js` reads
+        /// `colorDark || color` — and the web app switches palettes with the
+        /// theme. Ignoring it would have made dark mode a different map, not
+        /// a darker one.
+        let colorDark: Color
+        /// Kept alongside the resolved `Color`s because the renderer batches
         /// lines by colour, and a hex string is a cheap, stable bucket key
         /// where `Color` is neither.
         let colorHex: String
+        let colorDarkHex: String
         let rank: Int
         /// The zoom below which this line is not drawn — the web app's own
         /// rule, ported in `RailCore.Visibility`, not a performance knob.
@@ -84,7 +91,9 @@ final class RailNetworkStore {
                 name: line.name,
                 nameRoma: line.nameRoma,
                 color: Color(hex: line.color) ?? .accentColor,
+                colorDark: Color(hex: line.colorDark ?? line.color) ?? .accentColor,
                 colorHex: (line.color ?? "#7a7a7a").lowercased(),
+                colorDarkHex: (line.colorDark ?? line.color ?? "#7a7a7a").lowercased(),
                 rank: line.rank,
                 minZoom: minZoomByLineId[line.id] ?? 0,
                 intervals: CompactPackage.decodeIntervals(line)

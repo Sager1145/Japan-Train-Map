@@ -30,6 +30,9 @@ import SwiftUI
 /// draws — this changes only how they are handed to MapKit.
 struct RailMapView: UIViewRepresentable {
     var lines: [RailNetworkStore.DrawnLine]
+    /// The wire to the control bar, which lives elsewhere in the layout — at
+    /// the bottom of the screen on iPhone, at the foot of the sidebar on iPad.
+    var controller: RailMapController
     /// Reports back what the renderer actually did, so the numbers on screen
     /// are measurements rather than estimates.
     var onRender: (RenderStats) -> Void
@@ -57,11 +60,22 @@ struct RailMapView: UIViewRepresentable {
         mapView.preferredConfiguration = configuration
 
         context.coordinator.mapView = mapView
+        context.coordinator.controller = controller
+        controller.mapView = mapView
+
+        // Dark mode is not just a darker basemap: the packages ship a separate
+        // colour per line for it, so the overlays have to be rebuilt with the
+        // other palette. MapKit recolours itself; these do not.
+        mapView.registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+            (view: MKMapView, _: UITraitCollection) in
+            context.coordinator.appearanceChanged(on: view)
+        }
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
         context.coordinator.onRender = onRender
+        context.coordinator.controller = controller
         context.coordinator.update(lines: lines, on: mapView)
     }
 
@@ -69,6 +83,7 @@ struct RailMapView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         weak var mapView: MKMapView?
+        var controller: RailMapController?
         var onRender: (RenderStats) -> Void = { _ in }
 
         private var lines: [RailNetworkStore.DrawnLine] = []
@@ -86,6 +101,10 @@ struct RailMapView: UIViewRepresentable {
             // reporting it is not: the panel would show "0 lines" as the last
             // measurement of a map that is about to be full.
             guard !lines.isEmpty else {
+                // Two things arrive here: the moment between countries while
+                // the next package decodes, and the network being switched
+                // off from the control bar. Both mean "draw nothing", and
+                // neither is worth reporting as a measurement of zero.
                 self.lines = []
                 mapView.removeOverlays(mapView.overlays)
                 builtForZoom = nil
@@ -97,15 +116,44 @@ struct RailMapView: UIViewRepresentable {
             builtForZoom = nil
             rebuild(on: mapView)
             if let region = Self.region(covering: lines) {
+                // Also handed to the controller so the 定位 button frames what
+                // is actually drawn rather than a remembered extent.
+                let controller = self.controller
+                DispatchQueue.main.async { controller?.fitRegion = region }
                 mapView.setRegion(region, animated: false)
             }
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             rebuild(on: mapView)
+            // The compass needle tracks the map continuously, so heading is
+            // reported on every region change rather than only on rebuilds —
+            // a rotation that does not cross a zoom bucket rebuilds nothing.
+            let heading = mapView.camera.heading
+            let mode = mapView.userTrackingMode
+            DispatchQueue.main.async { [controller] in
+                controller?.mapDidChange(heading: heading, trackingMode: mode)
+            }
+        }
+
+        func mapView(
+            _ mapView: MKMapView, didChange mode: MKUserTrackingMode, animated: Bool
+        ) {
+            let heading = mapView.camera.heading
+            DispatchQueue.main.async { [controller] in
+                controller?.mapDidChange(heading: heading, trackingMode: mode)
+            }
         }
 
         // MARK: - building
+
+        /// Light/dark flipped. The zoom bucket has not changed, so the normal
+        /// guard would skip the rebuild — clear it first, or the map keeps the
+        /// previous palette until the reader happens to zoom.
+        func appearanceChanged(on mapView: MKMapView) {
+            builtForZoom = nil
+            rebuild(on: mapView)
+        }
 
         private func rebuild(on mapView: MKMapView) {
             // Before the first layout pass the view has no width, and the
@@ -138,9 +186,13 @@ struct RailMapView: UIViewRepresentable {
             var colors: [String: UIColor] = [:]
             var vertices = 0
 
+            // One palette or the other, chosen once per rebuild rather than
+            // per line: mixing them would be a map half in each mode.
+            let dark = mapView.traitCollection.userInterfaceStyle == .dark
+
             for line in visible {
-                let key = line.colorHex
-                colors[key] = UIColor(line.color)
+                let key = dark ? line.colorDarkHex : line.colorHex
+                colors[key] = UIColor(dark ? line.colorDark : line.color)
                 for interval in line.intervals {
                     guard interval.count >= 2 else { continue }
                     let kept = Geometry.douglasPeuckerIndices(
