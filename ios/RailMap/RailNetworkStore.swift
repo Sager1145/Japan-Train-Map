@@ -17,7 +17,14 @@ final class RailNetworkStore {
         let name: String
         let nameRoma: String?
         let color: Color
+        /// Kept alongside the resolved `Color` because the renderer batches
+        /// lines by colour, and a hex string is a cheap, stable bucket key
+        /// where `Color` is neither.
+        let colorHex: String
         let rank: Int
+        /// The zoom below which this line is not drawn — the web app's own
+        /// rule, ported in `RailCore.Visibility`, not a performance knob.
+        let minZoom: Int
         /// One polyline per station-to-station interval, exactly as the web
         /// app draws them.
         let intervals: [[Coordinate]]
@@ -70,13 +77,16 @@ final class RailNetworkStore {
         else { throw LoadError.missingResource(country) }
 
         let package = try CompactPackage.load(contentsOf: url)
+        let minZoomByLineId = Visibility.minZoomByLineId(package)
         let lines = package.lines.map { line in
             DrawnLine(
                 id: line.id,
                 name: line.name,
                 nameRoma: line.nameRoma,
                 color: Color(hex: line.color) ?? .accentColor,
+                colorHex: (line.color ?? "#7a7a7a").lowercased(),
                 rank: line.rank,
+                minZoom: minZoomByLineId[line.id] ?? 0,
                 intervals: CompactPackage.decodeIntervals(line)
             )
         }

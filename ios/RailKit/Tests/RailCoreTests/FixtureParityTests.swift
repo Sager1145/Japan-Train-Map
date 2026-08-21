@@ -242,6 +242,60 @@ struct FixtureParityTests {
         }
     }
 
+    // MARK: - level of detail
+
+    struct VisibilityFixture: Decodable {
+        struct Case: Decodable {
+            let country: String
+            let lineId: String
+            let rank: Int?
+            let groupKm: Double
+            let minZoomForRank: Int
+            let minZoomForLength: Int
+        }
+        let cases: [Case]
+    }
+
+    /// Level of detail is a correctness property, not a performance knob: if
+    /// the two apps disagree about which lines a zoom shows, they are showing
+    /// different railways. Every line of all five packages is checked, because
+    /// an off-by-one in the length ladder is invisible in a sample and obvious
+    /// on the map.
+    @Test("the level-of-detail rule keeps the same lines at each zoom")
+    func visibility() throws {
+        let fixture = try Self.decode(VisibilityFixture.self, "visibility.json")
+        #expect(fixture.cases.count > 500)
+
+        for item in fixture.cases {
+            #expect(
+                Visibility.minZoomForRank(item.rank) == item.minZoomForRank,
+                "\(item.lineId) rank \(item.rank.map(String.init) ?? "nil")"
+            )
+            #expect(
+                Visibility.minZoomForLength(totalKm: item.groupKm) == item.minZoomForLength,
+                "\(item.lineId) group \(item.groupKm) km"
+            )
+        }
+    }
+
+    /// The grouping rule as well as the ladder: a line's visibility follows
+    /// its whole physical railway, so pieces stored under several ids appear
+    /// and vanish together rather than the map growing a line in fragments.
+    @Test("group totals drive visibility, not each piece's own length")
+    func visibilityGrouping() throws {
+        let fixture = try Self.decode(VisibilityFixture.self, "visibility.json")
+        for country in ["mo", "hk", "tw", "kr", "jp"] {
+            let package = try Self.package(country: country)
+            let computed = Visibility.minZoomByLineId(package)
+            for item in fixture.cases where item.country == country {
+                #expect(
+                    computed[item.lineId] == item.minZoomForLength,
+                    "\(item.lineId): group key must be operator + NUL + name"
+                )
+            }
+        }
+    }
+
     static func package(country: String) throws -> CompactPackage {
         if let cached = packageCache[country] { return cached }
         var directory = URL(filePath: #filePath).deletingLastPathComponent()

@@ -81,17 +81,54 @@ have been read by both renderers; MapKit has no style spec, so the design
 tokens have to become renderer parameters instead. That is a real loss and it
 is worth being explicit about it.
 
-## Measured on iPhone 17 Pro (iOS 27 simulator)
+## Performance: what the simulator said, and what fixed it
 
-| package | lines | intervals | vertices | decode |
-| --- | ---: | ---: | ---: | ---: |
-| mo | 3 | 14 | 179 | 2 ms |
-| jp | 652 | 9,568 | 394,285 | 280 ms |
+The first version drew one SwiftUI `MapPolyline` per station interval. On
+Japan that is 9,568 overlays, and the simulator was explicit about the result:
 
-The whole Japanese network renders as `MapPolyline` overlays. Decode time is
-the honest part of that number; sustained pan and zoom at national scale has
-not been measured yet, and is the next thing worth measuring rather than
-assuming.
+    Exceeded Metal Buffer threshold of 50000 with a count of 50796 resources,
+    pruning resources now
+    _UIInterruptScrollDecelerationGestureRecognizer has been in possible phase
+    for 21.899041125 seconds
+
+Every overlay carries its own renderer and its own Metal buffers. VectorKit hit
+its ceiling and began pruning mid-render, and the gesture recogniser stalled for
+twenty-two seconds. SwiftUI's `Map` cannot fix this: `MapPolyline` initialises
+from coordinates, `MKMapPoint`s, an `MKPolyline` or an `MKRoute`, and there is
+no batch form — one polyline is always one overlay.
+
+So the map moved to `MKMapView` behind `UIViewRepresentable`, where
+`MKMultiPolyline` exists. Three changes, in order of how much they bought:
+
+1. **Batching.** Every line sharing a colour becomes one `MKMultiPolyline`
+   drawn by one `MKMultiPolylineRenderer`.
+2. **Level of detail.** `RailCore.Visibility` is the web app's own rule ported
+   over, not an iOS invention — a line whose group is short drops out of the
+   wide views. Reproducing it is what keeps both apps showing the *same*
+   railway at a given zoom; the culling is a side effect.
+3. **Decimation.** Douglas–Peucker with epsilon set to half a pixel at the
+   current zoom. This one *is* ours — MapLibre gets it free from geojson-vt and
+   MapKit has no equivalent. Bounded at half a pixel it cannot change what a
+   reader sees.
+
+Japan (652 lines / 9,568 intervals / 394,285 vertices), measured on the iPhone
+17 Pro simulator:
+
+| | before | after, national view (z4.7) | after, city view (z13.3) |
+| --- | ---: | ---: | ---: |
+| overlays | 9,568 | **165** | 340 |
+| drawn vertices | 394,285 | **12,433** | 89,785 |
+| lines drawn | 652 | 262 | 652 |
+| rebuild | — | 98 ms | 229 ms |
+| Metal prune events | yes | **0** | **0** |
+| gesture stalls | 21.9 s | **0** | **0** |
+
+Package decode is unchanged at ~270 ms and happens off the main actor.
+
+Rebuilds are keyed to the integer zoom bucket, so panning within a zoom level
+does no work at all; only crossing a bucket boundary re-decimates. What is
+still unmeasured is a sustained pinch across many buckets in quick succession —
+that is the next thing to put a number on rather than assume.
 
 ## Two environment notes that cost time
 

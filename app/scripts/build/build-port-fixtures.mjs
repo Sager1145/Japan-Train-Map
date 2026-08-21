@@ -229,6 +229,48 @@ function intervalsFixture() {
   };
 }
 
+function visibilityFixture() {
+  // Every line of every package, not a sample: the LOD rule decides what a
+  // reader sees at a national view, and an off-by-one in the length ladder is
+  // invisible in a sample and glaring on the map.
+  const cases = [];
+  for (const country of ["mo", "hk", "tw", "kr", "jp"]) {
+    const file = path.join(APP_DIR, "public", "rail", `${country}-2025.json`);
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+
+    // Mirrors buildNetworkFromCompactPackage: the length that decides a line's
+    // visibility is its GROUP's total, so that every piece of one physical
+    // railway appears and vanishes as a unit.
+    const groupKm = new Map();
+    const groupKey = (line) => `${line.operator}\u0000${line.name}`;
+    for (const line of pkg.lines) {
+      const km = line.segments.reduce((sum, row) => sum + row[0], 0);
+      groupKm.set(groupKey(line), (groupKm.get(groupKey(line)) || 0) + km);
+    }
+
+    for (const line of pkg.lines)
+      cases.push({
+        country,
+        lineId: line.id,
+        rank: line.rank ?? null,
+        groupKm: groupKm.get(groupKey(line)),
+        minZoomForRank: RailNetwork.minZoomForRank(line.rank),
+        minZoomForLength: RailNetwork.minZoomForLength(
+          groupKm.get(groupKey(line)),
+        ),
+      });
+  }
+  return {
+    describes: "rail-network.js minZoomForRank / minZoomForLength",
+    contract:
+      "The level-of-detail rule, and therefore what a reader sees at a given " +
+      "zoom. Grouping is by operator AND display name joined with a NUL: a " +
+      "generic name such as 本線 would otherwise bind unrelated railways " +
+      "across the country into one visibility unit.",
+    cases,
+  };
+}
+
 // ── write ───────────────────────────────────────────────────────────────
 
 function build() {
@@ -243,6 +285,7 @@ function build() {
     "distance.json": distanceFixture(sample),
     "simplify.json": simplifyFixture(sample),
     "intervals.json": intervalsFixture(),
+    "visibility.json": visibilityFixture(),
   };
 }
 

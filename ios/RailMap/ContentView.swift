@@ -1,5 +1,4 @@
 import CoreLocation
-import MapKit
 import RailCore
 import SwiftUI
 
@@ -11,55 +10,27 @@ import SwiftUI
 /// `railmap-style.js` are measured against macOS 「地圖」→ 大眾運輸 — so the
 /// railway is being put back over the reference it was designed against.
 ///
-/// The basemap is asked for `.muted` emphasis, which is MapKit's own term for
-/// "something is being laid over me". Without it Apple's own transit lines
-/// compete with ours for the same ink.
+/// The map itself is `MKMapView` (see ``RailMapView``), not SwiftUI's `Map`.
+/// That is a measured decision, not a preference: SwiftUI's `MapPolyline` has
+/// no batch initialiser, so a national network becomes thousands of overlays
+/// and MapKit starts pruning Metal buffers mid-render.
 struct ContentView: View {
     @State private var store = RailNetworkStore()
     @State private var country = "mo"
-    @State private var camera: MapCameraPosition = .automatic
-    @State private var showsDetail = true
+    @State private var render: RailMapView.RenderStats?
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            map
+            RailMapView(lines: lines) { render = $0 }
+                .ignoresSafeArea()
             controls
         }
         .task(id: country) { store.load(country: country) }
-        .onChange(of: linesKey) { camera = .automatic }
     }
-
-    // MARK: - map
-
-    private var map: some View {
-        Map(position: $camera) {
-            ForEach(lines) { line in
-                // One MapPolyline per station interval, matching the web app's
-                // feature granularity. Drawing a line as a single polyline
-                // would be fewer objects but would lose the interval identity
-                // that selection, mileage and ride overlays all key on.
-                ForEach(Array(line.intervals.enumerated()), id: \.offset) { _, interval in
-                    MapPolyline(coordinates: interval.map(\.clLocation))
-                        .stroke(
-                            line.color,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
-                        )
-                }
-            }
-        }
-        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-        .mapControls {
-            MapCompass()
-            MapScaleView()
-        }
-        .ignoresSafeArea(edges: .top)
-    }
-
-    // MARK: - controls
 
     private var controls: some View {
         VStack(spacing: 12) {
-            if showsDetail { statusCard }
+            statusCard
             Picker("Country", selection: $country) {
                 ForEach(RailNetworkStore.countries, id: \.code) { entry in
                     Text(entry.label).tag(entry.code)
@@ -72,54 +43,53 @@ struct ContentView: View {
         .padding(12)
     }
 
+    @ViewBuilder
     private var statusCard: some View {
-        Group {
-            switch store.state {
-            case .idle:
-                Text("Idle")
-            case .loading:
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Decoding package…")
-                }
-            case .loaded(let code, let lines, let elapsed):
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(code.uppercased()) · \(lines.count) lines")
-                        .font(.headline)
-                    // Vertices and decode time are on screen on purpose. The
-                    // open question for this fork is whether MapKit can carry
-                    // a national network as overlays at all, and the answer is
-                    // a number, not an impression.
+        switch store.state {
+        case .idle:
+            Text("Idle").frame(maxWidth: .infinity, alignment: .leading)
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Decoding package…")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .loaded(let code, let lines, let elapsed):
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(code.uppercased()) · \(lines.count) lines")
+                    .font(.headline)
+                Text(
+                    "\(lines.reduce(0) { $0 + $1.intervals.count }) intervals · "
+                        + "\(lines.reduce(0) { $0 + $1.vertexCount }) vertices · "
+                        + "decoded in \(elapsed.milliseconds) ms"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                // What the renderer actually submitted, at this zoom. The
+                // whole point of the MKMapView rewrite is the gap between
+                // these two lines, so both are on screen.
+                if let render {
                     Text(
-                        "\(lines.reduce(0) { $0 + $1.intervals.count }) intervals · "
-                            + "\(lines.reduce(0) { $0 + $1.vertexCount }) vertices"
+                        "z\(String(format: "%.1f", render.zoom)) → "
+                            + "\(render.visibleLines) lines · \(render.overlays) overlays · "
+                            + "\(render.vertices) drawn vertices · \(render.buildMilliseconds) ms"
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                    Text("decoded in \(elapsed.milliseconds) ms")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .foregroundStyle(.tint)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            case .failed(let message):
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case .failed(let message):
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    // MARK: - derived
 
     private var lines: [RailNetworkStore.DrawnLine] {
         if case .loaded(_, let lines, _) = store.state { return lines }
         return []
-    }
-
-    private var linesKey: Int {
-        if case .loaded(let code, let lines, _) = store.state { return code.hashValue ^ lines.count }
-        return 0
     }
 }
 
