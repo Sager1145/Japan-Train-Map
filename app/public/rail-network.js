@@ -2275,6 +2275,11 @@
   return Object.freeze({
     DEFAULT_LINE_COLOR,
     buildNetworkFromCompactPackage,
+    // Exported for the Swift port's golden fixtures: the fixture generator
+    // must call THIS decoder, never a copy of it, or the fixture only proves
+    // that the copy and the port agree. Also the first seam of the decode /
+    // derive / index split this file is scheduled for.
+    decodeIntervals,
     minZoomForRank,
     minZoomForLength,
     continuousCoordinatesForLine,

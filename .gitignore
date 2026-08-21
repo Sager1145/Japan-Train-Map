@@ -115,3 +115,10 @@ app/data/raw/railway/hk/rebuild-inventory.zip
 # not project source — .claude/launch.json stays tracked because the dev-server
 # preview reads it.
 .claude/skills/
+
+# Swift/iOS fork build products. The Xcode project and the local RailKit
+# package are committed; everything a build generates is not.
+ios/**/.build/
+ios/**/.swiftpm/
+ios/**/xcuserdata/
+ios/DerivedData/
