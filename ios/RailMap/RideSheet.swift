@@ -85,9 +85,27 @@ struct RideSheetMetrics: Equatable {
 
     /// The grab strip above every card's content.
     static let handleHeight: CGFloat = 28
+    /// How far the panel is inset from the screen's side edges.
+    ///
+    /// It is a card floating over the map, not a drawer welded to the bottom of
+    /// the window: the map has to stay visible past it on both sides, which is
+    /// what keeps this a map workspace rather than a list with a picture behind
+    /// it. The same inset at every detent — a margin that collapsed as the
+    /// panel grew would read as the card changing shape rather than size.
+    static let horizontalMargin: CGFloat = 10
+    /// §6.4's `radius-sheet`, at the top of its 24–28 range because every
+    /// corner is rounded here, not just the two at the top.
+    static let cornerRadius: CGFloat = 28
     /// Below this the panel reads as a bar rather than a card, and the map
     /// gains nothing for the loss.
     static let minimumCompact: CGFloat = 96
+    /// The inline navigation bar the ride list carries at its top.
+    ///
+    /// The one number here that is measured from the platform rather than from
+    /// the content, and it is legitimate for the same reason the others are
+    /// not: an inline `navigationBarTitleDisplayMode` bar is a system metric,
+    /// not a row whose height depends on the language it is written in.
+    static let inlineNavigationBar: CGFloat = 44
 
     func height(of stage: SheetStage, for route: RideRoute) -> CGFloat {
         switch stage {
@@ -136,25 +154,64 @@ struct RideSheetMetrics: Equatable {
     }
 
     private func compactHeight(for route: RideRoute) -> CGFloat {
-        let wanted = Self.handleHeight + compactChrome + safeAreaBottom
+        let wanted: CGFloat = switch route.kind {
+        case .ride:
+            // §4.3: measured from the card's own top row, so the number is
+            // right in Japanese, at an accessibility text size, and on a phone
+            // with no home indicator.
+            Self.handleHeight + compactChrome + safeAreaBottom
+        case .home:
+            // Collapsed means COLLAPSED: the grab strip, the list's own
+            // navigation bar, and the strip the tab bar sits over. Everything
+            // below that is under the bar, and the map has the rest of the
+            // screen.
+            //
+            // This used to be 34% of the window, which on a 874 pt phone is a
+            // 359 pt panel — two fifths of the display, and not something a
+            // reader would call collapsed. The fraction was defending against
+            // a constant that "shows four journeys on a Pro Max and one on an
+            // SE", but that is an argument about how much LIST to show, and at
+            // this detent the answer is none: the list is what the other two
+            // detents are for.
+            Self.handleHeight + Self.inlineNavigationBar + safeAreaBottom
+        }
         // Never so tall that compact and medium are the same gesture.
         return min(max(wanted, Self.minimumCompact), mediumHeight(for: route) * 0.85)
     }
 
     private func mediumHeight(for route: RideRoute) -> CGFloat {
+        // Every detent is measured from the SCREEN's bottom edge, not from the
+        // top of the tab bar: the panel passes underneath the bar's material
+        // and runs to the bottom of the display, so the height it needs is the
+        // fraction of the window it should cover PLUS the strip the bar sits
+        // over. `compactHeight` adds the same term for the same reason.
+        //
         // At an accessibility text size the same content needs more room, so
         // medium grows rather than the reader having to expand every time.
-        if isAccessibilitySize { return containerHeight * 0.76 }
-        return switch route.kind {
-        case .home: containerHeight * 0.58
-        case .ride: containerHeight * 0.55
+        if isAccessibilitySize { return containerHeight * 0.76 + safeAreaBottom }
+        let fraction: CGFloat = switch route.kind {
+        case .home: 0.58
+        case .ride: 0.55
         }
+        return containerHeight * fraction + safeAreaBottom
     }
 
-    /// Not the full window: the card stops below the status bar so the map is
-    /// still legibly *there*, which is what keeps the layout map-first.
+    /// The full screen, less the status bar.
+    ///
+    /// The card stops below the status bar rather than under it, so the map is
+    /// still legibly *there* — which is what keeps the layout map-first even at
+    /// the largest detent. `safeAreaBottom` is added for the same reason it is
+    /// added to the other two: the panel is measured from the bottom of the
+    /// display, underneath the tab bar.
+    /// The whole display. Requested, and it means it: the panel covers the
+    /// screen, with the status bar reading over the glass rather than over a
+    /// strip of map.
+    ///
+    /// Every detent is `containerHeight`-relative plus `safeAreaBottom`,
+    /// because the panel runs past the tab bar to the bottom of the display and
+    /// is therefore measured from that edge, not from the top of the bar.
     private var expandedHeight: CGFloat {
-        containerHeight - max(safeAreaTop, 12)
+        containerHeight + safeAreaBottom
     }
 }
 
@@ -225,24 +282,36 @@ extension View {
     /// Not `railGlass`. Glass is for controls floating *on* the map; this is
     /// the surface the map is read against, and at 60% of the window a live
     /// glass refraction of a moving map is both expensive and unreadable.
+    /// The panel's surface: the system's own floating-card material, rounded
+    /// on every corner.
+    ///
+    /// Three things changed here at the same time, and they are one decision.
+    ///
+    /// **Every corner, not two.** The panel is inset from the screen's sides
+    /// (``RideSheetMetrics/horizontalMargin``) and runs past the tab bar to the
+    /// bottom of the display, so it reads as a card floating over the map. Two
+    /// square bottom corners on an inset card read as a drawer that has been
+    /// cut off.
+    ///
+    /// **The system's glass, not a hand-rolled surface.** This used to fill
+    /// `.regularMaterial` and then tint it with `accentColor.opacity(0.05)`.
+    /// That tint is the reason the panel read as a flat slab rather than as
+    /// something the map shows through: it is a constant colour laid over a
+    /// material whose whole job is to vary with what is behind it. `railGlass`
+    /// is Liquid Glass on iOS 26 and later and the same material below it, with
+    /// no tint of ours on top — the default appearance, which is what a reader
+    /// already knows how to interpret.
+    ///
+    /// **A hairline, not a shadow that only exists at the top.** The old
+    /// `y: -4` shadow assumed a panel welded to the bottom edge. A floating
+    /// card is separated from the map on all four sides.
     func railSheetSurface() -> some View {
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: 24, bottomLeadingRadius: 0,
-            bottomTrailingRadius: 0, topTrailingRadius: 24,
-            style: .continuous
-        )
-        return background {
-            shape
-                .fill(.regularMaterial)
-                .overlay { shape.fill(Color.accentColor.opacity(0.05)) }
-                .overlay(alignment: .top) {
-                    shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                }
-                .compositingGroup()
-                .shadow(color: .black.opacity(0.16), radius: 18, y: -4)
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .clipShape(shape)
+        let shape = RoundedRectangle(
+            cornerRadius: RideSheetMetrics.cornerRadius, style: .continuous)
+        return clipShape(shape)
+            .railGlass(in: shape)
+            .overlay { shape.strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.18), radius: 20, y: 2)
     }
 }
 
@@ -251,9 +320,14 @@ extension View {
 /// It is a button as well as a drag target because a resize handle that can
 /// only be dragged is unreachable by Switch Control and Voice Control, and
 /// because tapping a handle to toggle open is a thing readers try.
+/// The label and the value are passed in already localized rather than being
+/// looked up here. `String(localized:)` would resolve through `.lproj` bundles
+/// this app does not ship — its catalog is the web app's, read at runtime by
+/// `RailCore.Localization` — so a `String(localized: "Compact")` is English in
+/// all four languages and looks translated while it is not.
 struct SheetHandle: View {
-    var stage: SheetStage
     var label: String
+    var value: String
     var action: () -> Void
 
     var body: some View {
@@ -266,17 +340,7 @@ struct SheetHandle: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
-        .accessibilityValue(Text(stage.accessibilityName))
-    }
-}
-
-extension SheetStage {
-    var accessibilityName: String {
-        switch self {
-        case .compact: String(localized: "Compact")
-        case .medium: String(localized: "Medium")
-        case .expanded: String(localized: "Expanded")
-        }
+        .accessibilityValue(Text(value))
     }
 }
 

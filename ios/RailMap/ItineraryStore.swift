@@ -58,30 +58,58 @@ final class ItineraryStore {
     /// whole `TrainStore` (schema version included) and not just the trains.
     private(set) var store: TrainStore?
 
+    /// What a save actually did (§8.3).
+    ///
+    /// `replace` used to return nothing, which meant the two ways it can
+    /// decline — an import owns the store, or the new id belongs to another
+    /// journey — were indistinguishable from success at every call site. The
+    /// id collision in particular was resolved *silently*: the record was
+    /// written back under its old id and nobody was told. §8.3 forbids the
+    /// louder version of that ("ID 冲突不能静默覆盖另一条记录"), and this is
+    /// what lets a surface say which of the two happened.
+    ///
+    /// Adding a return value keeps every existing `itineraries.replace(...)`
+    /// call compiling untouched.
+    enum SaveOutcome: Equatable {
+        case saved
+        /// Written, but under `keptID`: `requestedID` is another journey's.
+        case savedKeepingID(keptID: String, requestedID: String)
+        /// Nothing was written — an import owns the store right now.
+        case refusedImportRunning
+        /// Nothing was written — no journey with that id is in the store.
+        case notFound
+    }
+
     /// Replace one edited train and rebuild the date buckets from the same
     /// ported rules used on load. The editor commits a complete draft once,
     /// so views never observe a half-edited canonical record.
-    func replace(_ train: Train, replacing originalID: String, country: String) {
+    @discardableResult
+    func replace(
+        _ train: Train, replacing originalID: String, country: String
+    ) -> SaveOutcome {
         // A running import owns the store (§8.7): an edit committed against
         // the pre-import trains would be overwritten seconds later without a
         // trace of what happened to it.
-        guard !isImporting else { return }
+        guard !isImporting else { return .refusedImportRunning }
         guard var next = store,
             let index = next.trains.firstIndex(where: { $0.id == originalID })
-        else { return }
+        else { return .notFound }
 
         // An id edit cannot silently collide with another record. Leave the
         // original id in place; the validation surface can explain the
         // collision without destroying either journey.
         var candidate = train
+        var outcome = SaveOutcome.saved
         if candidate.id != originalID,
             next.trains.contains(where: { $0.id == candidate.id })
         {
+            outcome = .savedKeepingID(keptID: originalID, requestedID: candidate.id)
             candidate.id = originalID
         }
         next.trains[index] = candidate
         store = next
         selectedTrainID = candidate.id
+        publishRecordIndex(country: country)
 
         Task {
             do {
@@ -90,6 +118,7 @@ final class ItineraryStore {
                 state = .failed(error.localizedDescription)
             }
         }
+        return outcome
     }
 
     @discardableResult
@@ -130,12 +159,45 @@ final class ItineraryStore {
 
     @discardableResult
     func rebuildRouteSections(_ id: String, country: String) -> Int? {
+        rebuildRoute(id, country: country)?.sections
+    }
+
+    /// What a rebuild did, in the two parts §8.4 asks the interface to keep
+    /// apart: the sections were recomputed from the stops, and *then* the
+    /// geometry is solved for them.
+    struct RebuildOutcome: Equatable {
+        /// Route sections written back to the record.
+        var sections: Int
+        /// Whether a geometry solve actually started. False when the app is
+        /// running without a route store beneath it, and the surface then says
+        /// "sections rebuilt" instead of claiming a solve nobody is running.
+        var solving: Bool
+    }
+
+    /// `rebuildRouteSections`, plus the half that was missing.
+    ///
+    /// Recomputing `route_sections` changes the record, and until now that was
+    /// the whole operation: the shell reloads route geometry on a key built
+    /// from train ids and visibility, neither of which a rebuild moves, so the
+    /// map kept drawing the geometry of the *previous* section list. Asking
+    /// the route store to solve this one journey again is what makes §8.4's
+    /// "并让地图更新" true.
+    @discardableResult
+    func rebuildRoute(_ id: String, country: String) -> RebuildOutcome? {
         guard let train = store?.trains.first(where: { $0.id == id }) else { return nil }
         var rebuilt = train
         rebuilt.routeSections = TrainValidation.normalizeExportTrain(
             train, country: country, stations: .empty).routeSections
-        replace(rebuilt, replacing: id, country: country)
-        return rebuilt.routeSections?.count ?? 0
+        guard case .saved = replace(rebuilt, replacing: id, country: country) else { return nil }
+        let solving = RideStatusCenter.shared.resolveAgain(rebuilt, country: country)
+        return RebuildOutcome(sections: rebuilt.routeSections?.count ?? 0, solving: solving)
+    }
+
+    /// Publish the ids the store holds, so the editor can see an id collision
+    /// before the save is refused rather than after (§8.3).
+    private func publishRecordIndex(country: String) {
+        RideStatusCenter.shared.publish(
+            trainIDs: Set(store?.trains.map(\.id) ?? []), country: country)
     }
 
     func move(_ id: String, by offset: Int, country: String) {
@@ -264,6 +326,7 @@ final class ItineraryStore {
         store = next
         selectedTrainID = commit.selectedTrainID
         state = .loaded(grouped)
+        publishRecordIndex(country: country)
         return ImportSummary(
             mode: mode, imported: commit.ids.count, ids: commit.ids,
             storeCount: commit.trains.count)
@@ -299,6 +362,7 @@ final class ItineraryStore {
         let next = TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: session.trains)
         store = next
         selectedTrainID = session.selectedTrainID
+        publishRecordIndex(country: country)
         let selection = session.selectedTrainID
         Task {
             do {
@@ -346,6 +410,7 @@ final class ItineraryStore {
         guard operation(&workspace) != nil else { return workspace.selectedTrainID }
         self.store = workspace.store
         selectedTrainID = workspace.selectedTrainID
+        publishRecordIndex(country: country)
         let selection = workspace.selectedTrainID
         Task {
             do {
@@ -384,6 +449,7 @@ final class ItineraryStore {
                     }
                 }
                 self.store = store
+                publishRecordIndex(country: country)
                 state = .loaded(try await Self.group(store: store, country: country))
                 selectedTrainID = nil
             } catch {

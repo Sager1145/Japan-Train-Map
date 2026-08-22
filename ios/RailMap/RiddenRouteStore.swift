@@ -82,11 +82,25 @@ final class RiddenRouteStore {
     private(set) var state: LoadState = .idle
     private(set) var rides: [DrawnRide] = []
     private var loadTask: Task<Void, Never>?
+    /// What the last load was for, so a single-journey re-solve (``resolve``)
+    /// can put its answer back into the same `.loaded` state rather than
+    /// inventing a dataset name.
+    private var loadedDataset: String?
+    private var loadedCountry: String?
 
     func load(dataset: String, country: String, trains: [Train]) {
         loadTask?.cancel()
         state = .loading
+        loadedDataset = dataset
+        loadedCountry = country
+        // The status centre is how the journey detail and the editor — neither
+        // of which is handed this store — learn what became of a route. See
+        // `RideStatusCenter` for why that is a published projection rather
+        // than an initialiser argument.
+        RideStatusCenter.shared.routeStore = self
+        RideStatusCenter.shared.publish(phase: .loading, country: country)
         let wanted = Dictionary(uniqueKeysWithValues: trains.map { ($0.id, $0) })
+        let wantedIDs = trains.map(\.id)
         loadTask = Task {
             do {
                 let decoded = try await Self.decode(
@@ -94,11 +108,17 @@ final class RiddenRouteStore {
                 try Task.checkCancellation()
                 rides = decoded
                 state = .loaded(dataset: dataset, rides: decoded)
+                RideStatusCenter.shared.publish(
+                    entries: Self.statusEntries(for: decoded, wanted: wantedIDs),
+                    phase: .loaded,
+                    country: country)
             } catch is CancellationError {
                 return
             } catch {
                 rides = []
                 state = .failed(error.localizedDescription)
+                RideStatusCenter.shared.publish(
+                    entries: [:], phase: .failed(error.localizedDescription), country: country)
             }
         }
     }
@@ -107,6 +127,86 @@ final class RiddenRouteStore {
         loadTask?.cancel()
         rides = []
         state = .idle
+        loadedDataset = nil
+        loadedCountry = nil
+        RideStatusCenter.shared.clear()
+    }
+
+    /// Solve one journey's route again, in place (§8.4).
+    ///
+    /// The reason this exists: rebuilding `route_sections` changes the record
+    /// but not the id list, and the shell reloads routes on a key built from
+    /// ids and visibility. Without this, a rebuild left the OLD geometry on
+    /// the map under a NEW section list — the one failure mode worse than
+    /// showing nothing, because the drawn line stops being a picture of the
+    /// record it claims to be.
+    ///
+    /// Nothing is deleted from the itinerary store here, and nothing is
+    /// straight-lined: a journey whose new sections solve to nothing keeps its
+    /// record and loses its strokes, which is what "unavailable" means.
+    func resolve(_ train: Train, country: String) {
+        // A region switched under the rebuild would solve this journey against
+        // another country's package. Refuse rather than draw it.
+        guard loadedCountry == nil || loadedCountry == country else { return }
+        let id = train.id
+        RideStatusCenter.shared.beginResolving(id)
+        Task {
+            let solved = await Task.detached(priority: .userInitiated) { () -> DrawnRide? in
+                try? Self.resolveOne(train, country: country)
+            }.value
+
+            if let solved {
+                if let index = rides.firstIndex(where: { $0.id == id }) {
+                    rides[index] = solved
+                } else {
+                    rides.append(solved)
+                }
+            } else {
+                rides.removeAll { $0.id == id }
+            }
+            if let loadedDataset, case .loaded = state {
+                state = .loaded(dataset: loadedDataset, rides: rides)
+            }
+            RideStatusCenter.shared.finishResolving(
+                id,
+                entry: solved.map {
+                    RideStatusCenter.Entry(outcome: $0.route, drawnSegments: $0.segments.count)
+                } ?? RideStatusCenter.Entry(outcome: .unavailable(expected: 0), drawnSegments: 0))
+        }
+    }
+
+    /// One journey through the same cache-then-solve path a full load uses.
+    ///
+    /// `nil` means the journey asked for no sections at all, which the caller
+    /// records as `unavailable(expected: 0)` rather than as silence.
+    private nonisolated static func resolveOne(
+        _ train: Train, country: String
+    ) throws -> DrawnRide? {
+        let cached = loadCached([train], country: country)
+        if let ride = cached.rides.first { return ride }
+        return try solveMissing(cached.missing, country: country).first
+    }
+
+    /// What each journey the load was asked about ended up with.
+    ///
+    /// A train that produced no `DrawnRide` at all is recorded as
+    /// `unavailable(expected: 0)`: `solveMissing` skips a train whose
+    /// canonical section list is empty, and leaving those absent would make
+    /// "this journey has nothing to draw" indistinguishable from "this journey
+    /// was never looked at".
+    private nonisolated static func statusEntries(
+        for rides: [DrawnRide], wanted: [String]
+    ) -> [String: RideStatusCenter.Entry] {
+        var entries: [String: RideStatusCenter.Entry] = [:]
+        for ride in rides {
+            entries[ride.id] = RideStatusCenter.Entry(
+                outcome: ride.route, drawnSegments: ride.segments.count)
+        }
+        for id in wanted where entries[id] == nil {
+            entries[id] = RideStatusCenter.Entry(
+                outcome: .unavailable(expected: 0), drawnSegments: 0)
+        }
+        return entries
     }
 
     private nonisolated static func decode(

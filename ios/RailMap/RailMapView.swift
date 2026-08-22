@@ -79,6 +79,16 @@ struct RailMapView: View {
     /// memberwise initialiser and `ContentView`'s call site is untouched.
     @Environment(DisplaySettings.self) private var displaySettings: DisplaySettings?
 
+    /// The reader's language, for the three places on this map that carry a
+    /// station's NAME rather than its mark: the network's station callout, the
+    /// ride's own station captions, and the origin / destination cards.
+    ///
+    /// Read from the environment for the same reason `displaySettings` is —
+    /// `AppShell` publishes one and the map is not on the path between it and
+    /// the settings panel — and optional for the same reason: a preview that
+    /// installed none draws the packages' own names rather than trapping.
+    @Environment(AppLocalization.self) private var localization: AppLocalization?
+
     /// A snapshot of the 顯示調節 values, taken during a SwiftUI update and
     /// then carried by value.
     ///
@@ -151,11 +161,14 @@ struct RailMapView: View {
             stations: stations,
             rides: rides,
             selectedTrainID: selectedTrainID,
+            selectedDate: selectedDate,
             showsNetwork: showsNetwork,
             basemapOpacity: basemapOpacity,
             controller: controller,
             playback: playback,
             display: displaySettings.map(DisplayValues.init) ?? DisplayValues(),
+            naming: localization.map(MapNaming.init) ?? MapNaming(),
+            localization: localization,
             onSelectRide: onSelectRide,
             onRender: onRender
         )
@@ -167,11 +180,17 @@ struct RailMapView: View {
         var stations: [RailNetworkStore.DrawnStation]
         var rides: [RiddenRouteStore.DrawnRide]
         var selectedTrainID: String?
+        var selectedDate: String
         var showsNetwork: Bool
         var basemapOpacity: Double
         var controller: RailMapController
         var playback: PlaybackController
         var display: DisplayValues
+        /// What the reader's language settles, as a value the renderer can
+        /// compare — see ``MapNaming``. The lookups themselves go through
+        /// `localization`.
+        var naming: MapNaming
+        var localization: AppLocalization?
         var onSelectRide: (String?) -> Void
         var onRender: (RenderStats) -> Void
 
@@ -216,6 +235,7 @@ struct RailMapView: View {
             context.coordinator.controller = controller
             context.coordinator.playback = playback
             context.coordinator.onSelectRide = onSelectRide
+            context.coordinator.localization = localization
             playback.mapRenderer = context.coordinator
             playback.mapRendererViewSize = mapView.bounds.size
             context.coordinator.update(
@@ -223,9 +243,11 @@ struct RailMapView: View {
                 stations: stations,
                 rides: rides,
                 selectedTrainID: selectedTrainID,
+                selectedDate: selectedDate,
                 showsNetwork: showsNetwork,
                 basemapOpacity: basemapOpacity,
                 display: display,
+                naming: naming,
                 on: mapView
             )
         }
@@ -239,11 +261,17 @@ struct RailMapView: View {
             weak var playback: PlaybackController?
             var onRender: (RenderStats) -> Void = { _ in }
             var onSelectRide: (String?) -> Void = { _ in }
+            /// The localisation engine's owner. A `@MainActor` class, and
+            /// therefore `Sendable`, so a nonisolated coordinator may hold it;
+            /// see ``localized(_:code:)`` for how it is read.
+            var localization: AppLocalization?
 
             private var lines: [RailNetworkStore.DrawnLine] = []
             private var stations: [RailNetworkStore.DrawnStation] = []
             private var rides: [RiddenRouteStore.DrawnRide] = []
             private var selectedTrainID: String?
+            private var selectedDate = Dates.allDates
+            private var naming = MapNaming()
             private var minZoomByLineId: [String: Int] = [:]
             private var showsNetwork = true
             private var basemapOpacity = 1.0
@@ -278,15 +306,17 @@ struct RailMapView: View {
                 stations: [RailNetworkStore.DrawnStation],
                 rides: [RiddenRouteStore.DrawnRide],
                 selectedTrainID: String?,
+                selectedDate: String,
                 showsNetwork: Bool,
                 basemapOpacity: Double,
                 display: DisplayValues,
+                naming: MapNaming,
                 on mapView: MKMapView
             ) {
                 let linesChanged = lines.map(\.id) != self.lines.map(\.id)
                 let stationsChanged = stations.map(\.id) != self.stations.map(\.id)
-                let ridesChanged = rides.map { "\($0.id):\($0.vertexCount):\($0.colorHex)" }
-                    != self.rides.map { "\($0.id):\($0.vertexCount):\($0.colorHex)" }
+                let ridesChanged = rides.map(Self.rideSignature)
+                    != self.rides.map(Self.rideSignature)
                 let selectionChanged = selectedTrainID != self.selectedTrainID
                 let visibilityChanged = showsNetwork != self.showsNetwork
                     || basemapOpacity != self.basemapOpacity
@@ -294,11 +324,19 @@ struct RailMapView: View {
                 // something already drawn, so a change to one is a rebuild like
                 // any other rather than a separate code path.
                 let displayChanged = display != self.display
+                // The date scope is paint, not a filter: it decides which
+                // rides draw at `dimOpacity` and which half of an overnight
+                // one is dashed. Both are properties of things already built,
+                // so a scope change is a rebuild like the others.
+                let dateChanged = selectedDate != self.selectedDate
+                let namingChanged = naming != self.naming
                 guard linesChanged || stationsChanged || ridesChanged
                         || selectionChanged || visibilityChanged
-                        || displayChanged else { return }
+                        || displayChanged || dateChanged || namingChanged else { return }
 
                 self.display = display
+                self.selectedDate = selectedDate
+                self.naming = naming
                 self.showsNetwork = showsNetwork
                 self.basemapOpacity = basemapOpacity
                 self.selectedTrainID = selectedTrainID
@@ -334,6 +372,65 @@ struct RailMapView: View {
                 if framePending, let region = Self.region(covering: lines) {
                     framePending = false
                     mapView.setRegion(region, animated: false)
+                }
+            }
+
+            /// Everything about one ride that changes what is DRAWN for it.
+            ///
+            /// The stop count and the day-span signature are here because they
+            /// are now inputs: the stops decide which dots exist and what role
+            /// each carries, and the day span decides where the cross-day
+            /// diamond lands and which segments dash. Before those were read,
+            /// a ride edited into a different stop list with the same geometry
+            /// would have kept its old markers.
+            static func rideSignature(_ ride: RiddenRouteStore.DrawnRide) -> String {
+                "\(ride.id):\(ride.vertexCount):\(ride.colorHex):\(ride.visible ? 1 : 0)"
+                    + ":\(ride.stops.count):\(ride.daySpan.sig)"
+            }
+
+            /// The reader's date scope, as the paint rules read it.
+            private var dateScope: MapDateScope.Scope {
+                MapDateScope.Scope(
+                    date: selectedDate, dimOpacity: display.dimOpacity,
+                    showFullCrossDay: display.showFullCrossDay)
+            }
+
+            /// A station name and its reading sublines, in the reader's
+            /// language.
+            struct Named: Sendable {
+                var display: String
+                var readings: [Localization.Reading]
+            }
+
+            /// `stationNameReadings(name, code)` — the ONE spelling of the
+            /// display rule, resolved through the app's localisation engine.
+            ///
+            /// `MainActor.assumeIsolated` rather than a pre-resolved table.
+            /// Japan ships 10,217 stations and a `UIViewRepresentable` has
+            /// nowhere to memoise a table of them without changing the view's
+            /// initialiser, which `ContentView` calls — so the table would be
+            /// rebuilt on every SwiftUI update, which is far more work than
+            /// the handful of lookups a rebuild actually makes.
+            ///
+            /// The assumption is sound and it is checkable: every path into
+            /// this coordinator is a main-thread callback. `makeUIView` and
+            /// `updateUIView` are `@MainActor` by `UIViewRepresentable`'s own
+            /// declaration, MapKit delivers every `MKMapViewDelegate` message
+            /// on the main thread, `PlaybackController` is `@MainActor` and so
+            /// is everything it calls `renderPlayback` from, and the tap and
+            /// trait-change callbacks are UIKit's own.
+            ///
+            /// The `code` is not optional decoration: `stationReadingRow`
+            /// tries it BEFORE the name, and same-named stations are common
+            /// enough that dropping it annotates the wrong one.
+            func localized(_ name: String, code: String? = nil) -> Named {
+                guard !name.isEmpty, let localization else {
+                    return Named(display: name, readings: [])
+                }
+                return MainActor.assumeIsolated {
+                    Named(
+                        display: localization.stationName(name, code: code),
+                        readings: localization.nameReadingsTyped(name, code: code))
                 }
             }
 
@@ -508,15 +605,18 @@ struct RailMapView: View {
                     let focused = selected ? CGFloat(display.focusBoost) : 0
                     return (seed + focused) * RailStyle.riddenWidthScale
                 }
-                // While one ride is selected every other ride still drawn fades,
-                // dots included. `riddenOpacity` is the reader's own floor under
-                // that; `dimOpacity` is not used here because it answers a
-                // different question — see the note on `DisplayValues`.
+                // The two scopes a ride's stroke answers to, both ported in
+                // `MapDateScope`: the SELECTION spotlight, and the DATE scope
+                // the reader set on the ride list. `dimOpacity` finally has a
+                // subject — an off-date ride draws faint rather than
+                // disappearing, which is what makes the slider a control over
+                // something.
                 let hasSelection = rides.contains { $0.id == selectedTrainID }
-                func rideAlpha(selected: Bool) -> CGFloat {
-                    if selected { return 1 }
-                    return CGFloat(display.riddenOpacity)
-                        * (hasSelection ? RailStyle.selectDim : 1)
+                let scope = dateScope
+                func rideAlpha(_ ride: RiddenRouteStore.DrawnRide, selected: Bool) -> CGFloat {
+                    MapDateScope.alpha(
+                        own: CGFloat(display.riddenOpacity), span: ride.daySpan,
+                        scope: scope, isSelected: selected, hasSelection: hasSelection)
                 }
 
                 var rideCasings: [MKMultiPolyline] = []
@@ -525,8 +625,15 @@ struct RailMapView: View {
                     left.id != selectedTrainID && right.id == selectedTrainID
                 }
                 for (index, ride) in orderedRides.enumerated() {
-                    let polylines = ride.strokes.compactMap { stroke -> MKPolyline? in
-                        guard stroke.count >= 2 else { return nil }
+                    // Split by the calendar day each SEGMENT runs on, which is
+                    // why the strokes are taken from `segments` rather than
+                    // from `strokes`: `Dates.segmentDate` needs the segment's
+                    // own index and the flattened list has thrown it away.
+                    var solid: [MKPolyline] = []
+                    var crossDay: [MKPolyline] = []
+                    for segment in ride.segments {
+                        let stroke = segment.coordinates
+                        guard stroke.count >= 2 else { continue }
                         // Straight off the ride's own coordinates. Rule R14 is
                         // withdrawn (commit 38cf0a8): a drawn vertex is the
                         // surveyed vertex, so nothing between here and the
@@ -535,39 +642,55 @@ struct RailMapView: View {
                         // that cannot move the line by half a point.
                         let kept = Geometry.douglasPeuckerIndices(stroke, epsilonMeters: epsilon)
                         let points = kept.map { stroke[$0].clLocation }
-                        guard points.count >= 2 else { return nil }
-                        return MKPolyline(coordinates: points, count: points.count)
+                        guard points.count >= 2 else { continue }
+                        let polyline = MKPolyline(coordinates: points, count: points.count)
+                        if MapDateScope.isCrossDayContinuation(
+                            ride.daySpan, segmentIndex: segment.segmentIndex, scope: scope) {
+                            crossDay.append(polyline)
+                        } else {
+                            solid.append(polyline)
+                        }
                     }
-                    guard !polylines.isEmpty else { continue }
-                    let styleKey = "ride|\(index)|\(ride.id)"
+                    guard !solid.isEmpty || !crossDay.isEmpty else { continue }
                     let selected = ride.id == selectedTrainID
-                    let multi = MKMultiPolyline(polylines)
-                    multi.title = styleKey
-                    overlayStyles[styleKey] = OverlayStyle(
-                        color: Self.uiColor(hex: ride.colorHex) ?? .systemBlue,
-                        widthToken: rideWidthToken(selected: selected),
-                        alpha: rideAlpha(selected: selected)
-                    )
-                    rideOverlays.append(multi)
+                    let color = Self.uiColor(hex: ride.colorHex) ?? .systemBlue
+                    let width = rideWidthToken(selected: selected)
+                    let alpha = rideAlpha(ride, selected: selected)
 
-                    // §10.5: a selection has to change more than a colour. The
-                    // casing is a dark halo UNDER the selected line, 0.7 pt per
-                    // side at full scale — Apple's restrained selected-transit
-                    // outline rather than a glow — and it rides the same ramp, or
-                    // "selected" would read differently at every zoom.
-                    guard selected else { continue }
-                    let casingKey = "ride-casing|\(index)|\(ride.id)"
-                    let casing = MKMultiPolyline(polylines)
-                    casing.title = casingKey
-                    overlayStyles[casingKey] = OverlayStyle(
-                        // `MAP_SURFACE_COLORS[theme].casing`, the same two values
-                        // the web app's selection halo uses.
-                        color: Self.uiColor(hex: dark ? "#F5EEE9" : "#1A1A1A") ?? .label,
-                        widthToken: rideWidthToken(selected: true)
-                            + RailStyle.selectionCasingEdge * 2,
-                        alpha: 0.9
-                    )
-                    rideCasings.append(casing)
+                    // Same source, same colour, same width — only the stroke
+                    // pattern says "not this day" (`TRAIN_XDAY_LAYER`).
+                    for (suffix, polylines, dashed) in [
+                        ("ride", solid, false), ("ride-xday", crossDay, true),
+                    ] where !polylines.isEmpty {
+                        let styleKey = "\(suffix)|\(index)|\(ride.id)"
+                        let multi = MKMultiPolyline(polylines)
+                        multi.title = styleKey
+                        overlayStyles[styleKey] = OverlayStyle(
+                            color: color, widthToken: width, alpha: alpha, dashed: dashed)
+                        rideOverlays.append(multi)
+
+                        // §10.5: a selection has to change more than a colour.
+                        // The casing is a dark halo UNDER the selected line,
+                        // 0.7 pt per side at full scale — Apple's restrained
+                        // selected-transit outline rather than a glow — and it
+                        // rides the same ramp, or "selected" would read
+                        // differently at every zoom. It follows the dash too:
+                        // a solid casing under a dashed core would fill the
+                        // gaps back in and undo the distinction.
+                        guard selected else { continue }
+                        let casingKey = "\(suffix)-casing|\(index)|\(ride.id)"
+                        let casing = MKMultiPolyline(polylines)
+                        casing.title = casingKey
+                        overlayStyles[casingKey] = OverlayStyle(
+                            // `MAP_SURFACE_COLORS[theme].casing`, the same two
+                            // values the web app's selection halo uses.
+                            color: Self.uiColor(hex: dark ? "#F5EEE9" : "#1A1A1A") ?? .label,
+                            widthToken: width + RailStyle.selectionCasingEdge * 2,
+                            alpha: 0.9,
+                            dashed: dashed
+                        )
+                        rideCasings.append(casing)
+                    }
                 }
                 // Casings first so the coloured cores land on top of them.
                 mapView.addOverlays(rideCasings, level: .aboveRoads)
@@ -584,7 +707,20 @@ struct RailMapView: View {
                         guard Double(station.minZoom) <= stationZoom else { return nil }
                         let point = MKMapPoint(station.coordinate.clLocation)
                         guard buildRect.contains(point) else { return nil }
-                        return StationAnnotation(station: station)
+                        // `buildStationPopupModel` keys its readings on the
+                        // platform's OWN id (`lineId:stationId`), which the
+                        // four localised-name tables carry alongside the
+                        // official code; Japan's table has neither, and falls
+                        // through to the by-name lookup exactly as it does in
+                        // the web app.
+                        let named = self.localized(station.name, code: station.id)
+                        return StationAnnotation(
+                            station: station, displayName: named.display,
+                            // `nil` is the standalone case — no localisation
+                            // engine at all — which is what keeps the single
+                            // `nameRoma` subline. See `popupView`.
+                            readings: self.localization == nil
+                                ? nil : named.readings.map(\.text))
                     }
                     networkAnnotations = stationAnnotations
                     mapView.addAnnotations(stationAnnotations)
@@ -596,14 +732,19 @@ struct RailMapView: View {
                 // because a station reached by twenty trains ships twenty records
                 // that all know the same name, and only one of them may print it.
                 let drawn = markerRecords(for: rides, settings: display.markers)
-                // Below `STOP_MIN_ZOOM` only the ride's two ends draw. Its
-                // intermediate calls at a national view are a smear, and its ends
-                // are the whole of what the ride says at that scale.
-                let drawsStops = MapRideMarkers.drawsStopDots(atZoom: zoom)
+                // Each role has its own floor: terminals and cross-day breaks
+                // at every zoom, intermediate stops from `STOP_MIN_ZOOM`, the
+                // numerous pass-throughs only from `PASSTHROUGH_MIN_ZOOM`. So
+                // pulling back sheds pass-throughs first and stops second,
+                // while a ride's two ends — the whole of what it says at a
+                // national view — never leave.
                 var markerAnnotations: [MKAnnotation] = []
                 var lastEmitted: RideStationAnnotation?
-                for (record, feature) in drawn {
-                    guard drawsStops || feature.role == "terminal" else {
+                for item in drawn {
+                    let record = item.record
+                    let feature = item.feature
+                    guard MapRideMarkers.drawsDot(role: feature.role, atZoom: zoom)
+                            || feature.role == "stop-center" else {
                         lastEmitted = nil
                         continue
                     }
@@ -622,6 +763,7 @@ struct RailMapView: View {
                     }
                     lastEmitted = nil
                     guard buildRect.contains(MKMapPoint(record.position.clLocation)) else { continue }
+                    let selected = feature.tid == selectedTrainID
                     let annotation = RideStationAnnotation(
                         coordinate: record.position.clLocation,
                         name: feature.name,
@@ -631,9 +773,14 @@ struct RailMapView: View {
                         focusScale: CGFloat(feature.focusScale),
                         fill: Self.uiColor(channels: record.fillColor) ?? .white,
                         stroke: Self.uiColor(channels: record.lineColor) ?? .black,
-                        alpha: CGFloat(feature.alpha) * rideAlpha(selected: feature.tid == selectedTrainID),
+                        // The record's OWN alpha, put through the same two
+                        // scopes the ride's stroke goes through — a dot on an
+                        // off-date ride dims with the line it sits on.
+                        alpha: CGFloat(feature.alpha) * MapDateScope.alpha(
+                            own: 1, span: item.daySpan, scope: scope,
+                            isSelected: selected, hasSelection: hasSelection),
                         focusBoost: CGFloat(display.focusBoost),
-                        selected: feature.tid == selectedTrainID)
+                        selected: selected)
                     markerAnnotations.append(annotation)
                     lastEmitted = annotation
                     // …and its name, if it won one and the view is wide enough for
@@ -644,24 +791,27 @@ struct RailMapView: View {
                     guard !feature.name.isEmpty, let tier = annotation.labelTier,
                           zoom >= RailStyle.zoom(fromMapLibre: Double(tier.minZoom))
                     else { continue }
+                    // The election runs on the package's own names — see
+                    // `markerRecords` — and only the winner is translated, so
+                    // which record carries a name never depends on the
+                    // reader's language.
                     markerAnnotations.append(RideLabelAnnotation(
-                        coordinate: annotation.coordinate, text: feature.name,
+                        coordinate: annotation.coordinate,
+                        text: localized(feature.name, code: item.stationCode).display,
                         tier: tier, dotRadiusToken: annotation.drawnRadiusToken,
                         selected: annotation.selected))
                 }
                 rideStationAnnotations = markerAnnotations
                 mapView.addAnnotations(markerAnnotations)
 
-                // The selected ride's origin / destination name cards. The web
-                // app also labels the selected DAY's first origin and last
-                // destination with a 起點/終點 badge; that scope is not reachable
-                // from here (see `MapEndpointLabels`), so what is drawn is the
-                // half this app's inputs can prove.
-                if let ride = rides.first(where: { $0.id == selectedTrainID }) {
-                    let annotations = MapEndpointLabels.specs(for: ride)
-                        .map { EndpointLabelAnnotation(spec: $0) }
-                    endpointAnnotations = annotations
-                    mapView.addAnnotations(annotations)
+                // The selected ride's origin / destination cards, and — when a
+                // day is in scope — that DAY's first origin and last
+                // destination with a 起點/終點 badge, which is `updateEndpointLabels`
+                // step (1). `computeScopedEndpoints` is not ported: the scoped
+                // pair is derived here from the rides the map already holds.
+                endpointAnnotations = endpointSpecs().map(EndpointLabelAnnotation.init)
+                if !endpointAnnotations.isEmpty {
+                    mapView.addAnnotations(endpointAnnotations)
                     layoutEndpointLabels(on: mapView)
                 }
 
@@ -706,21 +856,87 @@ struct RailMapView: View {
             /// name election walks every ride's every call, so re-running it on a
             /// pan would be the most expensive thing a pan does.
             private var markerCache:
-                (key: String, settings: MapRideMarkers.Settings,
-                 drawn: [(record: StationDisplay.MarkerRecord,
-                          feature: StationDisplay.MarkerFeature)])?
+                (key: String, settings: MapRideMarkers.Settings, drawn: [MapRideMarkers.Drawn])?
 
             private func markerRecords(
                 for rides: [RiddenRouteStore.DrawnRide], settings: MapRideMarkers.Settings
-            ) -> [(record: StationDisplay.MarkerRecord, feature: StationDisplay.MarkerFeature)] {
-                let key = rides.map { "\($0.id):\($0.vertexCount):\($0.visible ? 1 : 0)" }
-                    .joined(separator: "|")
+            ) -> [MapRideMarkers.Drawn] {
+                let key = rides.map(Self.rideSignature).joined(separator: "|")
                 if let markerCache, markerCache.key == key, markerCache.settings == settings {
                     return markerCache.drawn
                 }
                 let drawn = MapRideMarkers.drawn(rides: rides, settings: settings)
                 markerCache = (key, settings, drawn)
                 return drawn
+            }
+
+            // MARK: - the origin / destination cards
+
+            /// `computeScopedEndpoints` — the rides that own the selected
+            /// day's first origin and last destination.
+            ///
+            /// The web app orders by position in `trainStore.trains`, which is
+            /// the reader's own trip order; `rides` arrives here in that order,
+            /// so first and last are literally that. The day's own trains are
+            /// preferred and the whole trip stands in when the day has none,
+            /// which is the JavaScript's fallback.
+            private func scopedEndpointRides()
+                -> (first: RiddenRouteStore.DrawnRide, last: RiddenRouteStore.DrawnRide)? {
+                let visible = rides.filter(\.visible)
+                let day = visible.filter { $0.daySpan.date == selectedDate }
+                let pool = day.isEmpty ? visible : day
+                guard let first = pool.first, let last = pool.last else { return nil }
+                return (first, last)
+            }
+
+            /// `updateEndpointLabels` — its two sources, in its own order.
+            private func endpointSpecs() -> [MapEndpointLabels.Spec] {
+                var specs: [MapEndpointLabels.Spec] = []
+                var seen: Set<String> = []
+                func add(_ spec: MapEndpointLabels.Spec?) {
+                    guard let spec, seen.insert(spec.key).inserted else { return }
+                    specs.append(spec)
+                }
+                let scope = dateScope
+                // (1) The selected day's very first origin and very last
+                // destination are ALWAYS labelled, so picking a date
+                // immediately shows where that day begins and ends.
+                if scope.isActive, let pair = scopedEndpointRides() {
+                    add(endpointSpec(for: pair.first, kind: .origin, dayEndpoint: true))
+                    add(endpointSpec(for: pair.last, kind: .destination, dayEndpoint: true))
+                }
+                // (2) …and the selected ride keeps its own two ends.
+                guard let ride = rides.first(where: { $0.id == selectedTrainID }), ride.visible
+                else { return specs }
+                // A cross-day ride is on-date for BOTH of the days it runs on,
+                // so its cards must not vanish while its line is still drawn.
+                guard MapDateScope.inScope(ride.daySpan, scope) else { return specs }
+                add(endpointSpec(for: ride, kind: .origin))
+                add(endpointSpec(for: ride, kind: .destination))
+                return specs
+            }
+
+            /// `buildEndpointLabelSpec`, with the four pieces resolved.
+            private func endpointSpec(
+                for ride: RiddenRouteStore.DrawnRide,
+                kind: MapEndpointLabels.Kind,
+                dayEndpoint: Bool = false
+            ) -> MapEndpointLabels.Spec? {
+                guard let endpoint = MapEndpointLabels.endpointStop(of: ride, kind: kind)
+                else { return nil }
+                let named = localized(endpoint.stop.name, code: endpoint.stop.n02StationCode)
+                // An origin shows when the ride LEFT and a destination when it
+                // arrived — never both, because a card that showed both would
+                // be describing the timetable rather than the journey's end.
+                let clock = kind == .origin ? endpoint.stop.departure : endpoint.stop.arrival
+                let tag = kind == .origin ? naming.departureTag : naming.arrivalTag
+                let time = (clock?.isEmpty == false) ? "\(tag) \(clock!)" : ""
+                let badge = dayEndpoint
+                    ? (kind == .origin ? naming.startTag : naming.endTag) : ""
+                return MapEndpointLabels.spec(
+                    trainID: ride.id, kind: kind, at: endpoint.position,
+                    name: named.display, badge: badge, time: time,
+                    readings: named.readings.map(\.text))
             }
 
             /// Re-runs the endpoint cards' overlap-avoidance layout.
@@ -922,7 +1138,14 @@ struct RailMapView: View {
                     let passed = $0.offset <= snapshot.frame.stations.index
                     return PlaybackAnnotation(
                         coordinate: $0.element.coord.clLocation,
-                        title: $0.element.name, color: color,
+                        // `buildPlaybackPath` names its stations through
+                        // `I18N.stationName` in the web app; the ported path
+                        // carries the package's own spelling, so the language
+                        // is applied here instead. Without the stop's code —
+                        // the path does not carry one — the readings table's
+                        // by-name lookup answers, which is its documented
+                        // second choice rather than a fallback.
+                        title: self.localized($0.element.name).display, color: color,
                         kind: .station, active: passed,
                         pulse: $0.offset == snapshot.frame.stations.index
                             ? snapshot.frame.stations.pulse : 0)
@@ -972,10 +1195,33 @@ struct RailMapView: View {
             private final class StationAnnotation: NSObject, MKAnnotation {
                 let station: RailNetworkStore.DrawnStation
                 dynamic var coordinate: CLLocationCoordinate2D
-                var title: String? { station.popup.name }
-                var subtitle: String? { station.popup.nameRoma.isEmpty ? nil : station.popup.nameRoma }
-                init(station: RailNetworkStore.DrawnStation) {
+                /// The callout header, in the reader's language.
+                ///
+                /// `RailNetworkStore` builds the popup model off the main actor
+                /// with no `StationDisplay.Naming` attached, so `popup.name` is
+                /// the package's own spelling; `buildStationPopupModel` in the
+                /// web app puts it through `I18N.stationName`. Applied here
+                /// instead, which also means a language change is picked up by
+                /// the next rebuild rather than needing the package decoded
+                /// again.
+                let displayName: String
+                /// `nameReadingsList` — one line per enabled reading. Empty is
+                /// a real answer (every toggle off), and different from the
+                /// standalone case the `nameRoma` fallback covers.
+                let readings: [String]?
+                var title: String? { displayName }
+                var subtitle: String? {
+                    if let first = readings?.first { return first }
+                    guard readings == nil, !station.popup.nameRoma.isEmpty else { return nil }
+                    return station.popup.nameRoma
+                }
+                init(
+                    station: RailNetworkStore.DrawnStation,
+                    displayName: String, readings: [String]?
+                ) {
                     self.station = station
+                    self.displayName = displayName
+                    self.readings = readings
                     coordinate = station.coordinate.clLocation
                 }
             }
@@ -1092,7 +1338,7 @@ struct RailMapView: View {
             private final class EndpointLabelAnnotation: NSObject, MKAnnotation {
                 dynamic var coordinate: CLLocationCoordinate2D
                 var spec: MapEndpointLabels.Spec
-                var title: String? { spec.text }
+                var title: String? { spec.mainLine }
                 init(spec: MapEndpointLabels.Spec) {
                     self.spec = spec
                     coordinate = spec.coordinate.clLocation
@@ -1132,7 +1378,16 @@ struct RailMapView: View {
                     self.zoom = zoom
                     let station = item.station
                     dot.backgroundColor = Coordinator.uiColor(hex: station.colorHex) ?? .systemGray
-                    nameLabel.text = station.name
+                    // A deliberate deviation, and the only one on this label:
+                    // `rn-stations-label` draws the package's own spelling,
+                    // because `railmap.js` is a standalone library with no
+                    // `I18N` under it. Here the name a station's CALLOUT gives
+                    // and the name printed beside its bead would then be two
+                    // different words in Taiwan, Hong Kong, Macao and Korea —
+                    // whose readings tables exist precisely to name the place
+                    // in the reader's language. Japan is unaffected: its table
+                    // annotates rather than replaces, so this is the identity.
+                    nameLabel.text = item.displayName
                     // An interchange is counted in RAILWAYS, which is exactly
                     // what the popup's rows already are: `buildPopupModel`
                     // dedupes them on displayed operator + name, so several
@@ -1141,8 +1396,9 @@ struct RailMapView: View {
                         interchange: station.popup.lines.count > 1,
                         isTerminal: station.isTerminal,
                         named: station.showsLabel)
-                    accessibilityLabel = station.name
-                    detailCalloutAccessoryView = Self.popupView(station.popup)
+                    accessibilityLabel = item.displayName
+                    detailCalloutAccessoryView = Self.popupView(
+                        station.popup, readings: item.readings)
                     relayout()
                 }
 
@@ -1194,16 +1450,29 @@ struct RailMapView: View {
                     centerOffset = CGPoint(x: width / 2 - diameter / 2, y: 0)
                 }
 
-                private static func popupView(_ popup: StationDisplay.PopupModel) -> UIView {
+                /// `stationPopupHtml`'s header and line rows.
+                ///
+                /// The three-state reading rule is the web app's and it is not
+                /// a nicety: `readings == nil` is the standalone railmap with
+                /// no i18n at all, which keeps the single `nameRoma` subline;
+                /// an EMPTY list is the app with every reading toggle off,
+                /// which means no subline. Here the engine is always present,
+                /// so an empty list is an answer — `nameRoma` only stands in
+                /// when there is no localisation to ask.
+                private static func popupView(
+                    _ popup: StationDisplay.PopupModel, readings: [String]?
+                ) -> UIView {
                     let stack = UIStackView()
                     stack.axis = .vertical
                     stack.spacing = 5
                     stack.alignment = .leading
-                    if !popup.nameRoma.isEmpty {
+                    let sublines = readings
+                        ?? (popup.nameRoma.isEmpty ? [] : [popup.nameRoma])
+                    for subline in sublines {
                         let reading = UILabel()
                         reading.font = .systemFont(ofSize: 12)
                         reading.textColor = .secondaryLabel
-                        reading.text = popup.nameRoma
+                        reading.text = subline
                         stack.addArrangedSubview(reading)
                     }
                     for row in popup.lines {
@@ -1279,8 +1548,29 @@ struct RailMapView: View {
                     guard let item else { return }
                     let diameter = max(1, item.drawnRadiusToken * 2 * scale)
                     frame.size = CGSize(width: diameter, height: diameter)
-                    dot.frame = CGRect(x: 0, y: 0, width: diameter, height: diameter)
-                    dot.layer.cornerRadius = diameter / 2
+                    // The cross-day break station is a DIAMOND, so the one
+                    // place that is both "day D ends here" and "day D+1 starts
+                    // here" can never read as an ordinary stop. A square
+                    // turned a quarter is a diamond, and turning the dot
+                    // itself keeps the ring, the fill and the focus boost it
+                    // already carries — where a second layer would be a second
+                    // mark to keep in step.
+                    //
+                    // Its side is the diagonal over √2, so the diamond's WIDTH
+                    // is the dot's diameter and its half-diagonal is the
+                    // record's radius, which is what `icon-size` scales the
+                    // rasterised icon to.
+                    let crossDay = item.role == "xday"
+                    let side = crossDay ? diameter / 2.0.squareRoot() : diameter
+                    // Reset before writing a frame: setting `frame` while a
+                    // transform is in force is undefined, and this view is
+                    // relaid out on every rescale.
+                    dot.transform = .identity
+                    dot.frame = CGRect(
+                        x: (diameter - side) / 2, y: (diameter - side) / 2,
+                        width: side, height: side)
+                    dot.layer.cornerRadius = crossDay ? 0 : diameter / 2
+                    if crossDay { dot.transform = CGAffineTransform(rotationAngle: .pi / 4) }
                     dot.layer.borderWidth = item.drawnLineWidthToken * scale
                     centerOffset = .zero
                     guard let coreSpec = item.core else { return }
@@ -1385,23 +1675,45 @@ struct RailMapView: View {
             /// The origin / destination card, whose placement is decided in
             /// `MapEndpointLabels` and applied here as a centre offset.
             private final class EndpointLabelView: MKAnnotationView {
-                private let card = HaloLabel()
+                /// One label per piece rather than one attributed string.
+                ///
+                /// ``HaloLabel`` strokes the surface around the glyphs by
+                /// drawing the text twice, and the stroke pass works by
+                /// swapping `textColor` — which an attributed string carrying
+                /// its own `.foregroundColor` ignores, so the halo would come
+                /// out in the ink's colour. Four labels of one colour each
+                /// keeps that contract and costs a little arithmetic.
+                private let badge = HaloLabel()
+                private let name = HaloLabel()
+                private let time = HaloLabel()
+                private var readings: [HaloLabel] = []
+
+                /// The web app's own per-line estimates, reused as the drawn
+                /// line heights so the card occupies exactly the box
+                /// `layoutEndpointLabels` placed for it.
+                private static let mainLineHeight: CGFloat = 18
+                private static let readingLineHeight: CGFloat = 15
+                private static let verticalPadding: CGFloat = 6
+                private static let pieceGap: CGFloat = 4
 
                 override init(annotation: (any MKAnnotation)?, reuseIdentifier: String?) {
                     super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-                    addSubview(card)
-                    card.font = MapEndpointLabels.font
-                    card.textAlignment = .center
-                    card.numberOfLines = 0
-                    // The web app draws this one as a filled card
-                    // (`.station-label`), because HTML text over a raster map
-                    // has no other way to stay legible. Here it is haloed like
-                    // every other name on the map instead: a filled plate in
-                    // dark mode is a black chip punched through the map, and
-                    // this is the one label big enough for that to be the first
-                    // thing a reader sees. Same ink, same halo, one more step
-                    // of weight so an endpoint still reads as the ride's end.
-                    card.backgroundColor = .clear
+                    for label in [badge, name, time] {
+                        label.numberOfLines = 1
+                        label.textAlignment = .center
+                        // The web app draws this one as a filled card
+                        // (`.station-label`), because HTML text over a raster
+                        // map has no other way to stay legible. Here it is
+                        // haloed like every other name on the map instead: a
+                        // filled plate in dark mode is a black chip punched
+                        // through the map, and this is the one label big enough
+                        // for that to be the first thing a reader sees.
+                        label.backgroundColor = .clear
+                        addSubview(label)
+                    }
+                    badge.font = MapEndpointLabels.badgeFont
+                    name.font = MapEndpointLabels.font
+                    time.font = MapEndpointLabels.timeFont
                     // The web app's cards are `pointer-events: none` so they never
                     // block route picking; the same here.
                     isUserInteractionEnabled = false
@@ -1417,14 +1729,89 @@ struct RailMapView: View {
                     // construction is a colour from whichever theme happened to
                     // be in force the first time this view was made.
                     let dark = traitCollection.userInterfaceStyle == .dark
-                    card.textColor = MapLabelStyle.ink(dark: dark)
-                    card.haloColor = MapLabelStyle.halo(dark: dark)
-                    card.text = item.spec.text
-                    accessibilityLabel = item.spec.text
-                    let size = CGSize(width: item.spec.width, height: item.spec.height)
-                    card.frame = CGRect(origin: .zero, size: size)
-                    frame.size = size
-                    centerOffset = MapEndpointLabels.centreOffset(for: item.spec)
+                    let ink = MapLabelStyle.ink(dark: dark)
+                    let muted = MapLabelStyle.mutedInk(dark: dark)
+                    let halo = MapLabelStyle.halo(dark: dark)
+                    let spec = item.spec
+
+                    badge.text = spec.badge
+                    name.text = spec.name
+                    time.text = spec.time
+                    badge.textColor = ink
+                    name.textColor = ink
+                    // The time and the readings QUALIFY the name rather than
+                    // being it, and with no plate under them the only thing
+                    // that can say so is weight, size and a second rank of ink.
+                    time.textColor = muted
+                    for label in [badge, name, time] { label.haloColor = halo }
+
+                    // One label per reading, built to fit: a station can carry
+                    // kana, romaji and a Chinese reading at once, and the box
+                    // `buildEndpointLabelSpec` measured already allowed for all
+                    // three.
+                    while readings.count < spec.readings.count {
+                        let label = HaloLabel()
+                        label.numberOfLines = 1
+                        label.textAlignment = .center
+                        label.backgroundColor = .clear
+                        label.font = MapEndpointLabels.readingFont
+                        addSubview(label)
+                        readings.append(label)
+                    }
+                    for (index, label) in readings.enumerated() {
+                        label.isHidden = index >= spec.readings.count
+                        label.haloColor = halo
+                        label.textColor = muted
+                        label.text = index < spec.readings.count ? spec.readings[index] : nil
+                    }
+
+                    accessibilityLabel = spec.mainLine
+                    layout(spec)
+                    centerOffset = MapEndpointLabels.centreOffset(for: spec)
+                }
+
+                /// Badge, name and time on one centred row; the readings
+                /// stacked under it, each on its own line — never
+                /// bracket-appended, which is the one display rule
+                /// `stationNameReadings` exists to spell.
+                private func layout(_ spec: MapEndpointLabels.Spec) {
+                    let inset = MapLabelStyle.haloWidth
+                    let bound = CGSize(width: MapEndpointLabels.maxWidth, height: 24)
+                    var row: [(label: UILabel, width: CGFloat)] = []
+                    for label in [badge, name, time] where !(label.text ?? "").isEmpty {
+                        row.append((label, label.sizeThatFits(bound).width + inset * 2))
+                    }
+                    for label in [badge, name, time] {
+                        label.isHidden = (label.text ?? "").isEmpty
+                    }
+                    let rowWidth = row.reduce(CGFloat(0)) { $0 + $1.width }
+                        + Self.pieceGap * CGFloat(max(row.count - 1, 0))
+                    var readingWidths: [CGFloat] = []
+                    for label in readings where !label.isHidden {
+                        readingWidths.append(label.sizeThatFits(bound).width + inset * 2)
+                    }
+                    let width = max(rowWidth, readingWidths.max() ?? 0)
+                    let height = Self.verticalPadding + Self.mainLineHeight
+                        + Self.readingLineHeight * CGFloat(readingWidths.count)
+                    frame.size = CGSize(width: max(width, 1), height: max(height, 1))
+
+                    var x = (width - rowWidth) / 2
+                    for piece in row {
+                        piece.label.frame = CGRect(
+                            x: x, y: Self.verticalPadding / 2,
+                            width: piece.width, height: Self.mainLineHeight)
+                        x += piece.width + Self.pieceGap
+                    }
+                    var y = Self.verticalPadding / 2 + Self.mainLineHeight
+                    var index = 0
+                    for label in readings where !label.isHidden {
+                        let pieceWidth = readingWidths[index]
+                        label.frame = CGRect(
+                            x: (width - pieceWidth) / 2, y: y,
+                            width: pieceWidth, height: Self.readingLineHeight)
+                        y += Self.readingLineHeight
+                        index += 1
+                    }
                 }
             }
 

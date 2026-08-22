@@ -57,6 +57,19 @@ enum MapLabelStyle {
             : UIColor(red: 242 / 255, green: 243 / 255, blue: 240 / 255, alpha: 1)
     }
 
+    /// `--ink-muted` — the second rank of ink, for the parts of a card that
+    /// qualify its name rather than being it: an endpoint card's departure or
+    /// arrival time, and the reading lines under the name.
+    ///
+    /// A card on this map has no plate to sit on (see below), so the only
+    /// thing separating a subline from the name is weight, size and this. The
+    /// two values are `railprint-base.css`'s own light and dark tokens.
+    static func mutedInk(dark: Bool) -> UIColor {
+        dark
+            ? UIColor(red: 174 / 255, green: 174 / 255, blue: 178 / 255, alpha: 1)
+            : UIColor(red: 116 / 255, green: 106 / 255, blue: 102 / 255, alpha: 1)
+    }
+
     /// `text-halo-width`. The web app also sets `text-halo-blur: 0.2`, which is
     /// not ported: Core Graphics strokes glyph outlines with a hard edge, and
     /// two tenths of a point of blur is below what a reader can see at these

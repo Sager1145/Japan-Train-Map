@@ -11,13 +11,22 @@ import UIKit
 /// `hoverLabelTrainId` channel is deliberately NOT ported: it exists to follow
 /// a pointer, and there is no pointer here.
 ///
-/// ## What the layout is for
+/// ## What one card says
 ///
-/// It looks like over-engineering for two labels until the round-trip day:
-/// 沼津 → 沼津, 札幌 → 札幌. The ride's origin and its destination are then the
-/// SAME point, and a card drawn at each would print one name exactly on top of
-/// the other. So each card is placed just above or just below its dot,
-/// alternating and stacking outward until it finds clear space.
+/// `buildEndpointLabelSpec` builds four pieces and this builds the same four:
+///
+///   * a **badge** — `tag.start` / `tag.end`, and only on the selected DAY's
+///     first origin and last destination, which is the one thing on the map
+///     that says where a day of travel began and ended;
+///   * the station's **name**, localised (`I18N.stationName`);
+///   * the stop's own **time**, prefixed `tag.dep` for an origin and `tag.arr`
+///     for a destination — the departure and the arrival, never both;
+///   * the reader's enabled **readings**, one per line under the name.
+///
+/// All four come off `train.stops`, which `RiddenRouteStore.DrawnRide` now
+/// carries. The station identities are resolved the same way the dots are —
+/// see ``MapRideMarkers/stopPositions(of:)`` — so a card and its terminal dot
+/// can never disagree about where the ride ended.
 enum MapEndpointLabels {
 
     /// One card, before and after placement.
@@ -28,7 +37,16 @@ enum MapEndpointLabels {
         let key: String
         let trainID: String
         let coordinate: Coordinate
-        let text: String
+        /// The localised station name.
+        let name: String
+        /// `起點` / `終點`, or empty. Only the selected day's own endpoints
+        /// carry one — an ordinary selected ride's two ends do not.
+        let badge: String
+        /// `発 16:14`, already joined with its tag. Empty when the stop has no
+        /// time on the side this card shows.
+        let time: String
+        /// The enabled readings, in `nameReadingsTyped` order.
+        let readings: [String]
         let kind: Kind
         /// Estimated card size in points. The layout needs the real box, not
         /// the text: a wrapped name is taller and would otherwise be placed as
@@ -38,6 +56,12 @@ enum MapEndpointLabels {
         /// Filled in by ``layout(_:at:)``.
         var direction: Direction = .top
         var offset: CGPoint = .zero
+
+        /// The badge, the name and the time on one line, which is what the web
+        /// app measures (`plain`) and what a reader hears.
+        var mainLine: String {
+            [badge, name, time].filter { !$0.isEmpty }.joined(separator: " ")
+        }
     }
 
     enum Kind: String { case origin, destination }
@@ -45,73 +69,115 @@ enum MapEndpointLabels {
 
     // MARK: - measuring
 
-    /// `700 11px system-ui`, as the web app's measuring canvas is configured.
-    static var font: UIFont { .systemFont(ofSize: 11, weight: .bold) }
+    /// The card's three type sizes, from `.station-label` and its two children
+    /// in `railprint-base.css`, taken at the mobile end of the token scale
+    /// (`device-layout.css`: 12 / 10 / 9) because that is the device this
+    /// draws on.
+    ///
+    /// The web app measures with one canvas font (`700 11px system-ui`) for
+    /// every piece because it cannot measure the DOM before it lays the card
+    /// out. Here each piece is measured in the font it is actually drawn in,
+    /// which can only make the box more accurate — the layout below is the
+    /// same, and the HEIGHT still uses the ported per-line estimate.
+    static var font: UIFont { .systemFont(ofSize: 12, weight: .semibold) }
+    static var badgeFont: UIFont { .systemFont(ofSize: 9, weight: .bold) }
+    static var timeFont: UIFont { .systemFont(ofSize: 10, weight: .medium) }
+    static var readingFont: UIFont { .systemFont(ofSize: 9, weight: .regular) }
 
     /// The widest a card may grow before its text wraps — the CSS
     /// `max-width: 340px` the estimate is built around.
     static let maxWidth: CGFloat = 340
 
-    static func measure(_ text: String) -> CGFloat {
+    static func measure(_ text: String, font: UIFont = MapEndpointLabels.font) -> CGFloat {
         guard !text.isEmpty else { return 0 }
-        return (text as NSString)
-            .size(withAttributes: [.font: font])
-            .width
+        return (text as NSString).size(withAttributes: [.font: font]).width
     }
 
-    /// `buildEndpointLabelSpec`, for the fields a solved ride actually carries.
-    ///
-    /// The web app's card also holds a 起點/終點 badge, the stop's departure or
-    /// arrival time, and the reader's enabled name readings stacked under the
-    /// name. All three come off `train.stops`, which
-    /// `RiddenRouteStore.DrawnRide` does not carry — so the estimate below runs
-    /// with no badge and no reading lines rather than with invented ones, and
-    /// the widths it produces are the widths of the card this app draws.
+    /// `buildEndpointLabelSpec`.
     static func spec(
-        trainID: String, kind: Kind, name: String, at coordinate: Coordinate
+        trainID: String,
+        kind: Kind,
+        at coordinate: Coordinate,
+        name: String,
+        badge: String = "",
+        time: String = "",
+        readings: [String] = []
     ) -> Spec? {
         guard !name.isEmpty else { return nil }
-        // `+ 20` is the card's horizontal padding; the badge chip's `+ 38` has
-        // no badge to belong to here.
-        let mainWidth = measure(name) + 20
-        let fullWidth = mainWidth
+        // `+ 20` is the card's horizontal padding; a badge chip costs `+ 38`.
+        let badgeWidth = badge.isEmpty ? 0 : measure(badge, font: badgeFont) + 4
+        let timeWidth = time.isEmpty ? 0 : measure(time, font: timeFont) + 4
+        let mainWidth = badgeWidth + measure(name) + timeWidth + (badge.isEmpty ? 20 : 38)
+        let readingsWidth = readings.reduce(CGFloat(0)) {
+            max($0, measure($1, font: readingFont))
+        } + (readings.isEmpty ? 0 : 20)
+        let fullWidth = max(mainWidth, readingsWidth)
         let mainLines = max(1, min(3, Int(ceil(mainWidth / maxWidth))))
         return Spec(
             key: "\(String(format: "%.5f", coordinate.lat)),"
                 + "\(String(format: "%.5f", coordinate.lon))|\(kind.rawValue)",
             trainID: trainID,
             coordinate: coordinate,
-            text: name,
+            name: name,
+            badge: badge,
+            time: time,
+            readings: readings,
             kind: kind,
             width: min(maxWidth, fullWidth),
-            // ~18 pt per name line, plus padding and border.
-            height: CGFloat(6 + 18 * mainLines)
-        )
+            // ~18 pt per name/time line and ~15 pt per reading line, plus
+            // padding and border — `buildEndpointLabelSpec`'s own estimate.
+            height: CGFloat(6 + 18 * mainLines + 15 * readings.count))
     }
 
-    /// The two endpoints of one ride: the first section's `from` and the last
-    /// section's `to`.
+    /// The stop a card is built from, and where the ride's geometry puts it.
     ///
-    /// The web app reads `train.stops` for the entries whose `stop_type` is
-    /// `origin` / `destination`. Those are the same two places, named by the
-    /// same strings — a route section's ends ARE the stops the solver was
-    /// given — so this is the same answer reached from the geometry.
-    static func specs(for ride: RiddenRouteStore.DrawnRide) -> [Spec] {
-        guard let first = ride.segments.first, let last = ride.segments.last,
-              let origin = first.coordinates.first,
-              let destination = last.coordinates.last else { return [] }
-        var result: [Spec] = []
-        var seen: Set<String> = []
-        for candidate in [
-            spec(trainID: ride.id, kind: .origin, name: first.from ?? "", at: origin),
-            spec(
-                trainID: ride.id, kind: .destination, name: last.to ?? "",
-                at: destination),
-        ] {
-            guard let candidate, seen.insert(candidate.key).inserted else { continue }
-            result.append(candidate)
+    /// `buildEndpointLabelSpec` finds it as `stops.find(stop_type === kind)`,
+    /// which is the definition of an origin and a destination in jsonspec §7.2
+    /// — not "the first and last stop", and not the ends of the drawn line.
+    /// The two normally coincide; where they do not, the reader's own labelling
+    /// is the answer and the geometry is not.
+    static func endpointStop(
+        of ride: RiddenRouteStore.DrawnRide, kind: Kind
+    ) -> (index: Int, stop: Stop, position: Coordinate)? {
+        guard let index = ride.stops.firstIndex(where: { $0.stopType == kind.rawValue })
+        else { return fallbackEndpoint(of: ride, kind: kind) }
+        guard let position = MapRideMarkers.stopPositions(of: ride)[index] else {
+            return fallbackEndpoint(of: ride, kind: kind)
         }
-        return result
+        return (index, ride.stops[index], position)
+    }
+
+    /// Where the stop itself has no drawn position, the ends of the drawn line
+    /// stand in — but ONLY for a ride whose route came back whole.
+    ///
+    /// ``RiddenRouteStore/RouteOutcome`` is what makes that distinction
+    /// possible. On a `resolved` ride the first section's start IS the origin,
+    /// so the substitution says nothing new. On a `partial` one it would be a
+    /// guess: the drawn line begins wherever the first section that solved
+    /// begins, which is not where the reader boarded, and printing 起點 there
+    /// would name the wrong station.
+    private static func fallbackEndpoint(
+        of ride: RiddenRouteStore.DrawnRide, kind: Kind
+    ) -> (index: Int, stop: Stop, position: Coordinate)? {
+        guard ride.route.isResolved else { return nil }
+        let ordered = ride.segments.sorted { $0.segmentIndex < $1.segmentIndex }
+        switch kind {
+        case .origin:
+            guard let segment = ordered.first, let position = segment.coordinates.first
+            else { return nil }
+            let name = segment.from ?? ride.stops.first?.name ?? ""
+            guard !name.isEmpty else { return nil }
+            return (0, Stop(name: name, stopType: Kind.origin.rawValue), position)
+        case .destination:
+            guard let segment = ordered.last, let position = segment.coordinates.last
+            else { return nil }
+            let name = segment.to ?? ride.stops.last?.name ?? ""
+            guard !name.isEmpty else { return nil }
+            return (
+                max(ride.stops.count - 1, 0),
+                Stop(name: name, stopType: Kind.destination.rawValue), position
+            )
+        }
     }
 
     // MARK: - the overlap-avoidance layout
@@ -131,6 +197,11 @@ enum MapEndpointLabels {
     /// Places each card just above or just below its dot, alternating and
     /// stacking outward, so cards that would collide get pushed apart and all
     /// stay readable.
+    ///
+    /// It looks like over-engineering for two labels until the round-trip day:
+    /// 沼津 → 沼津, 札幌 → 札幌. The ride's origin and its destination are then
+    /// the SAME point, and a card drawn at each would print one name exactly
+    /// on top of the other.
     ///
     /// Pure pixel-space layout, and `points` is the caller's projection of
     /// `specs` — relative distances only change on zoom, which is why the web
