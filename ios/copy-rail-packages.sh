@@ -52,6 +52,28 @@ for country in jp tw hk mo kr; do
     done
 done
 
+# The operator and line badges the C5 station popup draws.
+#
+# `OperatorBranding.logoForLine` returns a WEB PATH — `/rail/logos/<id>.png`,
+# `/rail/line-logos/<key>.png` or `/rail/operator-logos/jp-badges/badge-NNN.png`
+# — because the rule is ported verbatim from the JavaScript and the JavaScript
+# hands those straight to an <img>. Copying the three directories under the
+# same relative names means the native side can resolve a path by stripping the
+# leading slash instead of maintaining a second mapping that could disagree
+# with the ported one.
+#
+# ~6 MB over 519 files. That is the whole set: which badge a line draws is a
+# per-line decision made by a table, so shipping a subset would mean shipping
+# the table's answer rather than the table.
+for family in logos line-logos operator-logos; do
+    source="$source_dir/$family"
+    if [ ! -d "$source" ]; then
+        echo "error: missing $source — the station popup cannot draw its badges" >&2
+        exit 1
+    fi
+    /usr/bin/ditto "$source" "$target_dir/rail/$family"
+done
+
 # The legacy matched pair is still the instant route source for stores whose
 # ids it covers, and the progressive sample parts carry a precomputed route for
 # every bundled sample train. Keeping those parts lets the native app draw the

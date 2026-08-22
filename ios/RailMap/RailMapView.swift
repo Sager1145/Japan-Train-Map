@@ -1476,18 +1476,105 @@ struct RailMapView: View {
                         stack.addArrangedSubview(reading)
                     }
                     for row in popup.lines {
-                        let label = UILabel()
-                        label.font = .systemFont(ofSize: 12, weight: .medium)
-                        label.textColor = .label
-                        label.numberOfLines = 1
-                        label.text = [row.company, row.label].filter { !$0.isEmpty }
-                            .joined(separator: "  ")
-                        stack.addArrangedSubview(label)
+                        stack.addArrangedSubview(lineRow(row))
                     }
                     stack.frame.size = stack.systemLayoutSizeFitting(
                         CGSize(width: 280, height: UIView.layoutFittingCompressedSize.height))
                     return stack
                 }
+
+                /// One railway through this station: its badge, then its name.
+                ///
+                /// `railmap-popup.js` draws the operator's mark where there is
+                /// one and a colour swatch where there is not — never both, and
+                /// never a bare name. `OperatorBranding` has been deciding
+                /// WHICH badge since it was ported, through
+                /// `StationDisplay.buildPopupModel`; the answer simply had
+                /// nowhere to go, because the artwork was not in the bundle.
+                /// It is now, under the same relative paths the web app uses.
+                private static func lineRow(_ row: StationDisplay.PopupRow) -> UIView {
+                    let line = UIStackView()
+                    line.axis = .horizontal
+                    line.spacing = 6
+                    line.alignment = .center
+
+                    if let badge = logoView(row) {
+                        line.addArrangedSubview(badge)
+                    } else {
+                        // `.rp-line-swatch`: 14 × 6, the line's own colour.
+                        let swatch = UIView()
+                        swatch.backgroundColor = Coordinator.uiColor(hex: row.color) ?? .systemGray
+                        swatch.layer.cornerRadius = 2
+                        swatch.translatesAutoresizingMaskIntoConstraints = false
+                        swatch.widthAnchor.constraint(equalToConstant: 14).isActive = true
+                        swatch.heightAnchor.constraint(equalToConstant: 6).isActive = true
+                        line.addArrangedSubview(swatch)
+                    }
+
+                    let label = UILabel()
+                    label.font = .systemFont(ofSize: 12, weight: .medium)
+                    label.textColor = .label
+                    label.numberOfLines = 0
+                    label.text = [row.company, row.label].filter { !$0.isEmpty }
+                        .joined(separator: "  ")
+                    line.addArrangedSubview(label)
+                    return line
+                }
+
+                /// `.rp-line-logo`: 16 pt tall, aspect kept, never wider than 48.
+                ///
+                /// The dark matte is not decoration and not a theme rule — it is
+                /// for the handful of operators whose current mark is drawn
+                /// predominantly in WHITE because their own site puts it on a
+                /// dark header. `OperatorBranding.logoNeedsDarkMatte` names
+                /// them, and only they get it, so the original artwork stays
+                /// legible in both appearances.
+                private static func logoView(_ row: StationDisplay.PopupRow) -> UIView? {
+                    guard let image = logoImage(row.logo) else { return nil }
+                    let view = UIImageView(image: image)
+                    view.contentMode = .scaleAspectFit
+                    view.translatesAutoresizingMaskIntoConstraints = false
+                    let ratio = image.size.height > 0 ? image.size.width / image.size.height : 1
+                    view.heightAnchor.constraint(equalToConstant: 16).isActive = true
+                    view.widthAnchor.constraint(
+                        equalToConstant: min(48, 16 * ratio)).isActive = true
+                    guard row.logoNeedsDarkMatte else { return view }
+                    let matte = UIView()
+                    matte.backgroundColor = UIColor(
+                        red: 0x24 / 255, green: 0x31 / 255, blue: 0x3a / 255, alpha: 1)
+                    matte.layer.cornerRadius = 2
+                    matte.addSubview(view)
+                    NSLayoutConstraint.activate([
+                        view.leadingAnchor.constraint(equalTo: matte.leadingAnchor, constant: 2),
+                        view.trailingAnchor.constraint(equalTo: matte.trailingAnchor, constant: -2),
+                        view.topAnchor.constraint(equalTo: matte.topAnchor, constant: 1),
+                        view.bottomAnchor.constraint(equalTo: matte.bottomAnchor, constant: -1),
+                    ])
+                    return matte
+                }
+
+                /// A web path — `/rail/logos/<id>.png` — resolved in the bundle.
+                ///
+                /// The ported rule returns the path the JavaScript hands to an
+                /// `<img>`, so the leading slash is stripped and the rest used
+                /// as-is. Keeping the web's own directory names is what lets one
+                /// table serve both clients; inventing a second naming scheme
+                /// here would be a second thing to keep in step.
+                private static func logoImage(_ path: String?) -> UIImage? {
+                    guard let path, !path.isEmpty else { return nil }
+                    if let cached = logoCache.object(forKey: path as NSString) { return cached }
+                    let relative = path.hasPrefix("/") ? String(path.dropFirst()) : path
+                    guard let url = Bundle.main.resourceURL?.appending(path: relative),
+                          let image = UIImage(contentsOfFile: url.path)
+                    else { return nil }
+                    logoCache.setObject(image, forKey: path as NSString)
+                    return image
+                }
+
+                /// A station complex can list a dozen railways and a reader
+                /// opens one callout after another, so the same handful of
+                /// badges is decoded over and over without this.
+                private static let logoCache = NSCache<NSString, UIImage>()
             }
 
             /// The dot itself: fill, ring, and — on an intermediate stop — the

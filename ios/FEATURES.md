@@ -59,7 +59,7 @@ window's shape, which is the thing the override existed to correct.
 | Display parts — branches split from trunks | `rail-network.js:908` | ✅ | ✅ `RailNetworkStore` builds every line through `DisplayParts.parts` |
 | Station dots | `railmap-style.js` §5 | ✅ | ✅ |
 | Station names, by role tier | `railmap-geometry.js` `markerLabelWinners` | ✅ | ✅ `stationLabelWinners` elects them at decode |
-| C5 bilingual station popup | `railmap-popup.js` (146) | ✅ | ⚠️ readings wired; the operator logo is still absent |
+| C5 bilingual station popup | `railmap-popup.js` (146) | ✅ | ✅ readings, operator badges and colour swatches |
 | The weight ramp — one factor for every mark | `railmap-style.js` `railwayScale` | — | ✅ every weight is one token × `RailStyle.scale` |
 | Endpoint labels, with collision layout | `app-display-features.js` (493) | ✅ | ✅ badge, times and reading lines |
 | Basemap opacity | `app-display-features.js` `applyMapOpacity` | — | ✅ |
@@ -149,7 +149,7 @@ stricter only at the widest views.
 | Auto-focus zoom | `#toggle-focus-zoom` | ✅ | ✅ |
 | Trail gradient along the route | `line-gradient` + `line-progress` | — | ✅ as a per-segment alpha ramp — see below |
 | **Video export** | `app-playback-video.js` (835) | — | ✅ `AVAssetWriter` — see below |
-| Export shape / quality / bitrate | `#playback-shape`, `-quality`, `-bitrate` | — | ❌ export runs at one fixed setting |
+| Export shape / quality / bitrate | `#playback-shape`, `-quality`, `-bitrate` | ✅ | ✅ four frames, four ceilings, three bitrates |
 
 Neither of the last two is a port, and both are better here than in the web app
 because the web app's versions are workarounds. Video export exists there
@@ -182,15 +182,13 @@ marker-record half does, and the two are one file only because they are one
 thing in the JavaScript. This is the last large block of verified code that
 nothing exercises.
 
-**Present but incomplete.** The C5 popup still has no operator logo, though
-`OperatorBranding.swift` is ported and verified. The editor validates core
-fields inline and falls back to the validator's own untranslated message for
-rules no field check explains. Video export runs at one fixed setting.
+**Present but incomplete.** The editor validates core fields inline and falls
+back to the validator's own untranslated message for rules no field check
+explains — a net that is never expected to fire.
 
-**Not ported.** Nothing structural is left. What remains is the `.tw` variant
-strings for keys that do not yet declare variants, and Slice 6 of the interface
-spec — motion, Dynamic Type, keyboard and VoiceOver as a single pass rather
-than per screen.
+**Not ported.** Nothing structural is left. What remains is Slice 6 of the
+interface spec — motion, Dynamic Type, keyboard and VoiceOver as a single pass
+rather than per screen.
 
 **What has and has not been run.** The map layers, the journey panel and its
 three detents have been driven in the simulator in both themes; the numbers in
