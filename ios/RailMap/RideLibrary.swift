@@ -87,9 +87,20 @@ final class RideLibrary {
 
     /// Saves as the reader's own store for this country.
     ///
+    /// The bytes come from `StoreOperations.exportTrainStore`, which is the
+    /// web app's own 匯出 JSON ported and checked against it — **not** from
+    /// `JSONEncoder`.
+    ///
+    /// That distinction is the whole point of saving a JSON file rather than
+    /// using a database. `JSONEncoder` has no setting that emits insertion
+    /// order, and insertion order *is* the format: with `.sortedKeys` this
+    /// wrote a third spelling, neither of the two the web app produces, so the
+    /// file was interchangeable with nothing. The first version of this file
+    /// did exactly that.
+    ///
     /// Written atomically: a store half-written because the app was killed
-    /// mid-save is worse than no store, because the reader would not know it
-    /// had happened until the next launch.
+    /// mid-save is worse than no store, because the reader would not find out
+    /// until the next launch.
     func save(_ store: TrainStore, country: String) {
         lastSaveError = nil
         do {
@@ -97,12 +108,9 @@ final class RideLibrary {
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true)
 
-            let encoder = JSONEncoder()
-            // Sorted keys and pretty printing so the file is diffable and so
-            // two saves of the same store are byte-identical — otherwise every
-            // save looks like a change to anything watching the file.
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            try encoder.encode(store).write(to: Self.storeURL(country: country), options: .atomic)
+            let workspace = StoreOperations.Workspace(store: store, country: country)
+            let text = StoreOperations.exportTrainStore(workspace)
+            try Data(text.utf8).write(to: Self.storeURL(country: country), options: .atomic)
 
             hasSavedStore = true
             source = .mine

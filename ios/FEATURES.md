@@ -56,10 +56,10 @@ A ported function nobody can reach is not a feature.
 | Date bar, add/remove dates | `app-dates.js` (192), `#add-date` | ✅ | ❌ |
 | Train list, grouped by date | `app-render.js` (492) | ✅ | ✅ |
 | Read one ride, stop by stop | `app-editor.js` `renderStopsTable` | ✅ | ✅ |
-| Add / duplicate / delete train | `app-store-ops.js` (775) | ❌ | ❌ |
+| Add / duplicate / delete train | `app-store-ops.js` (775) | ✅ | ❌ |
 | Edit fields (套用欄位) | `app-editor.js` (519) | ❌ | ❌ |
-| Show/hide a train | `#toggle-visible` | ❌ | ❌ |
-| Reorder (上移/下移) | `#move-up`, `#move-down` | ❌ | ❌ |
+| Show/hide a train | `#toggle-visible` | ✅ | ❌ |
+| Reorder (上移/下移) | `#move-up`, `#move-down` | ✅ | ❌ |
 | Stops table, add stop | `app-editor.js` `renderStopsTable` | ❌ | ❌ |
 | Rebuild route from stops | `#rebuild-route` | ❌ | ❌ |
 
@@ -80,7 +80,7 @@ A ported function nobody can reach is not a feature.
 | Progressive import | `app-import.js` (935) | ❌ | ❌ |
 | Validate import JSON | `app-validation.js` | ✅ | ❌ |
 | Open / save local JSON | `app-persistence.js` (1366) | ❌ | ❌ |
-| Export / download JSON | `#export-json`, `#download-json` | ❌ | ❌ |
+| Export / download JSON | `#export-json`, `#download-json` | ✅ | ⚠️ used for saving, no export UI |
 | Load sample data (7 buttons) | `#load-sample-*` | — | ✅ |
 | Save / restore my rides, locally | `#save-as-user-store`, `#restore-user-store` | — | ✅ |
 | Delete my rides | `#clear-storage` | — | ✅ |
