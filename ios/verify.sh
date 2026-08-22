@@ -88,6 +88,22 @@ if [ "$run_swift" = 1 ]; then
     passed=$(grep -cE '^✔ Test ' "$scratch.log" || true)
     echo "  $passed parity tests pass"
 
+    # Warnings in our own sources fail the gate.
+    #
+    # Not pedantry: six ports can be in flight at once, each writing a
+    # thousand-odd lines, and a warning nobody owns is one nobody fixes. Scoped
+    # to RailCore and RailMap so an SDK or toolchain warning cannot fail a
+    # build for something we did not write and cannot fix.
+    warnings=$(swift build --scratch-path "$scratch" 2>&1 \
+        | grep 'warning:' \
+        | grep -E '/(RailCore|RailMap)/' \
+        | sort -u)
+    if [ -n "$warnings" ]; then
+        echo "$warnings"
+        fail "warnings in our own sources"
+    fi
+    echo "  no warnings in RailCore"
+
     # RailCore must not reach for a platform. That constraint is what makes the
     # port checkable at all — with no platform underneath it, the same code can
     # be run against the same fixtures as the JavaScript. Enforced here because

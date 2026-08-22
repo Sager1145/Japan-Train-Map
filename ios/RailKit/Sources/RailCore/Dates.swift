@@ -153,7 +153,7 @@ public enum Dates {
 
     /// ECMAScript `String.prototype.trim`.
     private static func jsTrim(_ text: String) -> String {
-        var scalars = Array(text.unicodeScalars)
+        let scalars = Array(text.unicodeScalars)
         var start = 0
         var end = scalars.count
         while start < end && jsWhitespace.contains(scalars[start]) { start += 1 }
