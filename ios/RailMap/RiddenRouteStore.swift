@@ -16,11 +16,58 @@ final class RiddenRouteStore {
         let coordinates: [Coordinate]
     }
 
+    /// What became of one journey's route, per journey rather than per store.
+    ///
+    /// The store used to answer this with a single bit — a ride was in `rides`
+    /// or it was not — and that bit could not tell "drew everything" from
+    /// "drew four of six and dropped the rest". `solveMissing` appended a ride
+    /// `if !segments.isEmpty` and discarded every section that solved to
+    /// nothing, so a partly-solved journey was indistinguishable from a whole
+    /// one and the interface had nothing to warn anybody with.
+    ///
+    /// Nothing here ever invents geometry: `partial` and `unavailable` mean a
+    /// stretch of railway was **not drawn**, never that a straight line stood
+    /// in for it.
+    enum RouteOutcome: Sendable, Equatable {
+        /// Every section the journey asked for came back with geometry.
+        case resolved
+        /// Some did not. `unsolved` names them the way the reader wrote them,
+        /// so the interface can say which stretch is missing rather than that
+        /// something, somewhere, failed.
+        case partial(solved: Int, expected: Int, unsolved: [SectionGap])
+        /// Not one section solved. The record is untouched and still exports.
+        case unavailable(expected: Int)
+
+        var isResolved: Bool { self == .resolved }
+    }
+
+    /// One stretch that has no drawn railway, named by its own endpoints.
+    struct SectionGap: Sendable, Equatable {
+        let segmentIndex: Int
+        let from: String?
+        let to: String?
+    }
+
     struct DrawnRide: Identifiable, Sendable {
         let id: String
         let colorHex: String
         let visible: Bool
         let segments: [DrawnSegment]
+        /// What became of the route. See ``RouteOutcome``.
+        let route: RouteOutcome
+        /// The journey's stops, in order, carrying the two fields the map
+        /// cannot otherwise know: which calls were ridden (`rideSegment`) and
+        /// which stations are rolled through rather than called at
+        /// (`stopType`). Without them every drawn segment has to be assumed
+        /// ridden and every section boundary assumed a call, and a
+        /// pass-through drawn as a stop is a claim about the journey that the
+        /// reader did not make.
+        let stops: [Stop]
+        /// The calendar days this itinerary touches and where it crosses them,
+        /// so an overnight ride can draw the half that runs on the other day
+        /// differently — `Dates.segmentDate(_:segmentIndex:)` maps a segment to
+        /// its day.
+        let daySpan: Dates.DaySpan
         var strokes: [[Coordinate]] { segments.map(\.coordinates) }
         var vertexCount: Int { strokes.reduce(0) { $0 + $1.count } }
     }
@@ -96,6 +143,8 @@ final class RiddenRouteStore {
                 guard let expectedTemplate else { return true }
                 return feature.properties?.routeTemplateKey == expectedTemplate
             }
+            let indicesAreAuthoritative = matchingFeatures
+                .allSatisfy { $0.properties?.segmentIndex != nil }
             let segments = matchingFeatures.flatMap { feature in
                 feature.geometry.strokes.enumerated().compactMap { pair -> DrawnSegment? in
                     let (partIndex, coordinates) = pair
@@ -109,13 +158,11 @@ final class RiddenRouteStore {
             }
             guard !segments.isEmpty else { continue }
             result.append(
-                DrawnRide(
-                    id: train.id,
-                    colorHex: train.style?.color ?? "#0a84ff",
-                    visible: train.visible != false,
-                    segments: segments
-                )
-            )
+                drawnRide(
+                    train,
+                    segments: segments,
+                    expectedSections: canonicalSections(train, country: country),
+                    indicesAreAuthoritative: indicesAreAuthoritative))
         }
         let solvedIDs = Set(result.map(\.id))
         let missing = wanted.values.filter { !solvedIDs.contains($0.id) }
@@ -125,6 +172,62 @@ final class RiddenRouteStore {
             result += try solveMissing(cached.missing, country: country)
         }
         return result
+    }
+
+    /// Build one drawn ride, deciding its ``RouteOutcome`` from which of the
+    /// journey's sections actually came back with geometry.
+    ///
+    /// The outcome is *derived* rather than stored, which is why the on-disk
+    /// route cache needed no new field and no version bump: a cached ride
+    /// carries its segments' indices, and the sections it was solved for are
+    /// recomputed from the train beside it. A stored copy would be a second
+    /// answer that could disagree with the first.
+    private nonisolated static func drawnRide(
+        _ train: Train,
+        segments: [DrawnSegment],
+        expectedSections: [RouteSection],
+        indicesAreAuthoritative: Bool = true
+    ) -> DrawnRide {
+        let expected = expectedSections.count
+        let solved = Set(segments.map(\.segmentIndex))
+        let unsolved: [SectionGap] = expectedSections.enumerated()
+            .compactMap { index, section in
+                solved.contains(index)
+                    ? nil
+                    : SectionGap(segmentIndex: index, from: section.from, to: section.to)
+            }
+        let outcome: RouteOutcome
+        if expected == 0 || unsolved.isEmpty || !indicesAreAuthoritative {
+            // `indicesAreAuthoritative` is false for a precomputed part whose
+            // features carry no `segment_index`: there the index is the
+            // stroke's position, which says nothing about which SECTION it
+            // came from, and comparing it against the canonical sections would
+            // manufacture gaps that are not there.
+            outcome = .resolved
+        } else if solved.isEmpty {
+            outcome = .unavailable(expected: expected)
+        } else {
+            outcome = .partial(solved: solved.count, expected: expected, unsolved: unsolved)
+        }
+        return DrawnRide(
+            id: train.id,
+            colorHex: train.style?.color ?? "#0a84ff",
+            visible: train.visible != false,
+            segments: segments,
+            route: outcome,
+            stops: train.stops,
+            daySpan: Dates.daySpan(train.forDates))
+    }
+
+    /// The canonical route sections a journey asks for — the same normalisation
+    /// the solver and the cache digest run, so "expected" means the same thing
+    /// in all three.
+    private nonisolated static func canonicalSections(
+        _ train: Train, country: String
+    ) -> [RouteSection] {
+        TrainValidation.normalizeExportTrain(
+            train, country: country, stations: TrainValidation.StationTable.empty
+        ).routeSections ?? []
     }
 
     private nonisolated static func solveMissing(
@@ -229,15 +332,14 @@ final class RiddenRouteStore {
                 }
             }
             graphStore.trimRegionalGraphCache(target: RouteGraph.regionalGraphNodeBudget)
-            if !segments.isEmpty {
-                let ride = DrawnRide(
-                    id: train.id,
-                    colorHex: train.style?.color ?? "#0a84ff",
-                    visible: train.visible != false,
-                    segments: segments)
-                rides.append(ride)
-                try? saveCache(ride, train: train, country: country)
-            }
+            // Emitted even when NOTHING solved. The old code appended only
+            // `if !segments.isEmpty`, which is how a journey with no drawable
+            // route became a journey the interface had never heard of — and a
+            // ride that is absent cannot be told from a ride that is still
+            // being solved. It is reported as `unavailable` instead.
+            let ride = drawnRide(train, segments: segments, expectedSections: sections)
+            rides.append(ride)
+            if !segments.isEmpty { try? saveCache(ride, train: train, country: country) }
         }
         return rides
     }
@@ -322,10 +424,10 @@ final class RiddenRouteStore {
             if segments.isEmpty {
                 missing.append(train)
             } else {
-                rides.append(DrawnRide(
-                    id: train.id, colorHex: train.style?.color ?? "#0a84ff",
-                    visible: train.visible != false,
-                    segments: segments))
+                rides.append(drawnRide(
+                    train,
+                    segments: segments,
+                    expectedSections: canonicalSections(train, country: country)))
             }
         }
         return (rides, missing)

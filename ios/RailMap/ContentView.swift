@@ -709,6 +709,7 @@ struct RidesWorkspaceView: View {
             stations: store.stations,
             rides: mapRides,
             selectedTrainID: itineraries.selectedTrainID,
+            selectedDate: selectedDate,
             showsNetwork: controller.showsNetwork,
             basemapOpacity: controller.basemapOpacity,
             controller: controller,
@@ -718,6 +719,17 @@ struct RidesWorkspaceView: View {
         .ignoresSafeArea()
     }
 
+    /// Every visible ride, INCLUDING the ones outside the selected date.
+    ///
+    /// This used to drop off-date rides. That is not what the web app does and
+    /// it is not what `DisplaySettings.dimOpacity` is for: an off-date ride is
+    /// drawn faint so the reader can see the day in the context of the trip,
+    /// and removing it makes the slider a control over nothing. The renderer
+    /// is handed `selectedDate` and decides.
+    ///
+    /// `map-date-filter` (`mapFollowsSelectedDate`) is the reader asking for
+    /// the harder version — only this date on the map — so that one still
+    /// filters here.
     private var mapRides: [RiddenRouteStore.DrawnRide] {
         let visible = riddenRoutes.rides.filter(\.visible)
         guard mapFollowsSelectedDate, selectedDate != Dates.allDates,

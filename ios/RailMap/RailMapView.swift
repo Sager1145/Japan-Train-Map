@@ -43,6 +43,14 @@ struct RailMapView: View {
     var stations: [RailNetworkStore.DrawnStation]
     var rides: [RiddenRouteStore.DrawnRide]
     var selectedTrainID: String?
+    /// The date the reader has scoped the ride list to, or `Dates.allDates`.
+    ///
+    /// The map needs it for two things it cannot otherwise decide: which rides
+    /// are off-date and should draw at `DisplaySettings.dimOpacity` rather than
+    /// vanish, and — with `DrawnRide.daySpan` — which half of an overnight ride
+    /// runs on the other calendar day, which `showFullCrossDay` either dashes
+    /// or draws solid. Defaulted so a preview needs no date.
+    var selectedDate: String = Dates.allDates
     /// Whether the network is drawn. Kept separate from `lines` on purpose:
     /// hiding the network used to be expressed by passing an empty list, which
     /// made showing it again indistinguishable from loading a country, so the
@@ -663,11 +671,15 @@ struct RailMapView: View {
 
                 let elapsed = ContinuousClock.now - started
                 NSLog(
-                    "railmap: z=%.2f thr=%.1f lines=%d/%d (culled %d) overlays=%d vertices=%d %dms",
+                    "railmap: z=%.2f thr=%.1f lines=%d/%d (culled %d) overlays=%d vertices=%d "
+                        + "stations=%d ridedots=%d ridelabels=%d %dms",
                     zoom, fitted.threshold, visible.count, lines.count,
                     selection?.culledOffScreen ?? 0,
                     overlays.count + rideOverlays.count + rideCasings.count,
                     vertices,
+                    networkAnnotations.count,
+                    rideStationAnnotations.filter { $0 is RideStationAnnotation }.count,
+                    rideStationAnnotations.filter { $0 is RideLabelAnnotation }.count,
                     elapsed.milliseconds)
                 // Deferred: a rebuild can be triggered from inside updateUIView,
                 // and writing SwiftUI state during a view update is undefined
@@ -829,10 +841,11 @@ struct RailMapView: View {
                     }
                     renderer.setNeedsDisplay()
                 }
-                for annotation in networkAnnotations {
-                    (mapView.view(for: annotation) as? StationAnnotationView)?.applyScale(scale)
-                }
                 let zoom = Self.zoomLevel(of: mapView)
+                for annotation in networkAnnotations {
+                    (mapView.view(for: annotation) as? StationAnnotationView)?
+                        .applyScale(scale, zoom: zoom)
+                }
                 for annotation in rideStationAnnotations {
                     guard let view = mapView.view(for: annotation) else { continue }
                     if let dot = view as? RideStationAnnotationView {
@@ -1088,8 +1101,12 @@ struct RailMapView: View {
 
             private final class StationAnnotationView: MKAnnotationView {
                 private let dot = UIView()
-                private let nameLabel = UILabel()
+                private let nameLabel = HaloLabel()
                 private var station: RailNetworkStore.DrawnStation?
+                /// The zoom the name is currently sized for. Text does not ride
+                /// the railway's scale ramp, but it does ride its own shallower
+                /// one, so a rescale has to re-measure it.
+                private var zoom: Double = 0
                 /// The factor the dot below is currently drawn at. Held so a
                 /// rescale is a resize rather than a rebuild.
                 private var scale: CGFloat = 1
@@ -1099,35 +1116,40 @@ struct RailMapView: View {
                     addSubview(dot)
                     addSubview(nameLabel)
                     dot.layer.borderColor = UIColor.systemBackground.cgColor
-                    // Text is not a mark and never thins with the railway scale.
-                    nameLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-                    nameLabel.textColor = .label
-                    nameLabel.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.82)
-                    nameLabel.layer.cornerRadius = 4
-                    nameLabel.layer.masksToBounds = true
+                    // A name is drawn in the map's own label ink with the map's
+                    // own surface haloed around it — never on a filled plate.
+                    // See `MapLabelStyle`.
+                    nameLabel.numberOfLines = 1
                     collisionMode = .rectangle
                     canShowCallout = true
                 }
 
                 required init?(coder: NSCoder) { nil }
 
-                func configure(_ item: StationAnnotation, scale: CGFloat) {
+                func configure(_ item: StationAnnotation, scale: CGFloat, zoom: Double) {
                     station = item.station
                     self.scale = scale
+                    self.zoom = zoom
                     let station = item.station
                     dot.backgroundColor = Coordinator.uiColor(hex: station.colorHex) ?? .systemGray
-                    nameLabel.text = station.showsLabel ? "  \(station.name)  " : nil
-                    nameLabel.isHidden = !station.showsLabel
-                    displayPriority = station.isTerminal ? .required
-                        : station.showsLabel ? .defaultHigh : .defaultLow
+                    nameLabel.text = station.name
+                    // An interchange is counted in RAILWAYS, which is exactly
+                    // what the popup's rows already are: `buildPopupModel`
+                    // dedupes them on displayed operator + name, so several
+                    // services of one railway leave a station reading as one.
+                    displayPriority = MapLabelStyle.stationDisplayPriority(
+                        interchange: station.popup.lines.count > 1,
+                        isTerminal: station.isTerminal,
+                        named: station.showsLabel)
                     accessibilityLabel = station.name
                     detailCalloutAccessoryView = Self.popupView(station.popup)
                     relayout()
                 }
 
-                func applyScale(_ scale: CGFloat) {
-                    guard scale != self.scale else { return }
+                func applyScale(_ scale: CGFloat, zoom: Double) {
+                    guard scale != self.scale || zoom != self.zoom else { return }
                     self.scale = scale
+                    self.zoom = zoom
                     relayout()
                 }
 
@@ -1139,16 +1161,35 @@ struct RailMapView: View {
                 /// draws every network platform at the same radius.
                 private func relayout() {
                     guard let station else { return }
+                    let dark = traitCollection.userInterfaceStyle == .dark
                     let diameter = max(1, RailStyle.stationDiameter * scale)
                     dot.frame = CGRect(
                         x: 0, y: 12 - diameter / 2, width: diameter, height: diameter)
                     dot.layer.cornerRadius = diameter / 2
                     dot.layer.borderWidth = RailStyle.stationRing * scale
-                    let labelSize = station.showsLabel
+
+                    // The beads appear at each station's own minZoom; the NAMES
+                    // wait for a second, higher floor, because a name needs a
+                    // district's worth of room and a bead does not.
+                    let names = station.showsLabel && zoom >= MapLabelStyle.stationLabelMinZoom
+                    let size = MapLabelStyle.stationLabelSize(atZoom: zoom)
+                    nameLabel.isHidden = !names
+                    nameLabel.font = MapLabelStyle.font(ofSize: size)
+                    nameLabel.textColor = MapLabelStyle.ink(dark: dark)
+                    nameLabel.haloColor = MapLabelStyle.halo(dark: dark)
+
+                    let labelSize = names
                         ? nameLabel.sizeThatFits(CGSize(width: 180, height: 24)) : .zero
+                    // `text-radial-offset` is in ems, so the gap grows with the
+                    // text rather than holding a pixel count while the label
+                    // around it changes size. The halo needs room of its own on
+                    // both sides or it is clipped by the label's bounds.
+                    let gap = size * MapLabelStyle.radialOffsetEm
+                    let inset = MapLabelStyle.haloWidth
                     nameLabel.frame = CGRect(
-                        x: diameter + 3, y: 1, width: labelSize.width, height: 22)
-                    let width = station.showsLabel ? diameter + 3 + labelSize.width : diameter
+                        x: diameter + gap - inset, y: 1,
+                        width: labelSize.width + inset * 2, height: 22)
+                    let width = names ? nameLabel.frame.maxX : diameter
                     frame.size = CGSize(width: width, height: 24)
                     centerOffset = CGPoint(x: width / 2 - diameter / 2, y: 0)
                 }
@@ -1196,7 +1237,20 @@ struct RailMapView: View {
                     // A circle, and `.required`: every dot on a ride draws. The
                     // names contend among themselves on their own annotations.
                     collisionMode = .circle
-                    displayPriority = .required
+                    // Below the names deliberately. MapLibre never collides
+                    // circles at all — only symbols — so in the web app a bead
+                    // can never suppress a caption. MapKit collides every
+                    // annotation view against every other, and with the dots
+                    // at `.required` a name that touched ANY bead lost: along a
+                    // dense route the beads are a few points apart, so all 80
+                    // captions on screen were being suppressed by them.
+                    //
+                    // Inverting it costs a bead where a name lands on one, and
+                    // that is much the smaller loss: the ride's LINE is an
+                    // overlay and never collides, so the journey is still drawn
+                    // through the station either way — while a suppressed name
+                    // is the only text this map has.
+                    displayPriority = .defaultLow
                     canShowCallout = true
                 }
 
@@ -1247,7 +1301,7 @@ struct RailMapView: View {
             /// collision pass decides between NAMES rather than between a name and
             /// somebody else's dot.
             private final class RideLabelAnnotationView: MKAnnotationView {
-                private let text = UILabel()
+                private let text = HaloLabel()
                 private var item: RideLabelAnnotation?
                 private var scale: CGFloat = 1
                 private var zoom: Double = 0
@@ -1255,10 +1309,7 @@ struct RailMapView: View {
                 override init(annotation: (any MKAnnotation)?, reuseIdentifier: String?) {
                     super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
                     addSubview(text)
-                    text.textColor = .label
-                    text.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.82)
-                    text.layer.cornerRadius = 4
-                    text.layer.masksToBounds = true
+                    text.numberOfLines = 1
                     collisionMode = .rectangle
                 }
 
@@ -1268,7 +1319,7 @@ struct RailMapView: View {
                     self.item = item
                     self.scale = scale
                     self.zoom = zoom
-                    text.text = "  \(item.text)  "
+                    text.text = item.text
                     accessibilityLabel = item.text
                     // `rideLabelTiersInPlacementOrder` is weakest first, which is
                     // the order MapLibre pushes the three symbol layers in. Here
@@ -1277,9 +1328,25 @@ struct RailMapView: View {
                     // before a station merely rolled through.
                     let rank = StationDisplay.rideLabelTiersInPlacementOrder
                         .firstIndex(of: item.tier) ?? 0
-                    displayPriority = MKFeatureDisplayPriority(
-                        rawValue: MKFeatureDisplayPriority.defaultLow.rawValue
-                            + Float(rank) * 250 + (item.selected ? 100 : 0))
+                    // `.required`, and it has to be — measured, not chosen.
+                    //
+                    // An annotation view does not only collide with other
+                    // annotation views: it competes with the BASEMAP's own
+                    // labels, and Apple's are dense over a city. At
+                    // `defaultHigh + tier` (910 of a possible 1000) every one
+                    // of 85 captions over Osaka was evicted and the map drew a
+                    // ride with no names on it at all; the two endpoint cards
+                    // survived only because they were already `.required`.
+                    // Nothing between 750 and 1000 changed that.
+                    //
+                    // What is given up is thinning: MapKit shows every
+                    // `.required` view, so captions no longer yield to each
+                    // other by tier the way `rideLabelTiersInPlacementOrder`
+                    // arranges in MapLibre. Density is carried entirely by the
+                    // two mechanisms that are ported — the ~600 m name election
+                    // in `markerLabelWinners`, and the three zoom floors — which
+                    // is why those floors are set where they are.
+                    displayPriority = .required
                     relayout()
                 }
 
@@ -1296,34 +1363,45 @@ struct RailMapView: View {
                 /// dot follows the scale, because that dot did thin.
                 private func relayout() {
                     guard let item else { return }
-                    text.font = .systemFont(
-                        ofSize: item.tier.textSize(atZoom: RailStyle.mapLibreZoom(from: zoom)),
-                        weight: .semibold)
+                    let dark = traitCollection.userInterfaceStyle == .dark
+                    let points = CGFloat(
+                        item.tier.textSize(atZoom: RailStyle.mapLibreZoom(from: zoom)))
+                    text.font = MapLabelStyle.font(ofSize: points)
+                    text.textColor = MapLabelStyle.ink(dark: dark)
+                    text.haloColor = MapLabelStyle.halo(dark: dark)
+                    let inset = MapLabelStyle.haloWidth
                     let size = text.sizeThatFits(CGSize(width: 190, height: 24))
                     let height = max(size.height, 16)
-                    text.frame = CGRect(x: 0, y: 0, width: size.width, height: height)
-                    frame.size = CGSize(width: size.width, height: height)
+                    let width = size.width + inset * 2
+                    text.frame = CGRect(x: 0, y: 0, width: width, height: height)
+                    frame.size = CGSize(width: width, height: height)
                     centerOffset = CGPoint(
-                        x: item.dotRadiusToken * scale + 3 + size.width / 2, y: 0)
+                        x: item.dotRadiusToken * scale
+                            + points * MapLabelStyle.radialOffsetEm + width / 2,
+                        y: 0)
                 }
             }
 
             /// The origin / destination card, whose placement is decided in
             /// `MapEndpointLabels` and applied here as a centre offset.
             private final class EndpointLabelView: MKAnnotationView {
-                private let card = UILabel()
+                private let card = HaloLabel()
 
                 override init(annotation: (any MKAnnotation)?, reuseIdentifier: String?) {
                     super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
                     addSubview(card)
                     card.font = MapEndpointLabels.font
                     card.textAlignment = .center
-                    card.textColor = .label
-                    card.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.92)
-                    card.layer.cornerRadius = 6
-                    card.layer.masksToBounds = true
-                    card.layer.borderWidth = 0.5
-                    card.layer.borderColor = UIColor.separator.cgColor
+                    card.numberOfLines = 0
+                    // The web app draws this one as a filled card
+                    // (`.station-label`), because HTML text over a raster map
+                    // has no other way to stay legible. Here it is haloed like
+                    // every other name on the map instead: a filled plate in
+                    // dark mode is a black chip punched through the map, and
+                    // this is the one label big enough for that to be the first
+                    // thing a reader sees. Same ink, same halo, one more step
+                    // of weight so an endpoint still reads as the ride's end.
+                    card.backgroundColor = .clear
                     // The web app's cards are `pointer-events: none` so they never
                     // block route picking; the same here.
                     isUserInteractionEnabled = false
@@ -1334,6 +1412,13 @@ struct RailMapView: View {
                 required init?(coder: NSCoder) { nil }
 
                 func configure(_ item: EndpointLabelAnnotation) {
+                    // Read here, not in `init`: an annotation view is reused
+                    // across a light/dark flip, and a colour resolved once at
+                    // construction is a colour from whichever theme happened to
+                    // be in force the first time this view was made.
+                    let dark = traitCollection.userInterfaceStyle == .dark
+                    card.textColor = MapLabelStyle.ink(dark: dark)
+                    card.haloColor = MapLabelStyle.halo(dark: dark)
                     card.text = item.spec.text
                     accessibilityLabel = item.spec.text
                     let size = CGSize(width: item.spec.width, height: item.spec.height)
@@ -1401,15 +1486,15 @@ struct RailMapView: View {
             func mapView(
                 _ mapView: MKMapView, viewFor annotation: any MKAnnotation
             ) -> MKAnnotationView? {
-                let scale = mapView.bounds.width > 1
-                    ? RailStyle.scale(atZoom: Self.zoomLevel(of: mapView)) : 1
+                let zoom = Self.zoomLevel(of: mapView)
+                let scale = mapView.bounds.width > 1 ? RailStyle.scale(atZoom: zoom) : 1
                 if let station = annotation as? StationAnnotation {
                     let identifier = "network-station"
                     let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
                         as? StationAnnotationView
                         ?? StationAnnotationView(annotation: station, reuseIdentifier: identifier)
                     view.annotation = station
-                    view.configure(station, scale: scale)
+                    view.configure(station, scale: scale, zoom: zoom)
                     return view
                 }
                 if let station = annotation as? RideStationAnnotation {
@@ -1428,8 +1513,7 @@ struct RailMapView: View {
                         as? RideLabelAnnotationView
                         ?? RideLabelAnnotationView(annotation: label, reuseIdentifier: identifier)
                     view.annotation = label
-                    view.configure(
-                        label, scale: scale, zoom: Self.zoomLevel(of: mapView))
+                    view.configure(label, scale: scale, zoom: zoom)
                     return view
                 }
                 if let endpoint = annotation as? EndpointLabelAnnotation {
