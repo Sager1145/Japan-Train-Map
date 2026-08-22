@@ -35,6 +35,39 @@ enum JourneyStrings {
 
         // Not translated so much as arranged: the arrow is the whole string in
         // every language, and the two fills are station names the reader wrote.
+        // ── the video export options (§5.6) ──
+        // The shape/quality/bitrate CHOICES are catalog keys — `video.shape.*`
+        // and friends exist in all four languages already. These six are the
+        // read-out beside them, which the web app assembles from one
+        // `video.summary` template; split here because a `Form` lists them as
+        // rows rather than as a sentence.
+        "ios.video.output": [
+            .zhHant: "輸出", .zhHans: "输出", .ja: "書き出し", .en: "Output",
+        ],
+        "ios.video.size": [
+            .zhHant: "尺寸", .zhHans: "尺寸", .ja: "サイズ", .en: "Size",
+        ],
+        "ios.video.rate": [
+            .zhHant: "碼率", .zhHans: "码率", .ja: "ビットレート", .en: "Bitrate",
+        ],
+        "ios.video.length": [
+            .zhHant: "長度", .zhHans: "长度", .ja: "長さ", .en: "Length",
+        ],
+        "ios.video.estimate": [
+            .zhHant: "預估檔案", .zhHans: "预估文件", .ja: "推定ファイル", .en: "Estimated file",
+        ],
+        "ios.video.qualityNote": [
+            .zhHant: "畫質是上限而不是目標：地圖不會被放大超過它繪製的解析度。",
+            .zhHans: "画质是上限而不是目标：地图不会被放大超过它绘制的分辨率。",
+            .ja: "画質は上限であって目標ではありません。地図が描画解像度を超えて拡大されることはありません。",
+            .en: "Quality is a ceiling, not a target: the map is never scaled up past what it is drawn at.",
+        ],
+        "ios.video.noRun": [
+            .zhHant: "範圍內沒有已繪出路線的行程，目前沒有可錄製的內容。",
+            .zhHans: "范围内没有已绘出路线的行程，目前没有可录制的内容。",
+            .ja: "経路が描画された乗車が範囲内にないため、録画できるものがまだありません。",
+            .en: "No journey with a drawn route is in scope, so there is nothing to film yet.",
+        ],
         "ios.journey.endpoints": [
             .zhHant: "{from} → {to}",
             .zhHans: "{from} → {to}",

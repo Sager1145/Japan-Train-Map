@@ -29,6 +29,10 @@ final class PlaybackVideoExporter {
     @ObservationIgnored private var startedAt: CFTimeInterval = 0
     @ObservationIgnored private var lastFrameAt: CFTimeInterval = -.infinity
     @ObservationIgnored private var outputSize = CGSize.zero
+    /// The rectangle of the map being filmed, in the map view's own points.
+    /// The whole view until a shape narrows it — see `VideoExportSettings`.
+    @ObservationIgnored private var crop = CGRect.zero
+    @ObservationIgnored private var frameInterval = 1.0 / 60.0
 
     var isRecording: Bool { state == .recording || state == .finishing }
 
@@ -37,11 +41,27 @@ final class PlaybackVideoExporter {
         mapView: UIView,
         trains: [Train],
         rides: [RiddenRouteStore.DrawnRide],
-        reducedMotion: Bool
+        reducedMotion: Bool,
+        settings: VideoExportSettings
     ) {
         cancel(clearPlayback: false)
         do {
-            let size = Self.videoSize(for: mapView.bounds.size)
+            // The WHOLE map view, where the web app films only the map the
+            // menu is not covering (`uncoveredRect`).
+            //
+            // That is not an oversight and it is not a shortcut: the web app
+            // crops there because its playback camera PADS for the menu and
+            // therefore centres the train in the uncovered part. This one does
+            // not — `mapRendererViewSize` is the full view — so filming a
+            // smaller rectangle would take the train off centre in the file.
+            // The crop and the camera have to agree about where the middle is;
+            // the day the camera learns about the panel, this should follow it.
+            let plan = settings.plan(
+                sourceSize: mapView.bounds.size,
+                displayScale: mapView.window?.screen.scale ?? UIScreen.main.scale)
+            let size = plan.size
+            crop = plan.crop
+            frameInterval = 1.0 / Double(VideoExportSettings.framesPerSecond)
             let url = FileManager.default.temporaryDirectory
                 .appending(path: "RailMap-\(UUID().uuidString).mp4")
             let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -50,9 +70,9 @@ final class PlaybackVideoExporter {
                 AVVideoWidthKey: Int(size.width),
                 AVVideoHeightKey: Int(size.height),
                 AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: 6_000_000,
-                    AVVideoExpectedSourceFrameRateKey: 30,
-                    AVVideoMaxKeyFrameIntervalKey: 60,
+                    AVVideoAverageBitRateKey: Int(plan.bitsPerSecond),
+                    AVVideoExpectedSourceFrameRateKey: VideoExportSettings.framesPerSecond,
+                    AVVideoMaxKeyFrameIntervalKey: VideoExportSettings.framesPerSecond * 2,
                 ],
             ]
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
@@ -113,7 +133,7 @@ final class PlaybackVideoExporter {
               let adapter, let pool = adapter.pixelBufferPool,
               let mapView else { return }
         let now = CACurrentMediaTime()
-        guard now - lastFrameAt >= 1.0 / 30.0 else { return }
+        guard now - lastFrameAt >= frameInterval else { return }
         lastFrameAt = now
         var optionalBuffer: CVPixelBuffer?
         guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &optionalBuffer) == kCVReturnSuccess,
@@ -131,18 +151,21 @@ final class PlaybackVideoExporter {
                 | CGBitmapInfo.byteOrder32Little.rawValue)
         else { return }
 
-        let sourceSize = mapView.bounds.size
-        let scale = min(outputSize.width / max(sourceSize.width, 1),
-                        outputSize.height / max(sourceSize.height, 1))
-        let dx = (outputSize.width - sourceSize.width * scale) / 2
-        let dy = (outputSize.height - sourceSize.height * scale) / 2
+        // The crop FILLS the frame rather than being letterboxed into it: it
+        // was chosen to have the frame's shape precisely so there are no bars.
+        // A `native` shape makes the crop the whole view and this is a plain
+        // scale, which is what the old code did for every shape.
+        let filmed = crop.isEmpty ? CGRect(origin: .zero, size: mapView.bounds.size) : crop
+        let scale = outputSize.width / max(filmed.width, 1)
         context.setFillColor(UIColor.black.cgColor)
         context.fill(CGRect(origin: .zero, size: outputSize))
         context.saveGState()
-        context.translateBy(x: dx, y: outputSize.height - dy)
+        // Flip into UIKit's orientation, then shift so the crop's top-left
+        // corner — not the view's — lands on the frame's.
+        context.translateBy(x: -filmed.minX * scale, y: outputSize.height + filmed.minY * scale)
         context.scaleBy(x: scale, y: -scale)
         mapView.layer.render(in: context)
-        drawCaption(snapshot, in: context, viewSize: sourceSize)
+        drawCaption(snapshot, in: context, filmed: filmed)
         context.restoreGState()
 
         let elapsed = max(0, now - startedAt)
@@ -151,15 +174,19 @@ final class PlaybackVideoExporter {
     }
 
     private func drawCaption(
-        _ snapshot: PlaybackMapSnapshot, in context: CGContext, viewSize: CGSize
+        _ snapshot: PlaybackMapSnapshot, in context: CGContext, filmed: CGRect
     ) {
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
+        // Placed against the FILMED rectangle, not the whole view: a square
+        // crop of a phone in portrait discards a third of the height at the
+        // bottom, and a caption laid out against the view would be cropped
+        // straight out of the picture it is captioning.
         let margin: CGFloat = 18
         let height: CGFloat = 84
         let box = CGRect(
-            x: margin, y: viewSize.height - height - margin,
-            width: max(viewSize.width - margin * 2, 1), height: height)
+            x: filmed.minX + margin, y: filmed.maxY - height - margin,
+            width: max(filmed.width - margin * 2, 1), height: height)
         UIColor.black.withAlphaComponent(0.72).setFill()
         UIBezierPath(roundedRect: box, cornerRadius: 16).fill()
 
@@ -230,11 +257,6 @@ final class PlaybackVideoExporter {
         mapView = nil
         playback = nil
         outputURL = nil
-    }
-
-    private static func videoSize(for source: CGSize) -> CGSize {
-        let landscape = source.width > source.height
-        return landscape ? CGSize(width: 1280, height: 720) : CGSize(width: 720, height: 1280)
     }
 
     private static func color(hex: String) -> UIColor? {

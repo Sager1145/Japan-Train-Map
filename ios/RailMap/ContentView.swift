@@ -61,6 +61,11 @@ struct RidesWorkspaceView: View {
     @State private var importFlow = ImportFlow()
     @State private var playback = PlaybackController()
     @State private var videoExporter = PlaybackVideoExporter()
+    @State private var videoSettings = VideoExportSettings()
+    /// How long the film would run, taken from `Playback.plan` when the export
+    /// options open — §5.6's summary has to state a length before the reader
+    /// commits to a run that takes minutes.
+    @State private var videoPlanSeconds = 0.0
     @State private var didRunDebugPlayback = false
     @State private var manualDates: [String] = []
     @State private var showsAddDate = false
@@ -103,6 +108,9 @@ struct RidesWorkspaceView: View {
         case edit(Train)
         case detail(Train)
         case importData
+        /// §5.6: exporting is a SECONDARY flow — the shape, quality and
+        /// bitrate appear once it is opened, not beside the transport.
+        case videoOptions
 
         var id: String {
             switch self {
@@ -110,6 +118,7 @@ struct RidesWorkspaceView: View {
             case .edit(let train): "edit:\(train.id)"
             case .detail(let train): "detail:\(train.id)"
             case .importData: "import"
+            case .videoOptions: "video"
             }
         }
     }
@@ -194,6 +203,16 @@ struct RidesWorkspaceView: View {
                     itineraries.replace(edited, replacing: train.id, country: country)
                     persistMine()
                     sheet = nil
+                }
+            case .videoOptions:
+                VideoExportOptionsView(
+                    settings: videoSettings,
+                    sourceSize: controller.mapView?.bounds.size ?? .zero,
+                    displayScale: controller.mapView?.window?.screen.scale ?? 3,
+                    seconds: videoPlanSeconds
+                ) {
+                    sheet = nil
+                    startVideoExport()
                 }
             case .detail(let train):
                 // §3.1: L4 metadata lives on a second surface, not in the Hero.
@@ -1144,7 +1163,13 @@ struct RidesWorkspaceView: View {
             }
             .accessibilityLabel(localization.journeyText("video.share", fallback: "Share video"))
         case .idle, .failed:
-            Button { startVideoExport() } label: {
+            Button {
+                videoPlanSeconds = playback.prepare(
+                    trains: playbackScope, rides: riddenRoutes.rides,
+                    reducedMotion: reduceMotion
+                ).seconds
+                sheet = .videoOptions
+            } label: {
                 Image(systemName: "video.badge.plus")
             }
             .accessibilityLabel(localization.countryText("video.export", fallback: "Export playback video"))
@@ -1153,10 +1178,11 @@ struct RidesWorkspaceView: View {
 
     private func startVideoExport() {
         guard let mapView = controller.mapView else { return }
+        videoSettings.persist()
         videoExporter.start(
             playback: playback, mapView: mapView,
             trains: playbackScope, rides: riddenRoutes.rides,
-            reducedMotion: reduceMotion)
+            reducedMotion: reduceMotion, settings: videoSettings)
     }
 
     private func stopPlayback() {
