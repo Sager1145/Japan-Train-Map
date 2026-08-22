@@ -54,7 +54,8 @@ A ported function nobody can reach is not a feature.
 | Feature | Source | logic | app |
 | --- | --- | :-: | :-: |
 | Date bar, add/remove dates | `app-dates.js` (192), `#add-date` | ✅ | ❌ |
-| Train list, grouped by date | `app-render.js` (492) | ❌ | ❌ |
+| Train list, grouped by date | `app-render.js` (492) | ✅ | ✅ |
+| Read one ride, stop by stop | `app-editor.js` `renderStopsTable` | ✅ | ✅ |
 | Add / duplicate / delete train | `app-store-ops.js` (775) | ❌ | ❌ |
 | Edit fields (套用欄位) | `app-editor.js` (519) | ❌ | ❌ |
 | Show/hide a train | `#toggle-visible` | ❌ | ❌ |
@@ -80,9 +81,10 @@ A ported function nobody can reach is not a feature.
 | Validate import JSON | `app-validation.js` | ✅ | ❌ |
 | Open / save local JSON | `app-persistence.js` (1366) | ❌ | ❌ |
 | Export / download JSON | `#export-json`, `#download-json` | ❌ | ❌ |
-| Save / restore "my data" | IndexedDB, `app-persistence.js` | ❌ | ❌ |
-| Load sample data (7 buttons) | `#load-sample-*` | ❌ | ❌ |
-| Delete all / reset / clear storage | `#delete-all-trains` etc. | ❌ | ❌ |
+| Load sample data (7 buttons) | `#load-sample-*` | — | ✅ |
+| Save / restore my rides, locally | `#save-as-user-store`, `#restore-user-store` | — | ✅ |
+| Delete my rides | `#clear-storage` | — | ✅ |
+| Delete all / reset | `#delete-all-trains`, `#reset-defaults` | ❌ | ❌ |
 | Server autosave + SSE live refresh | `app-live-refresh.js` (135) | ❌ | n/a |
 
 ## 6 · Playback
@@ -114,7 +116,7 @@ has no gradient stroke, so it needs segment colouring or a custom overlay.
 
 ## Where that leaves it
 
-Of roughly 60 features, **6 work in the app**. Eleven more have their logic
+Of roughly 60 features, **12 work in the app**. Eleven more have their logic
 ported and verified but nothing on screen yet — those are the cheapest wins,
 because the hard half is already done and checked.
 

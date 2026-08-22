@@ -32,6 +32,7 @@ struct ContentView: View {
 
     @State private var store = RailNetworkStore()
     @State private var itineraries = ItineraryStore()
+    @State private var library = RideLibrary()
     @State private var controller = RailMapController()
     @State private var country = "mo"
     @State private var render: RailMapView.RenderStats?
@@ -79,7 +80,7 @@ struct ContentView: View {
         }
         .task(id: country) {
             store.load(country: country)
-            itineraries.load(country: country)
+            itineraries.load(country: country, from: library)
         }
     }
 
@@ -288,6 +289,65 @@ struct ContentView: View {
                         RideDetailView(train: train)
                     }
                 }
+                .navigationTitle(library.source.isMine ? "My rides" : "Sample")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { rideSourceMenu }
+            }
+        }
+    }
+
+    /// The web app's 載入示例資料 / 保存為我的資料 / 恢復我的資料, as one menu.
+    ///
+    /// One menu rather than eleven buttons because on a phone they are eleven
+    /// buttons the reader has to read every time; grouped, the destructive one
+    /// is also somewhere it cannot be hit by accident.
+    @ToolbarContentBuilder
+    private var rideSourceMenu: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Section("Samples") {
+                    ForEach(RideLibrary.Sample.forCountry(country)) { sample in
+                        Button {
+                            library.use(.sample(sample.resource))
+                            itineraries.load(country: country, from: library)
+                        } label: {
+                            Label(
+                                sample.title,
+                                systemImage: library.source == .sample(sample.resource)
+                                    ? "checkmark" : "doc.text"
+                            )
+                        }
+                    }
+                }
+
+                Section("Mine") {
+                    Button {
+                        if let store = itineraries.store {
+                            library.save(store, country: country)
+                        }
+                    } label: {
+                        Label("Save as my rides", systemImage: "square.and.arrow.down")
+                    }
+                    .disabled(itineraries.store == nil)
+
+                    Button {
+                        library.use(.mine)
+                        itineraries.load(country: country, from: library)
+                    } label: {
+                        Label("Restore my rides", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(!library.hasSavedStore)
+
+                    Button(role: .destructive) {
+                        library.deleteSavedStore(country: country)
+                        itineraries.load(country: country, from: library)
+                    } label: {
+                        Label("Delete my rides", systemImage: "trash")
+                    }
+                    .disabled(!library.hasSavedStore)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
         }
     }

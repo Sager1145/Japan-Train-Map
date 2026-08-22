@@ -51,25 +51,40 @@ final class ItineraryStore {
     /// different halves of the layout.
     var selectedTrainID: String?
 
-    /// Which countries ship a committed store. The other three packages draw
-    /// a network but carry no recorded rides, and offering an empty list for
-    /// them would read as a failure rather than as an absence.
-    static let storeFiles: [String: String] = [
-        "jp": "train-store",
-        "tw": "train-store-tw",
-    ]
+    /// Loads whatever the library says is current — a bundled sample, or the
+    /// reader's own saved store.
+    ///
+    /// The store is held here as well as decoded, because saving needs the
+    /// whole `TrainStore` (schema version included) and not just the trains.
+    private(set) var store: TrainStore?
 
-    func load(country: String) {
-        guard let resource = Self.storeFiles[country] else {
-            state = .loaded(Loaded(country: country, trains: [], days: [], elapsed: .zero))
-            selectedTrainID = nil
-            return
-        }
+    func load(country: String, from library: RideLibrary) {
         state = .loading
+        library.refreshSavedState(country: country)
+
         Task {
             do {
-                let loaded = try await Self.decode(country: country, resource: resource)
-                state = .loaded(loaded)
+                let store: TrainStore
+                switch library.source {
+                case .mine:
+                    store = try library.savedStore(country: country)
+                case .sample(let resource):
+                    // A sample belongs to one country. Asked for a country
+                    // whose sample is not the current one — after a country
+                    // switch — fall to that country's own first sample rather
+                    // than showing rides with no railway under them.
+                    let wanted = RideLibrary.Sample.all.first { $0.resource == resource }
+                    if wanted?.country == country {
+                        store = try library.sample(resource)
+                    } else if let fallback = RideLibrary.Sample.forCountry(country).first {
+                        store = try library.sample(fallback.resource)
+                        library.use(.sample(fallback.resource))
+                    } else {
+                        store = TrainStore(schemaVersion: "1.3", trains: [])
+                    }
+                }
+                self.store = store
+                state = .loaded(try await Self.group(store: store, country: country))
                 selectedTrainID = nil
             } catch {
                 state = .failed(error.localizedDescription)
@@ -77,16 +92,12 @@ final class ItineraryStore {
         }
     }
 
-    /// A national store is 1.2 MB of JSON and 201 itineraries, so it decodes
-    /// off the main actor and the main actor only sees the finished value.
-    private nonisolated static func decode(
-        country: String, resource: String
+    /// A national store is 201 itineraries, so the grouping runs off the main
+    /// actor and the main actor only sees the finished value.
+    private nonisolated static func group(
+        store: TrainStore, country: String
     ) async throws -> Loaded {
         let started = ContinuousClock.now
-        guard let url = Bundle.main.url(forResource: resource, withExtension: "json") else {
-            throw LoadError.missingResource(resource)
-        }
-        let store = try JSONDecoder().decode(TrainStore.self, from: Data(contentsOf: url))
 
         // Both the ordering and the bucketing are the web app's, ported. The
         // date bar's order comes from `availableDates`, which sorts on a

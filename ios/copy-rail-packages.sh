@@ -48,16 +48,29 @@ if [ ! -f "$catalog" ]; then
 fi
 cp -p "$catalog" "$target_dir/Localizable.json"
 
-# The committed itinerary stores. Same rule as the rail packages: read from
-# app/data rather than copied into the iOS target, because they are the same
-# files the web app reads and a second committed copy is a copy that drifts.
-for store in train-store train-store-tw; do
+# Every sample itinerary the web app can load, under the same names. Same rule
+# as the rail packages: read from app/data rather than copied into the iOS
+# target, because they are the files the web app itself reads and a second
+# committed copy is a copy that drifts.
+#
+# The five country stores plus the two special itineraries are exactly the set
+# behind index.html's 載入*示例資料 buttons.
+for store in train-store train-store-tw train-store-hk train-store-mo train-store-kr; do
     file="$here/../app/data/$store.json"
     if [ -f "$file" ]; then
         cp -p "$file" "$target_dir/$store.json"
     else
-        echo "note: $file absent — the app will start with no rides" >&2
+        echo "note: $file absent — that sample will not be offered" >&2
     fi
 done
 
-echo "copied the rail packages, the string catalog and the itinerary stores into $target_dir"
+for sample in new-year-grand-loop tokyo-limited-express-loop; do
+    file="$here/../app/data/special-samples/$sample.json"
+    if [ -f "$file" ]; then
+        cp -p "$file" "$target_dir/$sample.json"
+    else
+        echo "note: $file absent — that sample will not be offered" >&2
+    fi
+done
+
+echo "copied the rail packages, the string catalog and 7 sample itineraries into $target_dir"
