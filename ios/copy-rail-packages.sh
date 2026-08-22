@@ -48,4 +48,16 @@ if [ ! -f "$catalog" ]; then
 fi
 cp -p "$catalog" "$target_dir/Localizable.json"
 
-echo "copied 5 rail packages and the string catalog into $target_dir"
+# The committed itinerary stores. Same rule as the rail packages: read from
+# app/data rather than copied into the iOS target, because they are the same
+# files the web app reads and a second committed copy is a copy that drifts.
+for store in train-store train-store-tw; do
+    file="$here/../app/data/$store.json"
+    if [ -f "$file" ]; then
+        cp -p "$file" "$target_dir/$store.json"
+    else
+        echo "note: $file absent — the app will start with no rides" >&2
+    fi
+done
+
+echo "copied the rail packages, the string catalog and the itinerary stores into $target_dir"

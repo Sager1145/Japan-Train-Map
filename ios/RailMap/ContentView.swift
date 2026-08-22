@@ -31,20 +31,25 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var store = RailNetworkStore()
+    @State private var itineraries = ItineraryStore()
     @State private var controller = RailMapController()
     @State private var country = "mo"
     @State private var render: RailMapView.RenderStats?
-    @State private var tab = Tab.network
+    @State private var tab = Tab.rides
     @State private var detent: PresentationDetent = .height(collapsedHeight)
 
     private static let collapsedHeight: CGFloat = 92
 
     enum Tab: String, CaseIterable, Identifiable {
-        case network, layers, info
+        // Rides first: this app is a record of journeys taken, and the network
+        // under them is context. The web app's sidebar leads with the train
+        // list for the same reason.
+        case rides, network, layers, info
         var id: String { rawValue }
 
         var symbol: String {
             switch self {
+            case .rides: "list.bullet.rectangle"
             case .network: "tram.fill"
             case .layers: "square.3.layers.3d"
             case .info: "chart.bar.doc.horizontal"
@@ -53,6 +58,7 @@ struct ContentView: View {
 
         var title: LocalizedStringKey {
             switch self {
+            case .rides: "Rides"
             case .network: "Network"
             case .layers: "Layers"
             case .info: "Detail"
@@ -71,7 +77,10 @@ struct ContentView: View {
                 sheetLayout(in: geometry)
             }
         }
-        .task(id: country) { store.load(country: country) }
+        .task(id: country) {
+            store.load(country: country)
+            itineraries.load(country: country)
+        }
     }
 
     // MARK: - tall windows: the resident sheet
@@ -195,6 +204,9 @@ struct ContentView: View {
     @ViewBuilder
     private func tabContent(_ tab: Tab) -> some View {
         switch tab {
+        case .rides:
+            ridesList
+
         case .network:
             List(RailNetworkStore.countries, id: \.code) { entry in
                 Button {
@@ -235,6 +247,71 @@ struct ContentView: View {
         }
     }
 
+    /// The itineraries, grouped the way the web app's date bar groups them.
+    @ViewBuilder
+    private var ridesList: some View {
+        switch itineraries.state {
+        case .idle, .loading:
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let message):
+            ContentUnavailableView(
+                "Could not read the rides",
+                systemImage: "exclamationmark.triangle",
+                description: Text(message)
+            )
+        case .loaded(let loaded) where loaded.days.isEmpty:
+            // Three of the five packages draw a network but carry no recorded
+            // journeys. Saying so is better than an empty list, which reads as
+            // a failure rather than as an absence.
+            ContentUnavailableView(
+                "No recorded rides",
+                systemImage: "tram",
+                description: Text(
+                    "This country's package draws its railways, but no journeys are stored for it yet."
+                )
+            )
+        case .loaded(let loaded):
+            NavigationStack {
+                List {
+                    ForEach(loaded.days) { day in
+                        Section(day.date) {
+                            ForEach(day.trains, id: \.id) { train in
+                                NavigationLink(value: train.id) { rideRow(train) }
+                            }
+                        }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .navigationDestination(for: String.self) { id in
+                    if let train = loaded.trains.first(where: { $0.id == id }) {
+                        RideDetailView(train: train)
+                    }
+                }
+            }
+        }
+    }
+
+    private func rideRow(_ train: Train) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(train.number).font(.body)
+            HStack(spacing: 4) {
+                Text(train.origin)
+                Image(systemName: "arrow.right").imageScale(.small)
+                Text(train.destination)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                if let type = train.trainType, !type.isEmpty { Text(type) }
+                Text("\(train.stops.count) stops")
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
+    }
+
     @ViewBuilder
     private var statusRows: some View {
         switch store.state {
@@ -271,6 +348,13 @@ struct ContentView: View {
             }
         case .failed(let message):
             Text(message).foregroundStyle(.red)
+        }
+        if let loaded = itineraries.loaded, !loaded.trains.isEmpty {
+            LabeledContent(
+                "Rides",
+                value: "\(loaded.trains.count) over \(loaded.days.count) days · "
+                    + "read in \(loaded.elapsed.milliseconds) ms"
+            )
         }
     }
 
