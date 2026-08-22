@@ -28,7 +28,16 @@ import Foundation
 /// Thinning with scale and keeping a bundle legible are not in conflict so long
 /// as ONE factor drives every weight: a ramp on one half of a sum would fan a
 /// bundle into a ladder or weld it into one stroke.
-public enum RailStyle {
+///
+/// ## Why `nonisolated`
+///
+/// Because a token table has no state to protect: there is nothing here but
+/// immutable numbers and pure functions of them. Left to inference it would
+/// pick up whatever the target's default isolation is, and a table only the
+/// main actor may read cannot seed `DisplaySettings.Defaults`, cannot be read
+/// from the off-actor package decode, and cannot be measured from a test that
+/// is not itself on the main actor.
+nonisolated public enum RailStyle {
 
     // MARK: - tokens (full-scale weights, in points)
 
@@ -143,6 +152,45 @@ public enum RailStyle {
     static func weight(_ token: CGFloat, atZoom zoom: Double) -> CGFloat {
         token * scale(atZoom: zoom)
     }
+
+    // MARK: - the two zoom conventions, spelled once
+
+    /// How many levels this app's zoom sits above MapLibre's for the same
+    /// ground scale.
+    ///
+    /// One, and it is arithmetic rather than tuning: MapLibre's tiles are
+    /// 512 px and `RailMapView.Coordinator.zoomLevel(of:)` derives its number
+    /// from 256-point tiles, so the world is half as wide in its units at the
+    /// same number and every ground scale reports one level higher.
+    ///
+    ///     78271.52 × cos35° / 2⁷ = 500.9 m per MapLibre pixel
+    ///     156543.03 × cos35° / 2⁸ = 500.9 m per point here
+    ///
+    /// Every threshold ported out of the web app — layer `minzoom`, the
+    /// per-feature `minz` gate, the ride label tiers — is a MapLibre number and
+    /// has to come through ``zoom(fromMapLibre:)`` before it is compared
+    /// against a zoom measured here. See `RailMapView.Coordinator.zoomLevel`
+    /// for the thresholds that predate this helper and do NOT yet convert.
+    static let mapLibreZoomOffset: Double = 1
+
+    /// A MapLibre zoom, in this app's convention.
+    static func zoom(fromMapLibre zoom: Double) -> Double { zoom + mapLibreZoomOffset }
+
+    /// This app's zoom, in MapLibre's convention — for feeding a ported
+    /// function that expects to be handed `map.getZoom()`.
+    static func mapLibreZoom(from zoom: Double) -> Double { zoom - mapLibreZoomOffset }
+
+    // MARK: - the ridden layer's opacities
+
+    /// `UNRIDDEN_OPACITY` — the network field draws at full opacity in the
+    /// package's own theme colour and is never blended again at paint time.
+    static let networkOpacity: CGFloat = 1
+
+    /// `SELECT_DIM` — while one ride is selected, every other ride still drawn
+    /// fades to this, station dots included. It is not
+    /// `DisplaySettings.dimOpacity`, which answers the different question of
+    /// how an OFF-DATE ride draws.
+    static let selectDim: CGFloat = 0.25
 
     // MARK: - the one dash rhythm on the map
 

@@ -38,13 +38,16 @@ import Foundation
 ///
 /// `smoothCurveStationJoins` — the pass that rounds the shared endpoints where
 /// two corridor curves meet at a station, with `refreshFittedCurveGeometry`
-/// and `rebuildLimitedDirectionField` — is **not ported**. It runs after the
-/// corridor phase below and assigns `gi.curve` and nothing else, so every
-/// other field this file produces is the JavaScript's final value. Measured on
-/// the Tokyo scenario in `port-fixtures/overlap-lanes.json`: it replaces the
-/// curve of 9 of 17 groups, typically a 20-point per-run fit by a 210-point
-/// re-fit of the concatenated source. ``Corridor/curve`` is therefore the
-/// pre-join curve, and a later port picks up exactly there.
+/// and `rebuildLimitedDirectionField` — lives in ``StationJoinSmoothing``.
+/// It runs after the corridor phase below and assigns `gi.curve` and nothing
+/// else, so every other field this file produces is the JavaScript's final
+/// value either way. Measured on the Tokyo scenario in
+/// `port-fixtures/overlap-lanes.json`: it replaces the curve of 9 of 17
+/// groups, typically a 20-point per-run fit by a 210-point re-fit of the
+/// concatenated source. ``Corridor/curve`` is therefore the PRE-join curve,
+/// and a caller that wants what the browser draws runs
+/// ``StationJoinSmoothing/smoothCurveStationJoins(curves:groups:)`` over the
+/// corridors this file returns.
 ///
 /// Also deliberately absent, because they are not behaviour:
 ///
@@ -1275,8 +1278,8 @@ public enum OverlapLanes {
         public var nearParallel: NearParallelInfo?
         public var corridorJoins: [Join]
         public var pickBridges: [PickBridge]
-        /// The fitted corridor centreline, **before** the unported station-join
-        /// pass. See the type's documentation.
+        /// The fitted corridor centreline, **before** the station-join pass in
+        /// ``StationJoinSmoothing``. See the type's documentation.
         public var curve: FittedCurve?
 
         public func mult(of trainId: String) -> Double? {
@@ -2772,7 +2775,9 @@ public enum OverlapLanes {
     /// `currentOverlapSpacingPx()`, which reads the display sliders.
     ///
     /// The JavaScript's §2 ends with `smoothCurveStationJoins(groupInfo)`,
-    /// which is where this port stops — see the type documentation.
+    /// which is where this function stops: that pass is
+    /// ``StationJoinSmoothing/smoothCurveStationJoins(curves:groups:)``, and
+    /// it is a separate call because it rewrites `gi.curve` and nothing else.
     public static func buildRouteRecords(
         items: [Item], lines: [[RouteLine]], overlap: OverlapMap, snap: VertexSnap,
         rank: [String: Int], spacingPx: Double, settings: FitCurveSettings = .default

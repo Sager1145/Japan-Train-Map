@@ -2,6 +2,27 @@ import Foundation
 import Observation
 import RailCore
 
+/// Owner of the 里程統計 numbers.
+///
+/// Every figure on the statistics screen comes out of `RailCore.Statistics`,
+/// which is the ported reference implementation and is covered by parity
+/// fixtures. Nothing is aggregated here — this type only decides *when* the
+/// ported functions run, on which inputs, and what the screen is told while
+/// they are running.
+///
+/// Two things beyond the original port live here:
+///
+/// - **A date scope of its own.** `app-stats.js` reads the one global
+///   `selectedDate` that the date bar writes, so the web panel silently
+///   follows the ride list's filter. The native app has a tab bar rather than
+///   one page, and the rides workspace owns its own `selectedDate`; a
+///   statistics screen that changed the ride list's filter (or was changed by
+///   it) from another tab would be a filter that moves while you are not
+///   looking at it. So the scope is held here and nowhere else.
+/// - **Stages (§7.8 / §13.2).** Building the edge index parses the whole rail
+///   network, which is seconds, not milliseconds. A bare spinner would say
+///   nothing for that whole time, so the phase in flight — and the ride count
+///   while rides are being matched — is published as it goes.
 @MainActor
 @Observable
 final class MileageStatisticsStore {
@@ -12,62 +33,214 @@ final class MileageStatisticsStore {
         case failed(String)
     }
 
+    /// §7.8 ProgressSummary: the stage in flight, how far it has got when that
+    /// is knowable, and whether the reader has to wait for it.
+    struct Progress: Equatable {
+        enum Stage: Equatable {
+            /// Reading and indexing `rail-sections*.json`.
+            case readingNetwork
+            /// Matching each ride's drawn geometry onto network edges.
+            case matchingRides
+            /// The deduped union, the service rows, the most-ridden sections.
+            case aggregating
+            /// Re-running the day slice after the scope changed.
+            case scopingDay
+
+            var localizationKey: String {
+                switch self {
+                case .readingNetwork: "ios.stats.stage.readingNetwork"
+                case .matchingRides: "ios.stats.stage.matchingRides"
+                case .aggregating: "ios.stats.stage.aggregating"
+                case .scopingDay: "ios.stats.stage.scopingDay"
+                }
+            }
+        }
+
+        var stage: Stage
+        var completed: Int?
+        var total: Int?
+        /// Nothing here blocks the rest of the app, and the screen keeps the
+        /// previous answer on display while a rescope runs.
+        var interactionContinues: Bool = true
+    }
+
     private(set) var state: State = .idle
     private(set) var view: Statistics.MileageStatsView?
     private(set) var totalsByMask: [Int: Double] = [:]
+    /// `idx.totals.all` — the denominator of the headline coverage figure.
+    private(set) var totalKm: Double = 0
     private(set) var lineTotals: [(name: String, byMask: [Int: Double])] = []
     private(set) var lineOperators: [String: String] = [:]
+    private(set) var progress: Progress?
+
+    /// The statistics screen's own date bucket, in the same vocabulary the
+    /// date bar uses: `Dates.allDates`, `Dates.undated`, or `YYYY-MM-DD`.
+    ///
+    /// Deliberately not shared with `RidesWorkspaceView.selectedDate`.
+    private(set) var selectedDate: String = Dates.allDates
+
+    /// The date buckets the loaded rides actually occupy, in date-bar order.
+    /// Used to keep a stale scope from surviving a reload.
+    private(set) var availableDates: [String] = []
+
     private var task: Task<Void, Never>?
+    private var scopeTask: Task<Void, Never>?
+    private var context: Context?
+
+    var failureMessage: String? {
+        if case .failed(let message) = state { return message }
+        return nil
+    }
 
     func load(country: String, trains: [Train], rides: [RiddenRouteStore.DrawnRide]) {
         task?.cancel()
+        scopeTask?.cancel()
         state = .loading
-        task = Task {
+        let total = trains.count
+        task = Task { [weak self] in
+            guard let self else { return }
             do {
-                let result = try await Self.build(country: country, trains: trains, rides: rides)
+                self.progress = Progress(stage: .readingNetwork)
+                let index = try await Self.readNetwork(country: country)
                 try Task.checkCancellation()
-                view = result.view
-                totalsByMask = result.totalsByMask
-                lineTotals = result.lineTotals
-                lineOperators = result.lineOperators
-                state = .loaded
+
+                self.progress = Progress(stage: .matchingRides, completed: 0, total: total)
+                let prepared = try await Self.matchRides(
+                    trains: trains, rides: rides, index: index,
+                    report: { [weak self] done in
+                        Task { @MainActor in
+                            guard let self, self.progress?.stage == .matchingRides else { return }
+                            self.progress = Progress(
+                                stage: .matchingRides, completed: done, total: total)
+                        }
+                    })
+                try Task.checkCancellation()
+
+                self.progress = Progress(stage: .aggregating)
+                let context = Context(
+                    country: country, index: index,
+                    trains: prepared.trains, entries: prepared.entries)
+
+                // A scope that no longer names a real day cannot be answered.
+                // Falling back to the combined view rather than to the first
+                // remaining day keeps the reset visible: the screen says 全部
+                // and reads `--`, instead of quietly reporting a day nobody
+                // asked about.
+                let dates = Dates.availableDates(prepared.trains.map(\.forDateBucket))
+                if self.selectedDate != Dates.allDates,
+                    !dates.contains(self.selectedDate)
+                {
+                    self.selectedDate = Dates.allDates
+                }
+                let scope = self.selectedDate
+
+                let result = try await Self.aggregate(context: context, selectedDate: scope)
+                try Task.checkCancellation()
+
+                self.context = context
+                self.availableDates = dates
+                self.view = result
+                self.totalsByMask = index.totalsByMask
+                self.totalKm = index.totalKm
+                self.lineTotals = index.lineTotByCat.pairs.map { ($0.key, $0.value) }
+                self.lineOperators = Dictionary(
+                    index.lineOperator.pairs.map { ($0.key, $0.value) },
+                    uniquingKeysWith: { first, _ in first })
+                self.progress = nil
+                self.state = .loaded
+                // The scope can be moved while the load is still running; the
+                // answer just computed is then for the wrong day.
+                if self.selectedDate != scope { self.rescope() }
             } catch is CancellationError {
                 return
             } catch {
-                view = nil
-                lineTotals = []
-                lineOperators = [:]
-                state = .failed(error.localizedDescription)
+                self.context = nil
+                self.view = nil
+                self.availableDates = []
+                self.lineTotals = []
+                self.lineOperators = [:]
+                self.progress = nil
+                self.state = .failed(error.localizedDescription)
             }
         }
     }
 
-    private nonisolated static func build(
-        country: String, trains: [Train], rides: [RiddenRouteStore.DrawnRide]
-    ) async throws -> BuildResult {
+    /// Move the statistics screen's own date scope.
+    ///
+    /// Only the day slice depends on it — `overall` is computed from every
+    /// entry regardless — but the whole view model is rebuilt through the same
+    /// `buildMileageStatsView` the web app calls, rather than assembling a
+    /// `MileageStatsView` here out of parts. Recomputing an aggregate we could
+    /// have cached is cheap next to the risk of a hand-assembled view drifting
+    /// from the ported one; the expensive half (reading the network, matching
+    /// every ride) is what the cached `Context` skips.
+    func selectDate(_ date: String) {
+        guard date != selectedDate else { return }
+        selectedDate = date
+        rescope()
+    }
+
+    private func rescope() {
+        guard let context else { return }
+        scopeTask?.cancel()
+        let scope = selectedDate
+        scopeTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                self.progress = Progress(stage: .scopingDay)
+                let result = try await Self.aggregate(context: context, selectedDate: scope)
+                try Task.checkCancellation()
+                self.view = result
+                self.progress = nil
+                self.state = .loaded
+            } catch is CancellationError {
+                return
+            } catch {
+                self.progress = nil
+                self.state = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - the phases
+
+    private nonisolated static func readNetwork(
+        country: String
+    ) async throws -> Statistics.EdgeIndex {
         let suffix = country == "jp" ? "" : "-\(country)"
         guard let url = Bundle.main.url(
             forResource: "rail-sections\(suffix)", withExtension: "json")
         else { throw StatisticsError.missingSections(country) }
         let sections = try Statistics.SectionFeatureCollection.load(contentsOf: url).sections
         try Task.checkCancellation()
-        let edgeIndex = Statistics.buildEdgeIndex(sections: sections, country: country)
-        let ridesByID = Dictionary(uniqueKeysWithValues: rides.map { ($0.id, $0) })
+        return Statistics.buildEdgeIndex(sections: sections, country: country)
+    }
+
+    private nonisolated static func matchRides(
+        trains: [Train], rides: [RiddenRouteStore.DrawnRide], index: Statistics.EdgeIndex,
+        report: @Sendable (Int) -> Void
+    ) async throws -> Prepared {
+        let ridesByID = Dictionary(rides.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var statisticsTrains: [Statistics.Train] = []
         var entries: [Statistics.TrainEntry] = []
         statisticsTrains.reserveCapacity(trains.count)
         entries.reserveCapacity(trains.count)
 
-        for train in trains {
+        for (position, train) in trains.enumerated() {
             try Task.checkCancellation()
             let stops = train.stops.map {
                 Statistics.Stop(
                     arrival: $0.arrival, departure: $0.departure,
                     stopType: $0.stopType, rideSegment: $0.rideSegment)
             }
+            // `date` carries the normalised date BUCKET, not the raw field:
+            // the day slice compares it against a bucket the date bar named,
+            // and `getTrainDate` in the web app normalises there too. A train
+            // with no usable date lands in `Dates.undated`, which is a bucket
+            // the reader can select, not a missing value.
             let statisticsTrain = Statistics.Train(
                 id: train.id, trainType: train.trainType,
-                date: train.date, stops: stops)
+                date: Dates.trainDate(train.forDates), stops: stops)
             statisticsTrains.append(statisticsTrain)
             let features = ridesByID[train.id]?.segments.map { segment in
                 Statistics.RouteFeature(
@@ -77,25 +250,39 @@ final class MileageStatisticsStore {
                     from: segment.from, to: segment.to)
             } ?? []
             entries.append(Statistics.collectTrainStatsEntry(
-                features: features, index: edgeIndex))
+                features: features, index: index))
+            // Reported in blocks: one hop to the main actor per train would
+            // cost more than the matching itself on a small store.
+            if position % 25 == 24 { report(position + 1) }
         }
-        let view = Statistics.buildMileageStatsView(
-            index: edgeIndex, trains: statisticsTrains, entries: entries,
-            country: country, selectedDate: Statistics.allDates,
-            trainDate: { $0.date ?? "" }, dateLabel: { $0 })
-        return BuildResult(
-            view: view, totalsByMask: edgeIndex.totalsByMask,
-            lineTotals: edgeIndex.lineTotByCat.pairs.map { ($0.key, $0.value) },
-            lineOperators: Dictionary(uniqueKeysWithValues: edgeIndex.lineOperator.pairs.map {
-                ($0.key, $0.value)
-            }))
+        report(trains.count)
+        return Prepared(trains: statisticsTrains, entries: entries)
     }
 
-    private struct BuildResult: Sendable {
-        let view: Statistics.MileageStatsView
-        let totalsByMask: [Int: Double]
-        let lineTotals: [(name: String, byMask: [Int: Double])]
-        let lineOperators: [String: String]
+    private nonisolated static func aggregate(
+        context: Context, selectedDate: String
+    ) async throws -> Statistics.MileageStatsView {
+        try Task.checkCancellation()
+        // `dateLabel` is the identity: the label is a translation, so the day
+        // bucket travels to the screen unresolved and `Dates.dateLabelKey` is
+        // read there. That is exactly why the port made it a parameter.
+        return Statistics.buildMileageStatsView(
+            index: context.index, trains: context.trains, entries: context.entries,
+            country: context.country, selectedDate: selectedDate,
+            trainDate: { $0.date ?? Dates.undated },
+            dateLabel: { $0 })
+    }
+
+    private struct Context: Sendable {
+        let country: String
+        let index: Statistics.EdgeIndex
+        let trains: [Statistics.Train]
+        let entries: [Statistics.TrainEntry]
+    }
+
+    private struct Prepared: Sendable {
+        let trains: [Statistics.Train]
+        let entries: [Statistics.TrainEntry]
     }
 
     enum StatisticsError: LocalizedError {
@@ -106,5 +293,13 @@ final class MileageStatisticsStore {
                 "Statistics rail sections for \(country) are missing from the app bundle."
             }
         }
+    }
+}
+
+private extension Statistics.Train {
+    /// The already-normalised bucket, handed back to `Dates` so the screen's
+    /// date list is built by the same rule the date bar uses.
+    var forDateBucket: Dates.Train {
+        Dates.Train(id: id, date: date, stops: [])
     }
 }

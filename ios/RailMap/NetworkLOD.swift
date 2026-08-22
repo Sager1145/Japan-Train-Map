@@ -51,15 +51,54 @@ enum NetworkLOD {
 
     /// The zoom at which a line may first be drawn.
     ///
-    /// `Visibility.minZoomForLength` is the ported rule and supplies the
-    /// floor. The rank term is the addition: `rank` is the package's own
-    /// editorial ordering, 0 for a trunk, and `minZoomForRank` already maps it
-    /// to 3…7. Taking the larger of the two means a line has to be both long
-    /// enough and important enough, where the web app asks only the first.
-    static func minZoom(lengthKm: Double, rank: Int?) -> Double {
-        let byLength = Double(Visibility.minZoomForLength(totalKm: lengthKm))
-        let byRank = Double(Visibility.minZoomForRank(rank))
-        return max(byLength, byRank)
+    /// The rank ladder, recalibrated 2026-08-22. **Not**
+    /// `Visibility.minZoomForRank`, which is the web app's own 3,4,5,6,7 and is
+    /// fixture-protected; this is the iOS-side policy and it has to be free to
+    /// move, because the two bugs fixed alongside it changed what it was
+    /// compensating for.
+    ///
+    /// Those bugs, both measured over all 652 jp lines:
+    ///
+    /// 1. the threshold was compared against this app's zoom, which is one
+    ///    level above MapLibre's (see `RailMapView.zoomLevel(of:)`), so every
+    ///    ported number fired one step wider than the web app fires it;
+    /// 2. it was handed each line's OWN length, where
+    ///    `Visibility.minZoomByLineId` deliberately uses the length of the
+    ///    line's visibility GROUP — so a railway the package stores as several
+    ///    administrative entries appeared in fragments, which is the exact
+    ///    thing that grouping exists to prevent.
+    ///
+    /// Lines drawn at the same ground scale, before and after, against the web
+    /// app as the reference:
+    ///
+    ///     app zoom     4     5     6     7     8
+    ///     web         66   140   262   431   652
+    ///     before      33    67   386   652   652
+    ///     after       41    62   262   431   652
+    ///
+    /// So this now agrees with the web app exactly from a national view (app
+    /// z6) upward, and stays deliberately stricter only where the reason for
+    /// being stricter applies — the widest views, where Apple Maps is a
+    /// country outline and a whole national network over it reads as a
+    /// coloured smear rather than as a network. The old ladder had it
+    /// backwards: it over-drew by half at z6/z7 and under-drew at z4/z5.
+    ///
+    /// The ladder was chosen by measurement, not taste: 3,3,4,4,5 and 3,3,3,4,5
+    /// also land on 262/431 but give the web app's own z5 count back, and
+    /// 0,0,0,0,0 is simply the web app with no policy of ours at all.
+    private static let rankMinZoom = [3, 3, 4, 5, 6]
+
+    /// The zoom at which a line may first be drawn, in **this app's** zoom.
+    ///
+    /// `portedMinZoom` is `Visibility.minZoomByLineId`'s answer for this line —
+    /// a MapLibre zoom, computed from the line's visibility group. The rank
+    /// term is the addition: taking the larger of the two means a line has to
+    /// be both long enough and important enough, where the web app asks only
+    /// the first. The sum is then converted once, here, so no caller has to
+    /// remember which convention it is holding.
+    static func minZoom(portedMinZoom: Int, rank: Int?) -> Double {
+        let byRank = rank.flatMap { $0 >= 0 && $0 < rankMinZoom.count ? rankMinZoom[$0] : nil } ?? 0
+        return RailStyle.zoom(fromMapLibre: Double(max(portedMinZoom, byRank)))
     }
 
     /// The rect to build for: the visible one, grown by ``padding``.

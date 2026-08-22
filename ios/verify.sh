@@ -79,39 +79,59 @@ if [ "$run_swift" = 1 ]; then
         swift build --scratch-path "$scratch" 2>&1 | grep -E 'error:' | head -20
         fail "swift build"
     }
-    echo "  RailCore builds"
+    echo "  RailCore and RailPresentation build"
 
     if ! swift test --scratch-path "$scratch" >"$scratch.log" 2>&1; then
         grep -E '^✘|error:' "$scratch.log" | head -30
         fail "swift test (full log: $scratch.log)"
     fi
+    # Counted rather than described as "parity tests": most of them are, but
+    # RailPresentationTests checks an invariant no fixture can express — that
+    # one set of inputs resolves to one primary action — and calling that a
+    # parity test would misreport what the number means.
     passed=$(grep -cE '^✔ Test ' "$scratch.log" || true)
-    echo "  $passed parity tests pass"
+    echo "  $passed tests pass"
 
     # Warnings in our own sources fail the gate.
     #
     # Not pedantry: six ports can be in flight at once, each writing a
     # thousand-odd lines, and a warning nobody owns is one nobody fixes. Scoped
-    # to RailCore and RailMap so an SDK or toolchain warning cannot fail a
-    # build for something we did not write and cannot fix.
+    # to RailCore, RailPresentation and RailMap so an SDK or toolchain warning
+    # cannot fail a build for something we did not write and cannot fix.
     warnings=$(swift build --scratch-path "$scratch" 2>&1 \
         | grep 'warning:' \
-        | grep -E '/(RailCore|RailMap)/' \
+        | grep -E '/(RailCore|RailPresentation|RailMap)/' \
         | sort -u)
     if [ -n "$warnings" ]; then
         echo "$warnings"
         fail "warnings in our own sources"
     fi
-    echo "  no warnings in RailCore"
+    echo "  no warnings in RailCore or RailPresentation"
 
     # RailCore must not reach for a platform. That constraint is what makes the
     # port checkable at all — with no platform underneath it, the same code can
     # be run against the same fixtures as the JavaScript. Enforced here because
     # a stray `import MapKit` compiles perfectly well and quietly ends that.
-    if grep -rlE '^import (MapKit|SwiftUI|UIKit|CoreLocation)' Sources/RailCore/ 2>/dev/null | grep .; then
-        fail "RailCore imported a platform framework (see the files above)"
+    #
+    # RailPresentation is held to the same ban for the same reason. It is the
+    # display-state tier of JRM_FLIGHTY_UI_REFACTOR_SPEC.md §11 — the thing that
+    # decides which single task a surface is about — and the only reason that
+    # decision is testable at all is that it is made without a view underneath
+    # it. One `import SwiftUI` and the priority resolver is back inside the app
+    # target, where nothing runs it.
+    if grep -rlE '^import (MapKit|SwiftUI|UIKit|CoreLocation)' \
+        Sources/RailCore/ Sources/RailPresentation/ 2>/dev/null | grep .; then
+        fail "a pure target imported a platform framework (see the files above)"
     fi
     echo "  RailCore imports nothing but Foundation"
+
+    # And RailPresentation nothing but Foundation and RailCore: it may consume
+    # the ported business logic, never the app's storage or map objects.
+    if grep -rhE '^import ' Sources/RailPresentation/ 2>/dev/null \
+        | sort -u | grep -vE '^import (Foundation|RailCore)$' | grep .; then
+        fail "RailPresentation imported something other than Foundation/RailCore (above)"
+    fi
+    echo "  RailPresentation imports nothing but Foundation and RailCore"
 fi
 
 if [ "$run_app" = 1 ] && [ "$run_swift" = 1 ]; then

@@ -15,7 +15,6 @@ final class RailNetworkStore {
 
     struct DrawnLine: Identifiable, Sendable {
         let id: String
-        let stationCode: String
         let name: String
         let nameRoma: String?
         let color: Color
@@ -50,6 +49,10 @@ final class RailNetworkStore {
 
     struct DrawnStation: Identifiable, Sendable {
         let id: String
+        /// The package's own station-group code — the identity a ride's stop
+        /// carries (`n02_station_code`), which is why the ride editor picks
+        /// stations by it rather than by name.
+        let stationCode: String
         let name: String
         let nameRoma: String
         let coordinate: Coordinate
@@ -114,7 +117,11 @@ final class RailNetworkStore {
         let lines = package.lines.map { line in
             let intervals = DisplayParts.parts(
                 for: line, topology: topologies[line.id] ?? .init())
-            let lengthKm = line.segments.reduce(0) { $0 + $1.distanceKm }
+            // The line's own length is deliberately NOT used for the LOD:
+            // `minZoomByLineId` answers with the length of the line's
+            // visibility GROUP, so every administrative piece of one physical
+            // railway appears and vanishes together.
+            let portedMinZoom = minZoomByLineId[line.id] ?? 0
             return DrawnLine(
                 id: line.id,
                 name: line.name,
@@ -124,8 +131,9 @@ final class RailNetworkStore {
                 colorHex: (line.color ?? "#7a7a7a").lowercased(),
                 colorDarkHex: (line.colorDark ?? line.color ?? "#7a7a7a").lowercased(),
                 rank: line.rank,
-                minZoom: minZoomByLineId[line.id] ?? 0,
-                lodMinZoom: NetworkLOD.minZoom(lengthKm: lengthKm, rank: line.rank),
+                minZoom: portedMinZoom,
+                lodMinZoom: NetworkLOD.minZoom(
+                    portedMinZoom: portedMinZoom, rank: line.rank),
                 mapRect: Self.boundingRect(of: intervals),
                 intervals: intervals
             )

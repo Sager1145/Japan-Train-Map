@@ -1037,11 +1037,13 @@ const probes = [];
 
 // ── the rides ────────────────────────────────────────────────────────────
 const deck = loadDeckScope();
-// Installed ONCE, as boot does. getStopFeature indexes matched-stops by train
-// id the first time it is asked and never rebuilds that index — not even on a
-// country switch — so installing per country would record whichever country
-// happened to run first rather than a per-country answer. The committed
-// matched-stops set names two trains, both Taiwanese; every other train in the
+// Installed ONCE, as boot does, and outside the loop because there is nothing
+// per-country to install: matched-stops.json is a single committed file, not
+// one set per country, so re-installing it each pass would only hand
+// getStopFeature the same features again. (It would be answered correctly
+// either way — the train-id index inside getStopFeature is keyed by the
+// features array it was built from and rebuilds when that array is swapped.)
+// The committed set names two trains, both Taiwanese; every other train in the
 // five stores takes getStopFeature's resolver path, which is also what the
 // four countries without a precomputed set do in the app.
 const rides = [];

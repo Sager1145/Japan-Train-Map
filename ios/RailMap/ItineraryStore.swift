@@ -62,6 +62,10 @@ final class ItineraryStore {
     /// ported rules used on load. The editor commits a complete draft once,
     /// so views never observe a half-edited canonical record.
     func replace(_ train: Train, replacing originalID: String, country: String) {
+        // A running import owns the store (§8.7): an edit committed against
+        // the pre-import trains would be overwritten seconds later without a
+        // trace of what happened to it.
+        guard !isImporting else { return }
         guard var next = store,
             let index = next.trains.firstIndex(where: { $0.id == originalID })
         else { return }
@@ -140,6 +144,149 @@ final class ItineraryStore {
         }
     }
 
+    /// One import's per-journey position, as the engine reports it.
+    struct ImportProgress: Sendable {
+        var completed: Int
+        var total: Int
+        /// The id the engine has just appended. The JSON-text door reports a
+        /// count without one — its event carries a message KEY, not an id —
+        /// so this is nil in replace mode rather than filled with a guess.
+        var trainID: String?
+    }
+
+    struct ImportSummary: Sendable {
+        var mode: ImportPreflight.Mode
+        var imported: Int
+        var ids: [String]
+        /// Journeys in the store once the commit landed.
+        var storeCount: Int
+    }
+
+    /// A progressive load owns the store while it streams journeys in.
+    ///
+    /// `ImportEngine.Session` has this flag too, but it lives on a scratch
+    /// copy that the shell throws away; this is the shell's own, and it is
+    /// what keeps an edit made while a large import runs from being silently
+    /// overwritten by the commit (§8.7 — "防止并发修改造成不明确结果").
+    private(set) var isImporting = false
+
+    /// The staged import: parse and validate off the main actor, report every
+    /// journey as it lands, and only then replace the store in one assignment.
+    ///
+    /// The engine is unchanged and undriven by this method — it runs its own
+    /// door end to end. What is new is that the door's per-journey events are
+    /// forwarded out instead of being dropped, which is the whole difference
+    /// between "importing 47/201" and a spinner.
+    ///
+    /// Atomicity is structural rather than promised: the door mutates a
+    /// scratch `Session` on a detached task, and the three lines that publish
+    /// its result run together on the main actor after it has finished. A
+    /// throw anywhere before them leaves the store exactly as it was, which is
+    /// what lets the error surface say so (§13.3).
+    ///
+    /// Cancelling does not stop the engine — its loop has no interruption
+    /// point, and pretending otherwise would mean re-implementing the loop and
+    /// its fixture-pinned ordering. It stops the RESULT from being applied,
+    /// so the store is left untouched either way.
+    func runImport(
+        text: String,
+        country: String,
+        mode: ImportPreflight.Mode,
+        sourceLabel: String = "JSON",
+        onProgress: @MainActor (ImportProgress) -> Void
+    ) async throws -> ImportSummary {
+        guard !isImporting else { throw ImportBusy() }
+        isImporting = true
+        defer { isImporting = false }
+
+        let current = store?.trains ?? []
+        let (stream, continuation) = AsyncStream<ImportProgress>.makeStream(
+            bufferingPolicy: .bufferingNewest(1))
+
+        let work = Task.detached(priority: .userInitiated) { () throws -> Commit in
+            defer { continuation.finish() }
+            var session = ImportEngine.Session(
+                trains: mode == .append ? current : [],
+                selectedTrainID: nil,
+                focusedTrainID: nil,
+                selectedDate: Dates.allDates,
+                country: country)
+
+            switch mode {
+            case .replaceAll:
+                // The door announces progress through its event sink; only the
+                // per-journey label carries a live count, and the two bookend
+                // events (prepare/done) would otherwise reset the bar to 0.
+                session.onEvent = { event in
+                    guard case .progressBar(let count, let total, let label) = event,
+                        label == ImportEngine.MessageKey.loading
+                    else { return }
+                    continuation.yield(
+                        ImportProgress(completed: count, total: total, trainID: nil))
+                }
+                try session.replaceTrainStoreFromJSONText(text, sourceLabel: sourceLabel)
+                return Commit(
+                    trains: session.trains,
+                    selectedTrainID: session.selectedTrainID,
+                    ids: session.trains.map(\.id))
+            case .append:
+                let document = try TrainValidation.parseImportedCanonicalStore(text: text)
+                let result = try session.importCanonicalStoreAppendProgressive(document) {
+                    progress in
+                    // The append door opens with a placeholder row whose "id"
+                    // is the i18n KEY `prog.preparingId`, not a journey. It is
+                    // dropped here rather than shown as one.
+                    continuation.yield(
+                        ImportProgress(
+                            completed: progress.count, total: progress.total,
+                            trainID: progress.count == 0 ? nil : progress.id))
+                }
+                return Commit(
+                    trains: session.trains,
+                    selectedTrainID: session.selectedTrainID,
+                    ids: result.ids)
+            }
+        }
+
+        for await progress in stream { onProgress(progress) }
+        let commit = try await work.value
+        // A cancelled import discards a finished result rather than applying
+        // half of it: the store is the one thing that must not be left in a
+        // state nobody asked for.
+        try Task.checkCancellation()
+        // The same reasoning for a region switched under the import: those
+        // journeys were normalised under one country's company rules and
+        // belong to that country's store, not to whatever is on screen now.
+        if let showing = loaded?.country, showing != country { throw ImportSuperseded() }
+
+        let next = TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: commit.trains)
+        let grouped = try await Self.group(store: next, country: country)
+        store = next
+        selectedTrainID = commit.selectedTrainID
+        state = .loaded(grouped)
+        return ImportSummary(
+            mode: mode, imported: commit.ids.count, ids: commit.ids,
+            storeCount: commit.trains.count)
+    }
+
+    private struct Commit: Sendable {
+        var trains: [Train]
+        var selectedTrainID: String?
+        var ids: [String]
+    }
+
+    struct ImportBusy: LocalizedError {
+        var errorDescription: String? {
+            "An import is already running; it owns the journeys until it finishes."
+        }
+    }
+
+    struct ImportSuperseded: LocalizedError {
+        var errorDescription: String? {
+            "The region changed while this import was running, so its journeys were not applied."
+        }
+    }
+
     func importJSON(_ text: String, country: String) throws {
         var session = ImportEngine.Session(
             trains: store?.trains ?? [],
@@ -188,6 +335,7 @@ final class ItineraryStore {
         country: String,
         operation: (inout StoreOperations.Workspace) -> StoreOperations.MutationResult?
     ) -> String? {
+        guard !isImporting else { return selectedTrainID }
         guard let store else { return nil }
         var workspace = StoreOperations.Workspace(
             store: store,

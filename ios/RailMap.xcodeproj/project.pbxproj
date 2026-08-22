@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		000000000000000000000100 /* RailCore in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000112 /* RailCore */; };
+		000000000000000000000113 /* RailPresentation in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000114 /* RailPresentation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				000000000000000000000100 /* RailCore in Frameworks */,
+				000000000000000000000113 /* RailPresentation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +74,7 @@
 			name = RailMap;
 			packageProductDependencies = (
 				000000000000000000000112 /* RailCore */,
+				000000000000000000000114 /* RailPresentation */,
 			);
 			productName = RailMap;
 			productReference = 000000000000000000000101 /* RailMap.app */;
@@ -279,6 +282,10 @@
 		000000000000000000000112 /* RailCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RailCore;
+		};
+		000000000000000000000114 /* RailPresentation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RailPresentation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

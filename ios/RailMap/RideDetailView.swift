@@ -280,8 +280,12 @@ struct RideDetailContent: View {
                         systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                 }
                 if let routeStatus {
+                    // The route status changes under the reader while a solve
+                    // runs, so VoiceOver has to be told it is worth re-reading.
+                    // SwiftUI has no `accessibilityLiveRegion`; the trait is
+                    // how the same thing is said here.
                     Text(routeStatus).font(.footnote).foregroundStyle(.secondary)
-                        .accessibilityLiveRegion(.polite)
+                        .accessibilityAddTraits(.updatesFrequently)
                 }
             }
         }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import RailCore
 import SwiftUI
 
 /// The 顯示調節 values, and nothing that acts on them.
@@ -73,7 +74,11 @@ final class DisplaySettings {
 
     /// The legacy factor between the stored `stopRadius` number and the radius
     /// it sets. Spelled once here; the read-out and the renderer both use it.
-    static let stopCentreSliderScale: Double = 0.4
+    ///
+    /// `nonisolated` because global-actor isolation does not reach a nested
+    /// type: `Defaults` below is not on the main actor, and a main-actor
+    /// constant cannot be a default value there.
+    nonisolated static let stopCentreSliderScale: Double = 0.4
 
     enum Defaults {
         static let routeWidthScale: Double = 1
@@ -179,4 +184,58 @@ final class DisplaySettings {
 
     /// The radius the stop-centre slider's stored number actually sets.
     var stopCentreRadius: Double { stopRadius * Self.stopCentreSliderScale }
+
+    // MARK: - the reading toggles, as the localization engine wants them
+
+    /// `pushNameReadingPrefs()`. `nil` while the toggles are still following
+    /// the UI language, which is what `Localization.activeReadingPrefs` reads
+    /// as "fall back to `localeDefaultReadingPrefs`" — so an untouched reader
+    /// is served by ONE spelling of the language rule rather than by a copy of
+    /// it made at seed time.
+    var nameReadingPrefs: Localization.ReadingPrefs? {
+        guard nameReadingsCustomized else { return nil }
+        return Localization.ReadingPrefs(
+            kana: nameReadingKana, romaji: nameReadingRomaji, zh: nameReadingZh)
+    }
+
+    /// `syncNameReadingDefaultsToLang(lang)`: until the reader touches one of
+    /// the three toggles, they display the language's defaults.
+    ///
+    /// Only the *switch positions* are updated here. What the map and the
+    /// popups actually annotate with is the engine's `activeReadingPrefs`,
+    /// which already answers the language default on its own — this exists so
+    /// the settings panel does not show three switches off while the map is
+    /// drawing kana.
+    ///
+    /// Must not be called from a view's `body`: it mutates observed state.
+    func syncNameReadingDefaults(to language: Localization.Language) {
+        guard !nameReadingsCustomized else { return }
+        let defaults = Localization.localeDefaultReadingPrefs(language)
+        guard defaults != Localization.ReadingPrefs(
+            kana: nameReadingKana, romaji: nameReadingRomaji, zh: nameReadingZh)
+        else { return }
+        nameReadingKana = defaults.kana
+        nameReadingRomaji = defaults.romaji
+        nameReadingZh = defaults.zh
+        persist()
+    }
+
+    /// The saved toggles, read without an instance.
+    ///
+    /// `AppLocalization` is built before any view exists and has to seed the
+    /// engine at that moment — the on-map station labels are drawn whether or
+    /// not the reader ever opens Settings. Both objects read the same key, so
+    /// this cannot disagree with the instance that loads a moment later.
+    static func persistedNameReadingPrefs(
+        userDefaults: UserDefaults = .standard
+    ) -> Localization.ReadingPrefs? {
+        guard let saved = userDefaults.dictionary(forKey: storageKey),
+            (saved["nameReadingsCustomized"] as? NSNumber)?.boolValue == true
+        else { return nil }
+        func flag(_ key: String) -> Bool { (saved[key] as? NSNumber)?.boolValue ?? false }
+        return Localization.ReadingPrefs(
+            kana: flag("nameReadingKana"),
+            romaji: flag("nameReadingRomaji"),
+            zh: flag("nameReadingZh"))
+    }
 }
