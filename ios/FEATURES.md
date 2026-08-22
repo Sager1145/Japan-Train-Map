@@ -77,7 +77,7 @@ A ported function nobody can reach is not a feature.
 
 | Feature | Source | logic | app |
 | --- | --- | :-: | :-: |
-| Progressive import | `app-import.js` (935) | ❌ | ❌ |
+| Progressive import | `app-import.js` (935) | ✅ | ❌ |
 | Validate import JSON | `app-validation.js` | ✅ | ❌ |
 | Open / save local JSON | `app-persistence.js` (1366) | ❌ | ❌ |
 | Export / download JSON | `#export-json`, `#download-json` | ✅ | ⚠️ used for saving, no export UI |
