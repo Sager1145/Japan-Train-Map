@@ -205,14 +205,25 @@ nonisolated public enum RailStyle {
         dashRatio.on * dashReferenceWidth, dashRatio.off * dashReferenceWidth
     )
 
-    /// The dash pair for a stroke of `width` at full scale. It needs no zoom
-    /// ramp of its own and must not have one: every railway width is one token
-    /// times ``scale(atZoom:)``, so a dash expressed as a multiple of the width
-    /// is carried down by the same factor and the on:off:width proportion holds
-    /// at every zoom.
-    static func dashPattern(forWidth width: CGFloat) -> [NSNumber] {
-        guard width > 0 else { return [] }
-        return [NSNumber(value: Double(dash.on / width)), NSNumber(value: Double(dash.off / width))]
+    /// The dash pair, **in points**, for the scale the map is drawn at.
+    ///
+    /// This used to divide the rhythm by the stroke width, which is what
+    /// MapLibre wants and the opposite of what MapKit does.
+    /// `MKOverlayPathRenderer.lineDashPattern` reaches
+    /// `CGContextSetLineDash`, whose lengths are user-space units — points —
+    /// so dividing produced a 2.1 pt dash where 3.78 was intended, and
+    /// inverted the dependency: a thicker stroke got a SHORTER dash, when the
+    /// entire point of fixing the rhythm in pixels is that it does not move
+    /// when the stroke does.
+    ///
+    /// It rides ``scale(atZoom:)`` like every other length here, so the
+    /// on:off:width proportion — which is what makes a dash read as a dash —
+    /// holds at every zoom.
+    static func dashPattern(atScale scale: CGFloat) -> [NSNumber] {
+        [
+            NSNumber(value: Double(dash.on * scale)),
+            NSNumber(value: Double(dash.off * scale)),
+        ]
     }
 
     // MARK: - playback marks

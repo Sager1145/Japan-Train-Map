@@ -215,32 +215,6 @@ enum MapRideMarkers {
         }
     }
 
-    /// `isStoppingStation` — a 非停車站 is not individually toggleable.
-    private static func isStoppingStation(_ stop: Statistics.Stop) -> Bool {
-        stop.stopType != "pass_through"
-    }
-
-    /// `effectiveStopRide`, mirrored from `RailCore.Statistics`.
-    ///
-    /// The ported copy there is `internal`, so it cannot be called from the
-    /// app target — while `effectivelyRiddenStopIndexes` beside it is public
-    /// and IS called, which is why both read the same `Statistics.Stop` array.
-    /// The rule is four lines and is spelled out in `app-editor.js` beside the
-    /// editor that toggles the flags: a pass-through inherits the ride state
-    /// of the stop-to-stop interval it lies in, so hiding an interval hides
-    /// every pass-through inside it. Delete this the day
-    /// `Statistics.effectiveStopRide` is made public — it is the same rule
-    /// written twice, and two copies of a rule are one bug waiting.
-    static func effectiveStopRide(_ stops: [Statistics.Stop], _ index: Int) -> Bool {
-        guard index >= 0, index < stops.count else { return false }
-        let stop = stops[index]
-        if isStoppingStation(stop) { return stop.rideSegment }
-        let previous = (0..<index).last { isStoppingStation(stops[$0]) } ?? -1
-        let next = ((index + 1)..<stops.count).first { isStoppingStation(stops[$0]) } ?? -1
-        if previous < 0 || next < 0 { return stop.rideSegment }
-        return stops[previous].rideSegment && stops[next].rideSegment
-    }
-
     // MARK: - positions
 
     /// Where each of a ride's stops stands, taken from the ride's own drawn
@@ -344,7 +318,7 @@ enum MapRideMarkers {
             for (index, stop) in stops.enumerated() {
                 guard let position = positions[index] else { continue }
                 // Hidden (not effectively ridden) markers are dropped entirely.
-                let effective = effectiveStopRide(flags, index)
+                let effective = Statistics.effectiveStopRide(flags, index)
                 guard effective else { continue }
                 let isPass = stop.stopType == "pass_through"
                 let isBoundary = boundaries.contains(index)

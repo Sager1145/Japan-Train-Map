@@ -1047,11 +1047,11 @@ struct RailMapView: View {
                     if let polyline = renderer as? MKPolylineRenderer {
                         polyline.lineWidth = width
                         polyline.lineDashPattern = style?.dashed == true
-                            ? RailStyle.dashPattern(forWidth: width) : nil
+                            ? RailStyle.dashPattern(atScale: scale) : nil
                     } else if let multi = renderer as? MKMultiPolylineRenderer {
                         multi.lineWidth = width
                         multi.lineDashPattern = style?.dashed == true
-                            ? RailStyle.dashPattern(forWidth: width) : nil
+                            ? RailStyle.dashPattern(atScale: scale) : nil
                     } else {
                         continue
                     }
@@ -1847,8 +1847,7 @@ struct RailMapView: View {
                     renderer.lineCap = .round
                     renderer.lineJoin = .round
                     if style?.dashed == true {
-                        renderer.lineDashPattern = RailStyle.dashPattern(
-                            forWidth: renderer.lineWidth)
+                        renderer.lineDashPattern = RailStyle.dashPattern(atScale: scale)
                     }
                     if !key.isEmpty { overlayRenderers[key] = renderer }
                     return renderer
@@ -1864,7 +1863,7 @@ struct RailMapView: View {
                 renderer.lineCap = .round
                 renderer.lineJoin = .round
                 if style?.dashed == true {
-                    renderer.lineDashPattern = RailStyle.dashPattern(forWidth: renderer.lineWidth)
+                    renderer.lineDashPattern = RailStyle.dashPattern(atScale: scale)
                 }
                 if !key.isEmpty { overlayRenderers[key] = renderer }
                 return renderer

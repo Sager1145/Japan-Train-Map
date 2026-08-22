@@ -1131,9 +1131,15 @@ public enum Statistics {
     // be ported without them. A pass-through (非停車站) is NOT individually
     // toggleable: it inherits the ride state of the stop-to-stop interval it
     // lies in, so hiding an interval hides every pass-through inside it.
-    static func isStoppingStation(_ stop: Stop) -> Bool { stop.stopType != "pass_through" }
+    public static func isStoppingStation(_ stop: Stop) -> Bool {
+        stop.stopType != "pass_through"
+    }
 
-    static func effectiveStopRide(_ stops: [Stop], _ index: Int) -> Bool {
+    /// Public because the map draws from it too: a marker for a station the
+    /// reader did not ride is a claim about the journey they did not make.
+    /// It was mirrored into the app target while it was internal, and two
+    /// copies of a rule are one bug waiting.
+    public static func effectiveStopRide(_ stops: [Stop], _ index: Int) -> Bool {
         guard index >= 0, index < stops.count else { return false }
         let stop = stops[index]
         if isStoppingStation(stop) { return stop.rideSegment }
