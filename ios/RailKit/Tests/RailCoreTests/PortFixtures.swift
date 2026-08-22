@@ -49,17 +49,36 @@ enum PortFixtures {
     /// One country's compact package, cached — several suites read the same
     /// ones and Japan is 9 MB.
     static func package(country: String) throws -> CompactPackage {
-        if let cached = cache[country] { return cached }
+        cacheLock.lock()
+        let cached = cache[country]
+        cacheLock.unlock()
+        if let cached { return cached }
         let url = try repositoryRoot()
             .appending(path: "app/public/rail/\(country)-2025.json")
         let loaded = try CompactPackage.load(contentsOf: url)
+        cacheLock.lock()
         cache[country] = loaded
+        cacheLock.unlock()
         return loaded
     }
 
     static let countries = ["mo", "hk", "tw", "kr", "jp"]
 
+    /// Locked, not bare `nonisolated(unsafe)`.
+    ///
+    /// Swift Testing runs suites in parallel, so several arrive here at once,
+    /// and an unguarded `Dictionary` is a genuine data race — it segfaulted
+    /// `swift test` outright once enough suites read packages.
+    ///
+    /// `NSLock` rather than `Mutex`, which needs macOS 15 / iOS 18: the
+    /// package deploys to iOS 17, and raising the floor for a test helper
+    /// would raise it for `RailCore` too.
+    ///
+    /// The lock is not held across the decode. Two threads racing on a miss
+    /// both decode and one wins — that wastes a little work and is correct,
+    /// where holding it would serialise every suite behind a 9 MB parse.
     nonisolated(unsafe) private static var cache: [String: CompactPackage] = [:]
+    private static let cacheLock = NSLock()
 }
 
 extension Double {

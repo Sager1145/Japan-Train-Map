@@ -27,8 +27,8 @@ A ported function nobody can reach is not a feature.
 | Official line colours, light and dark | package `color`/`colorDark` | ✅ | ✅ |
 | Display parts — branches split from trunks | `rail-network.js:908` | ✅ | ❌ |
 | Station dots | `railmap-style.js` §5 | ❌ | ❌ |
-| Station names, by role tier | `railmap-geometry.js` `markerLabelWinners` | ❌ | ❌ |
-| C5 bilingual station popup | `railmap-popup.js` (146) | ❌ | ❌ |
+| Station names, by role tier | `railmap-geometry.js` `markerLabelWinners` | ✅ | ❌ |
+| C5 bilingual station popup | `railmap-popup.js` (146) | ✅ | ❌ |
 | Hover/tap fan for overlapping lines | `railmap.js` `_setExpandedGroup` | ❌ | ❌ |
 | Basemap opacity, endpoint labels | `app-display-features.js` (493) | ❌ | ❌ |
 
@@ -46,7 +46,7 @@ A ported function nobody can reach is not a feature.
 | Overlap lanes / corridor smoothing | `app-overlap-lanes.js` (2319) | ✅ | ❌ |
 | Deck records | `app-deck-records.js` (1590) | ✅ | ❌ |
 | Station-join curve smoothing | `app-overlap-lanes.js` `smoothCurveStationJoins` | ❌ | ❌ |
-| Ride station labels | `app-deck-records.js` `markerRecordsToFC` | ❌ | ❌ |
+| Ride station labels | `app-deck-records.js` `markerRecordsToFC` | ✅ | ❌ |
 | Select a train, clear selection | `#fit-selected`, `#clear-selection` | — | ❌ |
 | Fit to selection (定位) | `app-map-fit.js` (216) | ❌ | ⚠️ fits the network, not a selection |
 
@@ -92,9 +92,9 @@ A ported function nobody can reach is not a feature.
 
 | Feature | Source | logic | app |
 | --- | --- | :-: | :-: |
-| Play an itinerary | `app-playback.js` (1180) | ❌ | ❌ |
-| Prev / next / pause / stop | `#playback-*` | ❌ | ❌ |
-| Auto-focus zoom | `#toggle-focus-zoom` | ❌ | ❌ |
+| Play an itinerary | `app-playback.js` (1180) | ✅ | ❌ |
+| Prev / next / pause / stop | `#playback-*` | ✅ | ❌ |
+| Auto-focus zoom | `#toggle-focus-zoom` | ✅ | ❌ |
 | Trail gradient along the route | `line-gradient` + `line-progress` | ❌ | ❌ |
 | **Video export** | `app-playback-video.js` (835) | ❌ | ❌ |
 
