@@ -454,6 +454,53 @@ public enum Statistics {
         }
     }
 
+    /// Decodes `rail-sections*.json` into the exact flattened line list the
+    /// statistics edge-index sweep consumes. Kept in RailCore so the iOS app
+    /// and parity tests do not grow separate GeoJSON readers.
+    public struct SectionFeatureCollection: Decodable, Sendable {
+        public let sections: [Section]
+
+        private struct Feature: Decodable {
+            let properties: SectionProperties
+            let geometry: Geometry?
+        }
+
+        private struct Geometry: Decodable {
+            let lines: [[Coordinate]]
+            private enum CodingKeys: String, CodingKey { case type, coordinates }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                switch try container.decode(String.self, forKey: .type) {
+                case "LineString":
+                    let raw = try container.decode([[Double]].self, forKey: .coordinates)
+                    lines = [raw.compactMap(Coordinate.init(pair:))]
+                case "MultiLineString":
+                    let raw = try container.decode([[[Double]]].self, forKey: .coordinates)
+                    lines = raw.map { $0.compactMap(Coordinate.init(pair:)) }
+                default:
+                    lines = []
+                }
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey { case features }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let features = try container.decode([Feature].self, forKey: .features)
+            sections = features.flatMap { feature in
+                (feature.geometry?.lines ?? []).map {
+                    Section(properties: feature.properties, coordinates: $0)
+                }
+            }
+        }
+
+        public static func load(contentsOf url: URL) throws -> SectionFeatureCollection {
+            try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        }
+    }
+
     /// Built once from the rail sections and reused for every stats refresh:
     /// edge key → index into parallel km/mask arrays.
     public struct EdgeIndex: Sendable {
@@ -1100,6 +1147,11 @@ public enum Statistics {
     /// (pass-throughs excluded). First and last entry are the ride boundary pair.
     public static func effectivelyRiddenStopIndexes(_ stops: [Stop]) -> [Int] {
         stops.indices.filter { stops[$0].stopType != "pass_through" && effectiveStopRide(stops, $0) }
+    }
+
+    /// Whether the route feature between `index` and `index + 1` is ridden.
+    public static func isRideSegment(_ stops: [Stop], segmentIndex: Int) -> Bool {
+        effectiveStopRide(stops, segmentIndex) && effectiveStopRide(stops, segmentIndex + 1)
     }
 
     /// Ride TIME of one train: first effectively-ridden stopping station's

@@ -32,6 +32,51 @@ for country in jp tw hk mo kr; do
     cp -p "$package" "$target_dir/$country-2025.json"
 done
 
+# The route pipeline reads three additional country-scoped datasets. They are
+# copied under the web app's own resource names so the native loader can apply
+# the same `countrySuffixed` rule without maintaining a second manifest.
+for country in jp tw hk mo kr; do
+    if [ "$country" = "jp" ]; then
+        suffix=""
+    else
+        suffix="-$country"
+    fi
+
+    for family in stations rail-sections station-readings; do
+        resource="$here/../app/data/$family$suffix.json"
+        if [ ! -f "$resource" ]; then
+            echo "error: missing $resource — the native route pipeline cannot load $country" >&2
+            exit 1
+        fi
+        cp -p "$resource" "$target_dir/$family$suffix.json"
+    done
+done
+
+# The legacy matched pair is still the instant route source for stores whose
+# ids it covers, and the progressive sample parts carry a precomputed route for
+# every bundled sample train. Keeping those parts lets the native app draw the
+# shipped journeys before it ever has to invoke the on-device solver.
+for resource in matched-routes matched-stops; do
+    file="$here/../app/data/$resource.json"
+    if [ ! -f "$file" ]; then
+        echo "error: missing $file" >&2
+        exit 1
+    fi
+    cp -p "$file" "$target_dir/$resource.json"
+done
+
+for dataset in \
+    sample-data sample-data-tw sample-data-hk sample-data-mo sample-data-kr \
+    new-year-grand-loop-data tokyo-limited-express-loop-data
+do
+    source="$here/../app/data/$dataset"
+    if [ ! -d "$source" ]; then
+        echo "error: missing $source" >&2
+        exit 1
+    fi
+    /usr/bin/ditto "$source" "$target_dir/$dataset"
+done
+
 # The string catalog goes in as raw JSON, under a .json name, and it lives in
 # ios/Resources rather than ios/RailMap on purpose.
 #
@@ -73,4 +118,4 @@ for sample in new-year-grand-loop tokyo-limited-express-loop; do
     fi
 done
 
-echo "copied the rail packages, the string catalog and 7 sample itineraries into $target_dir"
+echo "copied map, route, localization and sample resources into $target_dir"

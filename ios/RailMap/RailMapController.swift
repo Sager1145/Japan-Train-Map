@@ -31,6 +31,7 @@ final class RailMapController {
     /// opt-in layer rather than a permanent fixture, and the train button is
     /// that switch.
     var showsNetwork = true
+    var basemapOpacity = 1.0
 
     private(set) var locationAuthorization: CLAuthorizationStatus = .notDetermined
 
@@ -90,9 +91,18 @@ final class RailMapController {
         mapView.setRegion(region, animated: true)
     }
 
+    /// Frame the selected ridden route, falling back to the complete network
+    /// when no route geometry is available for the current selection.
+    func fitToSelection() {
+        guard let mapView, let region = selectionRegion ?? fitRegion else { return }
+        stopFollowingUser()
+        mapView.setRegion(region, animated: true)
+    }
+
     /// Supplied by the map each time it rebuilds, so the button frames what is
     /// actually drawn rather than a remembered extent.
     @ObservationIgnored var fitRegion: MKCoordinateRegion?
+    @ObservationIgnored var selectionRegion: MKCoordinateRegion?
 
     // MARK: - the device's own position
 

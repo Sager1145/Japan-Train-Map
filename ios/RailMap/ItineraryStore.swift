@@ -58,6 +58,158 @@ final class ItineraryStore {
     /// whole `TrainStore` (schema version included) and not just the trains.
     private(set) var store: TrainStore?
 
+    /// Replace one edited train and rebuild the date buckets from the same
+    /// ported rules used on load. The editor commits a complete draft once,
+    /// so views never observe a half-edited canonical record.
+    func replace(_ train: Train, replacing originalID: String, country: String) {
+        guard var next = store,
+            let index = next.trains.firstIndex(where: { $0.id == originalID })
+        else { return }
+
+        // An id edit cannot silently collide with another record. Leave the
+        // original id in place; the validation surface can explain the
+        // collision without destroying either journey.
+        var candidate = train
+        if candidate.id != originalID,
+            next.trains.contains(where: { $0.id == candidate.id })
+        {
+            candidate.id = originalID
+        }
+        next.trains[index] = candidate
+        store = next
+        selectedTrainID = candidate.id
+
+        Task {
+            do {
+                state = .loaded(try await Self.group(store: next, country: country))
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    @discardableResult
+    func add(country: String) -> String? {
+        mutate(country: country) { workspace in
+            StoreOperations.addTrain(in: &workspace)
+        }
+    }
+
+    /// Inserts a completed editor draft. Keeping this separate from the
+    /// no-argument web-parity action lets the SwiftUI add flow remain atomic:
+    /// cancelling the sheet never leaves a blank journey in the store.
+    @discardableResult
+    func add(_ train: Train, country: String) -> String? {
+        mutate(country: country) { workspace in
+            StoreOperations.addTrain(train, in: &workspace)
+        }
+    }
+
+    @discardableResult
+    func duplicate(_ id: String, country: String) -> String? {
+        mutate(country: country) { workspace in
+            StoreOperations.duplicateTrain(id, in: &workspace)
+        }
+    }
+
+    func delete(_ id: String, country: String) {
+        _ = mutate(country: country) { workspace in
+            StoreOperations.deleteTrain(id, in: &workspace)
+        }
+    }
+
+    func toggleVisibility(_ id: String, country: String) {
+        _ = mutate(country: country) { workspace in
+            StoreOperations.toggleTrainVisibility(id, in: &workspace)
+        }
+    }
+
+    @discardableResult
+    func rebuildRouteSections(_ id: String, country: String) -> Int? {
+        guard let train = store?.trains.first(where: { $0.id == id }) else { return nil }
+        var rebuilt = train
+        rebuilt.routeSections = TrainValidation.normalizeExportTrain(
+            train, country: country, stations: .empty).routeSections
+        replace(rebuilt, replacing: id, country: country)
+        return rebuilt.routeSections?.count ?? 0
+    }
+
+    func move(_ id: String, by offset: Int, country: String) {
+        _ = mutate(country: country) { workspace in
+            StoreOperations.moveTrain(id, by: offset, in: &workspace)
+        }
+    }
+
+    func importJSON(_ text: String, country: String) throws {
+        var session = ImportEngine.Session(
+            trains: store?.trains ?? [],
+            selectedTrainID: selectedTrainID,
+            focusedTrainID: nil,
+            selectedDate: Dates.allDates,
+            country: country
+        )
+        try session.replaceTrainStoreFromJSONText(text, sourceLabel: "JSON")
+        let next = TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: session.trains)
+        store = next
+        selectedTrainID = session.selectedTrainID
+        let selection = session.selectedTrainID
+        Task {
+            do {
+                state = .loaded(try await Self.group(store: next, country: country))
+                selectedTrainID = selection
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func deleteAll(country: String) {
+        _ = mutate(country: country) { workspace in
+            StoreOperations.deleteAllTrains(in: &workspace)
+        }
+    }
+
+    func exportJSON(country: String) -> String? {
+        guard let store else { return nil }
+        return StoreOperations.exportTrainStore(
+            StoreOperations.Workspace(
+                store: store,
+                selectedTrainID: selectedTrainID,
+                country: country
+            )
+        )
+    }
+
+    /// Run one of RailCore's verified store transitions and rebuild the view
+    /// model once. The selected id returned is useful for presenting a newly
+    /// added or duplicated journey immediately.
+    @discardableResult
+    private func mutate(
+        country: String,
+        operation: (inout StoreOperations.Workspace) -> StoreOperations.MutationResult?
+    ) -> String? {
+        guard let store else { return nil }
+        var workspace = StoreOperations.Workspace(
+            store: store,
+            selectedTrainID: selectedTrainID,
+            focusedTrainID: nil,
+            country: country
+        )
+        guard operation(&workspace) != nil else { return workspace.selectedTrainID }
+        self.store = workspace.store
+        selectedTrainID = workspace.selectedTrainID
+        let selection = workspace.selectedTrainID
+        Task {
+            do {
+                state = .loaded(try await Self.group(store: workspace.store, country: country))
+                selectedTrainID = selection
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+        return workspace.selectedTrainID
+    }
+
     func load(country: String, from library: RideLibrary) {
         state = .loading
         library.refreshSavedState(country: country)

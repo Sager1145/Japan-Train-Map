@@ -1,0 +1,1873 @@
+{
+  "fixture": "route-hints.json",
+  "describes": "app-route-solver.js inferred segment hints and fallback attempt order",
+  "contract": "Swift must derive the same hard/soft line, operator and institution constraints and try them in the same order for shipped train sections.",
+  "cases": [
+    {
+      "country": "mo",
+      "cases": [
+        {
+          "train": {
+            "id": "MO-SAMPLE-MLM-TAIPA",
+            "number": "氹仔線 官方路線示例",
+            "trainType": "示例列車",
+            "company": "澳門輕軌",
+            "origin": "媽閣",
+            "destination": "機場",
+            "preferredLineNames": [
+              "氹仔線"
+            ],
+            "preferredOperatorNames": [
+              "澳門輕軌"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "MLM-TAIPA-MLM-BARRA",
+            "to_n02_station_code": "MLM-TAIPA-MLM-OCEAN",
+            "line_names": [
+              "氹仔線"
+            ],
+            "operator_names": [
+              "澳門輕軌"
+            ],
+            "from": "媽閣",
+            "to": "海洋"
+          },
+          "fromStationIndices": [
+            0
+          ],
+          "toStationIndices": [
+            1
+          ],
+          "hints": {
+            "preferredLines": [
+              "氹仔線"
+            ],
+            "preferredOperators": [
+              "澳門輕軌"
+            ],
+            "requiredLines": [
+              "氹仔線"
+            ],
+            "requiredOperators": [
+              "澳門輕軌"
+            ],
+            "explicitRequiredLines": [
+              "氹仔線"
+            ],
+            "explicitRequiredOperators": [
+              "澳門輕軌"
+            ],
+            "commonLines": [
+              "氹仔線"
+            ],
+            "commonOperators": [
+              "澳門輕軌"
+            ],
+            "allCommonLines": [
+              "氹仔線"
+            ],
+            "allCommonOperators": [
+              "澳門輕軌"
+            ],
+            "preferredInstitutionCommonLines": [
+              "氹仔線"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "澳門輕軌"
+            ],
+            "fromLines": [
+              "氹仔線"
+            ],
+            "toLines": [
+              "氹仔線"
+            ],
+            "fromOperators": [
+              "澳門輕軌"
+            ],
+            "toOperators": [
+              "澳門輕軌"
+            ],
+            "fromPreferredLines": [
+              "氹仔線"
+            ],
+            "toPreferredLines": [
+              "氹仔線"
+            ],
+            "fromPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "toPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "MO-SAMPLE-MLM-TAIPA",
+            "number": "氹仔線 官方路線示例",
+            "trainType": "示例列車",
+            "company": "澳門輕軌",
+            "origin": "媽閣",
+            "destination": "機場",
+            "preferredLineNames": [
+              "氹仔線"
+            ],
+            "preferredOperatorNames": [
+              "澳門輕軌"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "MLM-TAIPA-MLM-OCEAN",
+            "to_n02_station_code": "MLM-TAIPA-MLM-JOCKEY",
+            "line_names": [
+              "氹仔線"
+            ],
+            "operator_names": [
+              "澳門輕軌"
+            ],
+            "from": "海洋",
+            "to": "馬會"
+          },
+          "fromStationIndices": [
+            1
+          ],
+          "toStationIndices": [
+            2
+          ],
+          "hints": {
+            "preferredLines": [
+              "氹仔線"
+            ],
+            "preferredOperators": [
+              "澳門輕軌"
+            ],
+            "requiredLines": [
+              "氹仔線"
+            ],
+            "requiredOperators": [
+              "澳門輕軌"
+            ],
+            "explicitRequiredLines": [
+              "氹仔線"
+            ],
+            "explicitRequiredOperators": [
+              "澳門輕軌"
+            ],
+            "commonLines": [
+              "氹仔線"
+            ],
+            "commonOperators": [
+              "澳門輕軌"
+            ],
+            "allCommonLines": [
+              "氹仔線"
+            ],
+            "allCommonOperators": [
+              "澳門輕軌"
+            ],
+            "preferredInstitutionCommonLines": [
+              "氹仔線"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "澳門輕軌"
+            ],
+            "fromLines": [
+              "氹仔線"
+            ],
+            "toLines": [
+              "氹仔線"
+            ],
+            "fromOperators": [
+              "澳門輕軌"
+            ],
+            "toOperators": [
+              "澳門輕軌"
+            ],
+            "fromPreferredLines": [
+              "氹仔線"
+            ],
+            "toPreferredLines": [
+              "氹仔線"
+            ],
+            "fromPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "toPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "MO-SAMPLE-MLM-TAIPA",
+            "number": "氹仔線 官方路線示例",
+            "trainType": "示例列車",
+            "company": "澳門輕軌",
+            "origin": "媽閣",
+            "destination": "機場",
+            "preferredLineNames": [
+              "氹仔線"
+            ],
+            "preferredOperatorNames": [
+              "澳門輕軌"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "MLM-TAIPA-MLM-JOCKEY",
+            "to_n02_station_code": "MLM-TAIPA-MLM-STADIUM",
+            "line_names": [
+              "氹仔線"
+            ],
+            "operator_names": [
+              "澳門輕軌"
+            ],
+            "from": "馬會",
+            "to": "運動場"
+          },
+          "fromStationIndices": [
+            2
+          ],
+          "toStationIndices": [
+            3
+          ],
+          "hints": {
+            "preferredLines": [
+              "氹仔線"
+            ],
+            "preferredOperators": [
+              "澳門輕軌"
+            ],
+            "requiredLines": [
+              "氹仔線"
+            ],
+            "requiredOperators": [
+              "澳門輕軌"
+            ],
+            "explicitRequiredLines": [
+              "氹仔線"
+            ],
+            "explicitRequiredOperators": [
+              "澳門輕軌"
+            ],
+            "commonLines": [
+              "氹仔線"
+            ],
+            "commonOperators": [
+              "澳門輕軌"
+            ],
+            "allCommonLines": [
+              "氹仔線"
+            ],
+            "allCommonOperators": [
+              "澳門輕軌"
+            ],
+            "preferredInstitutionCommonLines": [
+              "氹仔線"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "澳門輕軌"
+            ],
+            "fromLines": [
+              "氹仔線"
+            ],
+            "toLines": [
+              "氹仔線"
+            ],
+            "fromOperators": [
+              "澳門輕軌"
+            ],
+            "toOperators": [
+              "澳門輕軌"
+            ],
+            "fromPreferredLines": [
+              "氹仔線"
+            ],
+            "toPreferredLines": [
+              "氹仔線"
+            ],
+            "fromPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "toPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "MO-SAMPLE-MLM-TAIPA",
+            "number": "氹仔線 官方路線示例",
+            "trainType": "示例列車",
+            "company": "澳門輕軌",
+            "origin": "媽閣",
+            "destination": "機場",
+            "preferredLineNames": [
+              "氹仔線"
+            ],
+            "preferredOperatorNames": [
+              "澳門輕軌"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "MLM-TAIPA-MLM-STADIUM",
+            "to_n02_station_code": "MLM-TAIPA-MLM-PAIKOK",
+            "line_names": [
+              "氹仔線"
+            ],
+            "operator_names": [
+              "澳門輕軌"
+            ],
+            "from": "運動場",
+            "to": "排角"
+          },
+          "fromStationIndices": [
+            3
+          ],
+          "toStationIndices": [
+            4
+          ],
+          "hints": {
+            "preferredLines": [
+              "氹仔線"
+            ],
+            "preferredOperators": [
+              "澳門輕軌"
+            ],
+            "requiredLines": [
+              "氹仔線"
+            ],
+            "requiredOperators": [
+              "澳門輕軌"
+            ],
+            "explicitRequiredLines": [
+              "氹仔線"
+            ],
+            "explicitRequiredOperators": [
+              "澳門輕軌"
+            ],
+            "commonLines": [
+              "氹仔線"
+            ],
+            "commonOperators": [
+              "澳門輕軌"
+            ],
+            "allCommonLines": [
+              "氹仔線"
+            ],
+            "allCommonOperators": [
+              "澳門輕軌"
+            ],
+            "preferredInstitutionCommonLines": [
+              "氹仔線"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "澳門輕軌"
+            ],
+            "fromLines": [
+              "氹仔線"
+            ],
+            "toLines": [
+              "氹仔線"
+            ],
+            "fromOperators": [
+              "澳門輕軌"
+            ],
+            "toOperators": [
+              "澳門輕軌"
+            ],
+            "fromPreferredLines": [
+              "氹仔線"
+            ],
+            "toPreferredLines": [
+              "氹仔線"
+            ],
+            "fromPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "toPreferredOperators": [
+              "澳門輕軌"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "氹仔線"
+              ],
+              "preferredOperators": [
+                "澳門輕軌"
+              ],
+              "requiredLines": [
+                "氹仔線"
+              ],
+              "requiredOperators": [
+                "澳門輕軌"
+              ],
+              "explicitRequiredLines": [
+                "氹仔線"
+              ],
+              "explicitRequiredOperators": [
+                "澳門輕軌"
+              ],
+              "commonLines": [
+                "氹仔線"
+              ],
+              "commonOperators": [
+                "澳門輕軌"
+              ],
+              "allCommonLines": [
+                "氹仔線"
+              ],
+              "allCommonOperators": [
+                "澳門輕軌"
+              ],
+              "preferredInstitutionCommonLines": [
+                "氹仔線"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "澳門輕軌"
+              ],
+              "fromLines": [
+                "氹仔線"
+              ],
+              "toLines": [
+                "氹仔線"
+              ],
+              "fromOperators": [
+                "澳門輕軌"
+              ],
+              "toOperators": [
+                "澳門輕軌"
+              ],
+              "fromPreferredLines": [
+                "氹仔線"
+              ],
+              "toPreferredLines": [
+                "氹仔線"
+              ],
+              "fromPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "toPreferredOperators": [
+                "澳門輕軌"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "country": "hk",
+      "cases": [
+        {
+          "train": {
+            "id": "HK-SAMPLE-EAL-LOW",
+            "number": "東鐵綫 官方路線示例",
+            "trainType": "示例列車",
+            "company": "MTR",
+            "origin": "金鐘",
+            "destination": "上水",
+            "preferredLineNames": [
+              "東鐵綫"
+            ],
+            "preferredOperatorNames": [
+              "MTR"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "EAL-LOW-MTR-ADM",
+            "to_n02_station_code": "EAL-LOW-MTR-EXC",
+            "line_names": [
+              "東鐵綫"
+            ],
+            "operator_names": [
+              "MTR"
+            ],
+            "from": "金鐘",
+            "to": "會展"
+          },
+          "fromStationIndices": [
+            7
+          ],
+          "toStationIndices": [
+            8
+          ],
+          "hints": {
+            "preferredLines": [
+              "東鐵綫"
+            ],
+            "preferredOperators": [
+              "MTR"
+            ],
+            "requiredLines": [
+              "東鐵綫"
+            ],
+            "requiredOperators": [
+              "MTR"
+            ],
+            "explicitRequiredLines": [
+              "東鐵綫"
+            ],
+            "explicitRequiredOperators": [
+              "MTR"
+            ],
+            "commonLines": [
+              "東鐵綫"
+            ],
+            "commonOperators": [
+              "MTR"
+            ],
+            "allCommonLines": [
+              "東鐵綫"
+            ],
+            "allCommonOperators": [
+              "MTR"
+            ],
+            "preferredInstitutionCommonLines": [
+              "東鐵綫"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "MTR"
+            ],
+            "fromLines": [
+              "東鐵綫"
+            ],
+            "toLines": [
+              "東鐵綫"
+            ],
+            "fromOperators": [
+              "MTR"
+            ],
+            "toOperators": [
+              "MTR"
+            ],
+            "fromPreferredLines": [
+              "東鐵綫"
+            ],
+            "toPreferredLines": [
+              "東鐵綫"
+            ],
+            "fromPreferredOperators": [
+              "MTR"
+            ],
+            "toPreferredOperators": [
+              "MTR"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "HK-SAMPLE-EAL-LOW",
+            "number": "東鐵綫 官方路線示例",
+            "trainType": "示例列車",
+            "company": "MTR",
+            "origin": "金鐘",
+            "destination": "上水",
+            "preferredLineNames": [
+              "東鐵綫"
+            ],
+            "preferredOperatorNames": [
+              "MTR"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "EAL-LOW-MTR-EXC",
+            "to_n02_station_code": "EAL-LOW-MTR-HUH",
+            "line_names": [
+              "東鐵綫"
+            ],
+            "operator_names": [
+              "MTR"
+            ],
+            "from": "會展",
+            "to": "紅磡"
+          },
+          "fromStationIndices": [
+            8
+          ],
+          "toStationIndices": [
+            9
+          ],
+          "hints": {
+            "preferredLines": [
+              "東鐵綫"
+            ],
+            "preferredOperators": [
+              "MTR"
+            ],
+            "requiredLines": [
+              "東鐵綫"
+            ],
+            "requiredOperators": [
+              "MTR"
+            ],
+            "explicitRequiredLines": [
+              "東鐵綫"
+            ],
+            "explicitRequiredOperators": [
+              "MTR"
+            ],
+            "commonLines": [
+              "東鐵綫"
+            ],
+            "commonOperators": [
+              "MTR"
+            ],
+            "allCommonLines": [
+              "東鐵綫"
+            ],
+            "allCommonOperators": [
+              "MTR"
+            ],
+            "preferredInstitutionCommonLines": [
+              "東鐵綫"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "MTR"
+            ],
+            "fromLines": [
+              "東鐵綫"
+            ],
+            "toLines": [
+              "東鐵綫"
+            ],
+            "fromOperators": [
+              "MTR"
+            ],
+            "toOperators": [
+              "MTR"
+            ],
+            "fromPreferredLines": [
+              "東鐵綫"
+            ],
+            "toPreferredLines": [
+              "東鐵綫"
+            ],
+            "fromPreferredOperators": [
+              "MTR"
+            ],
+            "toPreferredOperators": [
+              "MTR"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "HK-SAMPLE-EAL-LOW",
+            "number": "東鐵綫 官方路線示例",
+            "trainType": "示例列車",
+            "company": "MTR",
+            "origin": "金鐘",
+            "destination": "上水",
+            "preferredLineNames": [
+              "東鐵綫"
+            ],
+            "preferredOperatorNames": [
+              "MTR"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "EAL-LOW-MTR-HUH",
+            "to_n02_station_code": "EAL-LOW-MTR-MKK",
+            "line_names": [
+              "東鐵綫"
+            ],
+            "operator_names": [
+              "MTR"
+            ],
+            "from": "紅磡",
+            "to": "旺角東"
+          },
+          "fromStationIndices": [
+            9
+          ],
+          "toStationIndices": [
+            10
+          ],
+          "hints": {
+            "preferredLines": [
+              "東鐵綫"
+            ],
+            "preferredOperators": [
+              "MTR"
+            ],
+            "requiredLines": [
+              "東鐵綫"
+            ],
+            "requiredOperators": [
+              "MTR"
+            ],
+            "explicitRequiredLines": [
+              "東鐵綫"
+            ],
+            "explicitRequiredOperators": [
+              "MTR"
+            ],
+            "commonLines": [
+              "東鐵綫"
+            ],
+            "commonOperators": [
+              "MTR"
+            ],
+            "allCommonLines": [
+              "東鐵綫"
+            ],
+            "allCommonOperators": [
+              "MTR"
+            ],
+            "preferredInstitutionCommonLines": [
+              "東鐵綫"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "MTR"
+            ],
+            "fromLines": [
+              "東鐵綫"
+            ],
+            "toLines": [
+              "東鐵綫"
+            ],
+            "fromOperators": [
+              "MTR"
+            ],
+            "toOperators": [
+              "MTR"
+            ],
+            "fromPreferredLines": [
+              "東鐵綫"
+            ],
+            "toPreferredLines": [
+              "東鐵綫"
+            ],
+            "fromPreferredOperators": [
+              "MTR"
+            ],
+            "toPreferredOperators": [
+              "MTR"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        },
+        {
+          "train": {
+            "id": "HK-SAMPLE-EAL-LOW",
+            "number": "東鐵綫 官方路線示例",
+            "trainType": "示例列車",
+            "company": "MTR",
+            "origin": "金鐘",
+            "destination": "上水",
+            "preferredLineNames": [
+              "東鐵綫"
+            ],
+            "preferredOperatorNames": [
+              "MTR"
+            ],
+            "allowedInstitutionTypeCodes": [
+              "4"
+            ],
+            "institutionFilterMode": "hard"
+          },
+          "section": {
+            "from_n02_station_code": "EAL-LOW-MTR-MKK",
+            "to_n02_station_code": "EAL-LOW-MTR-KOT",
+            "line_names": [
+              "東鐵綫"
+            ],
+            "operator_names": [
+              "MTR"
+            ],
+            "from": "旺角東",
+            "to": "九龍塘"
+          },
+          "fromStationIndices": [
+            10
+          ],
+          "toStationIndices": [
+            11
+          ],
+          "hints": {
+            "preferredLines": [
+              "東鐵綫"
+            ],
+            "preferredOperators": [
+              "MTR"
+            ],
+            "requiredLines": [
+              "東鐵綫"
+            ],
+            "requiredOperators": [
+              "MTR"
+            ],
+            "explicitRequiredLines": [
+              "東鐵綫"
+            ],
+            "explicitRequiredOperators": [
+              "MTR"
+            ],
+            "commonLines": [
+              "東鐵綫"
+            ],
+            "commonOperators": [
+              "MTR"
+            ],
+            "allCommonLines": [
+              "東鐵綫"
+            ],
+            "allCommonOperators": [
+              "MTR"
+            ],
+            "preferredInstitutionCommonLines": [
+              "東鐵綫"
+            ],
+            "preferredInstitutionCommonOperators": [
+              "MTR"
+            ],
+            "fromLines": [
+              "東鐵綫"
+            ],
+            "toLines": [
+              "東鐵綫"
+            ],
+            "fromOperators": [
+              "MTR"
+            ],
+            "toOperators": [
+              "MTR"
+            ],
+            "fromPreferredLines": [
+              "東鐵綫"
+            ],
+            "toPreferredLines": [
+              "東鐵綫"
+            ],
+            "fromPreferredOperators": [
+              "MTR"
+            ],
+            "toPreferredOperators": [
+              "MTR"
+            ],
+            "requirePreferredInstitution": false,
+            "solveMode": "base"
+          },
+          "attempts": [
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": true,
+              "solveMode": "explicit_section_route_required_home_institution"
+            },
+            {
+              "preferredLines": [
+                "東鐵綫"
+              ],
+              "preferredOperators": [
+                "MTR"
+              ],
+              "requiredLines": [
+                "東鐵綫"
+              ],
+              "requiredOperators": [
+                "MTR"
+              ],
+              "explicitRequiredLines": [
+                "東鐵綫"
+              ],
+              "explicitRequiredOperators": [
+                "MTR"
+              ],
+              "commonLines": [
+                "東鐵綫"
+              ],
+              "commonOperators": [
+                "MTR"
+              ],
+              "allCommonLines": [
+                "東鐵綫"
+              ],
+              "allCommonOperators": [
+                "MTR"
+              ],
+              "preferredInstitutionCommonLines": [
+                "東鐵綫"
+              ],
+              "preferredInstitutionCommonOperators": [
+                "MTR"
+              ],
+              "fromLines": [
+                "東鐵綫"
+              ],
+              "toLines": [
+                "東鐵綫"
+              ],
+              "fromOperators": [
+                "MTR"
+              ],
+              "toOperators": [
+                "MTR"
+              ],
+              "fromPreferredLines": [
+                "東鐵綫"
+              ],
+              "toPreferredLines": [
+                "東鐵綫"
+              ],
+              "fromPreferredOperators": [
+                "MTR"
+              ],
+              "toPreferredOperators": [
+                "MTR"
+              ],
+              "requirePreferredInstitution": false,
+              "solveMode": "explicit_section_route_required_soft_institution"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

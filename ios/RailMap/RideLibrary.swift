@@ -59,6 +59,11 @@ final class RideLibrary {
 
     private(set) var source: Source = .sample("train-store")
 
+    /// Progressive sample directory whose parts carry solved route geometry.
+    /// Saving a sample as the reader's own store intentionally keeps this
+    /// provenance so unchanged trains continue to draw without a new solve.
+    private(set) var routeDataset = "sample-data"
+
     /// Whether a saved store exists on disk for this country, so the interface
     /// can offer "restore" only when there is something to restore.
     private(set) var hasSavedStore = false
@@ -127,6 +132,21 @@ final class RideLibrary {
 
     func use(_ source: Source) {
         self.source = source
+        if case .sample(let resource) = source {
+            routeDataset = Self.routeDataset(for: resource)
+        }
+    }
+
+    private static func routeDataset(for resource: String) -> String {
+        switch resource {
+        case "train-store-tw": "sample-data-tw"
+        case "train-store-hk": "sample-data-hk"
+        case "train-store-mo": "sample-data-mo"
+        case "train-store-kr": "sample-data-kr"
+        case "new-year-grand-loop": "new-year-grand-loop-data"
+        case "tokyo-limited-express-loop": "tokyo-limited-express-loop-data"
+        default: "sample-data"
+        }
     }
 
     // MARK: - locations

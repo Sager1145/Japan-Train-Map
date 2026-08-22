@@ -15,6 +15,7 @@ final class RailNetworkStore {
 
     struct DrawnLine: Identifiable, Sendable {
         let id: String
+        let stationCode: String
         let name: String
         let nameRoma: String?
         let color: Color
@@ -47,6 +48,18 @@ final class RailNetworkStore {
         var vertexCount: Int { intervals.reduce(0) { $0 + $1.count } }
     }
 
+    struct DrawnStation: Identifiable, Sendable {
+        let id: String
+        let name: String
+        let nameRoma: String
+        let coordinate: Coordinate
+        let colorHex: String
+        let minZoom: Int
+        let isTerminal: Bool
+        let showsLabel: Bool
+        let popup: StationDisplay.PopupModel
+    }
+
     enum LoadState {
         case idle
         case loading
@@ -55,6 +68,7 @@ final class RailNetworkStore {
     }
 
     private(set) var state: LoadState = .idle
+    private(set) var stations: [DrawnStation] = []
 
     /// The five countries the packages cover, smallest first — which is also
     /// least to most demanding on the renderer, so the ordering doubles as the
@@ -69,9 +83,11 @@ final class RailNetworkStore {
 
     func load(country: String) {
         state = .loading
+        stations = []
         Task {
             do {
                 let decoded = try await Self.decode(country: country)
+                stations = decoded.stations
                 state = .loaded(
                     country: country, lines: decoded.lines, elapsed: decoded.elapsed)
             } catch {
@@ -87,15 +103,17 @@ final class RailNetworkStore {
     /// trusting it.
     private nonisolated static func decode(
         country: String
-    ) async throws -> (lines: [DrawnLine], elapsed: Duration) {
+    ) async throws -> (lines: [DrawnLine], stations: [DrawnStation], elapsed: Duration) {
         let started = ContinuousClock.now
         guard let url = Bundle.main.url(forResource: "\(country)-2025", withExtension: "json")
         else { throw LoadError.missingResource(country) }
 
         let package = try CompactPackage.load(contentsOf: url)
+        let topologies = try DisplayParts.LineTopology.byLineID(contentsOf: url)
         let minZoomByLineId = Visibility.minZoomByLineId(package)
         let lines = package.lines.map { line in
-            let intervals = CompactPackage.decodeIntervals(line)
+            let intervals = DisplayParts.parts(
+                for: line, topology: topologies[line.id] ?? .init())
             let lengthKm = line.segments.reduce(0) { $0 + $1.distanceKm }
             return DrawnLine(
                 id: line.id,
@@ -112,7 +130,20 @@ final class RailNetworkStore {
                 intervals: intervals
             )
         }
-        return (lines, ContinuousClock.now - started)
+        let stationNetwork = StationDisplay.Network(package: package)
+        let labelWinners = Set(StationDisplay.stationLabelWinners(stationNetwork))
+        let stations = stationNetwork.stations.enumerated().map { index, station in
+            let line = stationNetwork.lines[station.lineIndex]
+            return DrawnStation(
+                id: station.stationID, stationCode: station.stationGroupID,
+                name: station.name,
+                nameRoma: station.nameRoma ?? "", coordinate: station.coordinate,
+                colorHex: line.color, minZoom: station.minZoom,
+                isTerminal: station.isTerminal, showsLabel: labelWinners.contains(index),
+                popup: StationDisplay.buildPopupModel(
+                    network: stationNetwork, stationID: station.stationID))
+        }
+        return (lines, stations, ContinuousClock.now - started)
     }
 
     /// Union of every vertex, in projected map space.

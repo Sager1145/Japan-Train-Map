@@ -21,6 +21,7 @@ import SwiftUI
 ///     *above* the capsules, because it appears and disappears with the map's
 ///     heading and anything below it would jump as it did.
 struct MapControlBar: View {
+    @Environment(AppLocalization.self) private var localization
     /// Supplied once `RailMapView` has an `MKMapView` — `MKCompassButton`
     /// cannot exist without one, so the caller withholds the whole stack until
     /// then rather than showing a gap where the compass will be.
@@ -46,14 +47,14 @@ struct MapControlBar: View {
                 VStack(spacing: 0) {
                     ControlButton(
                         systemImage: "tram.fill",
-                        label: Text("Rail network", comment: "Toggles the rail network layer"),
+                        label: Text(localization.text("map.allRailways", fallback: "Rail network")),
                         isOn: controller.showsNetwork
                     ) {
                         controller.showsNetwork.toggle()
                     }
                     ControlButton(
                         systemImage: "paperplane",
-                        label: Text("Frame the railway", comment: "Zooms to fit the drawn network")
+                        label: Text(localization.text("btn.fit", fallback: "Frame the railway"))
                     ) {
                         onFit()
                     }
@@ -64,10 +65,16 @@ struct MapControlBar: View {
 
             RailGlassGroup(spacing: 8) {
                 VStack(spacing: 0) {
-                    ControlButton(systemImage: "plus", label: Text("Zoom in")) {
+                    ControlButton(
+                        systemImage: "plus",
+                        label: Text(localization.text("ios.zoomIn", fallback: "Zoom in"))
+                    ) {
                         controller.zoomIn()
                     }
-                    ControlButton(systemImage: "minus", label: Text("Zoom out")) {
+                    ControlButton(
+                        systemImage: "minus",
+                        label: Text(localization.text("ios.zoomOut", fallback: "Zoom out"))
+                    ) {
                         controller.zoomOut()
                     }
                 }
@@ -82,7 +89,7 @@ struct MapControlBar: View {
             RailGlassGroup(spacing: 8) {
                 ControlButton(
                     systemImage: controller.isFollowingUser ? "location.fill" : "location",
-                    label: Text("Current location"),
+                    label: Text(localization.text("ios.currentLocation", fallback: "Current location")),
                     isOn: controller.isFollowingUser
                 ) {
                     controller.toggleFollowUser()
@@ -134,7 +141,11 @@ private struct ControlButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .imageScale(.large)
+                // The control's meaning and 48-point hit target stay stable at
+                // every Dynamic Type size. SF Symbols inside map chrome do not
+                // represent reading text, so allowing them to grow past their
+                // capsule makes the control less usable rather than more.
+                .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(isOn ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary))
                 .frame(width: MapControlBar.side, height: MapControlBar.side)
                 .contentShape(.rect)

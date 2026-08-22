@@ -392,10 +392,15 @@ public enum RouteGraph {
     public struct SectionFeature: Sendable {
         public var properties: SectionProperties
         public var lines: [[Coordinate]]
+        public var geometryType: String
 
-        public init(properties: SectionProperties, lines: [[Coordinate]]) {
+        public init(
+            properties: SectionProperties, lines: [[Coordinate]],
+            geometryType: String = "LineString"
+        ) {
             self.properties = properties
             self.lines = lines
+            self.geometryType = geometryType
         }
 
         /// `iterateGeometryLines` — every vertex on the 5-decimal grid.
@@ -1122,12 +1127,13 @@ extension RouteGraph.SectionFeature: Decodable {
         // JavaScript, so it falls through to the next spelling just as a
         // missing key does.
         func nonEmpty(_ value: String?) -> String { (value?.isEmpty == false) ? value! : "" }
+        let geometry = try c.decodeIfPresent(Geometry.self, forKey: .geometry)
         self.init(
             properties: RouteGraph.SectionProperties(
                 lineName: nonEmpty(properties?.lineName),
                 operator: nonEmpty(properties?.operator),
                 institutionTypeCode: nonEmpty(properties?.institutionTypeCode),
                 railwayClassCode: nonEmpty(properties?.railwayClassCode)),
-            lines: (try c.decodeIfPresent(Geometry.self, forKey: .geometry))?.lines ?? [])
+            lines: geometry?.lines ?? [], geometryType: geometry?.type ?? "")
     }
 }

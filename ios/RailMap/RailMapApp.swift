@@ -9,9 +9,20 @@ import SwiftUI
 /// the web app is a test failure before it is a bug report.
 @main
 struct RailMapApp: App {
+    @AppStorage("appearance") private var appearance = "system"
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .preferredColorScheme(preferredColorScheme)
+        }
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch appearance {
+        case "light": .light
+        case "dark": .dark
+        default: nil
         }
     }
 }
