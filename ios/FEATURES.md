@@ -43,8 +43,9 @@ A ported function nobody can reach is not a feature.
 | Canonical route feature | `rail-network.js:1622` | ✅ | ❌ |
 | **Route solving (Dijkstra + rules)** | `app-route-solver.js` (1375) | ❌ | ❌ |
 | Draw ridden routes | `app-route-render.js` (299) | ❌ | ❌ |
-| Overlap lanes / corridor smoothing | `app-overlap-lanes.js` (2319) | ❌ | ❌ |
-| Deck records | `app-deck-records.js` (1590) | ❌ | ❌ |
+| Overlap lanes / corridor smoothing | `app-overlap-lanes.js` (2319) | ✅ | ❌ |
+| Deck records | `app-deck-records.js` (1590) | ✅ | ❌ |
+| Station-join curve smoothing | `app-overlap-lanes.js` `smoothCurveStationJoins` | ❌ | ❌ |
 | Ride station labels | `app-deck-records.js` `markerRecordsToFC` | ❌ | ❌ |
 | Select a train, clear selection | `#fit-selected`, `#clear-selection` | — | ❌ |
 | Fit to selection (定位) | `app-map-fit.js` (216) | ❌ | ⚠️ fits the network, not a selection |
