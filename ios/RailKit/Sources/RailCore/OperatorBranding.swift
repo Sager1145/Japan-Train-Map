@@ -650,18 +650,6 @@ public enum OperatorBranding {
 
 // MARK: - JavaScript string semantics, written out
 
-/// A string compared the way JavaScript compares one: by UTF-16 code unit.
-///
-/// Swift's `String` is equal under canonical equivalence, so `"アルピコ交通"`
-/// written with a combining semi-voiced mark equals the composed spelling and
-/// would find a table entry that a JavaScript object lookup misses. The tables
-/// in this file are keyed on this type so that they answer the same question
-/// the JavaScript answers, and no other.
-private struct CodeUnits: Hashable {
-    let units: [UInt16]
-    init(_ value: String) { units = Array(value.utf16) }
-}
-
 /// A JavaScript object used as a lookup table.
 private struct CodeUnitTable {
     private let entries: [CodeUnits: String]
@@ -696,39 +684,11 @@ private enum JSText {
 
     /// ECMAScript `TrimString`: WhiteSpace ∪ LineTerminator.
     ///
-    /// Not `CharacterSet.whitespacesAndNewlines`, which differs at both ends —
-    /// it omits U+FEFF (ZWNBSP), which ECMAScript trims, and includes U+0085
-    /// (NEL), which ECMAScript does not. Both appear in the fixture precisely
-    /// because they are the two characters that make the two implementations
-    /// disagree about where a name begins.
-    static func isWhiteSpace(_ unit: UInt16) -> Bool {
-        switch unit {
-        case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D:  // TAB LF VT FF CR
-            return true
-        case 0x0020, 0x00A0:  // SPACE, NBSP
-            return true
-        case 0x1680, 0x2000...0x200A, 0x202F, 0x205F, 0x3000:  // category Zs
-            return true
-        case 0x2028, 0x2029:  // LINE / PARAGRAPH SEPARATOR
-            return true
-        case 0xFEFF:  // ZWNBSP
-            return true
-        default:
-            return false
-        }
-    }
+    /// The switch itself is ``JSString/isWhiteSpace(_:)`` — `Stations.swift`
+    /// spelled the identical one and the two have been moved together.
+    static func isWhiteSpace(_ unit: UInt16) -> Bool { JSString.isWhiteSpace(unit) }
 
-    static func trim(_ value: String) -> String {
-        let units = Array(value.utf16)
-        var start = 0
-        var end = units.count
-        while start < end, isWhiteSpace(units[start]) { start += 1 }
-        while end > start, isWhiteSpace(units[end - 1]) { end -= 1 }
-        // Returning the original when nothing is trimmed keeps the exact string
-        // rather than a re-encoded copy of it.
-        guard start != 0 || end != units.count else { return value }
-        return String(decoding: units[start..<end], as: UTF16.self)
-    }
+    static func trim(_ value: String) -> String { JSString.trimCodeUnits(value) }
 
     /// `String.prototype.startsWith` — a code-unit comparison.
     ///

@@ -4,7 +4,9 @@
 `RailMapUITests`、`tools`）。`app/` 的 JavaScript 不在整理范围内，但它是这个端
 的**参考实现**，任何改动都不允许让两端的答案分叉。
 
-本文只做 Phase 1（清点）、Phase 2（问题）、Phase 3（计划）。一行代码都还没改。
+前半部分是 Phase 1（清点）、Phase 2（问题）、Phase 3（计划），写于动手之前。
+**批次 0–4 已经执行完毕**，记录在文末的「执行记录」一节；批次 5–8 仍在等待，
+原因也在那里。
 
 ---
 
@@ -136,9 +138,9 @@ app target 的 import 矩阵实测是干净的：65 个文件里没有一个 sto
 
 | 函数 | 变体数 | 判定 |
 | --- | ---: | --- |
-| `distanceMeters` | **5** | `Geometry`=haversine；`Grooming`=等距圆柱 `localMetric`；`RouteFeature`=自己的 `local`；`DisplayParts` 已经复用 `Grooming.localMetric`；`Stations` 是 `[Double]` 版 | 
+| `distanceMeters` | **5** | `Geometry`=haversine；`Grooming`=等距圆柱 `localMetric`；`RouteFeature`=自己的 `local`；`DisplayParts` 已经复用 `Grooming.localMetric`；`Stations` 是 `[Double]` 版。**已实测（08-26）**：`Grooming` 与 `RouteNetwork.Metric` 这两份在 20 万组真实坐标上**逐位零差异**，可以合并 —— 证据已写进 `RouteFeature.swift`，但本轮**没有**合并（见批次 4 的边界） |
 | `pathLength` | 3 | 各自建在不同的 `distanceMeters` 家族上，跟着上一行走 |
-| `turnDegrees` | 2 | `DisplayParts` 已复用 `Grooming.localMetric`，两份可能已经逐位相同 —— **待测** |
+| `turnDegrees` | 2 | **已实测（08-26）**：`Grooming` 用 Darwin `hypot`、`DisplayParts` 用 `jsHypot`，20 万组真实三点里 **96,040 组答案不同**；最大差 1.7×10⁻⁶ 度。看不见，但夹具看得见 —— **不可合并** |
 | `jsSorted` | 3 | 三个**不同的比较器**（`JSNumber.stringLessOrEqual` 取反 / 裸 utf16 字典序 / `stableSorted`+`jsLess`）。看起来能合，其实不能 |
 | `jsTrim` | 3 | 2 个真变体：utf16 版（`Stations`）vs unicodeScalars 版（`Train`、`Dates` **逐字相同**） |
 | `quote` | 3 | 三种 JSON 转义写法（scalars / utf16 / 流式 `inout`），输出**应该**一致 —— 待测 |
@@ -437,3 +439,122 @@ buildMilliseconds）比对，数字必须一致。
 2. **批次 7b**（把 `RailWorkspaceView` 的 state 提成子 View）做不做？它不是
    behavior-preserving。
 3. **批次 8**（`public` → `internal`）做不做？代价是 29 个测试文件改 import。
+
+---
+
+# 执行记录 · 2026-08-26
+
+## 已完成：批次 0–4
+
+按你的决定，**避开 `ContentView.swift` / `RailMapView.swift` / `BottomChrome.swift`
+与 `ZZTemp*` 探针**（另一个会话在写，期间又新建了 `PresentationHost.swift` 与
+`ZZTempForceProbe.swift`）。
+
+### 批次 0 · checkpoint
+
+`c495eda chore: a checkpoint, so the audit's diff can be read on its own` ——
+242 个文件，**提交前先验证过能构建**（app build 0 warning、`swift test` 206/206），
+因为不能构建的 checkpoint 不算 checkpoint。
+
+顺带修了 `.gitignore`：`swift build` 不带 `--scratch-path` 会把七个产物丢在
+`Package.swift` 旁边，`ios/**/.build/` 盖不住它们（`verify.sh` 一直传 scratch
+path，所以没人踩到过）。
+
+### 批次 1 · 死代码
+
+| 删除 | 位置 | 确认方式 |
+| --- | --- | --- |
+| `struct PassportChip: View` | `PassportCardStyle.swift` | 全仓（含 `.pbxproj`/`.plist`/`.md`/`.sh`）只有声明一处 |
+| `struct UtilityToolbar: ToolbarContent` | `UtilityDestination.swift` | 同上；面板头的 `destinationMenu(for:)` 已按同样的 `UtilityDestination` case 建同一个菜单 |
+| `dedupeStationFeatures(_:)` | `RailCore/Stations.swift` | 两个消费者（`RouteSolver` 与 parity 测试）要的都是 `dedupeStationFeatureIndices` 的**位置**，不是 feature |
+
+`ContentView.swift:1691` 的 `groupedByDate` 同样是死的，但在排除名单里，**没动**。
+
+### 批次 2 · 文档漂移
+
+- `MileageStatisticsStore.swift` 引用的 `JourneysWorkspaceView` → 实际是 `RailWorkspaceView`
+- `PassportCardStyle.swift` 说自己「刻意区别于 `StatisticsMetricGrid`」—— 那个类型已经不存在，
+  而且统计页现在就用 `PassportMetricGrid` 本身（`StatisticsView.swift:269`）。按事实重写
+
+### 批次 3 · 文案：5 张表 / 5 个取值函数 → 1 个注册表
+
+新增 `AppStrings.swift`（注册表 ＋ 五个薄转发）、`ShellStrings.swift`（从
+`AppLocalization` 搬出的 109 条 shell 文案）。`AppLocalization.swift` 663 → 292 行，
+变回一个纯粹的引擎桥接。四张按屏幕分的表**留在原文件**——它们是数据不是重复，
+留在各自屏幕旁边才好找。
+
+**行为保持的证据（实测，不是推理）**：
+
+```
+五张表合计         401 keys
+跨表重名             0
+遮蔽 web catalog     0
+字面量调用点       424 个（7 个取值函数）
+其中解析结果会变     0
+```
+
+非字面量 key（约 50 处，来自 `region.localizationKey`、`category.i18n` 之类枚举）
+不在这个对拍里。合并只会**新增**第二步字典的条目，所以对它们唯一可能的变化是
+「本来显示原始 key、现在显示某屏幕的译文」——不会把有译文的 key 变成别的译文。
+
+另加了一条 `#if DEBUG` 的 `assertNoCollisions()`：合并的正确性靠「零重名」这个
+不变量，现在它会大声失败而不是悄悄让某张表赢。app target 没有测试 target，
+Debug 构建是唯一能检查它的时刻。
+
+### 批次 4 · `RailCore` 字符串原语
+
+新增 `JSString.swift`（`JSNumber`/`JSMath` 的第三个兄弟）。**六份逐字相同的副本
+合成一份**，原文件保留本地名做一行转发（那些名字是对着 JavaScript 读的）：
+
+| 原语 | 原来在 | 现在 |
+| --- | --- | --- |
+| `struct CodeUnits` | `OperatorBranding` `StationDisplay` `Stations` | 模块作用域一份（约 60 个类型位置，不加限定） |
+| `sameCodeUnits` | `StationDisplay` `Stations` | 一份；`Train.jsStringEquals` 的手写迭代器循环也改为转发 |
+| `jsWhitespace` (Set<Unicode.Scalar>) | `Train` `Dates` | `JSString.whitespace` |
+| `jsTrim` (scalar) | `Train` `Dates` | `JSString.trim` |
+| `isJSWhiteSpace` (UInt16 switch) | `Stations` `OperatorBranding.JSText` | `JSString.isWhiteSpace` |
+| `jsTrim` (UTF-16) | `Stations` `OperatorBranding.JSText` | `JSString.trimCodeUnits` |
+
+`Train.swift` 自己的注释早就要求过这件事：「if these ever need to move, they
+should move together into one internal helper」。
+
+**浮点原语一份都没动**，但把「能不能合」从推测变成了实测。临时写了一个位型对拍
+（跑完即删），对五国成品包的 **200,060 组真实三点**：
+
+```
+Grooming.localMetric     vs RouteNetwork.Metric.local           0 differ
+Grooming.distanceMeters  vs RouteNetwork.Metric.distanceMeters  0 differ
+Grooming.turnDegrees     vs DisplayParts.turnDegrees       96,040 differ
+                                                    最大差 1.7e-06 度
+```
+
+- 前两行：**逐位相同，可以合并**。`RouteNetwork.Metric` 自己的注释写着「each
+  carries its own until somebody promotes one deliberately」—— 证据现在有了，
+  但本轮**没有合**（批次 4 的边界是字符串原语）。结论已写进 `RouteFeature.swift`。
+- 第三行：**不可合并**。差值小到地图上看不见，正是关键 —— 每一份都在跟自己那边的
+  JavaScript 逐位对拍，看不见的差别夹具照样会挂。结论写进 `DisplayParts.swift`。
+
+## 验证
+
+| | 结果 |
+| --- | --- |
+| `swift build` (RailKit) | **PASS**，0 warning |
+| `swift test` (RailKit) | **PASS** — 23 suites / 206 tests，每个批次后各跑一次 |
+| `xcodebuild` (RailMap.app) | **PASS**，我们自己的源码 0 warning |
+| 12 行重复窗口 | 9 → 9（跨文件的 2 → 1，剩下的那一处已合并；其余 8 个是文件内的） |
+| 无引用类型 | 2 → **0** |
+| `./verify.sh` 全量 | **NOT VERIFIED** —— 全量先跑 `app/` 的 JS gate，不在本轮范围 |
+| Runtime（模拟器实跑） | **NOT VERIFIED** —— 需要一台自己的 simulator，且另一个会话正在改界面 |
+
+## 一个我自己造出来又修掉的缺陷
+
+搬 `CodeUnits` 时，我的剪切块从 `private struct CodeUnits` 开始，**没带上它上面
+的文档注释**，于是三个文件里都留下一段孤儿注释挂到了下一个声明头上。构建和测试
+都不会报这个。复扫时发现并修掉了三处。
+
+## 还没做的（等你的话）
+
+- 批次 5–7：拆 `RailMapView.swift`、切 `rebuild(on:)`（555 行）、拆
+  `ContentView.swift` —— 全部卡在 BLOCK-1
+- 批次 8：36 个只在 `RailKit` 内部被调的 `public func` 降级
+- `RouteNetwork.Metric` 与 `Grooming` 那两个已证明逐位相同的度量要不要合并

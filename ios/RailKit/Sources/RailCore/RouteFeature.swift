@@ -244,6 +244,25 @@ public struct RouteNetwork: Sendable {
     ///
     /// Nested inside `RouteNetwork` on purpose: several ports need this metric
     /// and each carries its own until somebody promotes one deliberately.
+    ///
+    /// **Measured, 2026-08-26.** This one and ``Grooming/distanceMeters(_:_:)``
+    /// are the same function bit for bit: over 200,060 real coordinate triples
+    /// drawn from all five shipped packages, `local` vs `Grooming.localMetric`
+    /// differed **0 times**, and `distanceMeters` vs `Grooming.distanceMeters`
+    /// differed **0 times** — compared on `Double.bitPattern`, not on an
+    /// epsilon. So promoting one of them is now a decision somebody can take
+    /// on evidence rather than on reading; it has not been taken here, because
+    /// this audit's remit stopped at the string primitives (`JSString.swift`)
+    /// and moving a metric is a change to the thing every threshold in two
+    /// files was tuned against.
+    ///
+    /// What that measurement does NOT license is folding in
+    /// ``DisplayParts/turnDegrees(_:_:_:)``, which uses V8's `Math.hypot`
+    /// where `Grooming` uses Darwin's: 96,040 of the same 200,060 triples
+    /// disagree in the last bits. The largest disagreement is 1.7 × 10⁻⁶
+    /// degrees — practically nothing, and precisely the point. Each is
+    /// verified bit for bit against its own JavaScript counterpart, and a
+    /// difference too small to see is still a difference a fixture fails on.
     enum Metric {
 
         /// Flat local projection at a given latitude. `distanceMeters` must

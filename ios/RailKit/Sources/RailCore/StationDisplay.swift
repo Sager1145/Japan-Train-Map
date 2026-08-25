@@ -920,24 +920,6 @@ private struct Cell: Hashable {
 
 // MARK: - JavaScript string semantics, written out
 
-/// A string compared the way JavaScript compares one: by UTF-16 code unit.
-///
-/// Swift's `String` is equal under canonical equivalence, so `笹\u{FA10}` and
-/// `笹\u{585A}` are one key to a `Dictionary` and two to a JavaScript `Map` —
-/// and the shipped `jp` package uses the first spelling while every human
-/// types the second. `Stations.swift` keeps a private copy of this for the
-/// same reason; the duplication is deliberate, because a shared one would be
-/// a file two parallel ports have to merge.
-private struct CodeUnits: Hashable {
-    let units: [UInt16]
-    init(_ value: String) { units = Array(value.utf16) }
-}
-
-/// `a === b` for strings. NOT `==`.
-private func sameCodeUnits(_ a: String, _ b: String) -> Bool {
-    a.utf16.elementsEqual(b.utf16)
-}
-
 /// `a < b` for strings: the first differing UTF-16 code unit decides, and a
 /// prefix is less than what extends it.
 ///

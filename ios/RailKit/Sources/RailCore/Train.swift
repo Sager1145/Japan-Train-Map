@@ -537,34 +537,13 @@ public enum TrainValidation {
     /// ECMAScript `WhiteSpace` ∪ `LineTerminator`, which is what
     /// `String.prototype.trim` removes.
     ///
-    /// Deliberately not `CharacterSet.whitespacesAndNewlines`, which differs
-    /// at both ends: it omits U+FEFF (so a code with a leading byte-order
-    /// mark, which the app accepts, would be rejected) and it includes U+0085
-    /// (so a code with a leading NEL, which the app rejects, would be
-    /// accepted). Both are in `port-fixtures/validation.json`.
-    ///
-    /// The same set is spelled privately in `Dates.swift`. Duplicated rather
-    /// than shared because this file may not edit that one — if these ever
-    /// need to move, they should move together into one internal helper.
-    private static let jsWhitespace: Set<Unicode.Scalar> = {
-        var set: Set<Unicode.Scalar> = [
-            "\u{0009}", "\u{000A}", "\u{000B}", "\u{000C}", "\u{000D}",
-            "\u{0020}", "\u{00A0}", "\u{1680}", "\u{2028}", "\u{2029}",
-            "\u{202F}", "\u{205F}", "\u{3000}", "\u{FEFF}",
-        ]
-        for scalar in 0x2000...0x200A { set.insert(Unicode.Scalar(scalar)!) }
-        return set
-    }()
-
     /// ECMAScript `String.prototype.trim`.
-    static func jsTrim(_ text: String) -> String {
-        let scalars = Array(text.unicodeScalars)
-        var start = 0
-        var end = scalars.count
-        while start < end && jsWhitespace.contains(scalars[start]) { start += 1 }
-        while end > start && jsWhitespace.contains(scalars[end - 1]) { end -= 1 }
-        return String(String.UnicodeScalarView(scalars[start..<end]))
-    }
+    ///
+    /// The rule and its whitespace set moved to ``JSString`` when the parallel
+    /// ports landed — this file and `Dates.swift` spelled the same set twice,
+    /// and the note that used to be here asked for exactly that move. The name
+    /// stays because `StoreOperations` calls it by it.
+    static func jsTrim(_ text: String) -> String { JSString.trim(text) }
 
     /// JavaScript's `===` between two strings.
     ///
@@ -578,15 +557,7 @@ public enum TrainValidation {
     /// so this changes no current answer; it is here so that the first
     /// decomposed name to arrive does not silently change one.
     static func jsStringEquals(_ a: String, _ b: String) -> Bool {
-        var left = a.utf16.makeIterator()
-        var right = b.utf16.makeIterator()
-        while true {
-            switch (left.next(), right.next()) {
-            case (nil, nil): return true
-            case (nil, _), (_, nil): return false
-            case let (l?, r?): if l != r { return false }
-            }
-        }
+        sameCodeUnits(a, b)
     }
 
     private static func isASCIIDigit(_ unit: UInt16) -> Bool { unit >= 48 && unit <= 57 }

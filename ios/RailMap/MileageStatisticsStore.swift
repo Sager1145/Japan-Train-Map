@@ -76,7 +76,7 @@ final class MileageStatisticsStore {
     /// The statistics screen's own date bucket, in the same vocabulary the
     /// date bar uses: `Dates.allDates`, `Dates.undated`, or `YYYY-MM-DD`.
     ///
-    /// Deliberately not shared with `JourneysWorkspaceView.selectedDate`.
+    /// Deliberately not shared with `RailWorkspaceView.selectedDate`.
     private(set) var selectedDate: String = Dates.allDates
 
     /// The date buckets the loaded rides actually occupy, in date-bar order.

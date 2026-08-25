@@ -459,14 +459,18 @@ struct PassportRow: View {
 /// The reference's metric block: a tiny label, a figure, and an optional line
 /// of colour under it ("4 Long Haul", "1.4x around the world").
 ///
-/// Laid out by an ADAPTIVE grid rather than by `ViewThatFits`, which is the
-/// one structural difference from ``StatisticsMetricGrid`` and the reason this
-/// is a second component rather than a restyling of the first. The candidate
-/// walk in that grid needs every figure to state its true width on one line
-/// (see `RailType`'s contract); here the column count comes from a scaled
-/// minimum instead, so a long figure may wrap INSIDE its cell and a caption
-/// underneath cannot break the row's shared baseline — there is no shared
-/// baseline to break.
+/// Laid out by an ADAPTIVE grid rather than by `ViewThatFits`. That is the
+/// difference worth knowing: a `ViewThatFits` candidate walk needs every
+/// figure to state its true width on one line (see `RailType`'s contract),
+/// whereas here the column count comes from a scaled minimum instead — so a
+/// long figure may wrap INSIDE its cell, and a caption underneath cannot break
+/// the row's shared baseline, because there is no shared baseline to break.
+///
+/// The statistics screen draws its metric row with this too
+/// (`StatisticsDashboardContent`), so the two surfaces have one grid rather
+/// than a Passport copy of a statistics one. An earlier revision of this note
+/// named a `StatisticsMetricGrid` as the component this one deliberately
+/// differed from; there is no such type any more.
 struct PassportMetricGrid: View {
     struct Item: Identifiable {
         let label: String
@@ -605,29 +609,6 @@ struct PassportHighlight: View {
         }
         .passportBlock()
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// A capsule of metadata on a card's head row — the scope, the region.
-struct PassportChip: View {
-    @Environment(\.passportInk) private var ink
-    let text: String
-    var systemImage: String?
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let systemImage {
-                Image(systemName: systemImage).font(.caption2.weight(.semibold))
-            }
-            Text(text)
-                .font(.footnote.weight(.semibold))
-                .monospacedDigit()
-        }
-        .foregroundStyle(ink.title)
-        .railType(.chrome)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(ink.chip, in: Capsule())
     }
 }
 

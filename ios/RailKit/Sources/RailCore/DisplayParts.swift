@@ -373,6 +373,17 @@ public enum DisplayParts {
     /// Deflection at `corner`, in degrees: 0 is straight on, 180 is straight
     /// back. All three points are projected at the CORNER's latitude, not at
     /// each own, so the angle is measured in one consistent plane.
+    ///
+    /// ``Grooming/turnDegrees(_:_:_:)`` is the same shape with one difference:
+    /// it takes the platform's `hypot` where this takes ``jsHypot(_:_:)``,
+    /// V8's. That is not a tidying opportunity. **Measured 2026-08-26 over
+    /// 200,060 real coordinate triples from all five packages: 96,040 of them
+    /// give different answers.** The largest gap is 1.7 × 10⁻⁶ degrees — far
+    /// below anything either caller thresholds on, and exactly why the two
+    /// must stay apart: each is checked bit for bit against its own JavaScript
+    /// counterpart, so a difference nobody could see on the map is still a
+    /// difference the fixtures fail on. The projection is shared already;
+    /// that is as far as the sharing goes.
     static func turnDegrees(
         _ previous: Coordinate, _ corner: Coordinate, _ following: Coordinate
     ) -> Double {

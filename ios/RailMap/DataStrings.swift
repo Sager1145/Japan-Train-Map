@@ -440,15 +440,3 @@ enum DataStrings {
         ],
     ]
 }
-
-extension AppLocalization {
-
-    /// The shared catalog first, this port's own table second.
-    ///
-    /// A key the web app already spells keeps the web app's wording — the two
-    /// products should not describe 匯出 JSON differently — and only the
-    /// sentences the native screen invented come from ``DataStrings``.
-    func dataText(_ key: String, _ params: [String: Localization.Param]? = nil) -> String {
-        text(key, params: params, fallback: DataStrings.table[key]?[language] ?? key)
-    }
-}

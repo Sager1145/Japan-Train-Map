@@ -89,30 +89,12 @@ enum StatisticsFormat {
     }
 }
 
-extension AppLocalization {
-    /// Localization for the statistics screen.
-    ///
-    /// Keys the generated web catalog already carries resolve through it, so
-    /// the two apps say the same words. `ios.stats.*` keys are native-shell
-    /// labels with no web counterpart (stage names, section headings, the
-    /// spoken descriptions of the bar charts) and come from the table below.
-    func statsText(
-        _ key: String, params: [String: Localization.Param]? = nil
-    ) -> String {
-        text(key, params: params, fallback: StatisticsStrings.table[key]?[language])
-    }
-
-    /// A category label that follows the active country's variant
-    /// (`stat.conv` → `stat.conv.tw` = 臺鐵), which is `I18N.tc` in the web app.
-    func statsCategoryText(_ key: String) -> String {
-        countryText(key, fallback: statsText(key))
-    }
-}
-
 /// Statistics-screen strings with no key in the generated web catalog.
 ///
-/// Held here rather than in `AppLocalization`'s own table because this screen
+/// Held here rather than in the shell's own table because this screen
 /// introduced them; the shared vocabulary stays in the catalog both apps read.
+/// One of ``AppStrings``' contributors — `statsText` and `statsCategoryText`
+/// live there with the other four screens' entry points.
 enum StatisticsStrings {
     static let table: [String: [Localization.Language: String]] = [
         "ios.stats.scope": [

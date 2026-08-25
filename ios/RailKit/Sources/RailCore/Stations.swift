@@ -591,9 +591,13 @@ public enum Stations {
         return kept
     }
 
-    public static func dedupeStationFeatures(_ features: [Feature]) -> [Feature] {
-        dedupeStationFeatureIndices(features).map { features[$0] }
-    }
+    // The JavaScript's own name for this is `dedupeStationFeatures`, and a
+    // wrapper carrying that name used to sit here returning the features
+    // themselves. Nothing called it: both consumers — `RouteSolver`'s
+    // candidate list and the parity test — want the POSITIONS, because they
+    // are deduplicating one array in order to subscript another one with the
+    // same shape. The behaviour is the same behaviour; only the surviving
+    // spelling is different.
 
     // MARK: - The route seam
 
@@ -908,61 +912,13 @@ extension Stations.Value: Decodable {
     }
 }
 
-/// A string compared the way JavaScript compares one: by UTF-16 code unit.
+/// ``JSString/isWhiteSpace(_:)`` under this file's own name.
 ///
-/// Swift's `String` is equal under canonical equivalence, so `笹\u{FA10}` and
-/// `笹\u{585A}` are the same key to a `Dictionary` and different keys to a
-/// JavaScript `Map` — and the shipped `jp` package contains the first spelling
-/// while every human types the second. Every table in this file is keyed on
-/// this type so that it answers the question the JavaScript answers, and no
-/// other.
-private struct CodeUnits: Hashable {
-    let units: [UInt16]
-    init(_ value: String) { units = Array(value.utf16) }
-}
-
-/// `a === b` for strings.
-///
-/// NOT `==`, which is canonical equivalence and would call the two spellings of
-/// 笹塚 equal — the exact judgement this port exists to get right.
-private func sameCodeUnits(_ a: String, _ b: String) -> Bool {
-    a.utf16.elementsEqual(b.utf16)
-}
-
-/// ECMAScript WhiteSpace ∪ LineTerminator — the set `String.prototype.trim`
-/// removes and the set `\s` matches, which are the same set.
-///
-/// Not `CharacterSet.whitespacesAndNewlines`, which differs at both ends: it
-/// omits U+FEFF (ZWNBSP), which ECMAScript trims, and includes U+0085 (NEL),
-/// which ECMAScript does not. Both appear in the fixture precisely because they
-/// are the two characters that make the two implementations disagree about
-/// where a name begins.
-private func isJSWhiteSpace(_ unit: UInt16) -> Bool {
-    switch unit {
-    case 0x0009, 0x000A, 0x000B, 0x000C, 0x000D:  // TAB LF VT FF CR
-        return true
-    case 0x0020, 0x00A0:  // SPACE, NBSP
-        return true
-    case 0x1680, 0x2000...0x200A, 0x202F, 0x205F, 0x3000:  // category Zs
-        return true
-    case 0x2028, 0x2029:  // LINE / PARAGRAPH SEPARATOR
-        return true
-    case 0xFEFF:  // ZWNBSP
-        return true
-    default:
-        return false
-    }
-}
+/// `OperatorBranding.swift` spelled the identical switch; both moved to
+/// `JSString.swift` when the parallel ports landed. The local name stays
+/// because it reads as the predicate three scanners in this file pass to
+/// `removeAll(where:)`.
+private func isJSWhiteSpace(_ unit: UInt16) -> Bool { JSString.isWhiteSpace(unit) }
 
 /// ECMAScript `TrimString`.
-private func jsTrim(_ value: String) -> String {
-    let units = Array(value.utf16)
-    var start = 0
-    var end = units.count
-    while start < end, isJSWhiteSpace(units[start]) { start += 1 }
-    while end > start, isJSWhiteSpace(units[end - 1]) { end -= 1 }
-    // Returning the original when nothing is trimmed keeps the exact string
-    // rather than a re-encoded copy of it.
-    guard start != 0 || end != units.count else { return value }
-    return String(decoding: units[start..<end], as: UTF16.self)
-}
+private func jsTrim(_ value: String) -> String { JSString.trimCodeUnits(value) }

@@ -136,30 +136,15 @@ public enum Dates {
     /// ECMAScript `WhiteSpace` ∪ `LineTerminator` — what `String#trim` and the
     /// regular-expression `\s` actually strip.
     ///
-    /// Not `CharacterSet.whitespacesAndNewlines`: that set includes U+0085 and
-    /// omits U+FEFF, so it is neither a subset nor a superset of the rule the
-    /// JavaScript applies. Time and date strings arrive from pasted
-    /// spreadsheets and hand-typed forms, which is exactly where a stray
-    /// no-break space or byte-order mark turns up.
-    private static let jsWhitespace: Set<Unicode.Scalar> = {
-        var set: Set<Unicode.Scalar> = [
-            "\u{0009}", "\u{000A}", "\u{000B}", "\u{000C}", "\u{000D}",
-            "\u{0020}", "\u{00A0}", "\u{1680}", "\u{2028}", "\u{2029}",
-            "\u{202F}", "\u{205F}", "\u{3000}", "\u{FEFF}",
-        ]
-        for scalar in 0x2000...0x200A { set.insert(Unicode.Scalar(scalar)!) }
-        return set
-    }()
+    /// The set itself is ``JSString/whitespace``; `Train.swift` spelled the
+    /// same one and the two have been moved together. Time and date strings
+    /// arrive from pasted spreadsheets and hand-typed forms, which is exactly
+    /// where a stray no-break space or byte-order mark turns up, so the
+    /// scanners below need the set and not only the trim.
+    private static let jsWhitespace = JSString.whitespace
 
     /// ECMAScript `String.prototype.trim`.
-    private static func jsTrim(_ text: String) -> String {
-        let scalars = Array(text.unicodeScalars)
-        var start = 0
-        var end = scalars.count
-        while start < end && jsWhitespace.contains(scalars[start]) { start += 1 }
-        while end > start && jsWhitespace.contains(scalars[end - 1]) { end -= 1 }
-        return String(String.UnicodeScalarView(scalars[start..<end]))
-    }
+    private static func jsTrim(_ text: String) -> String { JSString.trim(text) }
 
     /// `\d` as JavaScript means it *without* the `u` flag: ASCII 0–9 only.
     ///

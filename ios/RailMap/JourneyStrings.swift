@@ -507,38 +507,3 @@ enum JourneyStrings {
         ],
     ]
 }
-
-extension AppLocalization {
-
-    /// The shared web catalog first, this port's own table second.
-    ///
-    /// `countryText` rather than `text` so that a key which grows a country
-    /// variant (`key.tw`, `key.hk`, …) starts resolving to it without this call
-    /// site changing — the rule `AppLocalization.countryText` documents. A key
-    /// with no variant costs one dictionary miss and resolves exactly as `text`
-    /// would.
-    func journeyText(
-        _ key: String,
-        _ params: [String: Localization.Param]? = nil,
-        fallback: String? = nil
-    ) -> String {
-        countryText(
-            key,
-            params: params,
-            fallback: JourneyStrings.table[key]?[language] ?? fallback ?? key)
-    }
-
-    /// Resolves one string the presentation layer left unresolved.
-    ///
-    /// `key == nil` is `PresentationText`'s marker for a *record value* — a
-    /// train number, a station name, a `Foundation` error message. Those go
-    /// straight through: sending a train number to a translation table is how
-    /// a record ends up renamed by its own interface.
-    func journeyText(_ text: PresentationText) -> String {
-        guard let key = text.key else { return text.fallback }
-        return journeyText(
-            key,
-            text.params.isEmpty ? nil : text.params,
-            fallback: text.fallback)
-    }
-}

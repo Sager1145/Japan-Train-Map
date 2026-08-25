@@ -549,17 +549,3 @@ enum EditorStrings {
         ],
     ]
 }
-
-extension AppLocalization {
-
-    /// The shared catalog first, this port's own table second.
-    ///
-    /// Identical to ``dataText(_:_:)`` and for the same reason: a key the web
-    /// app already spells — `btn.rebuildRoute`, `stoptype.pass_through`,
-    /// `status.routeNoPath` — keeps the web app's wording in all four
-    /// languages, and only the sentences the native editor invented come from
-    /// ``EditorStrings``.
-    func editorText(_ key: String, _ params: [String: Localization.Param]? = nil) -> String {
-        text(key, params: params, fallback: EditorStrings.table[key]?[language] ?? key)
-    }
-}

@@ -43,43 +43,13 @@ enum UtilityDestination: String, Identifiable, CaseIterable {
     }
 }
 
-/// The Utility entry, in the same place on every primary workspace (§4.1).
-///
-/// One menu rather than two bare buttons: §4.2 asks that a screen not float a
-/// row of unrelated controls, and on a phone two labelled toolbar items beside
-/// a date filter, a search field and a `+` is exactly that row. The menu also
-/// gives each destination its full name — a bare `externaldrive` glyph is not
-/// something a reader can identify on sight.
-struct UtilityToolbar: ToolbarContent {
-    @Environment(AppLocalization.self) private var localization
-    var openData: () -> Void
-    var openSettings: () -> Void
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button(action: openData) {
-                    Label(
-                        localization.text(
-                            UtilityDestination.data.localizationKey,
-                            fallback: UtilityDestination.data.fallbackName),
-                        systemImage: UtilityDestination.data.systemImage)
-                }
-                Button(action: openSettings) {
-                    Label(
-                        localization.text(
-                            UtilityDestination.settings.localizationKey,
-                            fallback: UtilityDestination.settings.fallbackName),
-                        systemImage: UtilityDestination.settings.systemImage)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .accessibilityLabel(
-                Text(localization.text("nav.utilities", fallback: "Data and settings")))
-        }
-    }
-}
+// The `ToolbarContent` that used to sit here is gone, and the note is here so
+// it is not re-invented: the panel header owns this entry now. §4.1 asks for
+// the Utility entry in the same place on every primary workspace, and the
+// resident sheet's header IS that place — a `.topBarTrailing` toolbar item
+// would have to belong to a navigation bar the sheet layout does not have.
+// `RailWorkspaceView.destinationMenu(for:)` builds the same menu, off the same
+// `UtilityDestination` cases above, where the reader can actually reach it.
 
 /// A Utility destination, presented over whichever workspace opened it.
 ///
