@@ -23,29 +23,26 @@ import RailCore
 /// "has anything about the reader's language changed since the last build?",
 /// and that is four strings and three flags.
 ///
-/// ## The probe
+/// ## The witness
 ///
 /// Three of those inputs move when the reader acts, and the renderer would see
-/// them. The fourth does not: ``StationReadingsStore`` decodes a country's
-/// table on its own executor and installs it into the localisation engine some
-/// milliseconds after the country is set, and nothing observable about
-/// `AppLocalization` changes shape when it lands. So the signature carries one
-/// resolved reading as a witness that the table is in place — 東京 for the
-/// Japanese table, and ``localizesNames`` for the four countries whose tables
-/// replace the name instead of annotating it. Without it a ride selected in
-/// the first moments of a country switch would keep un-annotated names until
-/// something else happened to force a rebuild.
+/// them. The fourth does not: ``StationReadingsStore`` decodes the five
+/// regions' tables on its own executor and installs them into the naming
+/// engines over the seconds after launch, and nothing observable about
+/// `AppLocalization` changes shape when one lands. So the signature carries
+/// ``AppLocalization/readingsGeneration``, which counts them in. Without it a
+/// map drawn in the first moments after launch would keep un-annotated names
+/// until something else happened to force a rebuild.
 struct MapNaming: Equatable, Sendable {
 
     /// Everything that can change an answer, flattened so `==` is one compare.
     var signature: String = ""
 
-    /// Whether the active country's table localises the base NAME (Taiwan,
-    /// Hong Kong, Macao, Korea) rather than annotating a Japanese one with
-    /// kana/romaji sublines. Nothing here branches on it — the display sites
-    /// ask `AppLocalization` and get the right answer either way — but it is
-    /// part of the signature, and it is the witness for those four countries.
-    var localizesNames = false
+    /// How many regional readings tables have been installed. Nothing here
+    /// branches on it — the display sites ask `AppLocalization` per station and
+    /// get the right answer either way — but it is the witness that a table
+    /// which arrived after the last build is now in place.
+    var readingsGeneration = 0
 
     /// `tag.dep` / `tag.arr` — the 発 / 着 prefix an endpoint card puts before
     /// its time.
@@ -62,7 +59,7 @@ struct MapNaming: Equatable, Sendable {
     /// values leave the main actor.
     @MainActor
     init(_ localization: AppLocalization) {
-        localizesNames = localization.localizesStationNames
+        readingsGeneration = localization.readingsGeneration
         departureTag = localization.text("tag.dep", fallback: "Dep")
         arrivalTag = localization.text("tag.arr", fallback: "Arr")
         startTag = localization.text("tag.start", fallback: "Start")
@@ -73,14 +70,9 @@ struct MapNaming: Equatable, Sendable {
             prefs.kana ? "k" : "-",
             prefs.romaji ? "r" : "-",
             prefs.zh ? "z" : "-",
-            localizesNames ? "L" : "-",
             // The table-arrival witness. See the type's note.
-            localization.nameReadings(Self.probeName),
+            String(readingsGeneration),
             departureTag, arrivalTag, startTag, endTag,
         ].joined(separator: "\u{0000}")
     }
-
-    /// A station that is in the Japanese readings table and in no other, so
-    /// resolving it is a cheap test of whether that table has been installed.
-    private static let probeName = "東京"
 }

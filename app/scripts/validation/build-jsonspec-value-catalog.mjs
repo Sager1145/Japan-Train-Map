@@ -640,6 +640,7 @@ const catalog = {
     preferred_line_names: "countries.*.line_names",
     route_section_line_names: "countries.*.line_names",
     n02_station_code: "countries.*.stations[].code",
+    platform_number: "A verified service timetable or passenger record only; null when unavailable. Never infer it from platform geometry or station groups.",
     stop_name: "countries.*.stations[].canonical_name",
     stop_name_fallback: "countries.*.station_name_fallbacks[].lookup_name when no canonical station code is available",
     route_section_station_order: "countries.*.lines[].station_sequence",
@@ -650,6 +651,7 @@ const catalog = {
     "A station code with in_solver_network=false exists only in the readings table and may not be routable in the current package.",
     "A station_sequence item with no canonical_code_candidates must use null in generated JSON; never copy the package geometry station id.",
     "A station_sequence item with multiple canonical_code_candidates requires branch/line-specific disambiguation.",
+    "Physical platform geometry and map anchors are not service platform numbers; platform_number must remain null unless a verified service-specific source provides it.",
   ],
   source_files: sourceFiles.map((relativePath) => ({
     path: relativePath,

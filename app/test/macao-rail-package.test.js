@@ -5,6 +5,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const RailNetwork = require("../public/rail-network.js");
+// The micro-kink gate's turn/length maths, shared with the Hong Kong suite.
+// Dot-prefixed so a bare `node --test` does not collect the helper itself
+// as a test file; the reasons the maths stays as-is are in its header.
+const { turnDegrees, metres } = require("../scripts/lib/region-package-geometry.js");
 
 const APP_DIR = path.join(__dirname, "..");
 const read = (relative) =>
@@ -139,19 +143,6 @@ test("Macao sample routes coincide exactly with the drawn network segments", () 
 // Same display-quality gate as Hong Kong: smooth continuous polylines.
 test("Macao line geometry is continuous and free of micro-kinks", () => {
   const pkg = read("public/rail/mo-2025.json");
-  const turnDegrees = (a, b, c) => {
-    const v1 = [b[0] - a[0], b[1] - a[1]];
-    const v2 = [c[0] - b[0], c[1] - b[1]];
-    const l1 = Math.hypot(...v1);
-    const l2 = Math.hypot(...v2);
-    if (!l1 || !l2) return 0;
-    const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2);
-    return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
-  };
-  const metres = (a, b) => {
-    const lat = ((a[1] + b[1]) / 2) * (Math.PI / 180);
-    return Math.hypot((b[0] - a[0]) * 111_320 * Math.cos(lat), (b[1] - a[1]) * 111_320);
-  };
   let kinks = 0;
   for (const line of pkg.lines) {
     const coords = [];

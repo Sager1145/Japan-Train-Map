@@ -27,8 +27,12 @@
           (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
         document.documentElement.dataset.theme = dark ? "dark" : "light";
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        // The browser's own chrome, painted the same colour as the page it
+        // frames — which is --ios-grouped-background, in both appearances.
+        // §1.1 forbids a fixed pure black as the app background, and the dark
+        // value used to be one anyway: #000000 here framed a #1c1c1e page.
         document.querySelector('meta[name="theme-color"]').content = dark
-          ? "#000000"
+          ? "#1c1c1e"
           : "#f2f2f7";
         const ua = navigator.userAgent || "";
         const uaDataMobile = Boolean(
@@ -66,10 +70,10 @@
     <link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css" />
     <!-- Cascade order is architectural: base components → iOS presentation →
          opaque surface normalization → terminal-aware layout overrides. -->
-    <link rel="stylesheet" href="styles/railprint-base.css?v=20260822-video16" />
-    <link rel="stylesheet" href="styles/ios-presentation.css?v=20260812-csssplit1" />
-    <link rel="stylesheet" href="styles/solid-surfaces.css?v=20260812-csssplit1" />
-    <link rel="stylesheet" href="styles/device-layout.css?v=20260822-video16" />
+    <link rel="stylesheet" href="styles/railprint-base.css?v=20260822-flighty2" />
+    <link rel="stylesheet" href="styles/ios-presentation.css?v=20260822-flighty2" />
+    <link rel="stylesheet" href="styles/solid-surfaces.css?v=20260822-flighty1" />
+    <link rel="stylesheet" href="styles/device-layout.css?v=20260822-flighty1" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -80,6 +84,20 @@
   <body>
     <div id="app">
       <aside id="sidebar">
+        <!-- ============ §4.3 the Docked stop ============ -->
+        <!-- Docked must NOT be "only the tab bar": it shows the grabber, what
+             is currently selected, and one action. This strip is also §4.4's
+             "车次与路线身份应在同一元素中变形和移动" — the same element carries
+             the identity at every detent rather than the panel swapping between
+             two different headers. Mobile only; the desktop drawer has room for
+             the real header. -->
+        <div class="panel-docked-summary" id="panel-docked-summary">
+          <div class="panel-docked-identity">
+            <strong id="panel-docked-title"></strong>
+            <span id="panel-docked-detail"></span>
+          </div>
+          <button class="primary" id="panel-docked-action" type="button"></button>
+        </div>
         <!-- ============ App header ============ -->
         <header>
           <div class="header-row">
@@ -122,13 +140,40 @@
               </div>
             </div>
           </div>
+          <!-- §2.2 / §4.1: the two Utility destinations. Present on every
+               primary workspace, in the same place, and never a tab. -->
+          <div
+            class="workspace-utilities"
+            role="group"
+            data-i18n-aria-label="nav.utilities"
+            aria-label="資料與設定"
+          >
+            <button
+              type="button"
+              data-utility-target="data-manager"
+              data-i18n-aria-label="nav.dataLibrary"
+              aria-label="資料庫"
+            >
+              <span aria-hidden="true">⇄</span
+              ><span data-i18n="nav.dataLibrary">資料庫</span>
+            </button>
+            <button
+              type="button"
+              data-utility-target="display-settings"
+              data-i18n-aria-label="nav.settings"
+              aria-label="設定"
+            >
+              <span aria-hidden="true">⚙</span
+              ><span data-i18n="nav.settings">設定</span>
+            </button>
+          </div>
           <div class="hint" data-i18n="app.hint">
             在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。
           </div>
         </header>
 
         <!-- ============ Card 1: 列車清單 — search, dates, list, actions ============ -->
-        <section class="card" id="train-browser">
+        <section class="card" id="train-browser" data-primary-workspace="journeys">
           <div class="card-body">
             <div class="row">
               <input id="search-input" data-i18n-ph="ph.search" placeholder="搜尋車次、列車、車站或 ID" />
@@ -171,7 +216,7 @@
         </section>
 
         <!-- ============ Card 2: 編輯選中列車 — fields + stops ============ -->
-        <section class="card" id="train-editor">
+        <section class="card" id="train-editor" data-primary-workspace="journeys" data-journey-route="detail">
           <div class="card-body">
             <h3 class="subhead" data-i18n="sec.trainData">列車資料</h3>
             <div class="form-grid">
@@ -205,6 +250,7 @@
                   <tr>
                     <th class="col-seq" data-i18n="th.seq">序</th>
                     <th class="col-station" data-i18n="th.station">車站</th>
+                    <th class="col-platform" data-i18n="th.platform">站台</th>
                     <th class="col-time" data-i18n="th.arr">到</th>
                     <th class="col-time" data-i18n="th.dep">發</th>
                     <th class="col-type" data-i18n="th.type">類型</th>
@@ -222,12 +268,104 @@
           </div>
         </section>
 
-        <!-- ============ Card 3: 里程統計 — railprint-style coverage ============ -->
-        <section class="card" id="mileage-stats">
+        <!-- ============ Card 3: 鐵路網絡 — the infrastructure workspace ============ -->
+        <!-- §5.2. It answers "這個地區有哪些鐵路" and nothing else: no journey
+             CRUD, no import, no statistics. Every control here acts on the map
+             the reader is already looking at, and each drives the SAME state
+             the map's own layer control does — §5.1 forbids two surfaces
+             owning one switch. -->
+        <section
+          class="card"
+          id="network-workspace"
+          data-primary-workspace="network"
+          hidden
+        >
           <div class="card-body">
+            <div class="workspace-hero">
+              <p class="eyebrow" data-i18n="nav.network">鐵路網絡</p>
+              <h2 id="network-region-summary"></h2>
+              <p
+                class="status"
+                id="network-package-summary"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              ></p>
+            </div>
+            <div class="toolbar">
+              <button
+                class="primary"
+                id="network-show-all"
+                type="button"
+                aria-pressed="false"
+                data-i18n="btn.showNetwork"
+              >
+                顯示完整鐵路網絡
+              </button>
+              <button
+                id="fit-complete-network"
+                type="button"
+                data-i18n="btn.fitNetwork"
+              >
+                適配完整路網
+              </button>
+            </div>
+            <h3 class="subhead" data-i18n="grp.networkContents">路網內容</h3>
+            <div class="network-summary" id="network-lines-summary"></div>
+            <div class="network-summary" id="network-stations-summary"></div>
+            <p class="hint" data-i18n="network.hint">
+              路線顏色、車站圓點與縮放分級由地圖圖層與顯示設定控制。
+            </p>
+            <div class="toolbar">
+              <button
+                type="button"
+                data-utility-target="display-settings"
+                data-i18n="nav.settings"
+              >
+                設定
+              </button>
+              <button
+                type="button"
+                data-utility-target="data-manager"
+                data-i18n="nav.dataLibrary"
+              >
+                資料庫
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Card 3: 里程統計 — railprint-style coverage ============ -->
+        <section class="card" id="mileage-stats" data-primary-workspace="passport">
+          <div class="card-body">
+            <!-- §5.3: Scope → Coverage → Statistics → Journey Log → Share.
+                 The three statistics containers keep their ids: they are an
+                 event/render contract (§16), not a visual choice. -->
+            <div class="passport-scope" id="passport-scope"></div>
+            <div class="passport-coverage" id="passport-coverage-map"></div>
             <div class="stats-daily" id="stats-daily"></div>
             <div class="stats-headline" id="stats-headline"></div>
             <div class="stats-rows" id="stats-rows"></div>
+            <h3 class="subhead" data-i18n="grp.journeyLog">旅程記錄</h3>
+            <div class="passport-journey-log" id="passport-journey-log"></div>
+            <h3 class="subhead" data-i18n="grp.passportShare">回放與匯出</h3>
+            <div class="toolbar passport-share-actions">
+              <button
+                class="primary"
+                id="passport-replay"
+                type="button"
+                data-i18n="btn.play"
+              >
+                播放行程
+              </button>
+              <button
+                type="button"
+                data-utility-target="data-manager"
+                data-i18n="btn.exportJson"
+              >
+                匯出 JSON
+              </button>
+            </div>
             <p class="hint" data-country="jp" data-i18n="stats.hint">
               依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。
             </p>
@@ -235,8 +373,23 @@
         </section>
 
         <!-- ============ Card 4: 資料管理 — data source / import / export / danger zone ============ -->
-        <section class="card" id="data-manager">
+        <section class="card" id="data-manager" data-utility-workspace tabindex="-1">
           <div class="card-body">
+            <!-- §4.1: a Utility destination must be closable back to the
+                 workspace it was opened from, at its previous scroll and
+                 filter state. -->
+            <div class="utility-header">
+              <button
+                type="button"
+                data-utility-close
+                data-i18n-aria-label="utility.close"
+                aria-label="返回"
+              >
+                <span aria-hidden="true">‹</span
+                ><span data-i18n="utility.close">返回</span>
+              </button>
+              <h2 data-i18n="nav.dataLibrary">資料庫</h2>
+            </div>
             <!-- 資料來源：目前顯示的是「我的資料」還是「示例資料」。僅靜態
                  部署（GitHub Pages）顯示；Node 版由伺服器自動保存，無此區塊。 -->
             <div id="data-source-block" hidden>
@@ -337,8 +490,23 @@
         </section>
 
         <!-- ============ Card 4: 顯示調節 ============ -->
-        <section class="card" id="display-settings">
+        <section class="card" id="display-settings" data-utility-workspace tabindex="-1">
           <div class="card-body">
+            <!-- §4.1: a Utility destination must be closable back to the
+                 workspace it was opened from, at its previous scroll and
+                 filter state. -->
+            <div class="utility-header">
+              <button
+                type="button"
+                data-utility-close
+                data-i18n-aria-label="utility.close"
+                aria-label="返回"
+              >
+                <span aria-hidden="true">‹</span
+                ><span data-i18n="utility.close">返回</span>
+              </button>
+              <h2 data-i18n="nav.settings">設定</h2>
+            </div>
             <div class="ui-mode-setting">
               <label for="ui-mode-select" data-i18n="uiMode.label">UI 模式</label>
               <select
@@ -364,12 +532,22 @@
       </aside>
       <!-- The tab bar is a sibling of the scrollable menu, so it stays fixed
            to the app viewport. Its visibility still follows the menu state. -->
+      <!-- §2.2: three content destinations, and only three. Data Library and
+           Settings are TASKS, not places the reader browses, so they are
+           Utility entries (below) rather than a fourth and fifth tab. -->
       <nav class="workspace-nav" data-i18n-aria-label="nav.label" aria-label="工作區導覽">
-        <a href="#train-browser"><span aria-hidden="true">▤</span><span data-i18n="nav.trains">列車</span></a>
-        <a href="#train-editor"><span aria-hidden="true">✎</span><span data-i18n="nav.editor">編輯</span></a>
-        <a href="#mileage-stats"><span aria-hidden="true">▮</span><span data-i18n="nav.stats">統計</span></a>
-        <a href="#data-manager"><span aria-hidden="true">⇄</span><span data-i18n="nav.data">資料</span></a>
-        <a href="#display-settings"><span aria-hidden="true">◐</span><span data-i18n="nav.display">顯示</span></a>
+        <a href="#journeys" data-workspace-target="journeys" aria-current="page"
+          ><span aria-hidden="true">▤</span
+          ><span data-i18n="nav.journeys">旅程</span></a
+        >
+        <a href="#network" data-workspace-target="network"
+          ><span aria-hidden="true">◈</span
+          ><span data-i18n="nav.network">鐵路網絡</span></a
+        >
+        <a href="#passport" data-workspace-target="passport"
+          ><span aria-hidden="true">▮</span
+          ><span data-i18n="nav.passport">乘車護照</span></a
+        >
       </nav>
       <button
         class="sidebar-edge-tab"
@@ -548,13 +726,13 @@
     <script src="app-config.js?v=20260821-styletokens1"></script>
     <script src="app-modal.js?v=20260804-mobile1"></script>
     <script src="app-display-values.js?v=20260821-styletokens1"></script>
-    <script src="app-display-settings.js?v=20260821-styletokens1"></script>
+    <script src="app-display-settings.js?v=20260822-flighty2"></script>
     <script src="app-display-features.js?v=20260725-uistyle1"></script>
     <script src="app-route-simplify.js?v=20260821-refactor11"></script>
-    <script src="app-dates.js?v=20260720-routecache2"></script>
+    <script src="app-dates.js?v=20260822-flighty2"></script>
     <script src="app-dom.js?v=20260822-video16"></script>
     <script src="app-datasets.js?v=20260821-refactor6"></script>
-    <script src="app-state.js?v=20260821-refactor1"></script>
+    <script src="app-state.js?v=20260822-flighty2"></script>
     <script src="app.js?v=20260811-statssplit1"></script>
     <script src="app-stations.js?v=20260720-routecache2"></script>
     <script src="app-persistence.js?v=20260821-refactor10"></script>
@@ -562,10 +740,11 @@
     <script src="app-import-controller.js?v=20260821-refactor3"></script>
     <script src="app-store-ops.js?v=20260821-refactor10"></script>
     <script src="app-map-init.js?v=20260822-video16"></script>
-    <script src="app-events.js?v=20260822-video16"></script>
-    <script src="app-stats.js?v=20260811-statssplit1"></script>
-    <script src="app-stats-render.js?v=20260811-statssplit1"></script>
-    <script src="app-render.js?v=20260804-mobile1"></script>
+    <script src="app-panel-motion.js?v=20260822-flighty2"></script>
+    <script src="app-events.js?v=20260822-flighty2"></script>
+    <script src="app-stats.js?v=20260822-flighty2"></script>
+    <script src="app-stats-render.js?v=20260822-flighty2"></script>
+    <script src="app-render.js?v=20260822-flighty2"></script>
     <script src="app-editor.js?v=20260807-twlogos2"></script>
     <script src="app-route-render.js?v=20260822-video16"></script>
     <script src="app-overlap-lanes.js?v=20260821-refactor10"></script>

@@ -80,7 +80,12 @@ function loadStatsScope() {
     let activeCountry = "jp";
     let railSectionsGeoJson = null;
     let trainStore = { trains: [] };
-    let selectedDate = null;
+    // The date the STATISTICS are scoped to. Not the journeys date filter:
+    // JRM_FLIGHTY_UI_REFACTOR_SPEC.md §5.3.1 made Passport's scope its own
+    // value, and buildMileageStatsView's daily branch follows it. The Swift
+    // side already took this as a parameter named selectedDate, i.e. the
+    // statistics store's own date, so only the JS global moved.
+    let passportScopeDate = null;
     const ALL_DATES = "__all__";
     const parseTimeToMinutes = window.AppCore.parseTimeToMinutes;
     let _injectedFeatures = new Map();
@@ -110,7 +115,7 @@ function loadStatsScope() {
       riddenFeatureCategory, riddenFeatureVisible,
       setCountry: (value) => { activeCountry = value; },
       setSections: (value) => { railSectionsGeoJson = value; },
-      setSelectedDate: (value) => { selectedDate = value; },
+      setScopeDate: (value) => { passportScopeDate = value; },
       setInjectedFeatures: (value) => { _injectedFeatures = value; },
       resetIndex: () => { _statsEdgeIndex = null; _statsTrainCache.clear(); },
       currentIndex: () => _statsEdgeIndex,
@@ -1004,7 +1009,7 @@ async function buildFixture() {
     }
 
     for (const date of [null, "__all__", group.dailyDate]) {
-      js.setSelectedDate(date);
+      js.setScopeDate(date);
       const view = await js.buildMileageStatsView(idx, trains, entries, null);
       views.push({
         country,
@@ -1033,7 +1038,7 @@ async function buildFixture() {
               },
       });
     }
-    js.setSelectedDate(null);
+    js.setScopeDate(null);
 
     // The ridden-line display filter runs off the same edge index, but
     // collapses a mask to ONE checkbox rather than to a coverage row.

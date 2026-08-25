@@ -13,19 +13,56 @@ import RailCore
 final class AppLocalization {
     private static let preferenceKey = "interface-language"
 
+    /// The locale this app's own dates and numbers are formatted in.
+    ///
+    /// `Foundation`'s `.formatted()` reads `Locale.current`, which is the
+    /// DEVICE's language — and this app has a language switch of its own. On
+    /// an English phone set to 日本語, every string came out Japanese except
+    /// the one line that names a date, which read "Aug 23, 2026 at 5:09" in
+    /// the middle of a Japanese panel. Anything the reader is shown follows
+    /// the language they picked here, dates included.
+    var locale: Locale {
+        Locale(identifier: language.rawValue)
+    }
+
     var language: Localization.Language {
         didSet {
             engine?.setLanguage(language.rawValue)
+            for region in Region.allCases {
+                namingEngines[region]?.setLanguage(language.rawValue)
+            }
             UserDefaults.standard.set(language.rawValue, forKey: Self.preferenceKey)
         }
     }
 
     private var engine: Localization?
 
-    /// The country whose readings table is wanted. Kept so a slow decode that
-    /// finishes after the reader has moved to another country is dropped
-    /// instead of installing Taiwanese names over a Japanese map.
-    private var readingsCountry: String?
+    /// One naming engine per region, because a station's language is a
+    /// property of the station rather than of the app.
+    ///
+    /// The web app has a region switch, so it holds ONE readings table and
+    /// `Localization` reads its `country` field to decide whether a name is
+    /// *annotated* with kana and romaji (Japan) or *replaced* by its official
+    /// name in the reader's language (Taiwan, Hong Kong, Macao, Korea). This
+    /// app draws all five networks at once, so one table cannot answer for the
+    /// map: a Taiwanese station would be handed Japanese rules.
+    ///
+    /// Rather than change the ported rule — which is fixture-checked against
+    /// the JavaScript — the app holds one engine per region and picks by the
+    /// station's own region. Each engine is the same catalog and language with
+    /// a different table installed, and `Localization` is a value type whose
+    /// dictionaries are copy-on-write, so five of them cost five tables rather
+    /// than five catalogs.
+    private var namingEngines: [Region: Localization] = [:]
+
+    /// Which region's wording the country-variant keys resolve in — `I18N.tc`.
+    ///
+    /// With no region switch left, this is no longer "the country you are
+    /// looking at". It follows the statistics screen's own region selector,
+    /// because that is where the eleven variant-bearing keys actually appear
+    /// (捷運 / 地下鐵, 高鐵 / 新幹線, 私鐵 / 사철). Everywhere else the base
+    /// key reads correctly in all five regions.
+    private(set) var variantRegion: Region = .jp
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.preferenceKey)
@@ -38,41 +75,77 @@ final class AppLocalization {
             catalog: catalog,
             language: language,
             readingPrefs: DisplaySettings.persistedNameReadingPrefs())
-        // The application shell calls `setCountry` from a `task(id:)`, which
-        // does not run until the first view appears. Seeding from the same
-        // stored key it uses means the country-variant strings and the station
-        // readings are already right on the first frame rather than one
-        // country-flavoured redraw later.
-        setCountry(UserDefaults.standard.string(forKey: Self.countryKey) ?? "jp")
+        // One naming engine per region, seeded empty and filled as each table
+        // is read. An engine with `.empty` installed declares country "JP",
+        // which annotates rather than replaces — so a name drawn in the moment
+        // before its table lands is the package's own spelling, never another
+        // language's name.
+        for region in Region.allCases {
+            var naming = Localization(
+                catalog: catalog,
+                language: language,
+                readingPrefs: DisplaySettings.persistedNameReadingPrefs())
+            naming.setCountry(region.code)
+            namingEngines[region] = naming
+        }
+        setVariantRegion(
+            Region(rawValue: UserDefaults.standard.string(forKey: Self.variantKey) ?? "") ?? .jp)
+        loadStationReadings()
     }
 
-    /// The key `ContentView`'s `@AppStorage("active-country")` writes.
-    private static let countryKey = "active-country"
+    /// Which region's wording the statistics screen last asked for.
+    /// Deliberately NOT `"statistics-region"`, which is the key the shell's
+    /// `@AppStorage` owns.
+    ///
+    /// These two shared one key, and the value only ever travelled one way —
+    /// the shell pushes the region in through `setVariantRegion` — so nothing
+    /// went wrong for as long as every value that could be stored was a
+    /// `Region`. The scope now has an 全部 entry, which is not: writing "all"
+    /// made this line read it back as `nil`, fall through to `.jp`, and SAVE
+    /// that over the reader's choice, so choosing 全部 silently selected Japan
+    /// a moment later. Two owners of one key is the fault; one key each is the
+    /// fix.
+    private static let variantKey = "statistics-variant-region"
 
-    func setCountry(_ country: String) {
-        engine?.setCountry(country)
-        loadStationReadings(country: country)
+    /// `I18N.setCountry` for the UI catalog only — the readings tables are all
+    /// installed at once and are chosen per station, not per app state.
+    func setVariantRegion(_ region: Region) {
+        variantRegion = region
+        engine?.setCountry(region.code)
+        UserDefaults.standard.set(region.rawValue, forKey: Self.variantKey)
     }
 
     // MARK: - Station name readings
 
-    /// Install the country's readings table. Decoding happens on
-    /// `StationReadingsStore`'s own executor: Korea's table is 2,812 rows and
-    /// the reader is looking at a map while it is read.
-    private func loadStationReadings(country: String) {
-        guard readingsCountry != country else { return }
-        readingsCountry = country
-        Task { [weak self] in
-            let table = await StationReadingsStore.shared.table(for: country)
-            guard let self, self.readingsCountry == country else { return }
-            self.engine?.setStationReadings(table)
+    /// Install every region's readings table.
+    ///
+    /// Decoding happens on `StationReadingsStore`'s own executor: the five
+    /// tables are about a megabyte together and the reader is looking at a map
+    /// while they are read. They land one at a time, in whatever order they
+    /// finish, and each one only affects the names of its own region.
+    private func loadStationReadings() {
+        for region in Region.allCases {
+            Task { [weak self] in
+                let table = await StationReadingsStore.shared.table(for: region.code)
+                guard let self else { return }
+                self.namingEngines[region]?.setStationReadings(table)
+                self.readingsGeneration += 1
+            }
         }
     }
+
+    /// How many regional readings tables have been installed.
+    ///
+    /// The map's renderer is not a SwiftUI view and cannot observe a table
+    /// landing — see ``MapNaming``, which carries this number so that a map
+    /// drawn before a table arrived is rebuilt once it has.
+    private(set) var readingsGeneration = 0
 
     /// `I18N.setNameReadings`. `nil` puts the three toggles back to following
     /// the UI language.
     func setNameReadings(_ prefs: Localization.ReadingPrefs?) {
         engine?.setNameReadings(prefs)
+        for region in Region.allCases { namingEngines[region]?.setNameReadings(prefs) }
     }
 
     /// What the display sites should actually annotate with right now.
@@ -80,36 +153,69 @@ final class AppLocalization {
         engine?.activeReadingPrefs ?? Localization.localeDefaultReadingPrefs(language)
     }
 
-    /// Whether the active country's readings table localises the base station
-    /// NAME (Taiwan, Hong Kong, Macao, Korea) instead of annotating a Japanese
-    /// name with kana/romaji sublines. The three reading toggles do nothing at
-    /// all in those countries, and the settings panel says so rather than
-    /// offering switches that cannot change anything.
-    var localizesStationNames: Bool {
-        guard let engine else { return false }
-        return Localization.localizedNameCountries.contains(engine.stationReadings.country)
+    /// Whether a region's readings table localises the base station NAME
+    /// (Taiwan, Hong Kong, Macao, Korea) instead of annotating a Japanese name
+    /// with kana/romaji sublines. The three reading toggles do nothing at all
+    /// in those regions, and the settings panel says so rather than offering
+    /// switches that cannot change anything.
+    func localizesStationNames(in region: Region) -> Bool {
+        guard let naming = namingEngines[region] else { return false }
+        return Localization.localizedNameCountries.contains(naming.stationReadings.country)
+    }
+
+    /// Whether every region drawn localises names — the settings panel's
+    /// question, now that all five are on screen at once. Japan is always one
+    /// of them, so this is `false` and the reading toggles always do
+    /// something; it stays a function of the regions rather than a constant
+    /// because a build that shipped without the Japanese package should say so
+    /// rather than offer three switches that change nothing.
+    var localizesEveryStationName: Bool {
+        Region.allCases.allSatisfy { localizesStationNames(in: $0) }
+    }
+
+    /// Which engine answers for a name.
+    ///
+    /// The station code names its own region — Japan's are six digits, every
+    /// other package spells `"<region>-official-…"` — so most callers need
+    /// pass nothing. A name with no code and no stated region is read as
+    /// Japanese, which annotates rather than replaces and therefore cannot put
+    /// the wrong language's name on a station.
+    private func naming(_ region: Region?, _ code: String?) -> Localization? {
+        namingEngines[region ?? Region.fromStationCode(code) ?? .jp]
     }
 
     /// `I18N.stationName` — the localised base name.
-    func stationName(_ name: String?, code: String? = nil) -> String {
-        engine?.stationName(name, code: code) ?? (name ?? "")
+    func stationName(_ name: String?, code: String? = nil, region: Region? = nil) -> String {
+        naming(region, code)?.stationName(name, code: code) ?? (name ?? "")
     }
 
     /// `I18N.nameReadingsTyped` — the enabled readings for a name, typed so a
     /// paired display can align the same kind of reading on the same line.
-    func nameReadingsTyped(_ name: String?, code: String? = nil) -> [Localization.Reading] {
-        engine?.nameReadingsTyped(name, code: code) ?? []
+    func nameReadingsTyped(
+        _ name: String?, code: String? = nil, region: Region? = nil
+    ) -> [Localization.Reading] {
+        naming(region, code)?.nameReadingsTyped(name, code: code) ?? []
+    }
+
+    /// Every name the readings table holds for a station, in every language it
+    /// carries and regardless of the reading toggles — what
+    /// `StationPlaceStore` matches an Apple Maps answer against. See
+    /// `Localization.stationNameAliases`.
+    func stationNameAliases(
+        _ name: String?, code: String? = nil, region: Region? = nil
+    ) -> [String] {
+        naming(region, code)?.stationNameAliases(name, code: code) ?? []
     }
 
     /// `I18N.nameReadings` — the enabled readings joined with `" / "`.
-    func nameReadings(_ name: String?, code: String? = nil) -> String {
-        engine?.nameReadings(name, code: code) ?? ""
+    func nameReadings(_ name: String?, code: String? = nil, region: Region? = nil) -> String {
+        naming(region, code)?.nameReadings(name, code: code) ?? ""
     }
 
     /// `I18N.placeName` — a station or proper noun as the active language
     /// displays it, readings included.
-    func placeName(_ name: String?, code: String? = nil) -> String {
-        engine?.placeName(name, code: code) ?? (name ?? "")
+    func placeName(_ name: String?, code: String? = nil, region: Region? = nil) -> String {
+        naming(region, code)?.placeName(name, code: code) ?? (name ?? "")
     }
 
     func text(
@@ -154,6 +260,22 @@ final class AppLocalization {
     /// generated web catalog. Shared concepts continue to come from the main
     /// catalog above; this table is intentionally limited to iOS-only labels.
     private static let nativeStrings: [String: [Localization.Language: String]] = [
+        // The system TabView has a much tighter width budget than a panel
+        // heading. Keep the four destinations equally compact in every UI
+        // language; their full titles remain in the shared `nav.*` / `sec.*`
+        // catalog and are still used by the panel headers.
+        "ios.tab.upcoming": [
+            .en: "Upcoming", .ja: "今後", .zhHans: "未来", .zhHant: "未來",
+        ],
+        "ios.tab.stats": [
+            .en: "Stats", .ja: "統計", .zhHans: "统计", .zhHant: "統計",
+        ],
+        "ios.tab.all": [
+            .en: "All", .ja: "すべて", .zhHans: "全部", .zhHant: "全部",
+        ],
+        "ios.tab.search": [
+            .en: "Search", .ja: "検索", .zhHans: "搜索", .zhHant: "搜尋",
+        ],
         "ios.settings": [.en: "Settings", .ja: "設定", .zhHans: "设置", .zhHant: "設定"],
         "ios.myRides": [.en: "My Rides", .ja: "自分の乗車記録", .zhHans: "我的行程", .zhHant: "我的行程"],
         "ios.appearance": [.en: "Appearance", .ja: "外観", .zhHans: "外观", .zhHant: "外觀"],
@@ -187,9 +309,118 @@ final class AppLocalization {
         "ios.files": [.en: "Files", .ja: "ファイル", .zhHans: "文件", .zhHant: "檔案"],
         "ios.newJourney": [.en: "New journey", .ja: "新しい乗車", .zhHans: "新建行程", .zhHant: "新增行程"],
         "ios.editJourney": [.en: "Edit journey", .ja: "乗車記録を編集", .zhHans: "编辑行程", .zhHant: "編輯行程"],
+        "ios.currentJourney": [.en: "Current journey", .ja: "現在の行程", .zhHans: "当前行程", .zhHant: "目前行程"],
         "ios.edit": [.en: "Edit", .ja: "編集", .zhHans: "编辑", .zhHant: "編輯"],
+        // The editor's NAV TITLE, which is not the same string as the button
+        // that opens it. 「乗車記録を編集」 and 「新しい乗車」 both lose their
+        // row to 「キャンセル」 and 「乗車記録を保存」 and come back as
+        // 「乗車記録…」 — a heading truncated to a stub (§14.5). The two
+        // buttons already carry the verbs; this only has to name the surface.
+        "ios.editorTitleNew": [.en: "New", .ja: "新規", .zhHans: "新建", .zhHant: "新增"],
         "ios.save": [.en: "Save", .ja: "保存", .zhHans: "保存", .zhHant: "儲存"],
         "ios.cancel": [.en: "Cancel", .ja: "キャンセル", .zhHans: "取消", .zhHant: "取消"],
+        // The search field's own clear button. Spoken, not drawn: the glyph is
+        // `xmark.circle.fill`, which VoiceOver would otherwise announce by its
+        // symbol name (§10.2).
+        "ios.clear": [.en: "Clear search", .ja: "検索を消去", .zhHans: "清除搜索", .zhHant: "清除搜尋"],
+        // §13.1: what the daily card says when no single date is chosen. It
+        // used to draw `StatisticsFormat.unset` — 「-- km」 over 「乗車時間 --
+        // · -- 本」 — which a reader cannot tell apart from a figure that
+        // failed to load.
+        "ios.stats.dailyHeading": [
+            .en: "Selected day", .ja: "当日の統計", .zhHans: "当日统计", .zhHant: "當日統計",
+        ],
+        "ios.stats.dailyUnset": [
+            .en: "Pick a date to see that day's distance and time.",
+            .ja: "日付を選ぶと、その日の距離と乗車時間が出ます。",
+            .zhHans: "选择一个日期，就会显示当天的里程与乘车时间。",
+            .zhHant: "選擇一個日期，就會顯示當天的里程與乘車時間。",
+        ],
+        "ios.done": [.en: "Done", .ja: "完了", .zhHans: "完成", .zhHant: "完成"],
+        "ios.region.all": [
+            .en: "All regions", .ja: "すべての地域",
+            .zhHans: "全部地区", .zhHant: "全部地區",
+        ],
+        "ios.close": [.en: "Close", .ja: "閉じる", .zhHans: "关闭", .zhHant: "關閉"],
+        // The resident sheet's three stops, as accessibility actions. See
+        // `SheetStageActions` — with no Pull Bar and a drag-driven resize,
+        // these are the only way a reader not using touch can move it.
+        "ios.sheet.expand": [
+            .en: "Expand panel", .ja: "パネルを全画面にする",
+            .zhHans: "展开面板", .zhHant: "展開面板",
+        ],
+        "ios.sheet.half": [
+            .en: "Half-height panel", .ja: "パネルを半分の高さにする",
+            .zhHans: "面板半屏", .zhHant: "面板半螢幕",
+        ],
+        "ios.sheet.collapse": [
+            .en: "Collapse panel", .ja: "パネルを折りたたむ",
+            .zhHans: "收起面板", .zhHant: "收起面板",
+        ],
+        "ios.share": [.en: "Share", .ja: "共有", .zhHans: "分享", .zhHant: "分享"],
+        // Short forms of the three primary actions that can appear in the
+        // journey card's one-line control row. See
+        // `JourneyActionAppearance.short` — they exist so a 300-point
+        // landscape sidebar keeps one scan line instead of falling back to a
+        // stacked layout the floating tab bar then covers.
+        // The date chip's spoken hint — it is a Button whose action is not
+        // obvious from its label alone (§5.2: the chip is the way back).
+        "ios.journey.backToDate": [
+            .en: "Back to this day's journeys", .ja: "この日の行程に戻る",
+            .zhHans: "返回当天行程", .zhHant: "返回當天行程",
+        ],
+        "ios.journey.locateShort": [
+            .en: "Focus", .ja: "経路", .zhHans: "聚焦", .zhHant: "聚焦",
+        ],
+        "ios.journey.showShort": [
+            .en: "Show", .ja: "表示", .zhHans: "显示", .zhHant: "顯示",
+        ],
+        "ios.journey.rebuildShort": [
+            .en: "Rebuild", .ja: "再構築", .zhHans: "重建", .zhHant: "重建",
+        ],
+        // Why the map cannot follow the device — see
+        // `RailMapController.LocationRefusal`. Native-only: the web app has no
+        // Core Location and therefore no catalog entry to share.
+        "ios.location.unavailable": [
+            .en: "Location access is off for this app. Settings › Privacy › Location Services.",
+            .ja: "このアプリの位置情報がオフです。設定 › プライバシー › 位置情報サービス。",
+            .zhHans: "本应用的定位权限已关闭。设置 › 隐私 › 定位服务。",
+            .zhHant: "本應用程式的定位權限已關閉。設定 › 隱私權 › 定位服務。",
+        ],
+        "ios.location.declined": [
+            .en: "Location access was declined.",
+            .ja: "位置情報の利用が許可されませんでした。",
+            .zhHans: "定位权限已被拒绝。",
+            .zhHant: "定位權限已被拒絕。",
+        ],
+        "ios.openInMaps": [
+            .en: "Open in Maps", .ja: "マップで開く",
+            .zhHans: "在地图中打开", .zhHant: "在地圖中打開",
+        ],
+        // The legend and sources panel. Korea has no article in the web
+        // catalog and the basemap article there names OpenFreeMap, which is
+        // not what draws underneath this app — see `MapInfoView`.
+        "ios.info.krRailTitle": [
+            .en: "Korean rail network", .ja: "韓国の鉄道網",
+            .zhHans: "韩国铁路网", .zhHant: "韓國鐵路網",
+        ],
+        "ios.info.krRailBody": [
+            .en:
+                "Built from data.go.kr's official station records and OpenStreetMap track alignments.",
+            .ja: "data.go.kr の公式駅データと OpenStreetMap の線形をもとに作成しています。",
+            .zhHans: "依 data.go.kr 官方车站资料与 OpenStreetMap 线形加工制作。",
+            .zhHant: "依 data.go.kr 官方車站資料與 OpenStreetMap 線形加工製作。",
+        ],
+        "ios.info.basemapBody": [
+            .en: "Apple Maps. Its own attribution is shown on the map itself.",
+            .ja: "Apple マップ。帰属表示は地図上に表示されます。",
+            .zhHans: "Apple 地图，其署名显示在地图上。",
+            .zhHant: "Apple 地圖，其署名顯示在地圖上。",
+        ],
+        "ios.mapInfo": [
+            .en: "Legend and sources", .ja: "凡例と出典",
+            .zhHans: "图例与资料来源", .zhHant: "圖例與資料來源",
+        ],
         "ios.journey": [.en: "Journey", .ja: "乗車", .zhHans: "行程", .zhHant: "行程"],
         "ios.stations": [.en: "Stations", .ja: "駅", .zhHans: "车站", .zhHant: "車站"],
         "ios.routing": [.en: "Routing", .ja: "経路", .zhHans: "路径", .zhHant: "路徑"],
@@ -207,6 +438,42 @@ final class AppLocalization {
         "ios.currentLocation": [.en: "Current location", .ja: "現在地", .zhHans: "当前位置", .zhHant: "目前位置"],
         "ios.zoomIn": [.en: "Zoom in", .ja: "拡大", .zhHans: "放大", .zhHant: "放大"],
         "ios.zoomOut": [.en: "Zoom out", .ja: "縮小", .zhHans: "缩小", .zhHant: "縮小"],
+
+        // -- Map layers: the two groups ------------------------------------
+        //
+        // iOS-only keys. The web app's layers popover has no network group —
+        // its network switch draws lines and stations together, which is
+        // exactly the bundling these two switches undo — so there is nothing
+        // in `i18n-strings.js` to share and these live here.
+        "ios.layers.networkGroup": [
+            .en: "All railways", .ja: "全路線の表示", .zhHans: "全部线路显示",
+            .zhHant: "全部線路顯示",
+        ],
+        "ios.layers.networkStations": [
+            .en: "Stations", .ja: "駅", .zhHans: "车站", .zhHant: "車站",
+        ],
+        "ios.layers.networkStationNames": [
+            .en: "Station names", .ja: "駅名", .zhHans: "站名", .zhHant: "站名",
+        ],
+        "ios.layers.riddenCategories": [
+            .en: "Ridden line types", .ja: "乗車済み路線の種別",
+            .zhHans: "已乘线路类型", .zhHant: "已乘線路類型",
+        ],
+        "ios.note.networkLayers": [
+            .en: """
+                Both follow the rail network switch on the map. Station names also wait for \
+                the zoom level that gives them room.
+                """,
+            .ja: """
+                どちらも地図上の路線網スイッチに従います。駅名は表示に十分な縮尺になってから出ます。
+                """,
+            .zhHans: """
+                两者都跟随地图上的路网开关。站名还需要缩放到足够近才会出现。
+                """,
+            .zhHant: """
+                兩者都跟隨地圖上的路網開關。站名還需要縮放到足夠近才會出現。
+                """,
+        ],
         "ios.lines": [.en: "By line ({count})", .ja: "路線別（{count}）", .zhHans: "按线路（{count}）", .zhHant: "依線路（{count}）"],
         "ios.categoryTopSections": [.en: "Top sections by network type", .ja: "路線種別ごとの主要区間", .zhHans: "按路网类型的热门区间", .zhHant: "依路網類型的熱門區間"],
 
@@ -245,6 +512,12 @@ final class AppLocalization {
             .ja: "乗車記録の下に描かれる鉄道網全体です。オフにすると自分の行程だけが残ります。",
             .zhHans: "行程底下的完整铁路网。关闭后只留下你自己的行程。",
             .zhHant: "行程底下的完整鐵路網。關閉後只留下你自己的行程。",
+        ],
+        "ios.note.riddenCategories": [
+            .en: "Each ridden section is classified by the network that covers most of it. Sections the network cannot identify stay visible.",
+            .ja: "乗車済み区間は、その大半を占める路線網で分類します。判別できない区間は表示したままにします。",
+            .zhHans: "每段已乘区间按覆盖其里程最多的路网分类。无法判别的区间保持显示。",
+            .zhHant: "每段已乘區間按覆蓋其里程最多的路網分類。無法判別的區間維持顯示。",
         ],
         "ios.note.fitToNetwork": [
             .en: "Moves the map to frame the network that is currently loaded.",

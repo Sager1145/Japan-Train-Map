@@ -469,27 +469,24 @@ struct LocalizationParityTests {
         }
     }
 
-    /// The gaps the fallback covers, named so a reader knows they are gaps.
-    ///
-    /// Korea declared none of the header strings, so the Korean dataset is
-    /// titled in Japanese. That is what the JavaScript does today and therefore
-    /// what the port does; it is listed here because "the fallback works" and
-    /// "the copy is missing" look identical from inside the test.
-    @Test("the countries with no variant fall back to the Japanese copy")
+    /// The remaining gap the fallback covers, named so a reader knows it is a
+    /// gap. Korea now declares its title, train-type hint and package body, but
+    /// not the general app hint. That is what the JavaScript does today and
+    /// therefore what the port does; it is listed here because "the fallback
+    /// works" and "the copy is missing" look identical from inside the test.
+    @Test("a missing Korean app hint falls back to the Japanese copy")
     func documentedVariantGaps() throws {
         let catalog = try Self.catalog()
         var localization = Localization(catalog: catalog)
         localization.setLanguage("en")
-        for key in ["app.title", "app.hint", "ph.trainType", "info.packageBody"] {
-            #expect(!catalog.contains(key + ".kr"), "\(key).kr")
-            localization.setCountry("kr")
-            localization.setLanguage("en")
-            let korean = localization.t(key)
-            localization.setCountry("jp")
-            #expect(
-                Self.identical(korean, localization.t(key)),
-                "\(key) under Korea is the Japanese copy")
-        }
+        let key = "app.hint"
+        #expect(!catalog.contains(key + ".kr"), "\(key).kr")
+        localization.setCountry("kr")
+        let korean = localization.t(key)
+        localization.setCountry("jp")
+        #expect(
+            Self.identical(korean, localization.t(key)),
+            "\(key) under Korea is the Japanese copy")
     }
 
     // MARK: - Language switching

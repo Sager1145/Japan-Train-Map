@@ -1,5 +1,6 @@
 import MapKit
 import RailCore
+import RailPresentation
 import SwiftUI
 
 /// The railway over Apple Maps, drawn through `MKMapView` rather than
@@ -57,11 +58,31 @@ struct RailMapView: View {
     /// map re-framed itself and threw away wherever the reader had panned to.
     var showsNetwork: Bool
     var basemapOpacity: Double
+    /// The N02 edge indexes the ridden-line category filter classifies
+    /// against, one per region, and only for the regions that have rides.
+    ///
+    /// Handed in rather than reached for: building one parses the whole rail
+    /// network, and the render path must never do that (`app-stats.js` says so
+    /// in as many words). A region that is missing here is undetermined, and
+    /// an undetermined ride stays visible — which is also the state while the
+    /// indexes are still being built, and the state whenever every category is
+    /// switched on and nothing needs classifying at all.
+    var categoryIndexes: [String: Statistics.EdgeIndex] = [:]
+    /// `focusZoomEnabled` — 自動縮放. Whether choosing a journey, or a day,
+    /// moves the map to frame what was chosen.
+    var autoFocus: Bool = false
     /// The wire to the control bar, which lives elsewhere in the layout — at
     /// the bottom of the screen on iPhone, at the foot of the sidebar on iPad.
     var controller: RailMapController
     var playback: PlaybackController
-    var onSelectRide: (String?) -> Void
+    /// Every ride under the tap, nearest first — empty when the tap landed on
+    /// none. See ``Coordinator/handleMapTap(_:)``: a touch cannot hover, so
+    /// the choice between crossing lines is handed up rather than guessed at.
+    var onSelectRide: ([String]) -> Void
+    /// A tap on a network station's bead. Handed up rather than answered here,
+    /// because the answer is a sheet and a sheet presented from inside the map
+    /// is a sheet that disappears with it.
+    var onSelectStation: (StationCard) -> Void = { _ in }
     /// Reports back what the renderer actually did, so the numbers on screen
     /// are measurements rather than estimates.
     var onRender: (RenderStats) -> Void
@@ -163,6 +184,13 @@ struct RailMapView: View {
             selectedTrainID: selectedTrainID,
             selectedDate: selectedDate,
             showsNetwork: showsNetwork,
+            // Read HERE, in a body, for the same reason the 顯示調節 numbers
+            // are: `updateUIView` is not a scope SwiftUI installs observation
+            // tracking around, so a switch first read down there might never
+            // schedule the update that redraws it.
+            layers: controller.layers,
+            categoryIndexes: categoryIndexes,
+            autoFocus: autoFocus,
             basemapOpacity: basemapOpacity,
             controller: controller,
             playback: playback,
@@ -170,6 +198,7 @@ struct RailMapView: View {
             naming: localization.map(MapNaming.init) ?? MapNaming(),
             localization: localization,
             onSelectRide: onSelectRide,
+            onSelectStation: onSelectStation,
             onRender: onRender
         )
     }
@@ -182,6 +211,9 @@ struct RailMapView: View {
         var selectedTrainID: String?
         var selectedDate: String
         var showsNetwork: Bool
+        var layers: MapLayers
+        var categoryIndexes: [String: Statistics.EdgeIndex]
+        var autoFocus: Bool
         var basemapOpacity: Double
         var controller: RailMapController
         var playback: PlaybackController
@@ -191,7 +223,8 @@ struct RailMapView: View {
         /// `localization`.
         var naming: MapNaming
         var localization: AppLocalization?
-        var onSelectRide: (String?) -> Void
+        var onSelectRide: ([String]) -> Void
+        var onSelectStation: (StationCard) -> Void
         var onRender: (RenderStats) -> Void
 
         func makeUIView(context: Context) -> MKMapView {
@@ -210,6 +243,7 @@ struct RailMapView: View {
 
             context.coordinator.mapView = mapView
             context.coordinator.onSelectRide = onSelectRide
+            context.coordinator.onSelectStation = onSelectStation
             context.coordinator.controller = controller
             context.coordinator.playback = playback
             playback.mapRenderer = context.coordinator
@@ -219,6 +253,33 @@ struct RailMapView: View {
                 target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
             tap.delegate = context.coordinator
             mapView.addGestureRecognizer(tap)
+
+            // Two SENSORS, not gestures: they never move the map and never
+            // consume a touch, they only let the coordinator know that a finger
+            // is on it. See `Coordinator.handleManipulation(_:)` for what that
+            // answer is worth — MapKit reports where the map ENDED UP, and
+            // never whether the reader is still moving it.
+            //
+            // `cancelsTouchesInView = false` is what makes them harmless: every
+            // touch still reaches MapKit's own pinch and pan untouched, and
+            // `shouldRecognizeSimultaneouslyWith` (which this coordinator
+            // answers `true` to) is documented to GUARANTEE simultaneous
+            // recognition from either side of a pair.
+            for sensor in [
+                UIPinchGestureRecognizer(
+                    target: context.coordinator,
+                    action: #selector(Coordinator.handleManipulation(_:))),
+                UIPanGestureRecognizer(
+                    target: context.coordinator,
+                    action: #selector(Coordinator.handleManipulation(_:))),
+            ] as [UIGestureRecognizer] {
+                sensor.delegate = context.coordinator
+                sensor.cancelsTouchesInView = false
+                sensor.delaysTouchesBegan = false
+                sensor.delaysTouchesEnded = false
+                mapView.addGestureRecognizer(sensor)
+                context.coordinator.manipulationSensors.append(sensor)
+            }
 
             // Dark mode is not just a darker basemap: the packages ship a separate
             // colour per line for it, so the overlays have to be rebuilt with the
@@ -235,6 +296,7 @@ struct RailMapView: View {
             context.coordinator.controller = controller
             context.coordinator.playback = playback
             context.coordinator.onSelectRide = onSelectRide
+            context.coordinator.onSelectStation = onSelectStation
             context.coordinator.localization = localization
             playback.mapRenderer = context.coordinator
             playback.mapRendererViewSize = mapView.bounds.size
@@ -245,6 +307,9 @@ struct RailMapView: View {
                 selectedTrainID: selectedTrainID,
                 selectedDate: selectedDate,
                 showsNetwork: showsNetwork,
+                layers: layers,
+                categoryIndexes: categoryIndexes,
+                autoFocus: autoFocus,
                 basemapOpacity: basemapOpacity,
                 display: display,
                 naming: naming,
@@ -260,7 +325,8 @@ struct RailMapView: View {
             var controller: RailMapController?
             weak var playback: PlaybackController?
             var onRender: (RenderStats) -> Void = { _ in }
-            var onSelectRide: (String?) -> Void = { _ in }
+            var onSelectRide: ([String]) -> Void = { _ in }
+            var onSelectStation: (StationCard) -> Void = { _ in }
             /// The localisation engine's owner. A `@MainActor` class, and
             /// therefore `Sendable`, so a nonisolated coordinator may hold it;
             /// see ``localized(_:code:)`` for how it is read.
@@ -273,7 +339,27 @@ struct RailMapView: View {
             private var selectedDate = Dates.allDates
             private var naming = MapNaming()
             private var minZoomByLineId: [String: Int] = [:]
-            private var showsNetwork = true
+            /// Starts where `RailMapController.showsNetwork` starts, so the
+            /// first update is not told the layer just changed.
+            private var showsNetwork = false
+            private var layers = MapLayers()
+            private var categoryIndexes: [String: Statistics.EdgeIndex] = [:]
+            /// Drawn segment → the ridden-line category it belongs to, `""`
+            /// for "the index could not say".
+            ///
+            /// Classifying walks every vertex of every segment, and a rebuild
+            /// happens on each zoom tier and each pan out of the built rect —
+            /// so without this the filter would put an O(vertices) pass inside
+            /// the pan gesture. The web app caches the same answer on the
+            /// geometry object itself; here the geometry has no identity to
+            /// hang it on, so it is keyed and dropped when the rides or the
+            /// indexes move. The CATEGORY is cached rather than the visibility
+            /// that follows from it, which is what makes flipping a checkbox
+            /// free.
+            private var segmentCategories: [String: String] = [:]
+            /// A journey chosen with 自動縮放 on, waiting for its geometry.
+            /// See where it is read, below.
+            private var pendingFocusTrainID: String?
             private var basemapOpacity = 1.0
             /// Set only when a genuinely new set of lines arrives. Framing the map
             /// is a reasonable thing to do when a country finishes loading and a
@@ -300,6 +386,11 @@ struct RailMapView: View {
             /// against it is what keeps a pan that did not change the scale from
             /// touching a single renderer.
             private var styledScale: CGFloat = .nan
+            /// When a tap was last answered with a ride of this map's own —
+            /// read by ``mapView(_:didSelect:)`` half a second later, and
+            /// cleared as the next touch arrives, so it only ever describes
+            /// the touch in hand.
+            private var rideAnsweredTap: ContinuousClock.Instant?
 
             func update(
                 lines: [RailNetworkStore.DrawnLine],
@@ -308,6 +399,9 @@ struct RailMapView: View {
                 selectedTrainID: String?,
                 selectedDate: String,
                 showsNetwork: Bool,
+                layers: MapLayers,
+                categoryIndexes: [String: Statistics.EdgeIndex],
+                autoFocus: Bool,
                 basemapOpacity: Double,
                 display: DisplayValues,
                 naming: MapNaming,
@@ -320,6 +414,13 @@ struct RailMapView: View {
                 let selectionChanged = selectedTrainID != self.selectedTrainID
                 let visibilityChanged = showsNetwork != self.showsNetwork
                     || basemapOpacity != self.basemapOpacity
+                    || layers != self.layers
+                // Compared by which regions have one, not by value: an edge
+                // index holds a dictionary with an entry per network edge, and
+                // comparing two of those on every update would cost more than
+                // the drawing does. An index is built once per region and
+                // never mutated, so its presence is the whole of the news.
+                let indexesChanged = Set(categoryIndexes.keys) != Set(self.categoryIndexes.keys)
                 // Every 顯示調節 number is a width, a radius or an opacity of
                 // something already drawn, so a change to one is a rebuild like
                 // any other rather than a separate code path.
@@ -331,8 +432,14 @@ struct RailMapView: View {
                 let dateChanged = selectedDate != self.selectedDate
                 let namingChanged = naming != self.naming
                 guard linesChanged || stationsChanged || ridesChanged
-                        || selectionChanged || visibilityChanged
+                        || selectionChanged || visibilityChanged || indexesChanged
                         || displayChanged || dateChanged || namingChanged else { return }
+
+                if ridesChanged || indexesChanged {
+                    segmentCategories.removeAll(keepingCapacity: true)
+                }
+                self.layers = layers
+                self.categoryIndexes = categoryIndexes
 
                 self.display = display
                 self.selectedDate = selectedDate
@@ -341,7 +448,10 @@ struct RailMapView: View {
                 self.basemapOpacity = basemapOpacity
                 self.selectedTrainID = selectedTrainID
                 if ridesChanged { self.rides = rides }
-                if stationsChanged { self.stations = stations }
+                if stationsChanged {
+                    self.stations = stations
+                    indexStations()
+                }
 
                 if linesChanged {
                     self.lines = lines
@@ -358,18 +468,62 @@ struct RailMapView: View {
 
                     // Frame only for a real dataset, and only once. An empty list
                     // is the gap between countries, not something to look at.
-                    framePending = !lines.isEmpty
+                    // …unless the reader has already told the camera where
+                    // to be. The regions land one at a time and the last of
+                    // them can be seconds after launch, so a journey chosen in
+                    // the meantime would be framed and then yanked back out to
+                    // all five networks by a dataset finishing loading. A
+                    // deliberate move outranks a housekeeping one.
+                    framePending = !lines.isEmpty && !(controller?.hasFramedForReader ?? false)
                 }
 
                 let selectedRide = rides.first { $0.id == selectedTrainID }
                 let selectionRegion = selectedRide.flatMap { Self.region(covering: $0.strokes) }
                 let controller = self.controller
-                DispatchQueue.main.async { controller?.selectionRegion = selectionRegion }
+                // 自動縮放, and it is decided HERE rather than at the dozen
+                // places that can change a selection, because this is the
+                // first moment the answer exists: the region to frame is the
+                // chosen ride's own geometry, and the shell does not hold it.
+                //
+                // A journey wins over a day. `selectDateBucket` in the web app
+                // clears the selection before it fits, so the two can never
+                // both be the news there; here a tap on a journey in another
+                // day moves both at once, and framing the day would throw away
+                // the more specific of the two answers.
+                if autoFocus, selectionChanged { pendingFocusTrainID = selectedTrainID }
+                if !autoFocus || selectedTrainID == nil { pendingFocusTrainID = nil }
+                var focusRegion: MKCoordinateRegion? = nil
+                if let pending = pendingFocusTrainID, pending == selectedTrainID,
+                    let selectionRegion {
+                    // The request survives until the geometry exists. A
+                    // journey chosen from the list is very often chosen before
+                    // its route has finished solving, and a fit that could not
+                    // be answered at that instant used to be a fit that never
+                    // happened — the map simply stayed where it was and the
+                    // switch looked broken.
+                    focusRegion = selectionRegion
+                    pendingFocusTrainID = nil
+                } else if autoFocus, dateChanged, selectedDate != Dates.allDates,
+                    selectedTrainID == nil {
+                    // "Whole-day auto-focus skips hidden trains; the
+                    // single-train fit does not" — and every ride that reaches
+                    // this surface is already a visible one.
+                    focusRegion = Self.region(
+                        covering: rides
+                            .filter { $0.daySpan.date == selectedDate }
+                            .flatMap(\.strokes))
+                }
+                DispatchQueue.main.async {
+                    controller?.selectionRegion = selectionRegion
+                    guard let focusRegion else { return }
+                    controller?.fit(focusRegion)
+                }
 
                 builtForZoom = nil
                 rebuild(on: mapView)
 
-                if framePending, let region = Self.region(covering: lines) {
+                if framePending, !(controller?.hasFramedForReader ?? false),
+                    let region = Self.region(covering: lines) {
                     framePending = false
                     mapView.setRegion(region, animated: false)
                 }
@@ -377,15 +531,42 @@ struct RailMapView: View {
 
             /// Everything about one ride that changes what is DRAWN for it.
             ///
-            /// The stop count and the day-span signature are here because they
-            /// are now inputs: the stops decide which dots exist and what role
-            /// each carries, and the day span decides where the cross-day
-            /// diamond lands and which segments dash. Before those were read,
-            /// a ride edited into a different stop list with the same geometry
-            /// would have kept its old markers.
+            /// The stops and the day-span signature are here because they are
+            /// inputs: the stops decide which dots exist and what role each
+            /// carries, and the day span decides where the cross-day diamond
+            /// lands and which segments dash. Before those were read, a ride
+            /// edited into a different stop list with the same geometry would
+            /// have kept its old markers.
+            ///
+            /// The stops are digested rather than counted. A count answers
+            /// "were any added or removed", which is not the question — turning
+            /// `ride_segment` off for one call, or making a stop a
+            /// pass-through, changes which dots are drawn and how without
+            /// changing how many stops there are. This is the second gate an
+            /// edit has to pass (the first is `ContentView.routeLoadKey`), and
+            /// a gate that only counts holds the reloaded ride back at exactly
+            /// the edits the reload existed to show.
             static func rideSignature(_ ride: RiddenRouteStore.DrawnRide) -> String {
                 "\(ride.id):\(ride.vertexCount):\(ride.colorHex):\(ride.visible ? 1 : 0)"
-                    + ":\(ride.stops.count):\(ride.daySpan.sig)"
+                    + ":\(ride.trainType ?? ""):\(stopsDigest(ride.stops)):\(ride.daySpan.sig)"
+            }
+
+            /// The stops, as the one number the signature needs.
+            ///
+            /// `Hasher` rather than a joined string: this runs for every ride
+            /// on every `updateUIView`, and a national store is 201 journeys of
+            /// twenty-odd calls each. Seeded per process, which is all that is
+            /// asked of it — the comparison is always between two values read
+            /// in the same run.
+            private static func stopsDigest(_ stops: [Stop]) -> Int {
+                var hasher = Hasher()
+                hasher.combine(stops.count)
+                for stop in stops {
+                    hasher.combine(stop.name)
+                    hasher.combine(stop.stopType)
+                    hasher.combine(stop.rideSegment)
+                }
+                return hasher.finalize()
             }
 
             /// The reader's date scope, as the paint rules read it.
@@ -434,8 +615,62 @@ struct RailMapView: View {
                 }
             }
 
+            /// The region as it MOVES, rather than once it has come to rest.
+            ///
+            /// `regionDidChangeAnimated` is delivered when a change SETTLES —
+            /// at the end of a programmatic animated move, and coarsely during
+            /// a gesture — so a "frame the selection" spent its whole 300–550
+            /// ms flight drawing the railway at the weight of the zoom it left
+            /// from, and stepped to the right weight on arrival. §9.1 asks the
+            /// intermediate frames to explain the change; a weight that only
+            /// updates at the end explains nothing and announces itself with a
+            /// jump.
+            ///
+            /// Only the two cheap halves belong here. `rebuild` must NOT be
+            /// called from this callback: its guard is
+            /// `bucket != builtForZoom || !builtRect.contains(visibleRect)`,
+            /// and the second half fails on nearly every frame of a pan — so
+            /// wiring the settled callback's whole body to this one would
+            /// rebuild the entire network sixty times a second. It stays where
+            /// its zoom-bucket guard is the right one.
+            ///
+            /// `restyle` carries its own throttle (a 0.005 epsilon on the
+            /// scale, see below), and `layoutEndpointLabels` returns
+            /// immediately when there are no endpoint labels — which is the
+            /// state the map is in unless a journey is selected.
+            func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+                restyle(on: mapView)
+                // Screen-space work: these labels de-overlap each other and
+                // clamp to the window's edges, so a label clamped at the right
+                // edge stayed clamped after a pan carried it into the middle.
+                layoutEndpointLabels(on: mapView)
+            }
+
+
             func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-                rebuild(on: mapView)
+                // Not while the reader is still moving the map.
+                //
+                // This callback is documented as the SETTLED region, and during
+                // a pinch MapKit sends it several times anyway — once per pause
+                // in the fingers, near enough. Each one that crosses a zoom
+                // tier ran the whole rebuild, and a rebuild is 150–460 ms of
+                // main-thread work (measured over Japan with the network on):
+                // decimating every eligible line, rebuilding every overlay and
+                // re-adding every annotation. Three of those inside one pinch
+                // is three freezes while the fingers are still moving, and it
+                // is the larger half of why the map lagged them.
+                //
+                // Deferring costs the LOD tier a moment: lines the new zoom
+                // admits appear when the fingers lift rather than during the
+                // gesture. The strokes already drawn keep being drawn and keep
+                // their ramp (`restyle` below still runs every frame), so what
+                // the reader loses is detail arriving late — against a map that
+                // stopped following them, which is what the report was.
+                if isManipulating {
+                    rebuildDeferredByGesture = true
+                } else {
+                    rebuild(on: mapView)
+                }
                 // The weight ramp is continuous in zoom while a rebuild happens
                 // only when the zoom BUCKET changes, so re-applying it is its own
                 // step. It costs a width per renderer and a frame per visible dot,
@@ -512,13 +747,17 @@ struct RailMapView: View {
                     ? NetworkLOD.select(from: lines, zoom: zoom, buildRect: buildRect)
                     : nil
 
-                // Decimation, unlike the visibility rule, IS ours. MapLibre gets
-                // it free from geojson-vt; MapKit has no equivalent, so the same
-                // idea is applied here — drop vertices that cannot move the drawn
-                // line by as much as half a pixel at this zoom. Bounded that way
-                // it cannot change what a reader sees, only what the GPU is asked
-                // to do to show it.
-                let epsilon = Self.metresPerPixel(zoom: zoom, latitude: mapView.region.center.latitude) * 0.5
+                // Decimation is ours to IMPLEMENT — MapLibre gets it free from
+                // geojson-vt and MapKit has no equivalent — but it is not ours
+                // to SET. How far the drawn line may leave the surveyed one is
+                // a contract both apps keep, and `RailStyle.simplifyTolerance`
+                // is the web app's own number. The half a point that stood here
+                // was eight times it, and because the parity fixtures compare
+                // the two apps ABOVE this line, nothing reported the difference
+                // but the map.
+                let epsilon = Self.metresPerPixel(
+                    zoom: zoom, latitude: mapView.region.center.latitude)
+                    * RailStyle.simplifyTolerance
 
                 let builds: [LineBuild] = (selection?.lines ?? []).map { line in
                     var polylines: [MKPolyline] = []
@@ -553,11 +792,19 @@ struct RailMapView: View {
                 }
 
                 // The scale this build's marks are sized for. One factor, read
-                // once, handed to every weight below — see RailStyle.
-                let scale = RailStyle.scale(atZoom: zoom)
+                // once, handed to every weight below — see RailStyle. Rounded
+                // by the same rule `restyle` rounds by, so a mark built here
+                // and a mark rescaled there are never a fraction of a pixel
+                // apart.
+                let scale = Self.quantised(RailStyle.scale(atZoom: zoom), on: mapView)
                 styledScale = scale
 
                 mapView.removeOverlays(mapView.overlays)
+                // The rescale's view set belongs to the annotations about to be
+                // replaced. MapKit hands back the ones it puts on the map next
+                // (`didAdd`), so clearing here is what keeps the set the CURRENT
+                // marks rather than every mark this map has ever shown.
+                displayedAnnotationViews.removeAllObjects()
                 if !networkAnnotations.isEmpty { mapView.removeAnnotations(networkAnnotations) }
                 networkAnnotations = []
                 if !rideStationAnnotations.isEmpty { mapView.removeAnnotations(rideStationAnnotations) }
@@ -621,9 +868,14 @@ struct RailMapView: View {
 
                 var rideCasings: [MKMultiPolyline] = []
                 var rideOverlays: [MKMultiPolyline] = []
-                let orderedRides = rides.sorted { left, right in
-                    left.id != selectedTrainID && right.id == selectedTrainID
-                }
+                // 列車路線 off draws no route lines and leaves every station
+                // dot alone — `RailMap.setVisible` moves the route, cross-day,
+                // hover and selection layers and no marker layer at all.
+                let orderedRides = layers.routes
+                    ? rides.sorted { left, right in
+                        left.id != selectedTrainID && right.id == selectedTrainID
+                    }
+                    : []
                 for (index, ride) in orderedRides.enumerated() {
                     // Split by the calendar day each SEGMENT runs on, which is
                     // why the strokes are taken from `segments` rather than
@@ -631,7 +883,15 @@ struct RailMapView: View {
                     // own index and the flattened list has thrown it away.
                     var solid: [MKPolyline] = []
                     var crossDay: [MKPolyline] = []
+                    let riddenStops = MapRideMarkers.rideFlags(ride.stops)
                     for segment in ride.segments {
+                        // 已乘路線顯示: a segment whose category the reader has
+                        // switched off is not drawn. Per SEGMENT rather than
+                        // per journey, because that is the granularity the web
+                        // app classifies at — a 新幹線 run with a metro leg on
+                        // the end loses the leg, not the run.
+                        guard draws(segment: segment, of: ride, riddenStops: riddenStops)
+                        else { continue }
                         let stroke = segment.coordinates
                         guard stroke.count >= 2 else { continue }
                         // Straight off the ride's own coordinates. Rule R14 is
@@ -639,7 +899,8 @@ struct RailMapView: View {
                         // surveyed vertex, so nothing between here and the
                         // renderer may move one sideways. Decimation is allowed
                         // because it only ever DROPS vertices, and only ones
-                        // that cannot move the line by half a point.
+                        // that cannot move the line by more than the shared
+                        // `RailStyle.simplifyTolerance` the network is held to.
                         let kept = Geometry.douglasPeuckerIndices(stroke, epsilonMeters: epsilon)
                         let points = kept.map { stroke[$0].clLocation }
                         guard points.count >= 2 else { continue }
@@ -696,34 +957,53 @@ struct RailMapView: View {
                 mapView.addOverlays(rideCasings, level: .aboveRoads)
                 mapView.addOverlays(rideOverlays, level: .aboveRoads)
 
-                if showsNetwork {
-                    // `DrawnStation.minZoom` is a MapLibre number, so it has to
-                    // be read against a MapLibre zoom. Compared against this
-                    // app's zoom it fired one level early, which at a city view
-                    // is not a subtlety: jp drew 3,963 dots where the web app
-                    // draws 348.
-                    let stationZoom = RailStyle.mapLibreZoom(from: zoom)
-                    let stationAnnotations = stations.compactMap { station -> StationAnnotation? in
-                        guard Double(station.minZoom) <= stationZoom else { return nil }
-                        let point = MKMapPoint(station.coordinate.clLocation)
-                        guard buildRect.contains(point) else { return nil }
-                        // `buildStationPopupModel` keys its readings on the
-                        // platform's OWN id (`lineId:stationId`), which the
-                        // four localised-name tables carry alongside the
-                        // official code; Japan's table has neither, and falls
-                        // through to the by-name lookup exactly as it does in
-                        // the web app.
-                        let named = self.localized(station.name, code: station.id)
-                        return StationAnnotation(
-                            station: station, displayName: named.display,
-                            // `nil` is the standalone case — no localisation
-                            // engine at all — which is what keeps the single
-                            // `nameRoma` subline. See `popupView`.
-                            readings: self.localization == nil
-                                ? nil : named.readings.map(\.text))
-                    }
-                    networkAnnotations = stationAnnotations
-                    mapView.addAnnotations(stationAnnotations)
+                // One place, one name.
+                //
+                // Three things on this map name stations — an endpoint card, a
+                // ride's own caption beside its dot, and the network's own
+                // label — and each used to decide alone, so a station that was
+                // all three printed its name three times: 我孫子 on the card,
+                // 我孫子 beside the dot, 我孫子 again from the network under
+                // them. They are ranked rather than merged, most specific
+                // first: the card, which also carries the time; then the
+                // journey's caption; then the network's. Whichever reaches a
+                // place first claims it and the rest stay quiet.
+                //
+                // A "place" is a name within `labelMergeMeters` of a name, not
+                // a coordinate — 東京's JR and Metro platforms are hundreds of
+                // metres apart and both name the same place, which is the rule
+                // the two label ELECTIONS already merge on
+                // (`StationDisplay.markerLabelWinners`). Comparing coordinates
+                // would leave exactly those pairs doubled.
+                var namedPlaces: [String: [Coordinate]] = [:]
+                func claimName(_ name: String, at position: Coordinate) -> Bool {
+                    let key = Stations.normalizeStationName(name)
+                    guard !key.isEmpty else { return false }
+                    if let taken = namedPlaces[key], taken.contains(where: {
+                        Geometry.distanceMeters($0, position) <= Self.labelMergeMeters
+                    }) { return false }
+                    namedPlaces[key, default: []].append(position)
+                    return true
+                }
+
+                // The cards are built here, ahead of every dot, because they
+                // hold the first claim on a name. They are still ADDED last,
+                // where they always were.
+                let endpointSpecList = endpointSpecs()
+                for spec in endpointSpecList {
+                    _ = claimName(spec.rawName, at: spec.coordinate)
+                }
+
+                // 選了一條線路之後，站名只屬於它 — and that cannot be had by
+                // filtering the deck-wide election by `tid`. A station two
+                // rides both call at hands its name to whichever record
+                // arrived first (`markerLabelWinners` resolves ties by
+                // arrival), so filtering afterwards would leave the selected
+                // ride unnamed at exactly its busiest stations. The election is
+                // re-run over that ride's own records instead.
+                var selectedRideNames: Set<String> = []
+                if let ride = rides.first(where: { $0.id == selectedTrainID }) {
+                    selectedRideNames = namedRecordKeys(of: ride, settings: display.markers)
                 }
 
                 // Every visible ride's calls, flattened into the deck marker
@@ -732,6 +1012,34 @@ struct RailMapView: View {
                 // because a station reached by twenty trains ships twenty records
                 // that all know the same name, and only one of them may print it.
                 let drawn = markerRecords(for: rides, settings: display.markers)
+                // A journey every one of whose ridden segments is switched off
+                // by category loses its station dots with its line. Its beads
+                // would otherwise be left floating over a route that is not
+                // drawn, which reads as a fault rather than as a filter.
+                //
+                // The web app decides this per STATION, from the line
+                // attributes its own station dataset repeats on every station
+                // (`markerCategoryForStation`). The ride markers here are
+                // built from the journey's stops, which carry no such
+                // attributes, so the decision is made at the journey's
+                // granularity instead: a dot is kept whenever any part of the
+                // line it sits on is still drawn.
+                var fullyHiddenRides: Set<String> = []
+                if layers.categories.anyHidden {
+                    for ride in rides {
+                        let riddenStops = MapRideMarkers.rideFlags(ride.stops)
+                        let ridden = ride.segments.filter {
+                            Statistics.isRideSegment(
+                                riddenStops, segmentIndex: $0.segmentIndex)
+                        }
+                        guard !ridden.isEmpty,
+                            ridden.allSatisfy({
+                                !draws(segment: $0, of: ride, riddenStops: riddenStops)
+                            })
+                        else { continue }
+                        fullyHiddenRides.insert(ride.id)
+                    }
+                }
                 // Each role has its own floor: terminals and cross-day breaks
                 // at every zoom, intermediate stops from `STOP_MIN_ZOOM`, the
                 // numerous pass-throughs only from `PASSTHROUGH_MIN_ZOOM`. So
@@ -743,7 +1051,15 @@ struct RailMapView: View {
                 for item in drawn {
                     let record = item.record
                     let feature = item.feature
-                    guard MapRideMarkers.drawsDot(role: feature.role, atZoom: zoom)
+                    // 中途停靠站 / 端點站 / 通過站, and the categories above.
+                    // `lastEmitted` is cleared on the way out so a dropped
+                    // dot's black core cannot land inside the previous dot.
+                    guard layers.draws(role: feature.role),
+                        !fullyHiddenRides.contains(feature.tid) else {
+                        lastEmitted = nil
+                        continue
+                    }
+                    guard MapRideMarkers.drawsDot(item, atZoom: zoom)
                             || feature.role == "stop-center" else {
                         lastEmitted = nil
                         continue
@@ -767,6 +1083,8 @@ struct RailMapView: View {
                     let annotation = RideStationAnnotation(
                         coordinate: record.position.clLocation,
                         name: feature.name,
+                        rawName: record.name,
+                        stationCode: item.stationCode,
                         role: feature.role,
                         radius: CGFloat(feature.radius),
                         lineWidth: CGFloat(feature.lineWidth),
@@ -788,8 +1106,22 @@ struct RailMapView: View {
                     // because a zero-opacity label would still hold its space in
                     // the collision pass and silently suppress a name that IS
                     // shown — the finding recorded on `RideLabelTier`.
-                    guard !feature.name.isEmpty, let tier = annotation.labelTier,
-                          zoom >= RailStyle.zoom(fromMapLibre: Double(tier.minZoom))
+                    //
+                    // Which election answers depends on whether the reader has
+                    // chosen a journey: with none chosen the deck-wide one
+                    // does, and with one chosen only that ride's own names are
+                    // drawn at all — every other journey's captions and the
+                    // whole network's labels go quiet, so what is left on the
+                    // map is the chosen line and the stations along it.
+                    let labelName = hasSelection
+                        ? (selected && selectedRideNames.contains(Self.markerKey(record))
+                            ? record.name : "")
+                        : feature.name
+                    guard !labelName.isEmpty, let tier = annotation.labelTier,
+                          zoom >= RailStyle.zoom(fromMapLibre: Double(tier.minZoom)),
+                          // …and if this place is not already named by an
+                          // endpoint card or by another journey's caption.
+                          claimName(labelName, at: record.position)
                     else { continue }
                     // The election runs on the package's own names — see
                     // `markerRecords` — and only the winner is translated, so
@@ -797,11 +1129,68 @@ struct RailMapView: View {
                     // reader's language.
                     markerAnnotations.append(RideLabelAnnotation(
                         coordinate: annotation.coordinate,
-                        text: localized(feature.name, code: item.stationCode).display,
+                        text: localized(labelName, code: item.stationCode).display,
+                        rawName: record.name, stationCode: item.stationCode,
                         tier: tier, dotRadiusToken: annotation.drawnRadiusToken,
                         selected: annotation.selected))
                 }
                 rideStationAnnotations = markerAnnotations
+
+                // The network's own station names come LAST, after every name
+                // the reader's journeys have already claimed — which is why
+                // this block moved down here from above the ride markers. It
+                // is the most general of the three sources and therefore the
+                // one that yields: a station on a journey is named by the
+                // journey, and the network names everything else.
+                //
+                // `layers.networkStations` is read UNDER `showsNetwork` rather
+                // than beside it: with the network off there is no line for a
+                // station to sit on, so the dots go with it either way.
+                if showsNetwork, layers.networkStations {
+                    // `DrawnStation.minZoom` is a MapLibre number, so it has to
+                    // be read against a MapLibre zoom. Compared against this
+                    // app's zoom it fired one level early, which at a city view
+                    // is not a subtlety: jp drew 3,963 dots where the web app
+                    // draws 348.
+                    let stationZoom = RailStyle.mapLibreZoom(from: zoom)
+                    let stationAnnotations = stations.compactMap { station -> StationAnnotation? in
+                        guard Double(station.minZoom) <= stationZoom else { return nil }
+                        let point = MKMapPoint(station.coordinate.clLocation)
+                        guard buildRect.contains(point) else { return nil }
+                        // `buildStationPopupModel` keys its readings on the
+                        // platform's OWN id (`lineId:stationId`), which the
+                        // four localised-name tables carry alongside the
+                        // official code; Japan's table has neither, and falls
+                        // through to the by-name lookup exactly as it does in
+                        // the web app.
+                        let named = self.localized(station.name, code: station.id)
+                        return StationAnnotation(
+                            station: station, displayName: named.display,
+                            // The name switch is folded in HERE rather than in
+                            // the view, so the annotation's display priority is
+                            // computed from what will actually be printed. A
+                            // dot that keeps a named station's priority while
+                            // drawing no name wins collisions it should have
+                            // lost, and the labels that do draw get thinned
+                            // out around it.
+                            //
+                            // Two more conditions join it. A chosen journey
+                            // takes the map's naming for itself, so the whole
+                            // network goes unnamed while one is selected; and
+                            // otherwise a name already claimed by a journey's
+                            // own caption is not written a second time.
+                            showsName: layers.networkStationNames && station.showsLabel
+                                && !hasSelection
+                                && claimName(station.name, at: station.coordinate),
+                            // `nil` is the standalone case — no localisation
+                            // engine at all — which is what keeps the single
+                            // `nameRoma` subline. See `StationCardView`.
+                            readings: self.localization == nil
+                                ? nil : named.readings.map(\.text))
+                    }
+                    networkAnnotations = stationAnnotations
+                    mapView.addAnnotations(stationAnnotations)
+                }
                 mapView.addAnnotations(markerAnnotations)
 
                 // The selected ride's origin / destination cards, and — when a
@@ -809,7 +1198,7 @@ struct RailMapView: View {
                 // destination with a 起點/終點 badge, which is `updateEndpointLabels`
                 // step (1). `computeScopedEndpoints` is not ported: the scoped
                 // pair is derived here from the rides the map already holds.
-                endpointAnnotations = endpointSpecs().map(EndpointLabelAnnotation.init)
+                endpointAnnotations = endpointSpecList.map(EndpointLabelAnnotation.init)
                 if !endpointAnnotations.isEmpty {
                     mapView.addAnnotations(endpointAnnotations)
                     layoutEndpointLabels(on: mapView)
@@ -820,10 +1209,35 @@ struct RailMapView: View {
                 }
 
                 let elapsed = ContinuousClock.now - started
+#if DEBUG
+                // Debug builds only, and that is not tidiness.
+                //
+                // This sits on the map REBUILD path — every pan that crosses a
+                // LOD threshold, every zoom step, every ride edit — and `NSLog`
+                // is synchronous: it formats, takes a lock, writes to the
+                // unified log AND to stderr, on the main thread, before the
+                // frame it belongs to can be presented. Seven of these fire in
+                // the first second of launch alone.
+                //
+                // Nothing is lost by gating it. The same numbers are handed
+                // back as `RenderStats` immediately below, which is what the
+                // diagnostics panel in Settings reads — so the data has a
+                // supported in-app home on every build, and this line is only
+                // the console mirror of it.
+                // "off", not "0", when the complete network is switched off.
+                //
+                // The count and the reason for it are different facts, and this
+                // line reported only the count: a map with the network layer
+                // off — which is how the app STARTS, `showsNetwork` defaults to
+                // false — printed `lines=0/804` on every pan, which reads as
+                // eight hundred lines being dropped by the LOD rule. The
+                // difference between "nothing qualified" and "nobody asked" is
+                // the whole diagnostic value of the field.
+                let drawnLines = showsNetwork ? "\(visible.count)" : "off"
                 NSLog(
-                    "railmap: z=%.2f thr=%.1f lines=%d/%d (culled %d) overlays=%d vertices=%d "
+                    "railmap: z=%.2f thr=%.1f lines=%@/%d (culled %d) overlays=%d vertices=%d "
                         + "stations=%d ridedots=%d ridelabels=%d %dms",
-                    zoom, fitted.threshold, visible.count, lines.count,
+                    zoom, fitted.threshold, drawnLines, lines.count,
                     selection?.culledOffScreen ?? 0,
                     overlays.count + rideOverlays.count + rideCasings.count,
                     vertices,
@@ -831,6 +1245,7 @@ struct RailMapView: View {
                     rideStationAnnotations.filter { $0 is RideStationAnnotation }.count,
                     rideStationAnnotations.filter { $0 is RideLabelAnnotation }.count,
                     elapsed.milliseconds)
+#endif
                 // Deferred: a rebuild can be triggered from inside updateUIView,
                 // and writing SwiftUI state during a view update is undefined
                 // behaviour — in practice the panel simply never showed the
@@ -858,6 +1273,45 @@ struct RailMapView: View {
             private var markerCache:
                 (key: String, settings: MapRideMarkers.Settings, drawn: [MapRideMarkers.Drawn])?
 
+            /// Whether one drawn segment's ridden-line category is switched on.
+            ///
+            /// Three ways to be visible without being classified, all of them
+            /// the web app's: every category is on and nothing is classified
+            /// at all; this region's edge index has not been built yet; or the
+            /// index was consulted and none of the segment matched the
+            /// network, which is undetermined rather than uncategorised.
+            ///
+            /// Only a RIDDEN section is filtered — `app-deck-records.js` reads
+            /// `ride_segment === true` before it asks — so a stretch the
+            /// reader travelled without riding keeps drawing whatever the
+            /// checkboxes say.
+            private func draws(
+                segment: RiddenRouteStore.DrawnSegment,
+                of ride: RiddenRouteStore.DrawnRide,
+                riddenStops: [Statistics.Stop]
+            ) -> Bool {
+                guard layers.categories.anyHidden,
+                    Statistics.isRideSegment(
+                        riddenStops, segmentIndex: segment.segmentIndex)
+                else { return true }
+
+                let key = "\(ride.id)#\(segment.segmentIndex)"
+                if let cached = segmentCategories[key] {
+                    return cached.isEmpty || layers.categories[cached]
+                }
+                guard let index = categoryIndexes[ride.country] else { return true }
+                let category = Statistics.riddenFeatureCategory(
+                    Statistics.RouteFeature(
+                        // Statistics and the edge index both remain WGS84;
+                        // MapKit's GCJ-02 copy is presentation data only.
+                        lines: [segment.sourceCoordinates], hasGeometry: true,
+                        rideSegment: true, from: segment.from, to: segment.to),
+                    index: index, country: ride.country)
+                segmentCategories[key] = category ?? ""
+                guard let category else { return true }
+                return layers.categories[category]
+            }
+
             private func markerRecords(
                 for rides: [RiddenRouteStore.DrawnRide], settings: MapRideMarkers.Settings
             ) -> [MapRideMarkers.Drawn] {
@@ -869,6 +1323,54 @@ struct RailMapView: View {
                 markerCache = (key, settings, drawn)
                 return drawn
             }
+
+            /// One marker record's identity, as the two elections' results can
+            /// be compared across: its place and the name it carries.
+            ///
+            /// The role is deliberately not in it. A record that carries a name
+            /// is never a `stop-center` — those are unnamed by construction —
+            /// so place and name already single one out, and leaving the role
+            /// out means a station whose role differs between the two elections
+            /// still matches itself.
+            static func markerKey(_ record: StationDisplay.MarkerRecord) -> String {
+                "\(record.position.lat)|\(record.position.lon)|\(record.name)"
+            }
+
+            /// Which of ONE ride's records win a name among that ride's records
+            /// alone — the election a selection restricts the map's naming to.
+            ///
+            /// Cached separately from `markerCache` rather than by calling
+            /// `markerRecords` with a one-ride list: the two calls alternate
+            /// every rebuild, and a single slot would mean each of them evicting
+            /// the other's answer and the deck-wide election — the most
+            /// expensive thing a pan does — running again on every pan.
+            private var selectedNameCache:
+                (key: String, settings: MapRideMarkers.Settings, keys: Set<String>)?
+
+            private func namedRecordKeys(
+                of ride: RiddenRouteStore.DrawnRide, settings: MapRideMarkers.Settings
+            ) -> Set<String> {
+                let key = Self.rideSignature(ride)
+                if let selectedNameCache, selectedNameCache.key == key,
+                    selectedNameCache.settings == settings {
+                    return selectedNameCache.keys
+                }
+                var keys: Set<String> = []
+                for item in MapRideMarkers.drawn(rides: [ride], settings: settings)
+                where !item.feature.name.isEmpty {
+                    keys.insert(Self.markerKey(item.record))
+                }
+                selectedNameCache = (key, settings, keys)
+                return keys
+            }
+
+            /// How near two same-named labels have to be to be one place.
+            ///
+            /// `StationDisplay.labelMergeMeters`, which is internal to
+            /// `RailCore`; the number is the web app's own and both label
+            /// elections merge on it, so the cross-source claim above uses the
+            /// same one rather than inventing a second distance.
+            static let labelMergeMeters: Double = 600
 
             // MARK: - the origin / destination cards
 
@@ -935,7 +1437,8 @@ struct RailMapView: View {
                     ? (kind == .origin ? naming.startTag : naming.endTag) : ""
                 return MapEndpointLabels.spec(
                     trainID: ride.id, kind: kind, at: endpoint.position,
-                    name: named.display, badge: badge, time: time,
+                    name: named.display, rawName: endpoint.stop.name,
+                    badge: badge, time: time,
                     readings: named.readings.map(\.text))
             }
 
@@ -957,6 +1460,22 @@ struct RailMapView: View {
                     MapEndpointLabels.clampHorizontally(
                         &specs[index], at: points[index],
                         containerWidth: mapView.bounds.width)
+                    // Placement is all `layout` and `clampHorizontally` touch;
+                    // the text, the readings and the measured box are the ones
+                    // the spec was built with. `configure` re-measures three
+                    // labels and every reading with `sizeThatFits`, and this
+                    // pass now runs on every frame of a pan (see
+                    // `mapViewDidChangeVisibleRegion`) — so a card that did
+                    // not move must not pay for it.
+                    //
+                    // Safe to skip because nothing else about the spec can have
+                    // changed here: a rebuild REPLACES these annotations, and
+                    // `mapView(_:viewFor:)` configures the fresh view with the
+                    // fresh text before this pass ever sees it.
+                    let placed = endpointAnnotations[index].spec
+                    guard placed.direction != specs[index].direction
+                        || placed.offset != specs[index].offset
+                    else { continue }
                     endpointAnnotations[index].spec = specs[index]
                     (mapView.view(for: endpointAnnotations[index]) as? EndpointLabelView)?
                         .configure(endpointAnnotations[index])
@@ -967,22 +1486,36 @@ struct RailMapView: View {
                 guard recognizer.state == .ended, let mapView,
                       lastPlaybackSnapshot == nil else { return }
                 let point = recognizer.location(in: mapView)
-                var hits: [(id: String, distance: CGFloat)] = []
-                for ride in rides {
-                    var best = CGFloat.infinity
-                    for stroke in ride.strokes where stroke.count >= 2 {
-                        var previous = mapView.convert(stroke[0].clLocation, toPointTo: mapView)
-                        for coordinate in stroke.dropFirst() {
-                            let next = mapView.convert(coordinate.clLocation, toPointTo: mapView)
-                            best = min(best, Self.pointSegmentDistance(point, previous, next))
-                            previous = next
-                        }
-                    }
-                    if best <= 18 { hits.append((ride.id, best)) }
+                // Projection here, arithmetic in `RideTapResolver`.
+                //
+                // Every ride under the finger is handed up, not just the
+                // nearest: `railmap-interactions.js` can afford to pick one
+                // because a mouse hovers first and the reader sees which line
+                // is about to be chosen, while a finger commits on contact —
+                // so the web app hands a coarse-pointer tap over crossing
+                // lines to `handleDeckRouteChoices` and asks. One ride
+                // selects, several are offered, none steps back (§4.4).
+                let candidates = rides.map { ride in
+                    RideTapResolver.Candidate(
+                        id: ride.id,
+                        strokes: ride.strokes.map { stroke in
+                            stroke.map { coordinate in
+                                let projected = mapView.convert(
+                                    coordinate.clLocation, toPointTo: mapView)
+                                return RideTapResolver.Point(
+                                    x: projected.x, y: projected.y)
+                            }
+                        })
                 }
-                hits.sort { $0.distance < $1.distance }
-                guard let nearest = hits.first else { return }
-                onSelectRide(nearest.id)
+                let hits = RideTapResolver.hits(
+                    at: RideTapResolver.Point(x: point.x, y: point.y),
+                    among: candidates)
+                // The touch is CLAIMED when it lands on a ride, and the claim
+                // is what `mapView(_:didSelect:)` reads half a second later.
+                // See the comment there: this map answers a tap twice
+                // otherwise.
+                if !hits.isEmpty { rideAnsweredTap = .now }
+                onSelectRide(hits)
             }
 
             func gestureRecognizer(
@@ -990,16 +1523,93 @@ struct RailMapView: View {
                 shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
             ) -> Bool { true }
 
-            private static func pointSegmentDistance(
-                _ point: CGPoint, _ a: CGPoint, _ b: CGPoint
-            ) -> CGFloat {
-                let dx = b.x - a.x
-                let dy = b.y - a.y
-                let denominator = dx * dx + dy * dy
-                let ratio = denominator > 0
-                    ? min(max(((point.x - a.x) * dx + (point.y - a.y) * dy) / denominator, 0), 1)
-                    : 0
-                return hypot(point.x - (a.x + ratio * dx), point.y - (a.y + ratio * dy))
+            /// The pinch and pan sensors added in `makeUIView`. They exist to
+            /// answer one question — is a finger moving the map right now — and
+            /// they answer it by their own `state`, so nothing has to be
+            /// mirrored into a flag that can be left behind by a cancelled
+            /// touch.
+            var manipulationSensors: [UIGestureRecognizer] = []
+
+            /// True while at least one sensor is mid-gesture.
+            ///
+            /// Read inside a sensor's own callback as well, where the
+            /// recogniser that just ended already reports `.ended` — so a pinch
+            /// releasing while the other hand still pans correctly stays
+            /// manipulating.
+            private var isManipulating: Bool {
+                manipulationSensors.contains {
+                    $0.state == .began || $0.state == .changed
+                }
+            }
+
+            /// Set when a region change arrived mid-gesture and its rebuild was
+            /// held back, so the release knows there is one owing.
+            private var rebuildDeferredByGesture = false
+
+            @objc func handleManipulation(_ recognizer: UIGestureRecognizer) {
+                switch recognizer.state {
+                case .ended, .cancelled, .failed:
+                    guard !isManipulating, rebuildDeferredByGesture, let mapView else { return }
+                    rebuildDeferredByGesture = false
+                    // The map may still be gliding to a stop, and its own
+                    // settled callback will arrive when it is. Building here as
+                    // well is what makes the release feel immediate; the second
+                    // one costs nothing, because `rebuild`'s guard answers
+                    // "same zoom tier, still inside the built rect".
+                    rebuild(on: mapView)
+                default:
+                    break
+                }
+            }
+
+            /// Every view MapKit has just put on the map, collected for
+            /// ``displayedAnnotationViews``.
+            func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
+                for view in views { displayedAnnotationViews.add(view) }
+            }
+
+            /// A tap that landed on a MARK belongs to that mark.
+            ///
+            /// The recogniser is attached to the map view, so it also fires for
+            /// touches inside annotation views — and every dot a ride puts on a
+            /// station sits on that ride's own stroke. Without this, opening a
+            /// station's card from one would select the journey underneath at
+            /// the same time: two answers to one tap, and where two journeys
+            /// call at the station, `handleDeckRouteChoices`' chooser and the
+            /// card both trying to be presented at once — a `confirmationDialog`
+            /// and a `sheet` asked for in the same frame.
+            ///
+            /// A deviation from `handleDeckMarkerClick`, which selects the
+            /// marker's train as well as opening its popup, and a deliberate
+            /// one. That popup is the web app's stop DATA grid — train id, stop
+            /// type, `ride_segment`, route source — which is about the journey
+            /// it belongs to and reasonably comes with it selected. What opens
+            /// here is the station's own card, which is about the place: the
+            /// same answer whichever journey called there, and not a reason to
+            /// move the reader's selection, their camera (自動縮放) and the
+            /// map's whole naming out from under the sheet as it appears.
+            ///
+            /// The origin/destination cards are unaffected and stay transparent
+            /// to route picking, because `EndpointLabelView` turns interaction
+            /// off — a touch on one is delivered as a touch on the map, and this
+            /// asks the touch where it landed rather than asking the map what is
+            /// drawn there.
+            func gestureRecognizer(
+                _ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch
+            ) -> Bool {
+                // Only the tap asks where it landed. The manipulation sensors
+                // want every touch that moves the map, and a pinch very often
+                // starts with a finger on a station bead.
+                guard gestureRecognizer is UITapGestureRecognizer else { return true }
+                // A new touch has been given no answer yet, whichever of the
+                // two answers it ends up getting (`mapView(_:didSelect:)`).
+                rideAnsweredTap = nil
+                var view = touch.view
+                while let current = view {
+                    if current is MKAnnotationView { return false }
+                    view = current.superview
+                }
+                return true
             }
 
             /// What one overlay is drawn with — a colour, an opacity, and a weight
@@ -1026,6 +1636,27 @@ struct RailMapView: View {
             /// written into `overlayStyles` after the fact would never be drawn.
             private var overlayRenderers: [String: MKOverlayRenderer] = [:]
 
+            /// The annotation views MapKit currently has on the map, kept so a
+            /// rescale does not have to ASK for each of them.
+            ///
+            /// `restyle` runs on every frame of a pinch, and it used to reach
+            /// each mark with `mapView.view(for: annotation)`. That call is
+            /// roughly 0.15–0.25 ms, which reads as free until you count the
+            /// callers: a national view is ~535 station beads and ~390 ride
+            /// dots, so the lookups alone cost **219 ms per frame** — measured,
+            /// with the loop that writes every renderer's width and dash
+            /// pattern costing 0 ms beside them. A pinch over Japan ran at two
+            /// to four frames a second and the map visibly lagged the fingers.
+            ///
+            /// MapKit hands every view it puts on the map to `didAdd`, so the
+            /// set is free to collect. It is WEAK: MapKit owns the views, may
+            /// recycle one for another annotation and may drop it outright, and
+            /// none of that is reported — so membership is not proof a view is
+            /// still on screen, which is why the rescale also checks `window`.
+            /// A recycled view answering to its new annotation is still exactly
+            /// the view that wants the new scale.
+            private let displayedAnnotationViews = NSHashTable<MKAnnotationView>.weakObjects()
+
             private static func drawnWidth(_ style: OverlayStyle?, atScale scale: CGFloat) -> CGFloat {
                 (style?.widthToken ?? RailStyle.railWidth) * scale
             }
@@ -1038,8 +1669,42 @@ struct RailMapView: View {
             /// anchor zoom it is pinned at 1, so city views never rescale at all.
             private func restyle(on mapView: MKMapView) {
                 guard mapView.bounds.width > 1 else { return }
-                let scale = RailStyle.scale(atZoom: Self.zoomLevel(of: mapView))
-                guard !styledScale.isFinite || abs(scale - styledScale) >= 0.005 else { return }
+                // Once, not twice: this now runs on every frame of a pan or a
+                // camera flight (see `mapViewDidChangeVisibleRegion`), and the
+                // annotation pass below used to derive the same number a
+                // second time.
+                let zoom = Self.zoomLevel(of: mapView)
+                // QUANTISED, and everything below is drawn from these rather
+                // than from the raw pair.
+                //
+                // The factor is continuous in zoom, so on every frame of a
+                // pinch it is a slightly different number — and a slightly
+                // different number relaid out 557 station beads that were
+                // already drawn at the width the new one rounds to. The map
+                // paid ~87 ms a frame to change nothing a reader could see.
+                //
+                // A step is one device pixel on the widest mark the factor
+                // drives, and a sixteenth of a zoom level on the label ramp
+                // (which climbs 10 pt → 12 pt over four levels, so a step is
+                // 1/32 pt of type). Both are below what the screen can show,
+                // which is the whole argument: the ramp still runs on every
+                // frame — §9.1's intermediate frames still explain the change —
+                // it just stops re-running for differences that round away.
+                let scale = Self.quantised(RailStyle.scale(atZoom: zoom), on: mapView)
+                let markZoom = (zoom * 16).rounded() / 16
+                // The throttle, and the reason this is safe to call per frame:
+                // a factor that rounds to the mark already drawn cannot change
+                // any weight by a visible amount, so both passes below are
+                // skipped outright.
+                //
+                // Which of them was worth skipping is not what it looks like.
+                // Writing a width and a dash pattern into every renderer and
+                // asking each to redraw — the loop this note used to call "the
+                // expensive half" — measured **0 ms** for 323 renderers, because
+                // `setNeedsDisplay` only marks. The marks were the cost, and
+                // only because of how they were reached; see
+                // ``displayedAnnotationViews``.
+                guard !styledScale.isFinite || scale != styledScale else { return }
                 styledScale = scale
                 for (key, renderer) in overlayRenderers {
                     let style = overlayStyles[key]
@@ -1057,17 +1722,32 @@ struct RailMapView: View {
                     }
                     renderer.setNeedsDisplay()
                 }
-                let zoom = Self.zoomLevel(of: mapView)
-                for annotation in networkAnnotations {
-                    (mapView.view(for: annotation) as? StationAnnotationView)?
-                        .applyScale(scale, zoom: zoom)
-                }
-                for annotation in rideStationAnnotations {
-                    guard let view = mapView.view(for: annotation) else { continue }
-                    if let dot = view as? RideStationAnnotationView {
+                // The marks, reached through the views MapKit already handed
+                // over rather than by asking it for one per annotation. See
+                // ``displayedAnnotationViews`` — the asking was the whole of
+                // the cost, and a pinch paid it 900 times a frame.
+                //
+                // `window` is the on-screen test: the table is weak, but a view
+                // MapKit has taken off the map and is holding for reuse is
+                // still alive and still in it.
+                // On screen, and not merely alive: MapKit keeps an annotation
+                // view after it scrolls out — pooled for reuse, still in the
+                // window — so `window` alone let a national pan grow the pass
+                // from 557 marks to 941, most of them nowhere near the
+                // viewport. The rect test is the one that answers "is this
+                // drawn", and it is a `CGRect` intersection.
+                let viewport = mapView.bounds
+                for view in displayedAnnotationViews.allObjects
+                where view.window != nil && viewport.intersects(view.frame) {
+                    switch view {
+                    case let station as StationAnnotationView:
+                        station.applyScale(scale, zoom: markZoom)
+                    case let dot as RideStationAnnotationView:
                         dot.applyScale(scale)
-                    } else if let label = view as? RideLabelAnnotationView {
-                        label.applyScale(scale, zoom: zoom)
+                    case let label as RideLabelAnnotationView:
+                        label.applyScale(scale, zoom: markZoom)
+                    default:
+                        continue
                     }
                 }
             }
@@ -1093,6 +1773,31 @@ struct RailMapView: View {
                 clearPlayback(on: mapView)
                 let color = Self.uiColor(hex: snapshot.path.color) ?? .systemBlue
                 var segments: [MKPolyline] = []
+
+                // The journeys already finished, in their own colours and at
+                // full strength, laid down first so the running journey's
+                // trail draws on top of them. See `PlaybackMapSnapshot.done`.
+                for (index, trail) in snapshot.done.enumerated() where trail.coords.count >= 2 {
+                    // Sampled the way the live trail is: these are whole
+                    // journeys rather than the stretch covered so far, and a
+                    // day of them is tens of thousands of vertices that say
+                    // nothing a sample does not.
+                    let strideBy = max(1, trail.coords.count / 64)
+                    var sampled = Swift.stride(
+                        from: 0, to: trail.coords.count, by: strideBy).map { trail.coords[$0] }
+                    if sampled.last != trail.coords.last { sampled.append(trail.coords.last!) }
+                    guard sampled.count >= 2 else { continue }
+                    let line = MKPolyline(
+                        coordinates: sampled.map(\.clLocation), count: sampled.count)
+                    let styleKey = "playback-done|\(index)"
+                    line.title = styleKey
+                    overlayStyles[styleKey] = OverlayStyle(
+                        color: Self.uiColor(hex: trail.colorHex) ?? color,
+                        widthToken: RailStyle.railWidth * RailStyle.riddenWidthScale
+                            + RailStyle.playbackTrailEdge * 2,
+                        alpha: 1)
+                    segments.append(line)
+                }
                 let currentRun = snapshot.frame.runProgress.index
                 for (runIndex, run) in snapshot.path.runs.enumerated() where runIndex <= currentRun {
                     let localLimit = runIndex < currentRun
@@ -1209,6 +1914,15 @@ struct RailMapView: View {
                 /// a real answer (every toggle off), and different from the
                 /// standalone case the `nameRoma` fallback covers.
                 let readings: [String]?
+                /// Whether this dot prints its name.
+                ///
+                /// `DrawnStation.showsLabel` is the election result — which of
+                /// the platforms at one complex won the right to print the
+                /// place's name — and this is that AND the reader's
+                /// `networkStationNames` switch. Both have to be true, and the
+                /// zoom floor in `relayout` still applies under them: a switch
+                /// can take a name away, never make it appear earlier.
+                let showsName: Bool
                 var title: String? { displayName }
                 var subtitle: String? {
                     if let first = readings?.first { return first }
@@ -1217,10 +1931,11 @@ struct RailMapView: View {
                 }
                 init(
                     station: RailNetworkStore.DrawnStation,
-                    displayName: String, readings: [String]?
+                    displayName: String, showsName: Bool, readings: [String]?
                 ) {
                     self.station = station
                     self.displayName = displayName
+                    self.showsName = showsName
                     self.readings = readings
                     coordinate = station.coordinate.clLocation
                 }
@@ -1246,6 +1961,18 @@ struct RailMapView: View {
                 /// what lets one station reached by twenty rides print its name
                 /// once.
                 let name: String
+                /// The package's own spelling of the place, whatever the
+                /// election did to `name`.
+                ///
+                /// Carried because `name` cannot do this job: most dots lost
+                /// the election and are empty, and a tap on one still has to
+                /// find the station it stands on. See
+                /// ``Coordinator/rideStationCard(name:code:at:)``.
+                let rawName: String
+                /// `n02_station_code` off the ride's own stop — the station
+                /// GROUP, which is the identity `DrawnStation.stationCode`
+                /// carries on the network's side of the same station.
+                let stationCode: String?
                 let role: String
                 let radius: CGFloat
                 let lineWidth: CGFloat
@@ -1280,13 +2007,16 @@ struct RailMapView: View {
                 }
 
                 init(
-                    coordinate: CLLocationCoordinate2D, name: String, role: String,
+                    coordinate: CLLocationCoordinate2D, name: String,
+                    rawName: String, stationCode: String?, role: String,
                     radius: CGFloat, lineWidth: CGFloat, focusScale: CGFloat,
                     fill: UIColor, stroke: UIColor, alpha: CGFloat,
                     focusBoost: CGFloat, selected: Bool
                 ) {
                     self.coordinate = coordinate
                     self.name = name
+                    self.rawName = rawName
+                    self.stationCode = stationCode
                     self.role = role
                     self.radius = radius
                     self.lineWidth = lineWidth
@@ -1315,6 +2045,12 @@ struct RailMapView: View {
             private final class RideLabelAnnotation: NSObject, MKAnnotation {
                 dynamic var coordinate: CLLocationCoordinate2D
                 let text: String
+                /// The same two keys the dot carries. A caption is a separate
+                /// annotation from the dot it names — see below — so a tap that
+                /// lands on the NAME must be able to answer with the same card
+                /// as a tap on the mark, without going back to the dot for it.
+                let rawName: String
+                let stationCode: String?
                 let tier: StationDisplay.RideLabelTier
                 /// Where the dot ends, so the text can sit beside it rather than
                 /// on it. A token, like every other size here.
@@ -1323,11 +2059,14 @@ struct RailMapView: View {
                 var title: String? { text }
                 init(
                     coordinate: CLLocationCoordinate2D, text: String,
+                    rawName: String, stationCode: String?,
                     tier: StationDisplay.RideLabelTier, dotRadiusToken: CGFloat,
                     selected: Bool
                 ) {
                     self.coordinate = coordinate
                     self.text = text
+                    self.rawName = rawName
+                    self.stationCode = stationCode
                     self.tier = tier
                     self.dotRadiusToken = dotRadiusToken
                     self.selected = selected
@@ -1349,6 +2088,11 @@ struct RailMapView: View {
                 private let dot = UIView()
                 private let nameLabel = HaloLabel()
                 private var station: RailNetworkStore.DrawnStation?
+                /// The name election AND the reader's switch, resolved by
+                /// `StationAnnotation`. Views are recycled, so this has to be
+                /// stored rather than read back off the annotation in
+                /// `relayout` — a rescale runs without a fresh `configure`.
+                private var showsName = false
                 /// The zoom the name is currently sized for. Text does not ride
                 /// the railway's scale ramp, but it does ride its own shallower
                 /// one, so a rescale has to re-measure it.
@@ -1367,13 +2111,20 @@ struct RailMapView: View {
                     // See `MapLabelStyle`.
                     nameLabel.numberOfLines = 1
                     collisionMode = .rectangle
-                    canShowCallout = true
+                    // No callout. A station's popup is a card in a sheet now —
+                    // see `StationCardView`, and `mapView(_:didSelect:)` for
+                    // how a tap gets there. A bubble anchored to the bead had
+                    // to be small enough not to cover the map it was pointing
+                    // at, which put a dozen railways' badges in a 280-point
+                    // box that could not scroll and could not grow with the
+                    // reader's type size.
                 }
 
                 required init?(coder: NSCoder) { nil }
 
                 func configure(_ item: StationAnnotation, scale: CGFloat, zoom: Double) {
                     station = item.station
+                    showsName = item.showsName
                     self.scale = scale
                     self.zoom = zoom
                     let station = item.station
@@ -1395,10 +2146,8 @@ struct RailMapView: View {
                     displayPriority = MapLabelStyle.stationDisplayPriority(
                         interchange: station.popup.lines.count > 1,
                         isTerminal: station.isTerminal,
-                        named: station.showsLabel)
+                        named: item.showsName)
                     accessibilityLabel = item.displayName
-                    detailCalloutAccessoryView = Self.popupView(
-                        station.popup, readings: item.readings)
                     relayout()
                 }
 
@@ -1416,7 +2165,7 @@ struct RailMapView: View {
                 /// an ordinary 6 pt; neither number was a token, and the web app
                 /// draws every network platform at the same radius.
                 private func relayout() {
-                    guard let station else { return }
+                    guard station != nil else { return }
                     let dark = traitCollection.userInterfaceStyle == .dark
                     let diameter = max(1, RailStyle.stationDiameter * scale)
                     dot.frame = CGRect(
@@ -1427,154 +2176,40 @@ struct RailMapView: View {
                     // The beads appear at each station's own minZoom; the NAMES
                     // wait for a second, higher floor, because a name needs a
                     // district's worth of room and a bead does not.
-                    let names = station.showsLabel && zoom >= MapLabelStyle.stationLabelMinZoom
-                    let size = MapLabelStyle.stationLabelSize(atZoom: zoom)
-                    nameLabel.isHidden = !names
-                    nameLabel.font = MapLabelStyle.font(ofSize: size)
-                    nameLabel.textColor = MapLabelStyle.ink(dark: dark)
-                    nameLabel.haloColor = MapLabelStyle.halo(dark: dark)
+                    let names = showsName && zoom >= MapLabelStyle.stationLabelMinZoom
+                    var width = diameter
+                    // Nothing below is worth doing for a name that is not drawn
+                    // and was not drawn a moment ago — and that is the state
+                    // every bead is in at the zooms where there are hundreds of
+                    // them. Setting the font alone invalidates a `UILabel`'s
+                    // intrinsic size, and `sizeThatFits` measures type; over
+                    // 557 beads that is most of a rescale, spent on a label
+                    // whose `isHidden` never changed.
+                    if names || !nameLabel.isHidden {
+                        let size = MapLabelStyle.stationLabelSize(atZoom: zoom)
+                        nameLabel.isHidden = !names
+                        nameLabel.font = MapLabelStyle.font(ofSize: size)
+                        nameLabel.textColor = MapLabelStyle.ink(dark: dark)
+                        nameLabel.haloColor = MapLabelStyle.halo(dark: dark)
 
-                    let labelSize = names
-                        ? nameLabel.sizeThatFits(CGSize(width: 180, height: 24)) : .zero
-                    // `text-radial-offset` is in ems, so the gap grows with the
-                    // text rather than holding a pixel count while the label
-                    // around it changes size. The halo needs room of its own on
-                    // both sides or it is clipped by the label's bounds.
-                    let gap = size * MapLabelStyle.radialOffsetEm
-                    let inset = MapLabelStyle.haloWidth
-                    nameLabel.frame = CGRect(
-                        x: diameter + gap - inset, y: 1,
-                        width: labelSize.width + inset * 2, height: 22)
-                    let width = names ? nameLabel.frame.maxX : diameter
+                        let labelSize = names
+                            ? nameLabel.sizeThatFits(CGSize(width: 180, height: 24)) : .zero
+                        // `text-radial-offset` is in ems, so the gap grows with
+                        // the text rather than holding a pixel count while the
+                        // label around it changes size. The halo needs room of
+                        // its own on both sides or it is clipped by the label's
+                        // bounds.
+                        let gap = size * MapLabelStyle.radialOffsetEm
+                        let inset = MapLabelStyle.haloWidth
+                        nameLabel.frame = CGRect(
+                            x: diameter + gap - inset, y: 1,
+                            width: labelSize.width + inset * 2, height: 22)
+                        if names { width = nameLabel.frame.maxX }
+                    }
                     frame.size = CGSize(width: width, height: 24)
                     centerOffset = CGPoint(x: width / 2 - diameter / 2, y: 0)
                 }
 
-                /// `stationPopupHtml`'s header and line rows.
-                ///
-                /// The three-state reading rule is the web app's and it is not
-                /// a nicety: `readings == nil` is the standalone railmap with
-                /// no i18n at all, which keeps the single `nameRoma` subline;
-                /// an EMPTY list is the app with every reading toggle off,
-                /// which means no subline. Here the engine is always present,
-                /// so an empty list is an answer — `nameRoma` only stands in
-                /// when there is no localisation to ask.
-                private static func popupView(
-                    _ popup: StationDisplay.PopupModel, readings: [String]?
-                ) -> UIView {
-                    let stack = UIStackView()
-                    stack.axis = .vertical
-                    stack.spacing = 5
-                    stack.alignment = .leading
-                    let sublines = readings
-                        ?? (popup.nameRoma.isEmpty ? [] : [popup.nameRoma])
-                    for subline in sublines {
-                        let reading = UILabel()
-                        reading.font = .systemFont(ofSize: 12)
-                        reading.textColor = .secondaryLabel
-                        reading.text = subline
-                        stack.addArrangedSubview(reading)
-                    }
-                    for row in popup.lines {
-                        stack.addArrangedSubview(lineRow(row))
-                    }
-                    stack.frame.size = stack.systemLayoutSizeFitting(
-                        CGSize(width: 280, height: UIView.layoutFittingCompressedSize.height))
-                    return stack
-                }
-
-                /// One railway through this station: its badge, then its name.
-                ///
-                /// `railmap-popup.js` draws the operator's mark where there is
-                /// one and a colour swatch where there is not — never both, and
-                /// never a bare name. `OperatorBranding` has been deciding
-                /// WHICH badge since it was ported, through
-                /// `StationDisplay.buildPopupModel`; the answer simply had
-                /// nowhere to go, because the artwork was not in the bundle.
-                /// It is now, under the same relative paths the web app uses.
-                private static func lineRow(_ row: StationDisplay.PopupRow) -> UIView {
-                    let line = UIStackView()
-                    line.axis = .horizontal
-                    line.spacing = 6
-                    line.alignment = .center
-
-                    if let badge = logoView(row) {
-                        line.addArrangedSubview(badge)
-                    } else {
-                        // `.rp-line-swatch`: 14 × 6, the line's own colour.
-                        let swatch = UIView()
-                        swatch.backgroundColor = Coordinator.uiColor(hex: row.color) ?? .systemGray
-                        swatch.layer.cornerRadius = 2
-                        swatch.translatesAutoresizingMaskIntoConstraints = false
-                        swatch.widthAnchor.constraint(equalToConstant: 14).isActive = true
-                        swatch.heightAnchor.constraint(equalToConstant: 6).isActive = true
-                        line.addArrangedSubview(swatch)
-                    }
-
-                    let label = UILabel()
-                    label.font = .systemFont(ofSize: 12, weight: .medium)
-                    label.textColor = .label
-                    label.numberOfLines = 0
-                    label.text = [row.company, row.label].filter { !$0.isEmpty }
-                        .joined(separator: "  ")
-                    line.addArrangedSubview(label)
-                    return line
-                }
-
-                /// `.rp-line-logo`: 16 pt tall, aspect kept, never wider than 48.
-                ///
-                /// The dark matte is not decoration and not a theme rule — it is
-                /// for the handful of operators whose current mark is drawn
-                /// predominantly in WHITE because their own site puts it on a
-                /// dark header. `OperatorBranding.logoNeedsDarkMatte` names
-                /// them, and only they get it, so the original artwork stays
-                /// legible in both appearances.
-                private static func logoView(_ row: StationDisplay.PopupRow) -> UIView? {
-                    guard let image = logoImage(row.logo) else { return nil }
-                    let view = UIImageView(image: image)
-                    view.contentMode = .scaleAspectFit
-                    view.translatesAutoresizingMaskIntoConstraints = false
-                    let ratio = image.size.height > 0 ? image.size.width / image.size.height : 1
-                    view.heightAnchor.constraint(equalToConstant: 16).isActive = true
-                    view.widthAnchor.constraint(
-                        equalToConstant: min(48, 16 * ratio)).isActive = true
-                    guard row.logoNeedsDarkMatte else { return view }
-                    let matte = UIView()
-                    matte.backgroundColor = UIColor(
-                        red: 0x24 / 255, green: 0x31 / 255, blue: 0x3a / 255, alpha: 1)
-                    matte.layer.cornerRadius = 2
-                    matte.addSubview(view)
-                    NSLayoutConstraint.activate([
-                        view.leadingAnchor.constraint(equalTo: matte.leadingAnchor, constant: 2),
-                        view.trailingAnchor.constraint(equalTo: matte.trailingAnchor, constant: -2),
-                        view.topAnchor.constraint(equalTo: matte.topAnchor, constant: 1),
-                        view.bottomAnchor.constraint(equalTo: matte.bottomAnchor, constant: -1),
-                    ])
-                    return matte
-                }
-
-                /// A web path — `/rail/logos/<id>.png` — resolved in the bundle.
-                ///
-                /// The ported rule returns the path the JavaScript hands to an
-                /// `<img>`, so the leading slash is stripped and the rest used
-                /// as-is. Keeping the web's own directory names is what lets one
-                /// table serve both clients; inventing a second naming scheme
-                /// here would be a second thing to keep in step.
-                private static func logoImage(_ path: String?) -> UIImage? {
-                    guard let path, !path.isEmpty else { return nil }
-                    if let cached = logoCache.object(forKey: path as NSString) { return cached }
-                    let relative = path.hasPrefix("/") ? String(path.dropFirst()) : path
-                    guard let url = Bundle.main.resourceURL?.appending(path: relative),
-                          let image = UIImage(contentsOfFile: url.path)
-                    else { return nil }
-                    logoCache.setObject(image, forKey: path as NSString)
-                    return image
-                }
-
-                /// A station complex can list a dozen railways and a reader
-                /// opens one callout after another, so the same handful of
-                /// badges is decoded over and over without this.
-                private static let logoCache = NSCache<NSString, UIImage>()
             }
 
             /// The dot itself: fill, ring, and — on an intermediate stop — the
@@ -1607,7 +2242,13 @@ struct RailMapView: View {
                     // through the station either way — while a suppressed name
                     // is the only text this map has.
                     displayPriority = .defaultLow
-                    canShowCallout = true
+                    // No callout, for the reason the network's beads have none
+                    // (`StationAnnotationView`): a station's answer is the card
+                    // in a sheet now — see `mapView(_:didSelect:)`. The bubble
+                    // could only ever say the name this dot had WON in the
+                    // label election, so at every station that lost it — which
+                    // is most of them — a tap opened an empty bubble or did
+                    // nothing at all.
                 }
 
                 required init?(coder: NSCoder) { nil }
@@ -1620,8 +2261,12 @@ struct RailMapView: View {
                     core.backgroundColor = item.core?.color
                     core.isHidden = item.core == nil
                     alpha = item.alpha
-                    accessibilityLabel = item.name.isEmpty ? nil : item.name
-                    canShowCallout = !item.name.isEmpty
+                    // The dot's own name, not the one it won: a dot that lost
+                    // the label election draws no caption but is still a
+                    // station and still opens that station's card, so leaving
+                    // it unlabelled would put an unnamed button under a
+                    // VoiceOver reader's finger (§10.2).
+                    accessibilityLabel = item.rawName.isEmpty ? nil : item.rawName
                     relayout()
                 }
 
@@ -1698,14 +2343,12 @@ struct RailMapView: View {
                     self.zoom = zoom
                     text.text = item.text
                     accessibilityLabel = item.text
-                    // `rideLabelTiersInPlacementOrder` is weakest first, which is
-                    // the order MapLibre pushes the three symbol layers in. Here
-                    // the same ordering is a display priority: a terminal claims
-                    // its space before an intermediate stop, which claims it
-                    // before a station merely rolled through.
-                    let rank = StationDisplay.rideLabelTiersInPlacementOrder
-                        .firstIndex(of: item.tier) ?? 0
                     // `.required`, and it has to be — measured, not chosen.
+                    //
+                    // The tier ranking `rideLabelTiersInPlacementOrder` gives
+                    // is deliberately NOT read here. It was, as a
+                    // `defaultHigh + tier` display priority, and the next
+                    // paragraph is why that had to go.
                     //
                     // An annotation view does not only collide with other
                     // annotation views: it competes with the BASEMAP's own
@@ -1857,15 +2500,21 @@ struct RailMapView: View {
                     centerOffset = MapEndpointLabels.centreOffset(for: spec)
                 }
 
-                /// Badge, name and time on one centred row; the readings
-                /// stacked under it, each on its own line — never
-                /// bracket-appended, which is the one display rule
+                /// Badge and name on one centred row; the time on its own row
+                /// under it, and the readings under that — each on its own
+                /// line, never bracket-appended, which is the one display rule
                 /// `stationNameReadings` exists to spell.
+                ///
+                /// The time used to ride the name's row, as it does in the web
+                /// app. It came down for two reasons: the name is what the card
+                /// is FOR and a suffix on its row competes with it, and a row
+                /// that grows sideways gets pushed sideways to stay on screen,
+                /// which on a phone moves the card off the dot it belongs to.
                 private func layout(_ spec: MapEndpointLabels.Spec) {
                     let inset = MapLabelStyle.haloWidth
                     let bound = CGSize(width: MapEndpointLabels.maxWidth, height: 24)
                     var row: [(label: UILabel, width: CGFloat)] = []
-                    for label in [badge, name, time] where !(label.text ?? "").isEmpty {
+                    for label in [badge, name] where !(label.text ?? "").isEmpty {
                         row.append((label, label.sizeThatFits(bound).width + inset * 2))
                     }
                     for label in [badge, name, time] {
@@ -1873,13 +2522,19 @@ struct RailMapView: View {
                     }
                     let rowWidth = row.reduce(CGFloat(0)) { $0 + $1.width }
                         + Self.pieceGap * CGFloat(max(row.count - 1, 0))
+                    let timeWidth = time.isHidden
+                        ? 0 : time.sizeThatFits(bound).width + inset * 2
                     var readingWidths: [CGFloat] = []
                     for label in readings where !label.isHidden {
                         readingWidths.append(label.sizeThatFits(bound).width + inset * 2)
                     }
-                    let width = max(rowWidth, readingWidths.max() ?? 0)
+                    let width = max(rowWidth, max(timeWidth, readingWidths.max() ?? 0))
+                    // The sublines are the time and the readings, in that
+                    // order; both are drawn at `readingLineHeight`, which is
+                    // the height `MapEndpointLabels.spec` measured them at.
                     let height = Self.verticalPadding + Self.mainLineHeight
-                        + Self.readingLineHeight * CGFloat(readingWidths.count)
+                        + Self.readingLineHeight
+                        * CGFloat(readingWidths.count + (time.isHidden ? 0 : 1))
                     frame.size = CGSize(width: max(width, 1), height: max(height, 1))
 
                     var x = (width - rowWidth) / 2
@@ -1890,6 +2545,12 @@ struct RailMapView: View {
                         x += piece.width + Self.pieceGap
                     }
                     var y = Self.verticalPadding / 2 + Self.mainLineHeight
+                    if !time.isHidden {
+                        time.frame = CGRect(
+                            x: (width - timeWidth) / 2, y: y,
+                            width: timeWidth, height: Self.readingLineHeight)
+                        y += Self.readingLineHeight
+                    }
                     var index = 0
                     for label in readings where !label.isHidden {
                         let pieceWidth = readingWidths[index]
@@ -1900,6 +2561,220 @@ struct RailMapView: View {
                         index += 1
                     }
                 }
+            }
+
+            /// `fitTrainsBounds` while the transport owns the camera.
+            ///
+            /// `maxZoom` is a floor on how far in the move may go, expressed
+            /// as a MapLibre zoom because that is what `Playback.Tuning`
+            /// carries. Without it a single short journey opens at street
+            /// level, where the overview shows nothing an overview is for.
+            func framePlayback(
+                coordinates: [Coordinate], maxZoom: Double, animated: Bool
+            ) {
+                guard let mapView, var region = Self.region(covering: [coordinates])
+                else { return }
+                // The smallest span this zoom is allowed to produce, across
+                // the view's own width — one MapLibre tile pixel is this
+                // app's zoom minus the ported offset, and `metresPerPixel`
+                // already speaks that language.
+                let metres = Self.metresPerPixel(
+                    zoom: RailStyle.zoom(fromMapLibre: maxZoom),
+                    latitude: region.center.latitude) * Double(mapView.bounds.width)
+                let minimumDelta = metres / 111_320
+                region.span.latitudeDelta = max(region.span.latitudeDelta, minimumDelta)
+                region.span.longitudeDelta = max(region.span.longitudeDelta, minimumDelta)
+                controller?.fit(region, animated: animated)
+            }
+
+            // MARK: - selection
+
+            /// A tap on any station on this map opens its card.
+            ///
+            /// ANY: the network's beads, the dots a recorded ride puts on its
+            /// own stops, and the captions beside those dots. A station is one
+            /// place whether the reader is looking at the whole network or at
+            /// one journey through it, and it used to answer differently in the
+            /// two — the network bead opened the card, while a ride's dot
+            /// opened MapKit's default callout when it happened to have won a
+            /// name and did nothing at all when it had not.
+            ///
+            /// The annotation is deselected straight away, and deliberately.
+            /// MapKit's selection is the callout's own state — it exists to
+            /// keep a bubble on screen — and there is no bubble now. Left
+            /// selected, the bead would stay in its selected appearance behind
+            /// the sheet and a second tap on the same station would do nothing
+            /// at all, because selecting what is already selected is not a
+            /// change.
+            /// ## One touch, one answer
+            ///
+            /// MapKit's selection does not arrive with the touch. It waits for
+            /// the double-tap-to-zoom recogniser to fail first, so it lands
+            /// about half a second AFTER the finger lifts — measured at
+            /// 0.51–0.57 s on the simulator — and it hit-tests an annotation
+            /// more generously than `gestureRecognizer(_:shouldReceive:)` can
+            /// see: a touch that never entered any `MKAnnotationView` (so the
+            /// map's own tap recogniser took it, resolved the rides under it
+            /// and opened the ambiguous-tap chooser) still selects the bead or
+            /// the caption it landed beside.
+            ///
+            /// That is one touch asking the workspace for two surfaces. The
+            /// second one is not merely redundant — it is DROPPED: both are
+            /// presented by the resident sheet's controller, which is already
+            /// presenting the chooser by the time this runs, so UIKit refuses
+            /// with "Attempt to present … which is already presenting" and the
+            /// station card the reader would have seen never appears. It reads
+            /// as a card that opens sometimes and not others.
+            ///
+            /// So a touch this map has already answered with a ride is not
+            /// answered again here. A touch that landed ON an annotation never
+            /// reaches the tap recogniser at all (`shouldReceive` returns
+            /// false), and one that found no ride under it makes no claim — so
+            /// both of those still open their card.
+            func mapView(_ mapView: MKMapView, didSelect annotation: any MKAnnotation) {
+                guard let card = stationCard(for: annotation) else { return }
+                mapView.deselectAnnotation(annotation, animated: false)
+                if let answered = rideAnsweredTap, ContinuousClock.now - answered < .seconds(1) {
+                    return
+                }
+                onSelectStation(card)
+            }
+
+            /// The card one tapped annotation opens, or `nil` when the thing
+            /// tapped was not a station at all.
+            private func stationCard(for annotation: any MKAnnotation) -> StationCard? {
+                if let station = annotation as? StationAnnotation {
+                    return StationCard(
+                        station: station.station,
+                        displayName: station.displayName,
+                        readings: station.readings)
+                }
+                if let dot = annotation as? RideStationAnnotation {
+                    return rideStationCard(
+                        name: dot.rawName, code: dot.stationCode,
+                        at: Self.coordinate(dot.coordinate))
+                }
+                if let caption = annotation as? RideLabelAnnotation {
+                    return rideStationCard(
+                        name: caption.rawName, code: caption.stationCode,
+                        at: Self.coordinate(caption.coordinate))
+                }
+                return nil
+            }
+
+            /// The card behind one of a ride's own dots.
+            ///
+            /// A ride's stop knows its name, its station-group code and where
+            /// the route drew it; what it does NOT know is which railways run
+            /// through the place, which is the whole body of the card. That
+            /// lives on the network's side, so the stop is resolved back to a
+            /// platform there and the platform's popup model is used — which is
+            /// also what makes the card identical to the one the network's own
+            /// bead at that station opens, down to the name and the readings.
+            ///
+            /// When nothing resolves, the card is still opened, with the stop's
+            /// own name and no line rows. The reader tapped a station and a
+            /// station is what they get; the alternative is a mark that answers
+            /// a tap with silence, which is the fault this replaced.
+            private func rideStationCard(
+                name: String, code: String?, at position: Coordinate
+            ) -> StationCard {
+                if let station = networkStation(code: code, name: name, near: position) {
+                    // Named and read exactly as `StationAnnotation` names and
+                    // reads the same platform — the readings table is keyed on
+                    // the platform's own id first and its name second.
+                    let named = localized(station.name, code: station.id)
+                    return StationCard(
+                        station: station, displayName: named.display,
+                        readings: localization == nil ? nil : named.readings.map(\.text))
+                }
+                let named = localized(name, code: code)
+                return StationCard(
+                    id: "stop:\(Stations.normalizeStationName(name))"
+                        + "@\(position.lat),\(position.lon)",
+                    coordinate: position,
+                    displayName: named.display,
+                    rawName: name,
+                    // A stop that resolved to no platform still names a
+                    // region well enough to search in: the store's own
+                    // station code says which package it came from, and a
+                    // hand-typed ride with no code at all is Japanese for the
+                    // same reason `naming` reads it as Japanese.
+                    region: Region.fromStationCode(code) ?? .jp,
+                    readings: localization == nil ? nil : named.readings.map(\.text),
+                    nameRoma: "",
+                    lines: [])
+            }
+
+            /// The network platform a ride's stop stands on.
+            ///
+            /// By CODE first, and it is the answer that can be trusted: a
+            /// station group is an identity the ride's stop and the network's
+            /// station both carry (`n02_station_code`), so a match is the same
+            /// station rather than a station that reads the same. The nearest
+            /// of the group's platforms is taken, which is also what settles a
+            /// code that two countries' packages both happen to use — a ride in
+            /// Japan cannot resolve to a Korean platform 1,000 km away.
+            ///
+            /// By NAME second, for the stores that carry no code — a journey
+            /// typed in by hand, or one imported from a source that had none.
+            /// A name is a guess and is capped accordingly: 同名 stations are
+            /// common enough (中山, 大手町) that an uncapped one would hand the
+            /// reader another prefecture's railways.
+            private func networkStation(
+                code: String?, name: String, near position: Coordinate
+            ) -> RailNetworkStore.DrawnStation? {
+                func nearest(_ indexes: [Int], within metres: Double) -> RailNetworkStore.DrawnStation? {
+                    indexes
+                        .map { (station: stations[$0], distance:
+                            Geometry.distanceMeters(stations[$0].coordinate, position)) }
+                        .filter { $0.distance <= metres }
+                        .min { $0.distance < $1.distance }?
+                        .station
+                }
+                if let code, !code.isEmpty, let group = stationsByCode[code],
+                    let hit = nearest(group, within: .infinity) {
+                    return hit
+                }
+                let key = Stations.normalizeStationName(name)
+                guard !key.isEmpty, let sameName = stationsByName[key] else { return nil }
+                return nearest(sameName, within: Self.nameMatchMeters)
+            }
+
+            /// How far a NAME may reach for a platform. Generous next to the
+            /// ~600 m the label election merges on, because a stop's drawn
+            /// position is the route's own geometry rather than the station
+            /// table's point, and a complex like 梅田/大阪 spreads its platforms
+            /// over half a kilometre before either number applies.
+            static let nameMatchMeters: Double = 2_000
+
+            /// The network's platforms, indexed by the two keys a ride's stop
+            /// can offer. Rebuilt when the station list itself changes, which
+            /// is once per region as the packages land.
+            ///
+            /// Indices rather than rows: every `DrawnStation` carries its whole
+            /// popup model, and Japan alone ships some 12,000 of them.
+            private var stationsByCode: [String: [Int]] = [:]
+            private var stationsByName: [String: [Int]] = [:]
+
+            private func indexStations() {
+                stationsByCode.removeAll(keepingCapacity: true)
+                stationsByName.removeAll(keepingCapacity: true)
+                for (index, station) in stations.enumerated() {
+                    if !station.stationCode.isEmpty {
+                        stationsByCode[station.stationCode, default: []].append(index)
+                    }
+                    let key = Stations.normalizeStationName(station.name)
+                    if !key.isEmpty { stationsByName[key, default: []].append(index) }
+                }
+            }
+
+            /// MapKit's pair as `RailCore`'s. The annotations hold the
+            /// former because that is what `MKAnnotation` requires; everything
+            /// ported — `Geometry.distanceMeters`, the station table — speaks
+            /// the latter.
+            static func coordinate(_ location: CLLocationCoordinate2D) -> Coordinate {
+                Coordinate(lon: location.longitude, lat: location.latitude)
             }
 
             // MARK: - rendering
@@ -1960,7 +2835,8 @@ struct RailMapView: View {
                 _ mapView: MKMapView, viewFor annotation: any MKAnnotation
             ) -> MKAnnotationView? {
                 let zoom = Self.zoomLevel(of: mapView)
-                let scale = mapView.bounds.width > 1 ? RailStyle.scale(atZoom: zoom) : 1
+                let scale = mapView.bounds.width > 1
+                    ? Self.quantised(RailStyle.scale(atZoom: zoom), on: mapView) : 1
                 if let station = annotation as? StationAnnotation {
                     let identifier = "network-station"
                     let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
@@ -2064,6 +2940,26 @@ struct RailMapView: View {
                 let width = max(mapView.bounds.width, 1)
                 let longitudeDelta = max(mapView.region.span.longitudeDelta, 1e-9)
                 return log2(360 * (width / 256) / longitudeDelta)
+            }
+
+            /// The widest mark ``RailStyle/scale(atZoom:)`` is ever multiplied
+            /// into, in points at full weight.
+            ///
+            /// A bound rather than a measurement, and deliberately generous: it
+            /// only decides how finely the shared factor is rounded, and being
+            /// too large costs a redraw nobody needed while being too small
+            /// costs a visible step. A station bead is 6 pt, a ride stroke with
+            /// the reader's 線路粗細 at its widest and the focus boost on top
+            /// is under 10, and a playback head is a multiple of the bead's
+            /// radius.
+            private static let widestScaledMark: CGFloat = 12
+
+            /// The shared factor, rounded to the finest step the screen can
+            /// actually show on ``widestScaledMark``.
+            static func quantised(_ scale: CGFloat, on mapView: MKMapView) -> CGFloat {
+                let pixel = 1 / max(mapView.traitCollection.displayScale, 1)
+                let step = pixel / widestScaledMark
+                return (scale / step).rounded() * step
             }
 
             static func metresPerPixel(zoom: Double, latitude: Double) -> Double {

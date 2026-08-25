@@ -24,6 +24,7 @@ struct JourneyStatusBadge: View {
     var compact = false
 
     @Environment(AppLocalization.self) private var localization
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Label {
@@ -33,12 +34,27 @@ struct JourneyStatusBadge: View {
         }
         .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
         .labelStyle(.titleAndIcon)
-        .lineLimit(compact ? 1 : 3)
+        // A status is a sentence, not a label: at an accessibility size
+        // 「路線未完成，6 段中 4 段」 needs more than three lines, and a status
+        // that has been cut in half is the one piece of text on the card that
+        // must not be guessed at (§14.4).
+        .lineLimit(compact ? (dynamicTypeSize.isAccessibilitySize ? nil : 1) : 3)
         .multilineTextAlignment(.leading)
         .foregroundStyle(status.tone.color)
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(status.tone.color.opacity(status.tone.fillOpacity), in: Capsule())
+        .background {
+            if compact && dynamicTypeSize.isAccessibilitySize {
+                RoundedRectangle(
+                    cornerRadius: RailStyle.controlCornerRadius,
+                    style: .continuous
+                )
+                .fill(status.tone.color.opacity(status.tone.fillOpacity))
+            } else {
+                Capsule()
+                    .fill(status.tone.color.opacity(status.tone.fillOpacity))
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -106,7 +122,13 @@ struct JourneyStateBlock: View {
         .background(
             (presentation.status?.tone ?? .neutral).color
                 .opacity((presentation.status?.tone ?? .neutral).fillOpacity * 0.55),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // §6.4's radius-control. This block is a panel INSIDE a card, so
+            // it takes the small token rather than the card one — the rule is
+            // that radius expresses depth: small control < content card <
+            // sheet, and a block nested in a card must not match the card.
+            in: RoundedRectangle(
+                cornerRadius: RailStyle.controlCornerRadius,
+                style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
@@ -130,20 +152,15 @@ struct RouteTimingView: View {
     var destination: String
     var departure: String?
     var arrival: String?
+    var originPlatform: Int? = nil
+    var destinationPlatform: Int? = nil
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AppLocalization.self) private var localization
 
     var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                stacked
-            } else {
-                ViewThatFits(in: .horizontal) {
-                    sideBySide
-                    stacked
-                }
-            }
+        ViewThatFits(in: .horizontal) {
+            sideBySide
+            stacked
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(spokenSummary))
@@ -151,30 +168,34 @@ struct RouteTimingView: View {
 
     private var sideBySide: some View {
         HStack(alignment: .top, spacing: 12) {
-            endpoint(origin, time: departure, alignment: .leading)
+            endpoint(origin, time: departure, platform: originPlatform, alignment: .leading)
             Image(systemName: "arrow.right")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
                 .padding(.top, 2)
-            endpoint(destination, time: arrival, alignment: .trailing)
+            endpoint(
+                destination, time: arrival, platform: destinationPlatform,
+                alignment: .trailing)
         }
     }
 
     private var stacked: some View {
         VStack(alignment: .leading, spacing: 6) {
-            endpoint(origin, time: departure, alignment: .leading)
+            endpoint(origin, time: departure, platform: originPlatform, alignment: .leading)
             Image(systemName: "arrow.down")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
-            endpoint(destination, time: arrival, alignment: .leading)
+            endpoint(
+                destination, time: arrival, platform: destinationPlatform,
+                alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func endpoint(
-        _ name: String, time: String?, alignment: HorizontalAlignment
+        _ name: String, time: String?, platform: Int?, alignment: HorizontalAlignment
     ) -> some View {
         VStack(alignment: alignment, spacing: 2) {
             Text(localization.stationName(name))
@@ -187,6 +208,9 @@ struct RouteTimingView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
+            if let platform, platform >= 0 {
+                platformBadge(platform)
+            }
         }
         .frame(
             maxWidth: .infinity,
@@ -197,9 +221,28 @@ struct RouteTimingView: View {
     private var spokenSummary: String {
         var parts = [localization.stationName(origin)]
         if let departure, !departure.isEmpty { parts.append(departure) }
+        if let originPlatform, originPlatform >= 0 { parts.append(platformText(originPlatform)) }
         parts.append(localization.stationName(destination))
         if let arrival, !arrival.isEmpty { parts.append(arrival) }
+        if let destinationPlatform, destinationPlatform >= 0 {
+            parts.append(platformText(destinationPlatform))
+        }
         return parts.joined(separator: ", ")
+    }
+
+    private func platformText(_ number: Int) -> String {
+        localization.editorText(
+            "ios.detail.platformValue", ["number": .number(Double(number))])
+    }
+
+    private func platformBadge(_ number: Int) -> some View {
+        Text(platformText(number))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -207,10 +250,10 @@ struct RouteTimingView: View {
 
 /// One journey, as a list reads it.
 ///
-/// The field order is §3.2's scan order and is the same at every density:
-/// number, then the station pair, then the first departure, then date / type /
-/// operator, then state. The record ID never appears — §3.2 forbids it above
-/// the number and §3.1 puts it in L4, which is the detail screen.
+/// The field order follows what a reader is choosing: quiet service metadata,
+/// then the origin and destination as the visual title, then both endpoint
+/// times, and finally state. The record ID never appears — §3.1 puts it in L4,
+/// which is the detail screen.
 struct JourneySummaryRow: View {
     var train: Train
     var presentation: JourneyPresentation
@@ -218,54 +261,44 @@ struct JourneySummaryRow: View {
     var showsDate: Bool
 
     @Environment(AppLocalization.self) private var localization
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    identity
-                    Spacer(minLength: 8)
-                    departure
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    identity
-                    departure
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            if dynamicTypeSize.isAccessibilitySize {
+                // At large text sizes the route is the decision, so it must
+                // appear before service metadata that can span many lines.
+                stationPair
+                timingLine
+                detailLine
+            } else {
+                detailLine
+                stationPair
+                timingLine
             }
 
-            HStack(spacing: 5) {
-                Text(localization.stationName(train.origin))
-                Image(systemName: "arrow.right")
-                    .imageScale(.small)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-                Text(localization.stationName(train.destination))
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-
-            if !metadata.isEmpty {
-                Text(metadata.joined(separator: " · "))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-            }
-
-            // §5.1: a hidden record says so in words. It is NOT drawn at a low
-            // enough opacity to be hard to read — the reader hid it from the
-            // map, not from themselves.
-            if let status = presentation.summaryStatus {
+            if let status = presentation.summaryStatus,
+               status.title.key != JourneyPresentationResolver.Keys.hiddenTitle
+            {
                 JourneyStatusBadge(status: status, compact: true)
                     .padding(.top, 1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.leading, 38)
+        .padding(.trailing, 12)
+        .padding(.vertical, 11)
         .background(rowBackground)
+        .overlay(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(swatchColor)
+                .frame(width: 8)
+                .padding(.leading, 16)
+                .padding(.vertical, 12)
+                .accessibilityHidden(true)
+        }
         .overlay {
-            // §14.2: selection is more than a colour.
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: RailStyle.cardCornerRadius, style: .continuous)
                 .strokeBorder(
                     isSelected ? Color.accentColor.opacity(0.55) : .clear,
                     lineWidth: 1.5)
@@ -275,51 +308,226 @@ struct JourneySummaryRow: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
-    private var identity: some View {
-        Text(train.number)
-            .font(.headline)
+    @ViewBuilder
+    private var detailLine: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 5) {
+                if showsDate { dateBadge }
+                detail
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if showsDate { dateBadge }
+                detail
+            }
+        }
+    }
+
+    private var detail: some View {
+        Text(detailText)
+            // The train number, type and operator identify the service, but
+            // they are supporting detail rather than the decision the row is
+            // for. The route below therefore owns the display weight.
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
-    private var departure: some View {
-        if let time = departureTime {
-            Text(time)
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
+    private var stationPair: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stackedStationPair
+        } else {
+            ViewThatFits(in: .horizontal) {
+                horizontalStationPair
+                stackedStationPair
+            }
         }
     }
 
-    /// A translucent fill, not `secondarySystemGroupedBackground`.
-    ///
-    /// That colour is the right one for a row on an opaque grouped screen and
-    /// the wrong one here: this row sits on the glass panel, and an opaque fill
-    /// over glass is a slab that reads as pure black in dark mode — it paints
-    /// over the very translucency the panel exists to have. A tint of the
-    /// foreground colour keeps the row legible as a row while the map still
-    /// shows through it, and it follows the theme without naming either end.
-    private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .fill(
-                isSelected
-                    ? AnyShapeStyle(Color.accentColor.opacity(0.18))
-                    : AnyShapeStyle(Color.primary.opacity(0.05)))
+    private var horizontalStationPair: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            stationName(train.origin, lineLimit: 1)
+            Image(systemName: "arrow.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            stationName(train.destination, lineLimit: 1)
+        }
+        // Make ViewThatFits compare the route's honest single-line width; if
+        // it cannot fit, the vertical route below is clearer than compressing
+        // or truncating either station name.
+        .fixedSize(horizontal: true, vertical: false)
     }
 
-    private var metadata: [String] {
-        var parts: [String] = []
-        if showsDate, let date = train.date, !date.isEmpty { parts.append(date) }
-        if let type = train.trainType, !type.isEmpty { parts.append(type) }
-        if let company = train.company, !company.isEmpty { parts.append(company) }
-        parts.append(
-            "\(train.stops.count) \(localization.countryText("unit.stops", fallback: "stops"))")
-        return parts
+    private var stackedStationPair: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            stationName(train.origin, lineLimit: nil)
+            Image(systemName: "arrow.down")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            stationName(train.destination, lineLimit: nil)
+        }
+    }
+
+    private func stationName(_ name: String, lineLimit: Int?) -> some View {
+        Text(localization.stationName(name))
+            .font(.title3.weight(.bold))
+            .lineLimit(lineLimit)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var timingLine: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            verticalTimingLine
+        } else {
+            ViewThatFits(in: .horizontal) {
+                horizontalTimingLine
+                verticalTimingLine
+            }
+        }
+    }
+
+    private var horizontalTimingLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            timeEndpoint(
+                localization.countryText("tag.dep", fallback: "Dep"),
+                time: departureTime,
+                platform: train.stops.first?.platformNumber)
+            Image(systemName: "arrow.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            timeEndpoint(
+                localization.countryText("tag.arr", fallback: "Arr"),
+                time: arrivalTime,
+                platform: train.stops.last?.platformNumber)
+            Text("·")
+                .foregroundStyle(.tertiary)
+            Text(stopCountText)
+            Spacer(minLength: 0)
+            visibilityBadge
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var verticalTimingLine: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            timeEndpoint(
+                localization.countryText("tag.dep", fallback: "Dep"),
+                time: departureTime,
+                platform: train.stops.first?.platformNumber)
+            timeEndpoint(
+                localization.countryText("tag.arr", fallback: "Arr"),
+                time: arrivalTime,
+                platform: train.stops.last?.platformNumber)
+            HStack(spacing: 8) {
+                Text(stopCountText)
+                visibilityBadge
+            }
+        }
+    }
+
+    private func timeEndpoint(_ label: String, time: String?, platform: Int?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label)
+            Text(time ?? "—:—")
+                .monospacedDigit()
+                .foregroundStyle(.primary)
+            if let platform, platform >= 0 {
+                Text(
+                    localization.editorText(
+                        "ios.detail.platformValue",
+                        ["number": .number(Double(platform))])
+                )
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+            }
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+    }
+
+    private var dateBadge: some View {
+        Text(dateText)
+            .font(.caption.weight(.semibold))
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var visibilityBadge: some View {
+        Text(
+            train.visible == false
+                ? localization.countryText("state.hidden", fallback: "Hidden")
+                : localization.countryText("state.shown", fallback: "Shown")
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(Color(.tertiarySystemFill), in: Capsule(style: .continuous))
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: RailStyle.cardCornerRadius, style: .continuous)
+            .fill(isSelected ? Color.accentColor.opacity(0.14) : Color(.secondarySystemBackground))
+            .overlay {
+                RoundedRectangle(cornerRadius: RailStyle.cardCornerRadius, style: .continuous)
+                    .strokeBorder(Color(.separator), lineWidth: 1)
+            }
+    }
+
+    private var detailText: String {
+        [train.number, typeCompanyText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "  ")
+    }
+
+    private var dateText: String {
+        guard let date = train.date, !date.isEmpty else { return Dates.undated }
+        return date
+    }
+
+    private var typeCompanyText: String {
+        [train.trainType, train.company]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+            .joined(separator: " · ")
+    }
+
+    private var stopCountText: String {
+        "\(train.stops.count) \(localization.countryText("unit.stops", fallback: "stops"))"
     }
 
     private var departureTime: String? {
         let time = train.stops.first?.departure ?? train.stops.first?.arrival
         guard let time, !time.isEmpty else { return nil }
         return time
+    }
+
+    private var arrivalTime: String? {
+        let time = train.stops.last?.arrival ?? train.stops.last?.departure
+        guard let time, !time.isEmpty else { return nil }
+        return time
+    }
+
+    private var swatchColor: Color {
+        if let color = train.style?.color, let resolved = Color(hex: color) {
+            return resolved
+        }
+        return Color(hex: TrainValidation.defaultTrainColor) ?? .accentColor
     }
 }
 
@@ -334,6 +542,10 @@ struct JourneySummaryRow: View {
 /// to `nil` and the row correctly draws no filled button at all.
 struct QuietActionGroup: View {
     var presentation: JourneyPresentation
+    /// The selected-journey card keeps its four controls on one scan line:
+    /// primary, playback, edit, then More. Other surfaces retain the stacked
+    /// layout because their action sets are not constrained to those roles.
+    var arrangesJourneyControlsInOneRow = false
     var perform: (JourneyPresentation.PrimaryAction) -> Void
     var performSecondary: (SecondaryAction) -> Void
 
@@ -344,7 +556,56 @@ struct QuietActionGroup: View {
         let quiet = presentation.secondaryActions.filter(\.showsInQuietRow)
         let more = presentation.secondaryActions.filter { !$0.showsInQuietRow }
 
-        VStack(spacing: 8) {
+        if arrangesJourneyControlsInOneRow && !dynamicTypeSize.isAccessibilitySize {
+            // One scan line where one scan line fits, and something legible
+            // where it does not.
+            //
+            // The row itself is right; what was wrong is that it could not
+            // FAIL. `journeyRowQuietButton` carried `minimumScaleFactor`, so
+            // the arrangement reported that it fitted at any width by
+            // shrinking its own text — which is why a 300-point landscape
+            // sidebar (§4.3) drew 「聚焦」 and 「播放」 as half words instead
+            // of falling back to something that fits. `ViewThatFits` can only
+            // choose between candidates that state their true width, so the
+            // shrink is gone and the fallbacks are real:
+            //
+            //   1. every control labelled, on one line
+            //   2. the primary keeps a SHORT label — 経路 / Focus / 聚焦 — and
+            //      the quiet verbs become the icons they already are next to
+            //      編集, which is the degradation a system toolbar makes when
+            //      it narrows
+            //
+            // There is deliberately no third, stacked candidate at these text
+            // sizes. A stacked group in a 300-point landscape sidebar puts its
+            // second row under the floating tab bar, so "it fitted" was true
+            // of the layout and false of the screen — a fallback that hides
+            // three of the four controls is worse than the crowding it was
+            // avoiding. Candidate 2 is four fixed-width controls and always
+            // fits; stacking belongs to the accessibility sizes below, where
+            // the panel is tall and the tab bar is not over the content.
+            ViewThatFits(in: .horizontal) {
+                journeyControlRow(quiet, more: more, labelsQuietActions: true)
+                journeyControlRow(
+                    quiet, more: more, labelsQuietActions: false, shortPrimary: true)
+            }
+        } else if arrangesJourneyControlsInOneRow {
+            // An accessibility text size does not get a narrower font, it gets
+            // the stacked layout. §10.1 asks the LAYOUT to follow the setting:
+            // four controls cannot share a scan line at `accessibility5` at
+            // any font this app is allowed to pick, so clamping the type here
+            // would be answering a layout question by overruling the reader.
+            stackedControls(quiet, more: more)
+        } else {
+            stackedControls(quiet, more: more)
+        }
+    }
+
+    /// The component's original arrangement, and now also the last fallback
+    /// for the one-row one.
+    private func stackedControls(
+        _ quiet: [SecondaryAction], more: [SecondaryAction]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let primary = presentation.primaryAction {
                 primaryButton(primary)
             }
@@ -354,40 +615,131 @@ struct QuietActionGroup: View {
         }
     }
 
+    /// The four journey controls on one line: primary, playback, edit, More.
+    ///
+    /// `labelsQuietActions` is the single knob between the two one-line
+    /// candidates — with it the quiet verbs carry their words, without it they
+    /// are icons. The primary keeps its label either way: §3.1 gives a surface
+    /// one filled action, and an unlabelled one is a filled button that does
+    /// not say what it does.
+    private func journeyControlRow(
+        _ quiet: [SecondaryAction], more: [SecondaryAction],
+        labelsQuietActions: Bool, shortPrimary: Bool = false
+    ) -> some View {
+        HStack(spacing: 8) {
+            if let primary = presentation.primaryAction {
+                primaryButton(primary, short: shortPrimary)
+                    .layoutPriority(1)
+            }
+            ForEach(quiet, id: \.self) { action in
+                if action == .edit || !labelsQuietActions {
+                    journeyRowIconButton(action)
+                } else {
+                    journeyRowQuietButton(action)
+                        .layoutPriority(1)
+                }
+            }
+            if !more.isEmpty { journeyRowMoreMenu(more) }
+        }
+        // Optical centring, not layout centring — see `trailingHitSlack`.
+        .padding(.leading, trailingHitSlack(quiet, more: more,
+                                            labelsQuietActions: labelsQuietActions))
+        // Centred, not leading. These four controls are a group that sizes to
+        // its own content, so a leading row left a ragged strip of empty card
+        // to the right of More that read as a fifth control missing from the
+        // line. The row's own width is the same either way — only where the
+        // slack goes changes — and splitting it evenly makes the group read as
+        // one unit belonging to the card rather than one edge of it.
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    /// The transparent slack the row's LAST control carries outside its own
+    /// ink, when that control is one of the circles.
+    ///
+    /// `journeyRowIcon` draws a 34-point circle inside a 44-point hit frame,
+    /// so a row ending in one is 5 points wider than it looks while the filled
+    /// pill that starts it is exactly as wide as its ink. Centring the layout
+    /// box therefore lands the visible group 2.5 points left of the card's
+    /// middle — measured, not assumed: 31 points of card to the left of the
+    /// pill against 38 to the right of More. Padding the leading edge by the
+    /// same slack moves the centre back by half of it and the ink is centred.
+    ///
+    /// Returned as 0 when the row ends in a labelled button, which states its
+    /// true width: the compensation exists for the circles, and applying it
+    /// unconditionally would push those rows off-centre in the other
+    /// direction.
+    private func trailingHitSlack(
+        _ quiet: [SecondaryAction], more: [SecondaryAction], labelsQuietActions: Bool
+    ) -> CGFloat {
+        let endsInCircle =
+            !more.isEmpty || quiet.last.map { $0 == .edit || !labelsQuietActions } == true
+        guard endsInCircle else { return 0 }
+        return (44 - SheetIconButton<Image>.visualSide) / 2
+    }
+
     private func primaryButton(
-        _ action: JourneyPresentation.PrimaryAction
+        _ action: JourneyPresentation.PrimaryAction, short: Bool = false
     ) -> some View {
         let appearance = action.appearance(localization)
+        let title = short ? appearance.shortLabel : appearance.label
         return Button { perform(action) } label: {
-            Label(appearance.label, systemImage: appearance.systemImage)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
+            Label(title, systemImage: appearance.systemImage)
+                .font(.footnote.weight(.semibold))
+                .lineLimit(1)
+                // States its TRUE width. Without this the label truncates to
+                // whatever it is offered, so the full-label candidate below
+                // reported that it fitted a 300-point sidebar by cutting its
+                // own verb in half — and `ViewThatFits`, told that the first
+                // candidate fits, never reached the short one.
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 2)
         }
         .buttonStyle(.borderedProminent)
-        .controlSize(.large)
+        .controlSize(.regular)
+        // A compact visual button with the same 44-point landing area as the
+        // header icons. The action stays easy to hit without reading as a
+        // full-width call-to-action that overwhelms the journey itself.
+        .frame(height: 44)
+        .contentShape(.rect)
+        .accessibilityLabel(Text(appearance.label))
+        // Which action this IS varies by state — 経路 / 播放 / 聚焦 — and its
+        // label is the reader's language on top of that, so a harness has no
+        // string to look it up by. `ConsoleSweepTests` tried three English ones
+        // and silently walked past the journey card on every non-English
+        // simulator; the identifier is what the resolver's choice can be
+        // reached through without naming it.
+        .accessibilityIdentifier("journeyPrimaryAction")
+    }
+
+    /// The playback control uses the same system geometry as the prominent
+    /// control beside it. Only emphasis differs; height, type and insets do
+    /// not, so the row reads as one control family.
+    private func journeyRowQuietButton(_ action: SecondaryAction) -> some View {
+        let appearance = action.appearance(localization)
+        return Button { performSecondary(action) } label: {
+            Label(appearance.label, systemImage: appearance.systemImage)
+                .font(.footnote.weight(.semibold))
+                // No `minimumScaleFactor`. It is what let this button report
+                // that it fitted any width by shrinking its own text, which
+                // made the `ViewThatFits` above unable to ever reject the
+                // one-line arrangement. A control that states its true width
+                // is what lets the layout degrade instead of the type.
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 2)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .frame(height: 44)
+        .contentShape(.rect)
         .accessibilityLabel(Text(appearance.label))
     }
 
     @ViewBuilder
     private func quietRow(_ quiet: [SecondaryAction], more: [SecondaryAction]) -> some View {
-        // At an accessibility size three side-by-side labels are three
-        // truncated words; §10.1 says the answer is more room, not less type.
-        let stacks = dynamicTypeSize.isAccessibilitySize
-        Group {
-            if stacks {
-                VStack(spacing: 8) {
-                    ForEach(quiet, id: \.self) { quietButton($0) }
-                    if !more.isEmpty { moreMenu(more).frame(maxWidth: .infinity) }
-                }
-            } else {
-                HStack(spacing: 8) {
-                    ForEach(quiet, id: \.self) { quietButton($0) }
-                    if !more.isEmpty { moreMenu(more) }
-                }
-            }
+        HStack(spacing: 8) {
+            ForEach(quiet, id: \.self) { quietButton($0) }
+            if !more.isEmpty { moreMenu(more) }
         }
     }
 
@@ -405,18 +757,59 @@ struct QuietActionGroup: View {
         .accessibilityLabel(Text(appearance.label))
     }
 
+    private func journeyRowIconButton(_ action: SecondaryAction) -> some View {
+        let appearance = action.appearance(localization)
+        return Button {
+            performSecondary(action)
+        } label: {
+            journeyRowIcon(appearance.systemImage)
+                .accessibilityHidden(true)
+        }
+        .buttonStyle(RailPressStyle())
+        .accessibilityLabel(Text(appearance.label))
+    }
+
+    private func journeyRowMoreMenu(_ actions: [SecondaryAction]) -> some View {
+        Menu {
+            menuItems(actions)
+        } label: {
+            journeyRowIcon("ellipsis")
+        }
+        // The same feedback as `journeyRowIconButton` beside it. These two are
+        // the same circle at the same size in the same row, and `.plain` gave
+        // one of them a press and the other nothing — things that look alike
+        // have to behave alike, or the row teaches the reader that its own
+        // controls are inconsistent.
+        .buttonStyle(RailPressStyle())
+        .accessibilityLabel(
+            Text(localization.journeyText("ios.journey.moreActions", fallback: "More")))
+    }
+
+    /// Icon-only controls share the text buttons' 34-point visual height and
+    /// the row's 44-point hit height. Accent-coloured glyphs match the quiet
+    /// playback button while the neutral fill keeps the primary action unique.
+    private func journeyRowIcon(_ systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            // A fixed point size, not `.subheadline`. A text style scales with
+            // Dynamic Type and this glyph lives in a 34-point circle that does
+            // not, so at an accessibility size the icon grew straight out of
+            // its own shape. `MapControlBar.ControlButton` fixes its glyph for
+            // exactly this reason: a control's meaning and its 44-point target
+            // do not get clearer by doubling the mark inside it.
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+            .frame(
+                width: SheetIconButton<Image>.visualSide,
+                height: SheetIconButton<Image>.visualSide)
+            .background(.quaternary.opacity(0.5), in: Circle())
+            .overlay { Circle().stroke(Color.primary.opacity(0.06), lineWidth: 0.5) }
+            .frame(width: 44, height: 44)
+            .contentShape(.rect)
+    }
+
     private func moreMenu(_ actions: [SecondaryAction]) -> some View {
         Menu {
-            // §5.2: destructive last, and with the role, so the system draws
-            // it the way readers already expect a delete to be drawn.
-            ForEach(actions.filter { !$0.appearance(localization).isDestructive }, id: \.self) {
-                menuButton($0)
-            }
-            let destructive = actions.filter { $0.appearance(localization).isDestructive }
-            if !destructive.isEmpty {
-                Divider()
-                ForEach(destructive, id: \.self) { menuButton($0) }
-            }
+            menuItems(actions)
         } label: {
             Label(
                 localization.journeyText("ios.journey.moreActions", fallback: "More"),
@@ -430,6 +823,20 @@ struct QuietActionGroup: View {
         .buttonStyle(.bordered)
         .accessibilityLabel(
             Text(localization.journeyText("ios.journey.moreActions", fallback: "More")))
+    }
+
+    @ViewBuilder
+    private func menuItems(_ actions: [SecondaryAction]) -> some View {
+        // §5.2: destructive last, and with the role, so the system draws it
+        // the way readers already expect a delete to be drawn.
+        ForEach(actions.filter { !$0.appearance(localization).isDestructive }, id: \.self) {
+            menuButton($0)
+        }
+        let destructive = actions.filter { $0.appearance(localization).isDestructive }
+        if !destructive.isEmpty {
+            Divider()
+            ForEach(destructive, id: \.self) { menuButton($0) }
+        }
     }
 
     private func menuButton(_ action: SecondaryAction) -> some View {

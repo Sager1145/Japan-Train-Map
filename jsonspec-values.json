@@ -14,6 +14,7 @@
     "preferred_line_names": "countries.*.line_names",
     "route_section_line_names": "countries.*.line_names",
     "n02_station_code": "countries.*.stations[].code",
+    "platform_number": "A verified service timetable or passenger record only; null when unavailable. Never infer it from platform geometry or station groups.",
     "stop_name": "countries.*.stations[].canonical_name",
     "stop_name_fallback": "countries.*.station_name_fallbacks[].lookup_name when no canonical station code is available",
     "route_section_station_order": "countries.*.lines[].station_sequence",
@@ -23,7 +24,8 @@
     "display_line_id and rail package geometry/group ids are lookup-only and must never be written as canonical station codes or line_names.",
     "A station code with in_solver_network=false exists only in the readings table and may not be routable in the current package.",
     "A station_sequence item with no canonical_code_candidates must use null in generated JSON; never copy the package geometry station id.",
-    "A station_sequence item with multiple canonical_code_candidates requires branch/line-specific disambiguation."
+    "A station_sequence item with multiple canonical_code_candidates requires branch/line-specific disambiguation.",
+    "Physical platform geometry and map anchors are not service platform numbers; platform_number must remain null unless a verified service-specific source provides it."
   ],
   "source_files": [
     {
@@ -96,7 +98,7 @@
     },
     {
       "path": "app/data/stations.json",
-      "sha256": "8b900f852d7ab14acbc5aae0e653c3cb2271a6dd27d82a3d072090ff604fb494"
+      "sha256": "1d7aa22b925ee99abc1c90faf9ed476650059412faf64a63025ebbf1c663a893"
     },
     {
       "path": "app/data/train-store-hk.json",
@@ -128,7 +130,7 @@
     },
     {
       "path": "app/public/rail/jp-2025.json",
-      "sha256": "9b74adf10eed050523a967813f086190d762aafccbf4b5f3b2cd645f6d53bd20"
+      "sha256": "0f6e7041dedf8ba71643f0b7ddc427a6b7965cde87cd3f3af46e67fc3db305f1"
     },
     {
       "path": "app/public/rail/kr-2025.json",
@@ -41058,66 +41060,6 @@
           "name_roma": "",
           "station_sequence": [
             {
-              "name": "北与野",
-              "canonical_code_candidates": [
-                "002938"
-              ]
-            },
-            {
-              "name": "与野本町",
-              "canonical_code_candidates": [
-                "002951"
-              ]
-            },
-            {
-              "name": "南与野",
-              "canonical_code_candidates": [
-                "002975"
-              ]
-            },
-            {
-              "name": "中浦和",
-              "canonical_code_candidates": [
-                "002995"
-              ]
-            },
-            {
-              "name": "武蔵浦和",
-              "canonical_code_candidates": [
-                "003006"
-              ]
-            },
-            {
-              "name": "北戸田",
-              "canonical_code_candidates": [
-                "003044"
-              ]
-            },
-            {
-              "name": "戸田",
-              "canonical_code_candidates": [
-                "003052"
-              ]
-            },
-            {
-              "name": "戸田公園",
-              "canonical_code_candidates": [
-                "003072"
-              ]
-            },
-            {
-              "name": "浮間舟渡",
-              "canonical_code_candidates": [
-                "003107"
-              ]
-            },
-            {
-              "name": "北赤羽",
-              "canonical_code_candidates": [
-                "003130"
-              ]
-            },
-            {
               "name": "赤羽",
               "canonical_code_candidates": [
                 "003155"
@@ -41829,6 +41771,94 @@
               "name": "盛岡",
               "canonical_code_candidates": [
                 "000792"
+              ]
+            }
+          ]
+        },
+        {
+          "display_line_id": "jp-東日本旅客鉄道-東北線-5",
+          "line_name": "東北線",
+          "operator_name": "東日本旅客鉄道",
+          "company_value": "JR東日本",
+          "institution_type_codes": [
+            "2"
+          ],
+          "railway_class_codes": [
+            "11"
+          ],
+          "color": "#359e64",
+          "name_roma": "",
+          "station_sequence": [
+            {
+              "name": "大宮",
+              "canonical_code_candidates": [
+                "002914"
+              ]
+            },
+            {
+              "name": "北与野",
+              "canonical_code_candidates": [
+                "002938"
+              ]
+            },
+            {
+              "name": "与野本町",
+              "canonical_code_candidates": [
+                "002951"
+              ]
+            },
+            {
+              "name": "南与野",
+              "canonical_code_candidates": [
+                "002975"
+              ]
+            },
+            {
+              "name": "中浦和",
+              "canonical_code_candidates": [
+                "002995"
+              ]
+            },
+            {
+              "name": "武蔵浦和",
+              "canonical_code_candidates": [
+                "003006"
+              ]
+            },
+            {
+              "name": "北戸田",
+              "canonical_code_candidates": [
+                "003044"
+              ]
+            },
+            {
+              "name": "戸田",
+              "canonical_code_candidates": [
+                "003052"
+              ]
+            },
+            {
+              "name": "戸田公園",
+              "canonical_code_candidates": [
+                "003072"
+              ]
+            },
+            {
+              "name": "浮間舟渡",
+              "canonical_code_candidates": [
+                "003107"
+              ]
+            },
+            {
+              "name": "北赤羽",
+              "canonical_code_candidates": [
+                "003130"
+              ]
+            },
+            {
+              "name": "赤羽",
+              "canonical_code_candidates": [
+                "003155"
               ]
             }
           ]
@@ -360908,13 +360938,13 @@
         "accepted_company_aliases": 35,
         "line_names": 554,
         "line_names_without_display_sequence": 5,
-        "line_variants": 651,
+        "line_variants": 652,
         "station_codes": 10154,
         "solver_station_codes": 10154,
         "reading_only_station_codes": 0,
         "station_name_fallbacks": 787,
         "station_name_fallbacks_without_canonical_code": 10,
-        "line_station_occurrences": 10215,
+        "line_station_occurrences": 10217,
         "line_station_occurrences_without_canonical_code": 2,
         "line_station_occurrences_with_multiple_code_candidates": 0,
         "excluded_noncanonical_station_code_occurrences": 0

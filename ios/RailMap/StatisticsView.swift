@@ -1,11 +1,21 @@
 import RailCore
 import SwiftUI
 
-/// The 里程統計 workspace. Split out of `AppShell.swift` so the four top-level
-/// destinations are four files: the shell owns navigation, each destination
-/// owns its own screen — which is also what lets them be worked on at once.
+/// The mileage statistics, as a SECTION rather than as a screen.
 ///
-/// The screen answers one question, in the order §5.7 asks it: how much have I
+/// §2.2 folds this into Passport: the statistics are one of five things that
+/// workspace shows, between the coverage map above and the journey log below.
+/// So this type is a stack of cards with no `ScrollView`, no navigation title
+/// and no toolbar of its own — `PassportWorkspaceView` owns all three, and a
+/// section that brought its own scroll view would be a scroll view inside a
+/// scroll view.
+///
+/// It carries no scope control at all. §5.3.1 puts Scope at the top of
+/// Passport and §5.1 forbids a second filter source for one value, so the
+/// region and the date are both chosen in the panel header and arrive here as
+/// inputs — the region as a `Binding`, the date through the statistics store.
+///
+/// The cards answer one question in the order §5.7 asks it: how much have I
 /// ridden, over how many journeys and days, how much of the network is that,
 /// what kind of trains were they, which sections do I ride most, and then the
 /// line-by-line detail underneath.
@@ -16,12 +26,43 @@ import SwiftUI
 /// selected — reading `--` in every field when it is not. The dashes are the
 /// point. `0 km` would be an answer, and "no day is in scope" is not an
 /// answer, so the combined view never spells one.
-struct StatisticsDashboardView: View {
+///
+/// ## The stationery (§6.1)
+///
+/// These cards are drawn as passport pages rather than as system cards, which
+/// is the Memory personality §6.1 reserves for exactly this screen —
+/// "expressive / railway-signage / ticket-and-map metaphors / souvenir-like".
+/// The tones come from `PassportCardStyle.swift` and are assigned here:
+///
+///   - `.feature`, once, for ``passportDataPage(_:_:)`` — the card that
+///     answers §5.3's question.
+///   - `.soft` for the three cards that carry charts, so a screen with one
+///     loud card still reads as one set of pages rather than as a poster with
+///     receipts stapled to it.
+///   - `.plain` for the dense line-by-line lists and for every state that is
+///     not a number: a failure, an empty scope, a calculation in progress.
+///     §6.1 is explicit that the Memory style must not be worn by a card
+///     reporting that something went wrong.
+///
+/// Three cards were merged into one page — §5.7 #1, #2 and 當日統計, see
+/// ``passportDataPage(_:_:)`` — and one row was lifted out of a list into a
+/// highlight (§5.7 #5). The date scope left with the daily card: it is in the
+/// panel header now, beside the region, where §5.3.1 puts Scope and where it
+/// stays visible at every sheet stop. Nothing else moved: same figures, same
+/// order, same wording, and the same VoiceOver sentences over the top of them.
+struct StatisticsDashboardContent: View {
     @Environment(AppLocalization.self) private var localization
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable var itineraries: ItineraryStore
     @Bindable var statistics: MileageStatisticsStore
-    let country: String
+    /// Which region's numbers these are.
+    ///
+    /// The map draws every region at once, but a statistic cannot: the
+    /// categories differ (捷運 / 地下鐵, 高鐵 / 新幹線), and coverage is a
+    /// fraction of one network's own length. So this screen keeps the region
+    /// switch the rest of the app no longer has, and it is a `Binding` because
+    /// the shell reloads `MileageStatisticsStore` when it moves.
+    /// `nil` is 全部 — every network in one denominator.
+    @Binding var region: Region?
 
     /// §13.2: work under about 400 ms must not flash progress UI at the
     /// reader. Held here rather than inside the summary because the summary is
@@ -70,37 +111,33 @@ struct StatisticsDashboardView: View {
 
     var body: some View {
         Group {
-            if let loaded = itineraries.loaded {
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        dailyCard(loaded)
-                        if progressVisible, let progress = statistics.progress {
-                            StatisticsProgressSummary(progress: progress)
-                        }
-                        if let failure = statistics.failureMessage {
-                            failureCard(failure)
-                        }
-                        if loaded.trains.isEmpty {
-                            emptyCard
-                        } else if let stats = statistics.view {
-                            mileageHeroCard(stats.overall)
-                            overviewCard(loaded, stats.overall)
-                            coverageCard(stats)
-                            serviceCard(stats.overall)
-                            topSegmentsCard(stats.overall)
-                            lineDetailCard(stats)
-                        }
+            if let loaded = itineraries.loaded.map(scoped) {
+                // A plain VStack, not Lazy: the caller is already a LazyVStack
+                // inside the workspace's one ScrollView, and nesting a second
+                // lazy container inside it defeats both.
+                VStack(spacing: 16) {
+                    if progressVisible, let progress = statistics.progress {
+                        StatisticsProgressSummary(progress: progress)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 110)
+                    if let failure = statistics.failureMessage {
+                        failureCard(failure)
+                    }
+                    if loaded.trains.isEmpty {
+                        emptyCard
+                    } else if let stats = statistics.view {
+                        passportDataPage(loaded, stats.overall)
+                        coverageCard(stats)
+                        serviceCard(stats.overall)
+                        topSegmentsCard(stats.overall)
+                        lineDetailCard(stats)
+                    }
                 }
-                .background(Color(.systemGroupedBackground))
             } else {
                 ProgressView(localization.statsText("ios.stats.calculating"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
             }
         }
-        .navigationTitle(localization.text("ios.statistics", fallback: "Statistics"))
         .task(id: statistics.progress == nil) {
             guard statistics.progress != nil else {
                 progressVisible = false
@@ -111,61 +148,9 @@ struct StatisticsDashboardView: View {
         }
     }
 
-    // MARK: - 當日統計
+    // MARK: - 當日統計, as a stamp on the passport
 
-    /// `#stats-daily`, plus the scope control the web app does not need.
-    ///
-    /// In the browser the panel silently follows the one global `selectedDate`
-    /// the date bar writes. There is no such global here — the rides workspace
-    /// owns its filter and this screen owns its own — so the scope is picked
-    /// here, and picking it does not disturb the ride list.
-    private func dailyCard(_ loaded: ItineraryStore.Loaded) -> some View {
-        let daily = statistics.view?.daily
-        let dateText = daily.map { scopeLabel($0.date) } ?? StatisticsFormat.unset
-        return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(localization.statsText(
-                    "stats.dailyTitle", params: ["date": .string(dateText)]))
-                    .font(.headline)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                scopeMenu(loaded)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(daily.map { StatisticsFormat.km($0.stats.riddenAll) }
-                        ?? StatisticsFormat.unset)
-                        .font(.system(.largeTitle, design: .rounded).bold())
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text(verbatim: "km")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                }
-                Text(dailySubtitle(daily))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(localization.statsText(
-                "stats.dailyTitle", params: ["date": .string(dateText)])))
-            // "--" spoken as dashes says nothing, so the unset state names
-            // itself instead of reading the placeholder aloud.
-            .accessibilityValue(Text(dailySpoken(daily)))
-
-            // Same mutually-exclusive ride groups as 實際乘坐量; the overlapping
-            // network-category rows the panel once carried here were removed.
-            if let daily {
-                Divider()
-                serviceTextRows(daily.stats.services)
-            }
-        }
-        .statisticsCard()
-    }
-
+    /// `#stats-daily`'s subtitle: how long, over how many trains.
     private func dailySubtitle(_ daily: Statistics.DailyStats?) -> String {
         let time = daily.map { StatisticsFormat.duration($0.stats.rideMinutes, localization) }
             ?? StatisticsFormat.unset
@@ -178,33 +163,53 @@ struct StatisticsDashboardView: View {
         return "\(localization.statsText("stat.time")) \(time) · \(trains)"
     }
 
+    /// `#stats-daily`, as a stamp inside the passport rather than as a card
+    /// above it.
+    ///
+    /// The web app renders this block whether or not a day is chosen, with
+    /// `--` in every field, because in the browser the date bar that scopes it
+    /// is a different region of the page. Here the scope control sits in the
+    /// panel header — visible at every sheet stop, on this destination only —
+    /// so "no day is in scope" is stated by the control that owns the scope.
+    /// A block of dashes underneath it would say the same thing a second time,
+    /// in the one register §13.1 rules out.
+    private func dailyStamp(_ daily: Statistics.DailyStats) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                PassportEyebrow(localization.statsText("ios.stats.dailyHeading"))
+                Spacer(minLength: 8)
+                PassportEyebrow(scopeLabel(daily.date))
+            }
+            PassportHeadline(
+                label: localization.statsText(
+                    "stats.dailyTitle", params: ["date": .string(scopeLabel(daily.date))]),
+                value: StatisticsFormat.km(daily.stats.riddenAll),
+                spoken: dailySpoken(daily),
+                unit: "km",
+                caption: dailySubtitle(daily),
+                // A field inside the page, not a second page headline: the
+                // day is part of the total above it, and two `largeTitle`
+                // figures on one card is two cards.
+                prominence: .field)
+            // Same mutually-exclusive ride groups as 實際乘坐量; the
+            // overlapping network-category rows the panel once carried here
+            // were removed.
+            PassportRule()
+            VStack(spacing: 8) {
+                ForEach(serviceRows(daily.stats.services)) { row in
+                    PassportRow(
+                        label: localization.statsCategoryText(row.key),
+                        value:
+                            "\(StatisticsFormat.km(row.group.km)) km · \(serviceDetail(row.group))")
+                }
+            }
+        }
+        .passportBlock()
+    }
+
     private func dailySpoken(_ daily: Statistics.DailyStats?) -> String {
         guard let daily else { return localization.statsText("ios.stats.unsetSpoken") }
         return "\(StatisticsFormat.km(daily.stats.riddenAll)) km · \(dailySubtitle(daily))"
-    }
-
-    private func scopeMenu(_ loaded: ItineraryStore.Loaded) -> some View {
-        Menu {
-            Picker(
-                localization.statsText("ios.stats.scope"),
-                selection: Binding(
-                    get: { statistics.selectedDate },
-                    set: { statistics.selectDate($0) })
-            ) {
-                Text(localization.statsText("date.all")).tag(Dates.allDates)
-                ForEach(loaded.days) { day in
-                    Text(scopeLabel(day.date)).tag(day.date)
-                }
-            }
-        } label: {
-            Label(
-                scopeLabel(statistics.selectedDate),
-                systemImage: "calendar")
-                .font(.subheadline.weight(.semibold))
-                .labelStyle(.titleAndIcon)
-        }
-        .accessibilityLabel(Text(localization.statsText("ios.stats.scope")))
-        .accessibilityValue(Text(scopeLabel(statistics.selectedDate)))
     }
 
     /// `dateLabel` — the two sentinels need a word, a real bucket labels itself.
@@ -213,72 +218,62 @@ struct StatisticsDashboardView: View {
         return localization.text(key, fallback: key)
     }
 
-    // MARK: - §5.7 #1 總乘車里程
+    // MARK: - §5.7 #1 + #2 — the passport data page
 
-    private func mileageHeroCard(_ stats: Statistics.MileageStats) -> some View {
-        let total = statistics.totalKm
-        let pct = total > 0 ? 100 * stats.riddenAll / total : 0
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(localization.statsText("ios.stats.totalDistance"))
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(StatisticsFormat.km(stats.riddenAll))
-                    .font(.system(.largeTitle, design: .rounded).bold())
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                Text(verbatim: "km")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-            }
-            Text(verbatim:
-                "\(StatisticsFormat.percent(pct))% · \(StatisticsFormat.km(total)) km · \(regionName)")
-                .font(.footnote)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // §5.7: a neutral note, not the critical role. Unmatched distance
-            // means the drawn ride left the classified network for a stretch —
-            // it is information about coverage, not a data error.
-            if stats.unmatchedKm > 0.01 {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(localization.statsText("ios.stats.unmatchedTitle"))
-                            .font(.footnote.weight(.semibold))
-                        Text(localization.text(
-                            "ios.unmatchedDistance",
-                            params: ["km": .string(StatisticsFormat.km(stats.unmatchedKm))],
-                            fallback: "\(StatisticsFormat.km(stats.unmatchedKm)) km unmatched"))
-                            .font(.footnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } icon: {
-                    Image(systemName: "info.circle")
-                }
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
-                .accessibilityElement(children: .combine)
-            }
-        }
-        .statisticsCard()
-        .accessibilityElement(children: .contain)
-    }
-
-    // MARK: - §5.7 #2 旅程數 / 出行日 / 停站數 / 乘車時間
-
-    private func overviewCard(
+    /// 總乘車里程, the fields that qualify it, and the day in scope — one page.
+    ///
+    /// §5.3.3 asks for the distance first and 旅程數 / 出行日 / 停站數 /
+    /// 乘車時間 second, and that is the order here — but as ONE card rather
+    /// than three, which is where this screen departs from a card-per-item
+    /// reading of the spec. The reason is the thing being imitated: a passport
+    /// data page is a headline with its fields under it, and on separate
+    /// surfaces the total read as the answer to a different question from the
+    /// journey count that produced it.
+    ///
+    /// One field is not in §5.3.3's list: 乗車路線, the number of distinct
+    /// lines ridden and the companies that run them. It is the reference's
+    /// AIRLINES field, it is free (the aggregate already carries the per-line
+    /// table), and it answers the question a coverage percentage cannot —
+    /// 31 % of the network is not a thing anyone has ridden, 125 lines is.
+    ///
+    /// It is also the one `.feature` card on the screen (§6.1's Memory
+    /// personality — see `PassportCardStyle.swift`). One, because a screen
+    /// where every card is loud has no hero, and this is the card that answers
+    /// §5.3's question: **how much have I ridden, and which railways does that
+    /// cover?**
+    private func passportDataPage(
         _ loaded: ItineraryStore.Loaded, _ stats: Statistics.MileageStats
     ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(
-                localization.text("ios.overview", fallback: "Overview"),
-                systemImage: "calendar.badge.clock")
-                .font(.headline)
-            StatisticsMetricGrid(items: [
+        let total = statistics.totalKm
+        let pct = total > 0 ? 100 * stats.riddenAll / total : 0
+        let ridden = riddenLines(stats)
+        let laps = aroundTheWorld(stats.riddenAll)
+        let distance = StatisticsFormat.km(stats.riddenAll)
+        return VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                // No region chip and no date menu on the card. Both scopes are
+                // chosen in the panel header now — one row, always visible, on
+                // this destination only — and a card that repeated either
+                // would be a second place for one value to be stated (§5.1).
+                PassportEyebrow(localization.statsText("ios.stats.passportTitle"))
+                PassportBookletLine()
+            }
+
+            PassportHeadline(
+                label: localization.statsText("ios.stats.totalDistance"),
+                value: distance,
+                spoken: laps.map { "\(distance) km · \($0)" } ?? "\(distance) km",
+                unit: "km",
+                caption: laps)
+
+            PassportMetricGrid(items: [
                 .init(
-                    localization.text("ios.recordedJourneys", fallback: "Journeys"),
-                    loaded.trains.count.formatted()),
+                    localization.statsText("ios.stats.journeysLabel"),
+                    loaded.trains.count.formatted(),
+                    caption: highSpeedCaption(stats.services)),
+                .init(
+                    localization.text("ios.rideTime", fallback: "Ride time"),
+                    StatisticsFormat.duration(stats.rideMinutes, localization)),
                 .init(
                     localization.text("ios.travelDays", fallback: "Travel days"),
                     loaded.days.count.formatted()),
@@ -286,11 +281,107 @@ struct StatisticsDashboardView: View {
                     localization.text("ios.stops", fallback: "Stops"),
                     stopCount(loaded.trains).formatted()),
                 .init(
-                    localization.text("ios.rideTime", fallback: "Ride time"),
-                    StatisticsFormat.duration(stats.rideMinutes, localization)),
+                    localization.statsText("ios.stats.linesRidden"),
+                    ridden.lines.formatted(),
+                    caption: ridden.operators > 0
+                        ? localization.statsText(
+                            "ios.stats.operatorCount",
+                            params: ["n": .number(Double(ridden.operators))])
+                        : nil),
             ])
+
+            // The same three numbers the old hero footnote carried — the
+            // percentage, the denominator, and what they are a fraction of —
+            // in the band the reference puts its footer chip in. Not a
+            // navigation: the coverage card is the next card down in the same
+            // scroll view, and a button that scrolls the reader somewhere they
+            // can already see is furniture.
+            PassportBand(
+                label: localization.statsText("stats.coverageTitle"),
+                value: "\(StatisticsFormat.percent(pct))%",
+                detail: "\(distance) / \(StatisticsFormat.km(total)) km",
+                fraction: total > 0 ? stats.riddenAll / total : 0,
+                spoken: coverageSpoken(ridden: stats.riddenAll, total: total))
+
+            // The selected day, stamped on the page it is part of (§5.3.3's
+            // Daily module). Below the all-time block rather than above it, so
+            // the passport's own headline and fields stay contiguous and the
+            // day reads as what it is: one entry in them.
+            if let daily = statistics.view?.daily {
+                dailyStamp(daily)
+            }
+
+            // §5.7: a neutral note, not the critical role. Unmatched distance
+            // means the drawn ride left the classified network for a stretch —
+            // it is information about coverage, not a data error.
+            if stats.unmatchedKm > 0.01 {
+                PassportNote(
+                    title: localization.statsText("ios.stats.unmatchedTitle"),
+                    message: localization.text(
+                        "ios.unmatchedDistance",
+                        params: ["km": .string(StatisticsFormat.km(stats.unmatchedKm))],
+                        fallback: "\(StatisticsFormat.km(stats.unmatchedKm)) km unmatched"))
+            }
         }
-        .statisticsCard()
+        .passportCard(.feature)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The reference's "1.4x around the world", in the only unit that means
+    /// anything to someone who has been counting kilometres: laps of the
+    /// equator, at the WGS-84 circumference the map's own distances are
+    /// measured on.
+    ///
+    /// `nil` under a twentieth of a lap, where the figure would read 「地球
+    /// 0.0 周」 and say nothing. Expressive is not the same as inventing a
+    /// number — §5.3 asks for both at once ("可以比编辑界面更有表现力，但数字仍
+    /// 应准确、克制").
+    private func aroundTheWorld(_ km: Double) -> String? {
+        guard km.isFinite, km > 0 else { return nil }
+        let laps = km / 40075.017
+        guard laps >= 0.05 else { return nil }
+        let digits = laps >= 1 ? 1 : 2
+        return localization.statsText(
+            "ios.stats.earthLaps",
+            params: [
+                "n": .string(laps.formatted(.number.precision(.fractionLength(digits))))
+            ])
+    }
+
+    /// The reference's "4 Long Haul" — the one qualifier a journey count is
+    /// worth carrying.
+    ///
+    /// `stat.hsr` is a country-variant key (新幹線 / 高鐵 / 고속철도), so it
+    /// goes through `statsCategoryText` and says whichever of those the region
+    /// in scope calls it.
+    private func highSpeedCaption(_ services: Statistics.ServiceGroups) -> String? {
+        guard services.hsr.count > 0 else { return nil }
+        let trains = localization.statsText(
+            "stat.trains", params: ["n": .number(Double(services.hsr.count))])
+        return "\(localization.statsCategoryText("stat.hsr")) \(trains)"
+    }
+
+    /// How many distinct lines the reader has been on, and how many companies
+    /// operate them — the passport's AIRLINES field, in this app's terms.
+    ///
+    /// Counted off `lineRidByCat` rather than off the ride records: it is
+    /// keyed by line name and holds the ridden kilometres per category, so a
+    /// line counts once however many categories it appears in, and a line the
+    /// reader has never been on does not count at all. Operators come from the
+    /// raw N02 name rather than the short label, because two companies can
+    /// share a short label and the count would then be one too few.
+    private func riddenLines(_ stats: Statistics.MileageStats)
+        -> (lines: Int, operators: Int)
+    {
+        var lines = 0
+        var operators: Set<String> = []
+        for (name, byMask) in stats.lineRidByCat.pairs {
+            guard byMask.values.contains(where: { $0 > 0 }) else { continue }
+            lines += 1
+            let operatorName = statistics.lineOperators[name] ?? ""
+            if !operatorName.isEmpty { operators.insert(operatorName) }
+        }
+        return (lines, operators.count)
     }
 
     // MARK: - §5.7 #3 路網覆蓋率
@@ -300,10 +391,9 @@ struct StatisticsDashboardView: View {
         let total = statistics.totalKm
         let pctAll = total > 0 ? 100 * stats.riddenAll / total : 0
         return VStack(alignment: .leading, spacing: 16) {
-            Label(
+            PassportCardHeader(
                 localization.statsText("stats.coverageTitle"),
                 systemImage: "chart.bar.xaxis")
-                .font(.headline)
             StatisticsBar(
                 label: localization.statsCategoryText("stat.all"),
                 value: "\(StatisticsFormat.percent(pctAll))%",
@@ -329,7 +419,7 @@ struct StatisticsDashboardView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .statisticsCard()
+        .passportCard(.soft)
     }
 
     private func coverageSpoken(ridden: Double, total: Double) -> String {
@@ -359,10 +449,9 @@ struct StatisticsDashboardView: View {
         let groups = serviceRows(stats.services)
         let totalKm = groups.reduce(0) { $0 + $1.group.km }
         return VStack(alignment: .leading, spacing: 16) {
-            Label(
+            PassportCardHeader(
                 localization.statsText("stats.actualTitle"),
                 systemImage: "chart.bar.fill")
-                .font(.headline)
             ForEach(groups) { row in
                 StatisticsBar(
                     label: localization.statsCategoryText(row.key),
@@ -377,7 +466,7 @@ struct StatisticsDashboardView: View {
                 label: localization.statsText("stat.time"),
                 value: StatisticsFormat.duration(stats.rideMinutes, localization))
         }
-        .statisticsCard()
+        .passportCard(.soft)
     }
 
     /// `serviceRowsHtml`'s three rows, in its order.
@@ -396,24 +485,6 @@ struct StatisticsDashboardView: View {
         return "\(time) · \(trains)"
     }
 
-    /// The daily card's compact form of the same three rows.
-    private func serviceTextRows(_ services: Statistics.ServiceGroups) -> some View {
-        VStack(spacing: 10) {
-            ForEach(serviceRows(services)) { row in
-                adaptiveRow(
-                    label: Text(localization.statsCategoryText(row.key))
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true),
-                    value: Text(verbatim:
-                        "\(StatisticsFormat.km(row.group.km)) km · \(serviceDetail(row.group))")
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary))
-                    .accessibilityElement(children: .combine)
-            }
-        }
-    }
-
     // MARK: - §5.7 #5 最常乘坐區間
 
     private func topSegmentsCard(_ stats: Statistics.MileageStats) -> some View {
@@ -427,35 +498,57 @@ struct StatisticsDashboardView: View {
             }
             return rows.isEmpty ? nil : TopSegmentSection(key: section.i18n, rows: rows)
         }
+        // The unfiltered list's own best row is lifted out of the list and
+        // into the highlight block — the reference's "Most flown aircraft"
+        // — so the card opens with the answer rather than with a heading
+        // over six category rows that all look alike. It is the same row,
+        // read once: `summarised: false` below keeps 全部鐵道 from stating
+        // it a second line later.
+        let overall = sections.first(where: { $0.key == "stat.allrail" })?.rows.first
         return Group {
             if !sections.isEmpty {
                 VStack(alignment: .leading, spacing: 14) {
-                    Label(
+                    PassportCardHeader(
                         localization.statsText("stats.topSegmentsTitle"),
                         systemImage: "list.number")
-                        .font(.headline)
+                    if let overall {
+                        PassportHighlight(
+                            eyebrow: localization.statsText("ios.stats.topSection"),
+                            title: sectionLabel(overall),
+                            detail:
+                                "\(rideCount(overall.count)) · \(StatisticsFormat.km(overall.km)) km")
+                    }
                     Text(localization.statsText("stats.topSegmentsHint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     ForEach(sections) { section in
-                        topSegmentSection(key: section.key, rows: section.rows)
+                        topSegmentSection(
+                            key: section.key,
+                            rows: section.rows,
+                            summarised: !(overall != nil && section.key == "stat.allrail"))
                     }
                 }
-                .statisticsCard()
+                .passportCard(.soft)
             }
         }
     }
 
     @ViewBuilder
-    private func topSegmentSection(key: String, rows: [Statistics.TopRow]) -> some View {
+    private func topSegmentSection(
+        key: String, rows: [Statistics.TopRow], summarised: Bool = true
+    ) -> some View {
         let best = rows[0]
+        let count = localization.statsText(
+            "stats.byCountCount", params: ["count": .number(Double(rows.count))])
         VStack(alignment: .leading, spacing: 8) {
-            adaptiveRow(
-                label: Text(localization.statsCategoryText(key)).font(.subheadline),
-                value: Text(verbatim: "\(sectionLabel(best)) · \(rideCount(best.count))")
-                    .font(.subheadline.weight(.semibold)))
-                .accessibilityElement(children: .combine)
+            if summarised {
+                adaptiveRow(
+                    label: Text(localization.statsCategoryText(key)).font(.subheadline),
+                    value: Text(verbatim: "\(sectionLabel(best)) · \(rideCount(best.count))")
+                        .font(.subheadline.weight(.semibold)))
+                    .accessibilityElement(children: .combine)
+            }
             if rows.count > 1 {
                 DisclosureGroup {
                     VStack(spacing: 10) {
@@ -474,8 +567,10 @@ struct StatisticsDashboardView: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Text(localization.statsText(
-                        "stats.byCountCount", params: ["count": .number(Double(rows.count))]))
+                    // The category names itself here when the row above was
+                    // dropped, or the unfiltered list's disclosure would open
+                    // under a bare 「12 件」 with nothing saying of what.
+                    Text(verbatim: summarised ? count : "\(localization.statsCategoryText(key)) · \(count)")
                         .font(.caption.weight(.semibold))
                 }
             }
@@ -648,25 +743,35 @@ struct StatisticsDashboardView: View {
     /// squeezing either side at an accessibility text size (§10.1).
     @ViewBuilder
     private func adaptiveRow(label: some View, value: some View) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 4) {
-                label.frame(maxWidth: .infinity, alignment: .leading)
-                value.frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } else {
-            HStack(alignment: .firstTextBaseline) {
-                label
-                Spacer(minLength: 8)
-                value
-                    .multilineTextAlignment(.trailing)
-            }
+        HStack(alignment: .firstTextBaseline) {
+            label
+            Spacer(minLength: 8)
+            value
+                .multilineTextAlignment(.trailing)
         }
     }
 
-    private var regionName: String {
-        let fallback = RailNetworkStore.countries.first(where: { $0.code == country })?.label
-            ?? country.uppercased()
-        return localization.text("country.\(country)", fallback: fallback)
+    /// This screen's slice of the working set: one region's rides, and the
+    /// date buckets they occupy.
+    ///
+    /// The region itself is chosen in the panel header, which offers every
+    /// region rather than only the ones with rides in them: a coverage figure
+    /// of 0 % for a region you have not ridden is an answer, and a region that
+    /// disappeared from the picker as soon as its last ride was deleted would
+    /// look like a bug.
+    private func scoped(_ loaded: ItineraryStore.Loaded) -> ItineraryStore.Loaded {
+        let trains = region.map { scope in
+            loaded.trains.filter { Region.resolved($0) == scope }
+        } ?? loaded.trains
+        let ids = Set(trains.map(\.id))
+        return ItineraryStore.Loaded(
+            regions: region.map { [$0] } ?? Region.ordered,
+            trains: trains,
+            days: loaded.days.compactMap { day in
+                let kept = day.trains.filter { ids.contains($0.id) }
+                return kept.isEmpty ? nil : ItineraryStore.Loaded.Day(date: day.date, trains: kept)
+            },
+            elapsed: loaded.elapsed)
     }
 
     private func stopCount(_ trains: [Train]) -> Int {

@@ -11,14 +11,30 @@
 		000000000000000000000113 /* RailPresentation in Frameworks */ = {isa = PBXBuildFile; productRef = 000000000000000000000114 /* RailPresentation */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		000000000000000000000206 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 000000000000000000000107 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 000000000000000000000106;
+			remoteInfo = RailMap;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		000000000000000000000101 /* RailMap.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RailMap.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		000000000000000000000200 /* RailMapUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RailMapUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000102 /* RailMap */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = RailMap;
+			sourceTree = "<group>";
+		};
+		000000000000000000000201 /* RailMapUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RailMapUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +49,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		000000000000000000000202 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -40,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000102 /* RailMap */,
+				000000000000000000000201 /* RailMapUITests */,
 				000000000000000000000105 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +72,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000101 /* RailMap.app */,
+				000000000000000000000200 /* RailMapUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -80,6 +105,29 @@
 			productReference = 000000000000000000000101 /* RailMap.app */;
 			productType = "com.apple.product-type.application";
 		};
+		000000000000000000000205 /* RailMapUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 00000000000000000000020A /* Build configuration list for PBXNativeTarget "RailMapUITests" */;
+			buildPhases = (
+				000000000000000000000203 /* Sources */,
+				000000000000000000000202 /* Frameworks */,
+				000000000000000000000204 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				000000000000000000000207 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				000000000000000000000201 /* RailMapUITests */,
+			);
+			name = RailMapUITests;
+			packageProductDependencies = (
+			);
+			productName = RailMapUITests;
+			productReference = 000000000000000000000200 /* RailMapUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -92,6 +140,10 @@
 				TargetAttributes = {
 					000000000000000000000106 = {
 						CreatedOnToolsVersion = 27.0;
+					};
+					000000000000000000000205 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 000000000000000000000106;
 					};
 				};
 			};
@@ -113,12 +165,20 @@
 			projectRoot = "";
 			targets = (
 				000000000000000000000106 /* RailMap */,
+				000000000000000000000205 /* RailMapUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000000000109 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		000000000000000000000204 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -153,7 +213,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		000000000000000000000203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		000000000000000000000207 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 000000000000000000000106 /* RailMap */;
+			targetProxy = 000000000000000000000206 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		00000000000000000000010D /* Debug */ = {
@@ -248,6 +323,38 @@
 			};
 			name = Release;
 		};
+		000000000000000000000208 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.japantrainmap.RailMapUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RailMap;
+			};
+			name = Debug;
+		};
+		000000000000000000000209 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.japantrainmap.RailMapUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RailMap;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -265,6 +372,15 @@
 			buildConfigurations = (
 				00000000000000000000010F /* Debug */,
 				000000000000000000000110 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		00000000000000000000020A /* Build configuration list for PBXNativeTarget "RailMapUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				000000000000000000000208 /* Debug */,
+				000000000000000000000209 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

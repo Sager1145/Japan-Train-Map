@@ -394,6 +394,12 @@ function collectTrainStatsEntry(train, idx) {
   const walk = (coords) => {
     if (!coords || coords.length < 2) return;
     let anchor = coords[0];
+    // Category of the edge the anchor most recently reached. Display geometry
+    // ends a station interval at the station anchor, which may sit a short
+    // connector away from the raw section edge. Leading connectors already
+    // inherit the edge they reconnect to below; this lets trailing connectors
+    // inherit the edge they just left, symmetrically.
+    let anchorMask = 0;
     let pendingKm = 0;
     for (let i = 1; i < coords.length; i += 1) {
       const prev = coords[i - 1];
@@ -403,6 +409,7 @@ function collectTrainStatsEntry(train, idx) {
       if (e !== undefined) {
         edges.push(e);
         anchor = v;
+        anchorMask = idx.mask[e];
         pendingKm = 0; // pending hops were interior to this matched edge
         continue;
       }
@@ -411,12 +418,18 @@ function collectTrainStatsEntry(train, idx) {
         recordSpan(anchor, prev, pendingKm, idx.mask[e2]);
         edges.push(e2);
         anchor = v;
+        anchorMask = idx.mask[e2];
         pendingKm = 0;
         continue;
       }
       pendingKm += statsEdgeKm(prev[0], prev[1], v[0], v[1]);
-      if (pendingKm > MAX_BRIDGE_KM || i === coords.length - 1) {
+      if (pendingKm > MAX_BRIDGE_KM) {
         recordSpan(anchor, v, pendingKm, 0);
+        anchor = v;
+        anchorMask = 0;
+        pendingKm = 0;
+      } else if (i === coords.length - 1) {
+        recordSpan(anchor, v, pendingKm, anchorMask);
         anchor = v;
         pendingKm = 0;
       }
@@ -501,9 +514,35 @@ function serviceGroupOfTrain(train) {
       return "ltd";
     return "other";
   }
+  if (activeCountry === "kr") {
+    // KTX and SRT are the high-speed services; ITX-새마을 / ITX-마음 and
+    // 무궁화호 are the reserved-seat intercity tier 有料特急 corresponds to.
+    // Without this a KTX ride landed in 其他列車 while the 高速鐵道（KTX・SRT）
+    // row above it read 0.0 km.
+    if (/KTX|SRT|고속/i.test(t)) return "hsr";
+    if (/ITX|새마을|무궁화|セマウル|ムグンファ|新村|無窮花|无穷花/.test(t))
+      return "ltd";
+    return "other";
+  }
   if (t.includes("新幹線")) return "hsr";
   if (t.includes("特急")) return "ltd";
   return "other";
+}
+
+// Which of the three service rows a country actually has. The buckets exist
+// everywhere in the accumulation code, but Hong Kong and Macao have neither a
+// high-speed nor a reserved-seat tier in their packages, and rendering the
+// rows anyway put "新幹線 0.0 km" and "有料特急 0.0 km" in a Hong Kong
+// Passport. Mirrors STAT_CATEGORIES_BY_COUNTRY above.
+const SERVICE_ROWS_BY_COUNTRY = {
+  jp: ["hsr", "ltd", "other"],
+  tw: ["hsr", "ltd", "other"],
+  kr: ["hsr", "ltd", "other"],
+  hk: ["other"],
+  mo: ["other"],
+};
+function activeServiceRows() {
+  return SERVICE_ROWS_BY_COUNTRY[activeCountry] || SERVICE_ROWS_BY_COUNTRY.jp;
 }
 
 function serviceGroupStats(trains, entries) {
@@ -700,13 +739,17 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
   overall.services = serviceGroupStats(trains, entries);
   if (yieldPoint) await yieldPoint();
   overall.topSegments = topRiddenSegments(entries);
+  // §5.3.1: the day scoped HERE is Passport's own, not the journeys date
+  // filter. They used to be one value, which meant clicking a journey — which
+  // jumps the journeys filter to that journey's date — silently re-scoped the
+  // statistics the reader was looking at.
   let daily = null;
-  if (selectedDate && selectedDate !== ALL_DATES) {
+  if (passportScopeDate && passportScopeDate !== ALL_DATES) {
     if (yieldPoint) await yieldPoint();
     const dayTrains = [];
     const dayEntries = [];
     trains.forEach((t, i) => {
-      if (getTrainDate(t) === selectedDate) {
+      if (getTrainDate(t) === passportScopeDate) {
         dayTrains.push(t);
         dayEntries.push(entries[i]);
       }
@@ -714,7 +757,11 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
     const stats = aggregateMileageStats(idx, dayEntries);
     stats.rideMinutes = sumRideMinutes(dayTrains);
     stats.services = serviceGroupStats(dayTrains, dayEntries);
-    daily = { date: dateLabel(selectedDate), trainCount: dayTrains.length, stats };
+    daily = {
+      date: dateLabel(passportScopeDate),
+      trainCount: dayTrains.length,
+      stats,
+    };
   }
   return { overall, daily, categories: activeStatCategories() };
 }

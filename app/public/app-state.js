@@ -38,6 +38,15 @@ let endpointLabelMarkers = new Map(); // label key -> { marker, el, anchor, fade
 // Which date the sidebar list is filtered to. ALL_DATES shows the combined
 // "all trains" list; otherwise it is a concrete "YYYY-MM-DD" (or UNDATED).
 let selectedDate = ALL_DATES;
+// §5.3.1: which day Passport is REPORTING on. Deliberately not `selectedDate`.
+//
+// The two answer different questions — "which journeys am I editing" and "what
+// am I counting" — on two different destinations, and §5.3.1 requires the
+// second to be independent of the first ("Passport 的日期 Scope 独立于 Journeys
+// 筛选，切换后不扰动旅程列表"). Sharing one value meant opening a journey from
+// the Passport log rewrote the statistics above it on the way past, because
+// selecting a record jumps the journeys filter to that record's own date.
+let passportScopeDate = ALL_DATES;
 // Dates the user created manually that may not yet have any train.
 let manualDates = [];
 // Whether the map mirrors the sidebar date filter.

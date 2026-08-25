@@ -1,30 +1,129 @@
 /* ==========================================================================
-   iOS 27 solid-surface normalization
+   Surface materials — §4.2, §6.5
    --------------------------------------------------------------------------
-   iOS 27 makes navigation stable across resizable scenes. This web version
-   keeps that structure and the system component proportions, but deliberately
-   uses only opaque semantic surfaces: no Liquid Glass, blur, translucency or
-   vibrancy. The same five-item bottom bar and menu grammar apply at every
-   viewport width.
+   This layer used to switch every material off globally:
+
+       backdrop-filter: none !important;
+
+   That rule is gone, and it must not come back — test/liquid-glass-contract
+   .test.mjs fails the build if it does. §1.1 and §6.5 are explicit that the
+   floating functional layer takes the system's own translucent material and
+   that the app must not hand-paint a substitute for it.
+
+   What replaces it is a POLICY rather than a switch, and the policy has three
+   parts:
+
+   1. Material belongs to the FLOATING FUNCTIONAL LAYER only — the pull-up
+      panel, the bottom navigation, the grabber, the map's corner controls.
+      §4.2: "Liquid Glass 或 Web translucent material 用于系统导航、悬浮功能层
+      与菜单外壳，不逐张铺满内部内容卡片." Journey cards, statistics cards and
+      the stop timeline stay opaque: two stacked translucent surfaces is the
+      one thing §4.2 forbids outright, and a card inside a translucent panel
+      is exactly that stack.
+
+   2. Where the browser cannot blur, the surface goes OPAQUE — not
+      semi-transparent. A translucent panel with no blur behind it is a map
+      showing through text.
+
+   3. Reduced Transparency and More Contrast are honoured (§10.5, §14.4). They
+      are the accessible spelling of the rule this file used to apply to
+      everybody by default.
    ========================================================================== */
 
-/* Material effects are intentionally disabled everywhere, including map
-   chrome created after boot. Border and tone changes carry the hierarchy. */
+:root {
+  /* Enough of the surface to read against, and enough of the map to keep the
+     layout spatial. Tuned against the panel at its Half detent over pale city
+     fill, which is the least forgiving combination the app produces. */
+  --jrm-glass-background: color-mix(
+    in srgb,
+    var(--ios-system-background) 72%,
+    transparent
+  );
+  /* The bottom navigation sits at the top of the z-order and carries the most
+     load-bearing hit targets, so it is the more opaque of the two. */
+  --jrm-glass-background-strong: color-mix(
+    in srgb,
+    var(--ios-system-background) 84%,
+    transparent
+  );
+  --jrm-glass-blur: blur(24px) saturate(180%);
+  --jrm-glass-border: color-mix(in srgb, var(--ios-label) 10%, transparent);
+}
+
 #sidebar,
 .workspace-nav,
 .sidebar-edge-tab,
 .map-layers-control,
 .map-info-summary,
-.map-info-panel,
+.map-info-panel {
+  border-color: var(--jrm-glass-border);
+  background: var(--jrm-glass-background);
+  -webkit-backdrop-filter: var(--jrm-glass-blur);
+  backdrop-filter: var(--jrm-glass-blur);
+}
+
+.workspace-nav,
+.map-info-panel {
+  background: var(--jrm-glass-background-strong);
+}
+
+/* Chrome the map library creates after boot keeps its opaque treatment: these
+   are dense, small-type surfaces (a popup, a station label, a line tip) where
+   §4.2's "地图上不得同时漂浮大量独立按钮" argument applies to material too —
+   twenty translucent labels over a moving map is noise, not depth. */
 .maplibregl-ctrl-group,
 .maplibregl-popup-content,
 .station-label,
 .map-line-tip,
 .rp-modal-overlay,
 .rp-modal {
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
-  box-shadow: none !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* No blur available: go opaque rather than merely translucent. */
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
+  #sidebar,
+  .workspace-nav,
+  .sidebar-edge-tab,
+  .map-layers-control,
+  .map-info-summary,
+  .map-info-panel {
+    background: var(--ios-material-strong);
+  }
+}
+
+/* §10.5 / §14.4: the reader has asked for less translucency. Honour it by
+   removing the material, not by dimming it. */
+@media (prefers-reduced-transparency: reduce) {
+  #sidebar,
+  .workspace-nav,
+  .sidebar-edge-tab,
+  .map-layers-control,
+  .map-info-summary,
+  .map-info-panel {
+    background: var(--ios-material-strong);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* §10.5: More Contrast wants an edge that survives over any map, so the
+   surface goes fully opaque and the hairline becomes a real border. */
+@media (prefers-contrast: more) {
+  #sidebar,
+  .workspace-nav,
+  .sidebar-edge-tab,
+  .map-layers-control,
+  .map-info-summary,
+  .map-info-panel {
+    border: 2px solid var(--ios-label);
+    background: var(--ios-system-background);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 html,
@@ -37,8 +136,8 @@ body {
 #sidebar {
   padding: var(--space-3) var(--space-3)
     calc(var(--ios-nav-reserve) + env(safe-area-inset-bottom));
-  border-color: var(--ios-separator);
-  background: var(--ios-material);
+  border-color: var(--jrm-glass-border);
+  background: var(--jrm-glass-background);
 }
 
 header {
@@ -90,9 +189,9 @@ h1 {
   height: 64px;
   margin: 0;
   padding: 6px;
-  border: 1px solid var(--ios-separator);
+  border: 1px solid var(--jrm-glass-border);
   border-radius: 16px;
-  background: var(--ios-material-strong);
+  background: var(--jrm-glass-background-strong);
 }
 
 .workspace-nav a,
@@ -610,9 +709,9 @@ th {
         var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom) +
           var(--panel-clip, 0px)
       );
-    border-color: var(--ios-separator);
-    border-radius: 18px 18px 0 0;
-    background: var(--ios-material);
+    border-color: var(--jrm-glass-border);
+    border-radius: var(--radius-sheet);
+    background: var(--jrm-glass-background);
   }
 
   #sidebar .workspace-nav {
@@ -622,7 +721,7 @@ th {
     padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
     border-width: 1px 0 0;
     border-radius: 0;
-    background: var(--ios-material-strong);
+    background: var(--jrm-glass-background-strong);
   }
 
   #sidebar .workspace-nav a {
@@ -631,12 +730,12 @@ th {
     font-size: 10px;
   }
 
-  #app[data-panel="peek"] #sidebar {
-    border-color: var(--ios-separator);
-    background: var(--ios-material);
+  #app[data-panel="docked"] #sidebar {
+    border-color: var(--jrm-glass-border);
+    background: var(--jrm-glass-background);
   }
 
-  #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+  #app[data-panel="docked"] #sidebar > :not(.panel-docked-summary) {
     visibility: hidden;
     opacity: 1;
     pointer-events: none;
@@ -645,7 +744,7 @@ th {
   .sidebar-edge-tab,
   .sidebar-edge-tab:hover,
   .sidebar-edge-tab:focus-visible {
-    background: var(--ios-material);
+    background: var(--jrm-glass-background);
   }
 
   .toolbar > button {

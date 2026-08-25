@@ -113,16 +113,25 @@ async function switchCountrySession(next) {
       map.once("moveend", () => applyJapanMapConstraints());
     }
 
+    // The station index must belong to the NEW country before a single train
+    // of it is read. Loading the store concurrently with the dataset reload
+    // meant the incoming trains were validated — and progressively rendered —
+    // against the outgoing country's index, and the two countries share
+    // station names: §6.4's branch-leak check resolved Taiwan's 桃園 to 近鉄
+    // 名古屋線, 岡山 to 山陽新幹線, 松山 to 予讃線, and warned about two dozen
+    // phantom leaks on every switch to tw. Boot already orders it this way
+    // (loadAppData awaits buildStationIndexesSliced before anything reads a
+    // stop); the switch now does too.
     await Promise.all([
-      loadActiveCountryStore({
-        persistEachStep: false,
-        finalPersist: false,
-        selectFirstTrain: false,
-      }),
+      reloadSolverDatasetsForCountrySwitch(),
       networkCountryReady,
       loadActiveCountryStationReadings(),
-      reloadSolverDatasetsForCountrySwitch(),
     ]);
+    await loadActiveCountryStore({
+      persistEachStep: false,
+      finalPersist: false,
+      selectFirstTrain: false,
+    });
 
     // Progressive loading may have rendered before complete-line geometry was
     // ready. Invalidate once and publish an authoritative final render.

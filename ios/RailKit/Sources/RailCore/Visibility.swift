@@ -39,22 +39,30 @@ public enum Visibility {
         "\(line.operator ?? "")\u{0000}\(line.name)"
     }
 
+    /// The complete physical-line length assigned to every administrative
+    /// line id in the package.
+    ///
+    /// Exposed separately from the coarse web visibility tier because native
+    /// renderers may need a finer low-zoom policy while preserving the exact
+    /// same grouping rule. Returning the group total keeps those policies
+    /// length-based without reimplementing operator + name grouping elsewhere.
+    public static func groupLengthByLineId(_ package: CompactPackage) -> [String: Double] {
+        var groupKm: [String: Double] = [:]
+        for line in package.lines {
+            let km = line.segments.reduce(0) { $0 + $1.distanceKm }
+            groupKm[visibilityGroupKey(line), default: 0] += km
+        }
+        return Dictionary(uniqueKeysWithValues: package.lines.map { line in
+            (line.id, groupKm[visibilityGroupKey(line)] ?? 0)
+        })
+    }
+
     /// The minimum zoom for every line in a package.
     ///
     /// The length that decides a line's fate is its **group's** total, not its
     /// own, so that all the pieces of one physical railway appear and vanish
     /// together instead of the map growing a line in fragments.
     public static func minZoomByLineId(_ package: CompactPackage) -> [String: Int] {
-        var groupKm: [String: Double] = [:]
-        for line in package.lines {
-            let km = line.segments.reduce(0) { $0 + $1.distanceKm }
-            groupKm[visibilityGroupKey(line), default: 0] += km
-        }
-        var result: [String: Int] = [:]
-        for line in package.lines {
-            result[line.id] = minZoomForLength(
-                totalKm: groupKm[visibilityGroupKey(line)] ?? 0)
-        }
-        return result
+        groupLengthByLineId(package).mapValues { minZoomForLength(totalKm: $0) }
     }
 }

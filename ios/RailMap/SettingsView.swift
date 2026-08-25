@@ -28,14 +28,13 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppLocalization.self) private var localization
     @Environment(DisplaySettings.self) private var display
-    @Binding var country: String
     @Binding var appearance: String
     @Bindable var network: RailNetworkStore
     @Bindable var controller: RailMapController
 
     var body: some View {
         Form {
-            regionAndLanguageSection
+            languageSection
             stationNameSection
             appearanceSection
             mapContentSection
@@ -55,22 +54,19 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 1. Region and language
+    // MARK: - 1. Language
 
-    private var regionAndLanguageSection: some View {
+    /// No region picker.
+    ///
+    /// There used to be one here, and it decided everything: which package was
+    /// drawn, which store was open, which statistics were computed. The map
+    /// now draws all five networks at once and each ride names its own region,
+    /// so the only region choice left in the app is the one on the statistics
+    /// screen — where the categories and the coverage denominator genuinely
+    /// belong to one network.
+    private var languageSection: some View {
         @Bindable var localization = localization
-        return Section(localization.text("ios.regionLanguage", fallback: "Region & language")) {
-            Picker(
-                localization.countryText("country.label", fallback: "Region"),
-                selection: $country
-            ) {
-                ForEach(RailNetworkStore.countries, id: \.code) { entry in
-                    Text(localization.countryText("country.\(entry.code)", fallback: entry.label))
-                        .tag(entry.code)
-                }
-            }
-            .pickerStyle(.navigationLink)
-
+        return Section(localization.text("ios.regionLanguage", fallback: "Language")) {
             Picker(
                 localization.countryText("lang.label", fallback: "Language"),
                 selection: $localization.language
@@ -98,7 +94,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var stationNameSection: some View {
         Section {
-            if localization.localizesStationNames {
+            if localization.localizesEveryStationName {
                 Text(
                     localization.text(
                         "ios.note.readingsLocalized",
@@ -145,7 +141,7 @@ struct SettingsView: View {
         } header: {
             Text(localization.text("ios.stationNames", fallback: "Station names"))
         } footer: {
-            if !localization.localizesStationNames && !display.nameReadingsCustomized {
+            if !localization.localizesEveryStationName && !display.nameReadingsCustomized {
                 Text(
                     localization.text(
                         "ios.note.readingsFollowLanguage",
@@ -397,27 +393,39 @@ struct SettingsView: View {
             LabeledContent(
                 packageLabel,
                 value: localization.text("ios.packageIdle", fallback: "Not loaded"))
-        case .loading:
+        case .loading(let pending):
             HStack {
                 ProgressView()
                 Text(localization.text("ios.packageDecoding", fallback: "Decoding package…"))
+                Spacer()
+                Text(pending.map { $0.rawValue.uppercased() }.joined(separator: " "))
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(.secondary)
             }
-        case .loaded(let code, let lines, let elapsed):
-            LabeledContent(
-                packageLabel,
-                value: localization.text(
-                    "ios.packageLines",
-                    params: [
-                        "code": .string(code.uppercased()),
-                        "count": .number(Double(lines.count)),
-                    ],
-                    fallback: "\(code.uppercased()) · \(lines.count) lines"))
+        case .loaded(let regions, let failures, let elapsed):
+            // One row per region, because five packages are five answers: a
+            // combined line count would hide a package that failed to load
+            // behind four that did not.
+            ForEach(regions) { load in
+                LabeledContent(
+                    packageLabel,
+                    value: localization.text(
+                        "ios.packageLines",
+                        params: [
+                            "code": .string(load.region.rawValue.uppercased()),
+                            "count": .number(Double(load.lineCount)),
+                        ],
+                        fallback: "\(load.region.rawValue.uppercased()) · \(load.lineCount) lines"))
+            }
+            ForEach(failures) { failure in
+                Label(
+                    "\(failure.region.rawValue.uppercased()) · \(failure.message)",
+                    systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+            }
             LabeledContent(
                 localization.text("ios.decodeTime", fallback: "Decode time"),
                 value: "\(elapsed.milliseconds) ms")
-        case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.red)
         }
     }
 

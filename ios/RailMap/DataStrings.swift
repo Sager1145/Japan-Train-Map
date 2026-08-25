@@ -110,10 +110,20 @@ enum DataStrings {
             .zhHant: "匯入到", .zhHans: "导入到", .ja: "読み込み先", .en: "Imports into",
         ],
         "data.preflightRegionNote": [
-            .zhHant: "JSON 本身不帶地區標記，會以目前地區（{region}）的規則匯入。",
-            .zhHans: "JSON 本身不带地区标记，会以当前地区（{region}）的规则导入。",
-            .ja: "JSON に地域の記載はありません。現在の地域（{region}）の規則で読み込みます。",
-            .en: "The JSON carries no region of its own; it is imported under the current region ({region}).",
+            .zhHant: "JSON 本身不帶地區標記，會以所選地區（{region}）的規則匯入。",
+            .zhHans: "JSON 本身不带地区标记，会以所选地区（{region}）的规则导入。",
+            .ja: "JSON に地域の記載はありません。選択した地域（{region}）の規則で読み込みます。",
+            .en: "The JSON carries no region of its own; it is imported under the chosen region ({region}).",
+        ],
+        "data.importDoneShort": [
+            .zhHant: "匯入完成", .zhHans: "导入完成", .ja: "読み込みが完了しました",
+            .en: "Import finished",
+        ],
+        "data.regionDetected": [
+            .zhHant: "依檔案中的車站代碼判定為 {region}。",
+            .zhHans: "依文件中的车站代码判定为 {region}。",
+            .ja: "ファイル内の駅コードから {region} と判定しました。",
+            .en: "Detected {region} from the station codes in the file.",
         ],
         "data.preflightDateNote": [
             .zhHant: "沒有 date 的旅程，依 JSON 的 date 欄位或 ID 自動判定日期。",

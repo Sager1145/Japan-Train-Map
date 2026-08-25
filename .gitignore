@@ -36,6 +36,15 @@ app/data/tokyo-limited-express-loop-data/
 app/data/*.staging/
 app/data/*.previous/
 
+# The relational mirror of the published railway data (npm run build:db). It is
+# a 45 MB rebuild of files that ARE committed — packages, reading tables, solver
+# datasets — so committing it would double them in the history for nothing, and
+# a stale copy beside a promoted package would be worse than no copy.
+app/data/rail.db
+app/data/rail.db-journal
+app/data/rail.db-wal
+app/data/rail.db-shm
+
 # Gzip sidecars beside the files they compress. Nothing writes these any more —
 # server.js keeps its copies in app/.cache/ — but the rules stay so a leftover
 # from an older checkout, or a hand-run `gzip`, cannot be committed by accident.
@@ -122,3 +131,16 @@ ios/**/.build/
 ios/**/.swiftpm/
 ios/**/xcuserdata/
 ios/DerivedData/
+
+# `swift build` WITHOUT `--scratch-path` writes its products beside Package.swift
+# rather than into `.build/`, so the rule above does not cover them. verify.sh
+# always passes a scratch path; a person running plain `swift build` in
+# ios/RailKit does not, and then seven build products show up as untracked
+# source next to the package.
+ios/RailKit/.lock
+ios/RailKit/build.db
+ios/RailKit/debug
+ios/RailKit/debug.yaml
+ios/RailKit/plugin-tools.yaml
+ios/RailKit/workspace-state.json
+ios/RailKit/arm64-apple-macosx/

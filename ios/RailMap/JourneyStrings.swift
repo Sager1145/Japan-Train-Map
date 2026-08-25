@@ -349,6 +349,15 @@ enum JourneyStrings {
             .ja: "{journeys} 本の行程 · {days} 日",
             .en: "{journeys} journeys · {days} days",
         ],
+        // §5.1 (revised): the Upcoming destination, when nothing is ahead.
+        // Not an error and not an empty app — the whole log is one tab away,
+        // which is what the sentence has to make clear (§13.1).
+        "ios.journey.noUpcoming": [
+            .zhHant: "沒有將來的行程。",
+            .zhHans: "没有将来的行程。",
+            .ja: "今後の行程はありません。",
+            .en: "No upcoming journeys.",
+        ],
         "ios.journey.daySummary": [
             .zhHant: "{journeys} 趟旅程",
             .zhHans: "{journeys} 趟行程",
@@ -381,21 +390,45 @@ enum JourneyStrings {
             .ja: "その他の操作",
             .en: "More journey actions",
         ],
+        // ── §5.3 Passport, the iOS-only wording ──
+        // The Passport headings themselves are shared with the web app
+        // (`passport.*`, `grp.*`). These three are sentences this port writes
+        // and the browser does not, so they live here.
+        "ios.passport.regionNote": [
+            .zhHant: "覆蓋率以此地區的路網為分母計算。",
+            .zhHans: "覆盖率以此地区的路网为分母计算。",
+            .ja: "カバー率はこの地域の路線網に対する割合です。",
+            .en: "Coverage is measured against this region's network.",
+        ],
+        // §2.3 / §2.4: the film is a recording, not a broadcast. The sentence
+        // says so outright rather than leaving a share button on a journey
+        // screen to imply Flighty's Live Share.
+        "ios.passport.shareNote": [
+            .zhHant: "回放會輸出為影片檔案，不會即時分享任何內容。",
+            .zhHans: "回放会输出为视频文件，不会实时分享任何内容。",
+            .ja: "再生は動画ファイルとして書き出されます。リアルタイム共有は行いません。",
+            .en: "Playback is exported as a video file. Nothing is shared live.",
+        ],
+        // Spoken instead of the coverage map, which a screen reader cannot
+        // read. It says what the picture is OF, which is the honest answer.
+        "ios.passport.coverageSpoken": [
+            .zhHant: "{region} 路網上已記錄 {n} 趟旅程",
+            .zhHans: "{region} 路网上已记录 {n} 趟行程",
+            .ja: "{region}の路線網に記録された行程 {n} 件",
+            .en: "{n} recorded journeys drawn over the {region} network",
+        ],
         "ios.journey.resizePanel": [
             .zhHant: "調整面板高度",
             .zhHans: "调整面板高度",
             .ja: "パネルの高さを調整",
             .en: "Resize the journey panel",
         ],
-        "ios.journey.panelCompact": [
-            .zhHant: "精簡", .zhHans: "精简", .ja: "コンパクト", .en: "Compact",
-        ],
-        "ios.journey.panelMedium": [
-            .zhHant: "中等", .zhHans: "中等", .ja: "標準", .en: "Medium",
-        ],
-        "ios.journey.panelExpanded": [
-            .zhHant: "展開", .zhHans: "展开", .ja: "拡大", .en: "Expanded",
-        ],
+        // The panel's three stops are NOT here any more. §4.3 renamed them
+        // Docked / Half / Full, and those live in the SHARED catalog as
+        // `panel.docked` / `panel.half` / `panel.full` — the same three entries
+        // the web panel reads. `PanelDetent.localizationKey` returns them, so
+        // both platforms say the same word for the same stop rather than each
+        // translating "Half" for itself.
         "ios.journey.addDateTitle": [
             .zhHant: "新增日期",
             .zhHans: "新增日期",
@@ -443,6 +476,9 @@ enum JourneyStrings {
             .zhHans: "地图只显示所选日期",
             .ja: "地図は選択した日付だけ表示",
             .en: "Map shows the selected date only",
+        ],
+        "ios.journey.playbackQueue": [
+            .zhHant: "播放位置", .zhHans: "播放位置", .ja: "再生位置", .en: "Playback position",
         ],
         "play.focus": [
             .zhHant: "自動跟隨", .zhHans: "自动跟随", .ja: "自動追従", .en: "Auto focus",

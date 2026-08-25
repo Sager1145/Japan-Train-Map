@@ -27,6 +27,20 @@ import UIKit
 /// carries. The station identities are resolved the same way the dots are —
 /// see ``MapRideMarkers/stopPositions(of:)`` — so a card and its terminal dot
 /// can never disagree about where the ride ended.
+///
+/// ## The one deviation: the time is a SUBLINE, not a suffix
+///
+/// The web app writes `起點 我孫子 着 08:17` on one row. Here the time is
+/// stacked under the name, with the readings under it, so the card reads as a
+/// name with what qualifies it beneath — the shape every other stacked label
+/// on this map already has. A row that grows sideways also has to be pushed
+/// sideways to stay on screen (`clampHorizontally`), and on a phone that is
+/// the common case rather than the edge one.
+///
+/// The card is also now the ONLY thing that names its station: the ride's own
+/// label at that stop is suppressed by the renderer (see
+/// `RailMapView.Coordinator.rebuild`), because a card that carries the name
+/// and a caption beside the dot carrying it again is the same word twice.
 enum MapEndpointLabels {
 
     /// One card, before and after placement.
@@ -39,6 +53,13 @@ enum MapEndpointLabels {
         let coordinate: Coordinate
         /// The localised station name.
         let name: String
+        /// The package's own spelling of the same station.
+        ///
+        /// The identity the "one place, one name" claim is made under: the
+        /// ride labels and the network's are elected on package names, so a
+        /// localised spelling would fail to match the very labels this card
+        /// has to silence.
+        let rawName: String
         /// `起點` / `終點`, or empty. Only the selected day's own endpoints
         /// carry one — an ordinary selected ride's two ends do not.
         let badge: String
@@ -57,15 +78,18 @@ enum MapEndpointLabels {
         var direction: Direction = .top
         var offset: CGPoint = .zero
 
-        /// The badge, the name and the time on one line, which is what the web
-        /// app measures (`plain`) and what a reader hears.
+        /// The badge, the name and the time on one line. No longer how the
+        /// card is DRAWN — it is what a reader hears, and one utterance is
+        /// what a caption should be however many rows it occupies.
         var mainLine: String {
             [badge, name, time].filter { !$0.isEmpty }.joined(separator: " ")
         }
     }
 
     enum Kind: String { case origin, destination }
-    enum Direction { case top, bottom }
+    /// `Equatable` so a placement pass can tell whether a card actually moved
+    /// — see `RailMapView.Coordinator.layoutEndpointLabels(on:)`.
+    enum Direction: Equatable { case top, bottom }
 
     // MARK: - measuring
 
@@ -99,6 +123,7 @@ enum MapEndpointLabels {
         kind: Kind,
         at coordinate: Coordinate,
         name: String,
+        rawName: String,
         badge: String = "",
         time: String = "",
         readings: [String] = []
@@ -106,12 +131,14 @@ enum MapEndpointLabels {
         guard !name.isEmpty else { return nil }
         // `+ 20` is the card's horizontal padding; a badge chip costs `+ 38`.
         let badgeWidth = badge.isEmpty ? 0 : measure(badge, font: badgeFont) + 4
-        let timeWidth = time.isEmpty ? 0 : measure(time, font: timeFont) + 4
-        let mainWidth = badgeWidth + measure(name) + timeWidth + (badge.isEmpty ? 20 : 38)
+        let mainWidth = badgeWidth + measure(name) + (badge.isEmpty ? 20 : 38)
+        // Its own row now, so it widens the card only when it is the widest
+        // thing on it rather than always adding to the name's row.
+        let timeWidth = time.isEmpty ? 0 : measure(time, font: timeFont) + 20
         let readingsWidth = readings.reduce(CGFloat(0)) {
             max($0, measure($1, font: readingFont))
         } + (readings.isEmpty ? 0 : 20)
-        let fullWidth = max(mainWidth, readingsWidth)
+        let fullWidth = max(mainWidth, max(timeWidth, readingsWidth))
         let mainLines = max(1, min(3, Int(ceil(mainWidth / maxWidth))))
         return Spec(
             key: "\(String(format: "%.5f", coordinate.lat)),"
@@ -119,14 +146,17 @@ enum MapEndpointLabels {
             trainID: trainID,
             coordinate: coordinate,
             name: name,
+            rawName: rawName,
             badge: badge,
             time: time,
             readings: readings,
             kind: kind,
             width: min(maxWidth, fullWidth),
-            // ~18 pt per name/time line and ~15 pt per reading line, plus
-            // padding and border — `buildEndpointLabelSpec`'s own estimate.
-            height: CGFloat(6 + 18 * mainLines + 15 * readings.count))
+            // ~18 pt per name line and ~15 pt per subline, plus padding and
+            // border — `buildEndpointLabelSpec`'s own estimate, with the time
+            // counted as one more subline now that it stands on its own row.
+            height: CGFloat(
+                6 + 18 * mainLines + 15 * (time.isEmpty ? 0 : 1) + 15 * readings.count))
     }
 
     /// The stop a card is built from, and where the ride's geometry puts it.

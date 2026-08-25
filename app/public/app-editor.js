@@ -142,6 +142,7 @@ function renderStopsTable(train) {
     tr.innerHTML = `
           <td>${index + 1}</td>
           <td><input data-stop-field="name" data-stop-index="${index}" value="${escapeAttr(stopName(stop))}"></td>
+          <td data-label="${escapeAttr(I18N.t("th.platform"))}"><input type="number" min="0" step="1" inputmode="numeric" data-stop-field="platform_number" data-stop-index="${index}" value="${escapeAttr(stop.platform_number ?? "")}"></td>
           <td data-label="${escapeAttr(I18N.t("th.arr"))}"><input data-stop-field="arrival" data-stop-index="${index}" value="${escapeAttr(stop.arrival ?? "")}"></td>
           <td data-label="${escapeAttr(I18N.t("th.dep"))}"><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
           <td data-label="${escapeAttr(I18N.t("th.type"))}">
@@ -176,7 +177,7 @@ function renderStopsTable(train) {
         (b.line || I18N.t("branch.noline")) + (b.number ? ` · ${b.number}` : "");
       const htr = document.createElement("tr");
       htr.className = "branch-header";
-      htr.innerHTML = `<td colspan="7" style="border-left:4px solid ${color}">
+      htr.innerHTML = `<td colspan="8" style="border-left:4px solid ${color}">
             <span class="branch-swatch" style="background:${color}"></span>
             <strong>${escapeHtml(label)}</strong>
             ${b.number ? `<span class="branch-tag">${escapeHtml(I18N.t("branch.tag"))}</span>` : ""}
@@ -196,6 +197,7 @@ function renderStopsTable(train) {
         tr.innerHTML = `
               <td>${i + 1}</td>
               <td>${escapeHtml(stopName(stop))} <span class="branch-tag">${escapeHtml(I18N.t("branch.junction"))}</span></td>
+              <td data-label="${escapeAttr(I18N.t("th.platform"))}">${stop.platform_number == null ? "" : escapeHtml(String(stop.platform_number))}</td>
               <td data-label="${escapeAttr(I18N.t("th.arr"))}">${escapeHtml(stop.arrival ?? "")}</td>
               <td data-label="${escapeAttr(I18N.t("th.dep"))}">${escapeHtml(stop.departure ?? "")}</td>
               <td data-label="${escapeAttr(I18N.t("th.type"))}">${escapeHtml(I18N.t("stoptype." + stop.stop_type))}</td>
@@ -363,6 +365,7 @@ function addStopToSelected() {
   const stop = {
     name: train.destination || "",
     n02_station_code: null,
+    platform_number: null,
     arrival: null,
     departure: null,
     stop_type: "passenger_stop",
@@ -378,6 +381,10 @@ function normalizeStopValue(field, value) {
   // same normalization imported JSON goes through — see normalizeNullableTime.
   if (field === "arrival" || field === "departure")
     return normalizeNullableTime(value);
+  if (field === "platform_number") {
+    const normalized = String(value).trim();
+    return normalized === "" ? null : Number(normalized);
+  }
   return value;
 }
 

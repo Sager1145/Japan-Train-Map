@@ -43,6 +43,21 @@ const els = {
   destination: document.getElementById("field-destination"),
   color: document.getElementById("field-color"),
   toggleFocusZoom: document.getElementById("toggle-focus-zoom"),
+  // §4.3's docked strip: what is selected, and the one thing to do with it.
+  panelDockedSummary: document.getElementById("panel-docked-summary"),
+  panelDockedTitle: document.getElementById("panel-docked-title"),
+  panelDockedDetail: document.getElementById("panel-docked-detail"),
+  panelDockedAction: document.getElementById("panel-docked-action"),
+  // §5.2 Network workspace
+  networkRegionSummary: document.getElementById("network-region-summary"),
+  networkPackageSummary: document.getElementById("network-package-summary"),
+  networkLinesSummary: document.getElementById("network-lines-summary"),
+  networkStationsSummary: document.getElementById("network-stations-summary"),
+  networkShowAll: document.getElementById("network-show-all"),
+  // §5.3 Passport
+  passportScope: document.getElementById("passport-scope"),
+  passportCoverage: document.getElementById("passport-coverage-map"),
+  passportJourneyLog: document.getElementById("passport-journey-log"),
   playTrains: document.getElementById("play-trains"),
   playbackBar: document.getElementById("playback-bar"),
   playbackToggle: document.getElementById("playback-toggle"),

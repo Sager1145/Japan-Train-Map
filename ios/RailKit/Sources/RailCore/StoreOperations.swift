@@ -24,7 +24,7 @@ import Foundation
 //
 //  **2. Key order here is declaration order, everywhere, once.** Every shape
 //  §17–§20 builds — `normalizeExportTrain`'s 13 fields, `canonicalStopShape`'s
-//  6, `canonicalRoutePolicy`'s 8, `leanExportSection`'s conditional `from`/
+//  7, `canonicalRoutePolicy`'s 8, `leanExportSection`'s conditional `from`/
 //  `to`, `normalizeImportedRouteSection`, and all six blank-train scaffolds —
 //  spells its keys in the same relative order. That is what lets ``json(_:)``
 //  below be a single projection per type instead of one per call site, and it
@@ -756,21 +756,35 @@ extension StoreOperations {
             pairs.append(("route_sections", .array(sections.map(json))))
         }
         pairs.append(("stops", .array(train.stops.map(json))))
+        // LAST, and only when set. `region` is this app's own field — the web
+        // app has a region switch and needs no such thing — so it is written
+        // after every key the JavaScript writes. A store that never had one
+        // therefore round-trips byte for byte, which is what keeps the
+        // export fixture a check on the ported shape rather than on ours.
+        if let region = train.region { pairs.append(("region", .string(region))) }
         return .object(TrainValidation.JSON.Object(pairs))
     }
 
-    /// All six fields, `null` included — `canonicalStopShape` writes them
-    /// every time, and both committed stores carry all six on all 2 980 stops.
+    /// All seven fields, `null` included — `canonicalStopShape` writes them
+    /// every time. The bundled archives may omit the newer platform field;
+    /// the first canonical write upgrades that absence to explicit null.
     public static func json(_ stop: Stop) -> TrainValidation.JSON {
-        .object(
-            TrainValidation.JSON.Object([
-                ("name", .string(stop.name)),
-                ("n02_station_code", stop.n02StationCode.map(TrainValidation.JSON.string) ?? .null),
-                ("arrival", stop.arrival.map(TrainValidation.JSON.string) ?? .null),
-                ("departure", stop.departure.map(TrainValidation.JSON.string) ?? .null),
-                ("stop_type", .string(stop.stopType)),
-                ("ride_segment", .bool(stop.rideSegment)),
-            ]))
+        var pairs: [(String, TrainValidation.JSON)] = [
+            ("name", .string(stop.name)),
+            ("n02_station_code", stop.n02StationCode.map(TrainValidation.JSON.string) ?? .null),
+        ]
+        if stop.hasPlatformNumberField {
+            pairs.append((
+                "platform_number",
+                stop.platformNumber.map { .number(Double($0)) } ?? .null))
+        }
+        pairs.append(contentsOf: [
+            ("arrival", stop.arrival.map(TrainValidation.JSON.string) ?? .null),
+            ("departure", stop.departure.map(TrainValidation.JSON.string) ?? .null),
+            ("stop_type", .string(stop.stopType)),
+            ("ride_segment", .bool(stop.rideSegment)),
+        ])
+        return .object(TrainValidation.JSON.Object(pairs))
     }
 
     /// The two codes every time, everything else only when present — which is

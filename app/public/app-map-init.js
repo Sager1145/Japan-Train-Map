@@ -21,6 +21,76 @@
 //     treatment: full official color, dark ink casing under the selected
 //     route (no glow).
 
+// ── the 全部鐵路線 overlay, as ONE piece of state ───────────────────────────
+//
+// §5.1: "不要在 Journeys Toolbar 和 Data Library 各保留一套会修改相同数据的
+// 独立状态." The Network workspace (§5.2) and the map's own layer control are
+// two surfaces over the same switch, so the switch lives here and both call
+// it. Neither owns a flag of its own, so neither can drift from the map.
+//
+// `networkOverlayStatus` is what the Network workspace reports: whether the
+// package is off, arriving, drawn, or could not be fetched. §8.8 requires the
+// last of those to be SAID rather than left as an empty map, and the ridden
+// routes keep drawing in every case.
+let networkOverlayWanted = false;
+let networkOverlayStatus = "off";
+let networkOverlayCheckbox = null;
+const networkOverlayListeners = [];
+
+function isNetworkOverlayVisible() {
+  return networkOverlayWanted;
+}
+
+function networkOverlayState() {
+  return networkOverlayStatus;
+}
+
+/// Register a listener for overlay state changes. Called by the Network
+/// workspace so its button and its status line follow the map.
+function onNetworkOverlayChange(fn) {
+  if (typeof fn === "function") networkOverlayListeners.push(fn);
+}
+
+function notifyNetworkOverlayChange() {
+  for (const listener of networkOverlayListeners) {
+    try {
+      listener(networkOverlayWanted, networkOverlayStatus);
+    } catch (err) {
+      console.warn("network overlay listener failed", err);
+    }
+  }
+}
+
+function setNetworkOverlayVisible(visible) {
+  const wanted = Boolean(visible);
+  networkOverlayWanted = wanted;
+  if (networkOverlayCheckbox && networkOverlayCheckbox.checked !== wanted)
+    networkOverlayCheckbox.checked = wanted;
+  // Record intent immediately, even while the lazy fetch is in flight. RailMap
+  // uses this state to reload the correct package on a country switch and to
+  // recover from a prior failed network request.
+  RailMap.setNetworkVisible(wanted);
+  RailMap.setNetworkStationsVisible(wanted);
+  if (!wanted) {
+    networkOverlayStatus = "off";
+    notifyNetworkOverlayChange();
+    return;
+  }
+  networkOverlayStatus = RailMap._network ? "ready" : "loading";
+  notifyNetworkOverlayChange();
+  RailMap.ensureNetwork(activeRailPackageUrl()).then((network) => {
+    if (!networkOverlayWanted) return; // toggled back off during the load
+    // §8.8 / §13.3: a package that did not arrive is reported, not mimed. The
+    // recorded journeys are unaffected and keep drawing either way.
+    networkOverlayStatus = network ? "ready" : "failed";
+    if (network) {
+      RailMap.setNetworkVisible(true);
+      RailMap.setNetworkStationsVisible(true);
+    }
+    notifyNetworkOverlayChange();
+  });
+}
+
 // Custom map-corner control: basemap picker + overlay checkboxes (replaces
 // the old Leaflet layers control).
 function buildMapLayersControl(hasBasemap) {
@@ -130,12 +200,13 @@ function buildMapLayersControl(hasBasemap) {
     });
   }
 
-  // Latest desired state of the 全部鐵路線 overlay. Its geometry model is
-  // already loaded because ridden routes use it too; ensureNetwork() still
-  // covers recovery after a failed request and country-switch races. Keep the
-  // complete-network overlay off by default so the existing ridden-route data
-  // is the map's primary display instead of being hidden beneath every railway.
-  let networkOverlayWanted = false;
+  // The 全部鐵路線 overlay's geometry model is already loaded because ridden
+  // routes use it too; ensureNetwork() still covers recovery after a failed
+  // request and country-switch races. Keep the complete-network overlay off by
+  // default so the existing ridden-route data is the map's primary display
+  // instead of being hidden beneath every railway. The switch itself lives at
+  // module scope (see setNetworkOverlayVisible) because the Network workspace
+  // presses the same one.
   const toggles = [
     ["map.routes", (v) => RailMap.setVisible(v), true],
     ["map.stops", (v) => RailMap.setMarkerVisibility("stop", v), true],
@@ -143,28 +214,7 @@ function buildMapLayersControl(hasBasemap) {
     ["map.passThrough", (v) => RailMap.setMarkerVisibility("pass", v), true],
     // The complete-line model is shared with ridden routes, while this switch
     // controls only the optional background network and station layers.
-    [
-      "map.allRailways",
-      (v) => {
-        networkOverlayWanted = v;
-        // Record intent immediately, even while the lazy fetch is in flight.
-        // RailMap uses this state to reload the correct package on a country
-        // switch and to recover from a prior failed network request.
-        RailMap.setNetworkVisible(v);
-        RailMap.setNetworkStationsVisible(v);
-        if (v) {
-          RailMap.ensureNetwork(activeRailPackageUrl()).then(() => {
-            if (!networkOverlayWanted) return; // toggled back off during load
-            RailMap.setNetworkVisible(true);
-            RailMap.setNetworkStationsVisible(true);
-          });
-        } else {
-          RailMap.setNetworkVisible(false);
-          RailMap.setNetworkStationsVisible(false);
-        }
-      },
-      false,
-    ],
+    ["map.allRailways", (v) => setNetworkOverlayVisible(v), false],
   ];
   const toggleLabels = [];
   toggles.forEach(([labelKey, apply, on]) => {
@@ -172,6 +222,9 @@ function buildMapLayersControl(hasBasemap) {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = on;
+    // Remembered so setNetworkOverlayVisible can keep the box in step when the
+    // Network workspace presses the same switch.
+    if (labelKey === "map.allRailways") networkOverlayCheckbox = cb;
     cb.addEventListener("change", () => apply(cb.checked));
     // The checkbox no longer merely MIRRORS RailMap's own defaults, so the
     // starting state has to be pushed into the map as well — otherwise the
@@ -179,6 +232,12 @@ function buildMapLayersControl(hasBasemap) {
     apply(on);
     const labelText = document.createElement("span");
     labelText.textContent = I18N.tc(labelKey);
+    // Also declared to applyStatic. These labels resolve through tc(), so they
+    // change with the COUNTRY as well as the language — but only setLang fires
+    // the onChange listeners below, so a switch to Korea used to leave the
+    // ridden-category toggles reading 新幹線 / JR在來線 even though kr has its
+    // own names for those slots. applyStatic runs on both transitions.
+    labelText.dataset.i18n = labelKey;
     item.appendChild(cb);
     item.appendChild(labelText);
     toggleLabels.push({ labelText, labelKey });
@@ -207,6 +266,12 @@ function buildMapLayersControl(hasBasemap) {
     cb.addEventListener("change", () => setRiddenCategoryFilter(cat, cb.checked));
     const labelText = document.createElement("span");
     labelText.textContent = I18N.tc(labelKey);
+    // Also declared to applyStatic. These labels resolve through tc(), so they
+    // change with the COUNTRY as well as the language — but only setLang fires
+    // the onChange listeners below, so a switch to Korea used to leave the
+    // ridden-category toggles reading 新幹線 / JR在來線 even though kr has its
+    // own names for those slots. applyStatic runs on both transitions.
+    labelText.dataset.i18n = labelKey;
     item.appendChild(cb);
     item.appendChild(labelText);
     toggleLabels.push({ labelText, labelKey });
@@ -317,6 +382,11 @@ function buildMapInfoControl() {
           <strong data-i18n="info.hkRailTitle">香港鐵路網</strong>
           <p data-i18n="info.hkRailBody">依香港鐵路有限公司官方行程指南與開放數據加工製作，包含港鐵重鐵及全部 11 條輕鐵路線。</p>
           <div class="map-info-links"><a href="https://www.mtr.com.hk/en/customer/jp/index.php" target="_blank" rel="noopener noreferrer">MTR Journey Planner</a><a href="https://data.gov.hk/en-data/dataset/mtr-data-routes-fares-barrier-free-facilities" target="_blank" rel="noopener noreferrer">MTR Open Data</a></div>
+        </article>
+        <article class="map-info-source" data-country="kr">
+          <strong data-i18n="info.krRailTitle">韓國鐵道網</strong>
+          <p data-i18n="info.krRailBody">站點識別、座標與站間距離取自國土交通部、國家鐵道公團、韓國鐵道公社與首爾交通公社的公開資料；軌道中心線取自 OpenStreetMap（ODbL）。</p>
+          <div class="map-info-links"><a href="https://www.data.go.kr/" target="_blank" rel="noopener noreferrer" data-i18n="info.krOpenData">公共資料入口 data.go.kr</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></div>
         </article>
         <article class="map-info-source" data-country="mo">
           <strong data-i18n="info.moRailTitle">澳門輕軌網</strong>

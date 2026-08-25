@@ -22,6 +22,10 @@ struct RideDraftIssue: Identifiable, Equatable {
         case stops
         /// One row of it.
         case stop(Int)
+        /// One written route section. The editor can add, reorder and edit
+        /// them, so its rules need somewhere to be said other than the
+        /// catch-all at the bottom of the form.
+        case routeSection(Int)
         /// `route_policy`'s structural invariants — no field of their own,
         /// because the editor exposes the two the reader can choose and the
         /// rest are schema constants.
@@ -158,6 +162,10 @@ enum RideDraftValidation {
                 issues.append(
                     RideDraftIssue(field: .stop(index), key: "ios.editor.stationCodeRule"))
             }
+            if let platform = stop.platformNumber, platform < 0 {
+                issues.append(
+                    RideDraftIssue(field: .stop(index), key: "ios.editor.platformRule"))
+            }
         }
         // The two cross-field rules: neither end of the journey needs both an
         // arrival and a departure.
@@ -170,6 +178,52 @@ enum RideDraftValidation {
                     field: .stop(draft.stops.count - 1), key: "ios.editor.lastStopTimes"))
         }
 
+        // -- route sections ------------------------------------------------
+        // Every rule `validateTrain` applies to a written section, said next
+        // to the section rather than at the foot of the form. The editor is
+        // where these become reachable at all: a hand-written store rarely has
+        // a section with one endpoint, and an editor with an "add section"
+        // button produces one on the first tap.
+        for (index, section) in (draft.routeSections ?? []).enumerated() {
+            let hasFrom = !isBlank(section.from ?? "")
+                || !isBlank(section.fromN02StationCode ?? "")
+            let hasTo = !isBlank(section.to ?? "") || !isBlank(section.toN02StationCode ?? "")
+            if !hasFrom || !hasTo {
+                issues.append(
+                    RideDraftIssue(
+                        field: .routeSection(index), key: "ios.editor.sectionEndpoints",
+                        params: ["index": .number(Double(index + 1))]))
+            }
+            for code in [section.fromN02StationCode, section.toN02StationCode] {
+                guard let code, !code.isEmpty else { continue }
+                if TrainValidation.stationCodeSystem(code) == nil {
+                    issues.append(
+                        RideDraftIssue(
+                            field: .routeSection(index), key: "ios.editor.sectionCodeRule",
+                            params: ["index": .number(Double(index + 1))]))
+                    break
+                }
+            }
+        }
+
+        // -- route policy --------------------------------------------------
+        // The three the editor actually exposes get their own message; the
+        // schema constants it does not expose stay with the generic refusal
+        // and its "reset to the canonical policy" repair.
+        if let policy = draft.routePolicy {
+            let allowed = policy.allowedInstitutionTypeCodes ?? []
+            if !allowed.allSatisfy(TrainValidation.defaultAllowedInstitutionTypeCodes.contains) {
+                issues.append(
+                    RideDraftIssue(field: .routePolicy, key: "ios.editor.policyCodesRule"))
+            }
+            if let mode = policy.institutionFilterMode, !mode.isEmpty,
+                mode != "soft", mode != "hard"
+            {
+                issues.append(
+                    RideDraftIssue(field: .routePolicy, key: "ios.editor.policyModeRule"))
+            }
+        }
+
         // -- style ---------------------------------------------------------
         if let color = draft.style?.color, !color.isEmpty,
             !TrainValidation.isValidTrainColor(color)
@@ -180,6 +234,9 @@ enum RideDraftValidation {
         // -- the authoritative pass ----------------------------------------
         if let message = schemaRefusal(draft) {
             let explained = issues.contains { $0.severity == .error }
+            // Two of these are now explained field by field, so the net firing
+            // means a rule moved in `TrainValidation` — which is exactly what
+            // it is for.
             if !explained {
                 let isPolicy = message.contains("route_policy")
                 issues.append(

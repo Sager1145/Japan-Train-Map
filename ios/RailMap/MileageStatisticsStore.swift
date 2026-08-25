@@ -76,7 +76,7 @@ final class MileageStatisticsStore {
     /// The statistics screen's own date bucket, in the same vocabulary the
     /// date bar uses: `Dates.allDates`, `Dates.undated`, or `YYYY-MM-DD`.
     ///
-    /// Deliberately not shared with `RidesWorkspaceView.selectedDate`.
+    /// Deliberately not shared with `JourneysWorkspaceView.selectedDate`.
     private(set) var selectedDate: String = Dates.allDates
 
     /// The date buckets the loaded rides actually occupy, in date-bar order.
@@ -92,16 +92,23 @@ final class MileageStatisticsStore {
         return nil
     }
 
-    func load(country: String, trains: [Train], rides: [RiddenRouteStore.DrawnRide]) {
+    /// Load the numbers for one region, or for all of them at once.
+    ///
+    /// `countries` is a list because §5.3.1's scope now has an 全部 entry. One
+    /// entry behaves exactly as this method always did; several are read as a
+    /// single network — see `EdgeIndexCache.merged`, and `categoryCountry`
+    /// for which vocabulary the rows are then named in.
+    func load(countries: [String], trains: [Train], rides: [RiddenRouteStore.DrawnRide]) {
         task?.cancel()
         scopeTask?.cancel()
         state = .loading
         let total = trains.count
+        let country = Self.categoryCountry(for: countries)
         task = Task { [weak self] in
             guard let self else { return }
             do {
                 self.progress = Progress(stage: .readingNetwork)
-                let index = try await Self.readNetwork(country: country)
+                let index = try await Self.readNetwork(countries: countries)
                 try Task.checkCancellation()
 
                 self.progress = Progress(stage: .matchingRides, completed: 0, total: total)
@@ -204,16 +211,31 @@ final class MileageStatisticsStore {
 
     // MARK: - the phases
 
+    /// The region's edge index, from the cache that owns it.
+    ///
+    /// This used to read and index `rail-sections*.json` itself, once per
+    /// load. The numbers now reload on every edit rather than only on an add
+    /// or a delete, and the network is the same file every time — see
+    /// ``EdgeIndexCache``, which is also what the map's ridden-line category
+    /// filter classifies against.
     private nonisolated static func readNetwork(
-        country: String
+        countries: [String]
     ) async throws -> Statistics.EdgeIndex {
-        let suffix = country == "jp" ? "" : "-\(country)"
-        guard let url = Bundle.main.url(
-            forResource: "rail-sections\(suffix)", withExtension: "json")
-        else { throw StatisticsError.missingSections(country) }
-        let sections = try Statistics.SectionFeatureCollection.load(contentsOf: url).sections
+        let index = try await EdgeIndexCache.shared.merged(countries: countries)
         try Task.checkCancellation()
-        return Statistics.buildEdgeIndex(sections: sections, country: country)
+        return index
+    }
+
+    /// Whose vocabulary the category rows are named in.
+    ///
+    /// One region answers for itself. Several have no single answer, and the
+    /// catalog's own default is the one that fits: `Statistics.categories`
+    /// falls through to the FULL list — 新幹線, 在來線, JR, 地下鐵, 私鐵, 路面
+    /// 電車 — which is exactly the union an all-regions panel has to be able
+    /// to show. Naming it after any one of the five would hide the rows the
+    /// other four need.
+    private nonisolated static func categoryCountry(for countries: [String]) -> String {
+        countries.count == 1 ? countries[0] : Region.jp.code
     }
 
     private nonisolated static func matchRides(
@@ -283,16 +305,6 @@ final class MileageStatisticsStore {
     private struct Prepared: Sendable {
         let trains: [Statistics.Train]
         let entries: [Statistics.TrainEntry]
-    }
-
-    enum StatisticsError: LocalizedError {
-        case missingSections(String)
-        var errorDescription: String? {
-            switch self {
-            case .missingSections(let country):
-                "Statistics rail sections for \(country) are missing from the app bundle."
-            }
-        }
     }
 }
 

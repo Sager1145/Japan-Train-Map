@@ -107,10 +107,14 @@
     // measures real corridors against parallelGapPx.
     minCornerRadiusPx: STATION_DIAMETER_PX * RAIL_WIDTH_TO_STATION_DIAMETER,
     // The clear map a reader sees between two DISTINCT railways that share one
-    // corridor, edge to edge. Half of the lane contract — centre-to-centre is
-    // railWidthPx + this (parallelLaneCentreDistancePx) — and the number
-    // scripts/validation/validate-railway-topology.mjs measures the real corridors
-    // against. Screen-space like everything else here: this many pixels at z6
+    // corridor, edge to edge. Since 38cf0a8 dropped screen-space lanes, nothing
+    // OFFSETS a railway by this: every line is drawn on its own surveyed
+    // geometry, so the gap is whatever the survey already put there. What the
+    // token still does is state how much clear map that survey owes the eye —
+    // it is the threshold scripts/validation/validate-railway-topology.mjs
+    // measures the real corridors against, and the zoom at which a corridor
+    // separates is the zoom where the real gap first clears this number.
+    // Screen-space like everything else here: this many pixels at z6
     // and the same many at z18. Deliberately NOT halved with the stroke in the
     // 2026-08-20 retune: this is the clear map the eye needs to read two
     // railways as two, and a finer line needs no less of it than a fat one.
@@ -329,9 +333,9 @@
 
   // ─────────────────── the railway's screen-space weight contract ───────────────────
   // Every railway weight — network stroke, network station dot, ridden route,
-  // recorded-call marker, selection casing, and the lane a bundled railway
-  // steps into — is ONE token above times ONE shared factor, railwayScale().
-  // Nothing computes a ramp of its own, and nothing opts out.
+  // recorded-call marker, selection casing — is ONE token above times ONE
+  // shared factor, railwayScale(). Nothing computes a ramp of its own, and
+  // nothing opts out.
   //
   // The tokens are the weights at FULL scale, and full scale is a property of
   // the MAP SCALE rather than of the zoom number: the railway draws at its
@@ -345,27 +349,21 @@
   // a single fused mass of railway rather than as a network.
   //
   // Thinning with scale and keeping a parallel bundle legible are not in
-  // conflict, so long as ONE factor drives every weight. A lane is
-  //
-  //     centreSpacingPx = (railWidthPx + parallelGapPx) × railwayScale(zoom)
-  //
-  // so the clear map a reader sees between two bundled railways is
-  // parallelGapPx times the very factor that set the two strokes either side
-  // of it: the proportion a reader actually judges — gap against stroke, rail
-  // against station circle — never moves, at any zoom. What must never happen
-  // is a ramp on ONE half of that sum: a width that thinned while the offset
-  // held would fan the bundle into a ladder, an offset that shrank while the
-  // width held would weld it into one stroke. So every weight and every offset
+  // conflict, so long as ONE factor drives every weight. Two railways sharing
+  // a corridor are held apart by the SURVEY, not by a rendered offset — 38cf0a8
+  // dropped screen-space lanes, so each line is drawn on its own measured
+  // geometry and the gap between them is a fixed distance on the ground. The
+  // ramp's job is therefore to keep every MARK in proportion to that fixed
+  // gap: a stroke that thinned while the station circle held, or a casing that
+  // held while the stroke thinned, would move a proportion the reader actually
+  // judges — gap against stroke, rail against station circle. So every weight
   // goes through railwayScale(). The contract tests evaluate the built style
   // across a spread of zooms to keep the proportions fixed.
   //
   // MapLibre hands the screen-space part over for free: line-width,
-  // line-offset, circle-radius and line-translate are all in CSS pixels, so a
-  // pixel number already IS a measurement the projection never touches. The
-  // surveyed geometry stays in world coordinates and only the sideways step is
-  // stated in pixels — the renderer re-derives it from the projected tangent
-  // every frame, which is precisely why a lane cannot be pre-baked as a
-  // geographic distance.
+  // circle-radius and line-translate are all in CSS pixels, so a pixel number
+  // already IS a measurement the projection never touches, while the surveyed
+  // geometry stays in world coordinates.
   //
   // Two things are deliberately NOT on the ramp, because neither is a mark:
   // the hit targets (the pick layers' line-width) and the hover fan's lane
@@ -434,9 +432,9 @@
   // as a hole rather than a mark. Interchange-ness is counted in RAILWAYS, so
   // several services of one railway calling at a stop leave it solid.
   //
-  // Both layers that draw platforms — the circle for a station on its own
-  // alignment, the round-capped stub for one in a parallel lane — read the
-  // same flag through these two, so the two can never disagree.
+  // One layer draws platforms since 38cf0a8 retired the parallel-lane marker,
+  // so these two are the single place the flag is read — keep them that way if
+  // a second platform layer ever comes back.
   function stationFill(theme) {
     const colors = MAP_SURFACE_COLORS[theme === "dark" ? "dark" : "light"];
     return [
@@ -712,19 +710,10 @@
   // One name per railway. rail-network.js marks the closed stroke of a line
   // that still has an open one; a wholly closed railway carries its own name.
   const SEGMENT_LABEL_FILTER = ["!=", ["get", "labelSuppressed"], 1];
+  // One circle layer for every station: with lanes gone (38cf0a8) no platform
+  // is displaced from its line, so none needs the rotated, icon-offset marker
+  // that used to stand in for a circle MapLibre cannot offset per feature.
   const STATIONS_LAYER = "rn-stations-dot";
-  // The same dot for a platform whose line runs in a parallel lane. It cannot
-  // be a circle — MapLibre has no per-feature circle offset — so it is an ICON
-  // rotated to the bearing of the track under it and pushed sideways by
-  // icon-offset. Because icon-offset is applied in the icon's own rotated
-  // frame, "+x" is right of travel, which is the side line-offset calls
-  // positive: the platform and its railway take the same lane by construction.
-  //
-  // It was a round-capped 30 cm line stub until it wasn't. A stub's WIDTH is a
-  // screen constant but its LENGTH is metres of geometry, so it grew with the
-  // zoom — 0.3 px long at z16, 20 px at z22 — and a platform that read as a
-  // dot when the country was on screen read as a capsule once you were down at
-  // a single station. An icon has no length to grow.
   // Names. Both are text-only symbol layers with no icon of any kind: a
   // station is named beside its bead, never replaced by one (see the station
   // glyph contract — no logo, no badge, at any zoom).
@@ -791,18 +780,17 @@
   const HOVER_REGIONS_FILL_LAYER = "train-hover-regions-fill";
   const HOVER_REGIONS_LINE_LAYER = "train-hover-regions-line";
 
-  // Every railway weight and every lane offset, in one table: buildBaseStyle
-  // paints them from it and RailMap re-asserts them from it on attach. The two
-  // invisible pick layers are deliberately absent from the WIDTHS — a hit
-  // target is not a mark, and must not thin with the map — but the pick
-  // layer's OFFSET is here, because a target left behind on the centre-line
-  // while the line it targets steps into a lane is a target on empty map.
+  // Every railway weight, in one table: buildBaseStyle paints them from it and
+  // RailMap re-asserts them from it on attach. The two invisible pick layers
+  // are deliberately absent — a hit target is not a mark, and must not thin
+  // with the map. There are no offsets in here: 38cf0a8 dropped screen-space
+  // lanes, so nothing steps a railway sideways and a hit target can sit on the
+  // line's own geometry.
   //
   // Every value here goes through railwayScale(), and the ONE table is what
   // makes that checkable from the built style. It keeps every layer that draws
-  // a bundled railway — the field, its station stubs, the rides over it, the
-  // selection casing, the hover highlight and the hit target — carrying the
-  // identical offset expression.
+  // a bundled railway — the field, its station dots, the rides over it, the
+  // selection casing and the hover highlight — on the identical ramp.
   const RAILWAY_SCREEN_PAINT = [
     // the "all railway lines" field
     [SEGMENTS_CASING_LAYER, "line-width", networkCasingWidth],

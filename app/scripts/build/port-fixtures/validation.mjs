@@ -397,6 +397,15 @@ export function build({ AppCore, RailNetwork, APP_DIR }) {
       "one stop is ridden, so the train validates, exports, and draws nothing.",
   );
 
+  // -- passenger-facing platform number (§7.1)
+  addTrain("platform number null", project(base, (t) => (t.stops[1].platform_number = null)));
+  addTrain("platform number zero", project(base, (t) => (t.stops[1].platform_number = 0)));
+  addTrain("platform number positive", project(base, (t) => (t.stops[1].platform_number = 12)));
+  addTrain("platform number absent", project(base, (t) => delete t.stops[1].platform_number));
+  addTrain("platform number negative", project(base, (t) => (t.stops[1].platform_number = -1)));
+  addTrain("platform number fractional", project(base, (t) => (t.stops[1].platform_number = 1.5)));
+  addTrain("platform number string", project(base, (t) => (t.stops[1].platform_number = "2")));
+
   // -- station codes (§2.3)
   addTrain("station code null", project(base, (t) => (t.stops[1].n02_station_code = null)));
   addTrain("station code absent", project(base, (t) => delete t.stops[1].n02_station_code));

@@ -25,7 +25,11 @@ final class ItineraryStore {
     }
 
     struct Loaded {
-        var country: String
+        /// Which regions these rides touch, in the interface's order. The map
+        /// draws all five networks whatever this says; it is here because the
+        /// screens that summarise the rides — statistics, the data screen —
+        /// have to say which regions they are summarising.
+        var regions: [Region]
         var trains: [Train]
         /// Dates in the order the web app's date bar shows them, each with the
         /// trains whose own bucket is that date.
@@ -84,9 +88,7 @@ final class ItineraryStore {
     /// ported rules used on load. The editor commits a complete draft once,
     /// so views never observe a half-edited canonical record.
     @discardableResult
-    func replace(
-        _ train: Train, replacing originalID: String, country: String
-    ) -> SaveOutcome {
+    func replace(_ train: Train, replacing originalID: String) -> SaveOutcome {
         // A running import owns the store (§8.7): an edit committed against
         // the pre-import trains would be overwritten seconds later without a
         // trace of what happened to it.
@@ -106,14 +108,14 @@ final class ItineraryStore {
             outcome = .savedKeepingID(keptID: originalID, requestedID: candidate.id)
             candidate.id = originalID
         }
-        next.trains[index] = candidate
+        next.trains[index] = candidate.taggingRegion()
         store = next
         selectedTrainID = candidate.id
-        publishRecordIndex(country: country)
+        publishRecordIndex()
 
         Task {
             do {
-                state = .loaded(try await Self.group(store: next, country: country))
+                state = .loaded(try await Self.group(store: next))
             } catch {
                 state = .failed(error.localizedDescription)
             }
@@ -121,9 +123,15 @@ final class ItineraryStore {
         return outcome
     }
 
+    /// The web-parity 新增列車 — a region's own starter itinerary.
+    ///
+    /// The region is an argument because there is no active one to read: the
+    /// blank train `StoreOperations.createBlankTrain` builds is regional data
+    /// (Japan's 東京→熱海, Taiwan's airport-MRT corridor), so *which* one is
+    /// the reader's choice rather than an app-state lookup.
     @discardableResult
-    func add(country: String) -> String? {
-        mutate(country: country) { workspace in
+    func add(region: Region) -> String? {
+        mutate(region: region) { workspace in
             StoreOperations.addTrain(in: &workspace)
         }
     }
@@ -132,34 +140,44 @@ final class ItineraryStore {
     /// no-argument web-parity action lets the SwiftUI add flow remain atomic:
     /// cancelling the sheet never leaves a blank journey in the store.
     @discardableResult
-    func add(_ train: Train, country: String) -> String? {
-        mutate(country: country) { workspace in
-            StoreOperations.addTrain(train, in: &workspace)
+    func add(_ train: Train) -> String? {
+        mutate(region: Region.resolved(train)) { workspace in
+            StoreOperations.addTrain(train.taggingRegion(), in: &workspace)
         }
     }
 
     @discardableResult
-    func duplicate(_ id: String, country: String) -> String? {
-        mutate(country: country) { workspace in
+    func duplicate(_ id: String) -> String? {
+        mutate(region: region(of: id)) { workspace in
             StoreOperations.duplicateTrain(id, in: &workspace)
         }
     }
 
-    func delete(_ id: String, country: String) {
-        _ = mutate(country: country) { workspace in
+    func delete(_ id: String) {
+        _ = mutate(region: region(of: id)) { workspace in
             StoreOperations.deleteTrain(id, in: &workspace)
         }
     }
 
-    func toggleVisibility(_ id: String, country: String) {
-        _ = mutate(country: country) { workspace in
+    func toggleVisibility(_ id: String) {
+        _ = mutate(region: region(of: id)) { workspace in
             StoreOperations.toggleTrainVisibility(id, in: &workspace)
         }
     }
 
+    /// The region of the ride an operation acts on.
+    ///
+    /// Most `StoreOperations` transitions do not read the workspace's country
+    /// at all — only `addTrain` does, for its blank scaffold — but handing one
+    /// the wrong region would be a fact stated wrongly, and a later transition
+    /// that starts reading it would inherit the mistake silently.
+    private func region(of id: String) -> Region {
+        store?.trains.first { $0.id == id }.map(Region.resolved) ?? .jp
+    }
+
     @discardableResult
-    func rebuildRouteSections(_ id: String, country: String) -> Int? {
-        rebuildRoute(id, country: country)?.sections
+    func rebuildRouteSections(_ id: String) -> Int? {
+        rebuildRoute(id)?.sections
     }
 
     /// What a rebuild did, in the two parts §8.4 asks the interface to keep
@@ -177,31 +195,32 @@ final class ItineraryStore {
     /// `rebuildRouteSections`, plus the half that was missing.
     ///
     /// Recomputing `route_sections` changes the record, and until now that was
-    /// the whole operation: the shell reloads route geometry on a key built
-    /// from train ids and visibility, neither of which a rebuild moves, so the
-    /// map kept drawing the geometry of the *previous* section list. Asking
-    /// the route store to solve this one journey again is what makes §8.4's
-    /// "并让地图更新" true.
+    /// the whole operation. The shell's route key covers the whole record now
+    /// (see `ContentView.routeLoadKey`), so the reload is no longer in doubt —
+    /// but it reloads the *set*, and this journey is the one the reader is
+    /// waiting on. Solving it directly is what puts its own geometry back
+    /// under its own section list immediately, and what lets §8.4's surface
+    /// say whether a solve started rather than only that sections were
+    /// rewritten.
     @discardableResult
-    func rebuildRoute(_ id: String, country: String) -> RebuildOutcome? {
+    func rebuildRoute(_ id: String) -> RebuildOutcome? {
         guard let train = store?.trains.first(where: { $0.id == id }) else { return nil }
         var rebuilt = train
         rebuilt.routeSections = TrainValidation.normalizeExportTrain(
-            train, country: country, stations: .empty).routeSections
-        guard case .saved = replace(rebuilt, replacing: id, country: country) else { return nil }
-        let solving = RideStatusCenter.shared.resolveAgain(rebuilt, country: country)
+            train, country: Region.resolved(train).code, stations: .empty).routeSections
+        guard case .saved = replace(rebuilt, replacing: id) else { return nil }
+        let solving = RideStatusCenter.shared.resolveAgain(rebuilt)
         return RebuildOutcome(sections: rebuilt.routeSections?.count ?? 0, solving: solving)
     }
 
     /// Publish the ids the store holds, so the editor can see an id collision
     /// before the save is refused rather than after (§8.3).
-    private func publishRecordIndex(country: String) {
-        RideStatusCenter.shared.publish(
-            trainIDs: Set(store?.trains.map(\.id) ?? []), country: country)
+    private func publishRecordIndex() {
+        RideStatusCenter.shared.publish(trainIDs: Set(store?.trains.map(\.id) ?? []))
     }
 
-    func move(_ id: String, by offset: Int, country: String) {
-        _ = mutate(country: country) { workspace in
+    func move(_ id: String, by offset: Int) {
+        _ = mutate(region: region(of: id)) { workspace in
             StoreOperations.moveTrain(id, by: offset, in: &workspace)
         }
     }
@@ -252,7 +271,7 @@ final class ItineraryStore {
     /// so the store is left untouched either way.
     func runImport(
         text: String,
-        country: String,
+        region: Region,
         mode: ImportPreflight.Mode,
         sourceLabel: String = "JSON",
         onProgress: @MainActor (ImportProgress) -> Void
@@ -272,7 +291,7 @@ final class ItineraryStore {
                 selectedTrainID: nil,
                 focusedTrainID: nil,
                 selectedDate: Dates.allDates,
-                country: country)
+                country: region.code)
 
             switch mode {
             case .replaceAll:
@@ -316,17 +335,21 @@ final class ItineraryStore {
         // half of it: the store is the one thing that must not be left in a
         // state nobody asked for.
         try Task.checkCancellation()
-        // The same reasoning for a region switched under the import: those
-        // journeys were normalised under one country's company rules and
-        // belong to that country's store, not to whatever is on screen now.
-        if let showing = loaded?.country, showing != country { throw ImportSuperseded() }
-
-        let next = TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: commit.trains)
-        let grouped = try await Self.group(store: next, country: country)
+        // The imported journeys were normalised under one region's company
+        // rules, so they are tagged with that region here rather than being
+        // re-derived from stops that may carry no codes at all.
+        let next = TrainStore(
+            schemaVersion: TrainValidation.schemaVersion,
+            trains: commit.trains.map { train in
+                var copy = train
+                copy.region = train.region ?? region.code
+                return copy
+            })
+        let grouped = try await Self.group(store: next)
         store = next
         selectedTrainID = commit.selectedTrainID
         state = .loaded(grouped)
-        publishRecordIndex(country: country)
+        publishRecordIndex()
         return ImportSummary(
             mode: mode, imported: commit.ids.count, ids: commit.ids,
             storeCount: commit.trains.count)
@@ -344,29 +367,24 @@ final class ItineraryStore {
         }
     }
 
-    struct ImportSuperseded: LocalizedError {
-        var errorDescription: String? {
-            "The region changed while this import was running, so its journeys were not applied."
-        }
-    }
-
-    func importJSON(_ text: String, country: String) throws {
+    func importJSON(_ text: String, region: Region) throws {
         var session = ImportEngine.Session(
             trains: store?.trains ?? [],
             selectedTrainID: selectedTrainID,
             focusedTrainID: nil,
             selectedDate: Dates.allDates,
-            country: country
+            country: region.code
         )
         try session.replaceTrainStoreFromJSONText(text, sourceLabel: "JSON")
-        let next = TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: session.trains)
+        let next = MergedStore.tagged(
+            TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: session.trains))
         store = next
         selectedTrainID = session.selectedTrainID
-        publishRecordIndex(country: country)
+        publishRecordIndex()
         let selection = session.selectedTrainID
         Task {
             do {
-                state = .loaded(try await Self.group(store: next, country: country))
+                state = .loaded(try await Self.group(store: next))
                 selectedTrainID = selection
             } catch {
                 state = .failed(error.localizedDescription)
@@ -374,21 +392,23 @@ final class ItineraryStore {
         }
     }
 
-    func deleteAll(country: String) {
-        _ = mutate(country: country) { workspace in
+    func deleteAll() {
+        _ = mutate(region: .jp) { workspace in
             StoreOperations.deleteAllTrains(in: &workspace)
         }
     }
 
-    func exportJSON(country: String) -> String? {
+    /// Same, plus the note about which samples are in the working set — which
+    /// is no longer true of an empty one.
+    func deleteAll(clearing library: RideLibrary) {
+        deleteAll()
+        library.forgetLoadedSamples()
+    }
+
+    /// The canonical JSON for every ride, whatever region each belongs to.
+    func exportJSON() -> String? {
         guard let store else { return nil }
-        return StoreOperations.exportTrainStore(
-            StoreOperations.Workspace(
-                store: store,
-                selectedTrainID: selectedTrainID,
-                country: country
-            )
-        )
+        return MergedStore.export(store)
     }
 
     /// Run one of RailCore's verified store transitions and rebuild the view
@@ -396,7 +416,7 @@ final class ItineraryStore {
     /// added or duplicated journey immediately.
     @discardableResult
     private func mutate(
-        country: String,
+        region: Region,
         operation: (inout StoreOperations.Workspace) -> StoreOperations.MutationResult?
     ) -> String? {
         guard !isImporting else { return selectedTrainID }
@@ -405,16 +425,21 @@ final class ItineraryStore {
             store: store,
             selectedTrainID: selectedTrainID,
             focusedTrainID: nil,
-            country: country
+            country: region.code
         )
         guard operation(&workspace) != nil else { return workspace.selectedTrainID }
-        self.store = workspace.store
+        // A journey created by one of these transitions — `addTrain`'s blank
+        // scaffold, `duplicateTrain`'s copy — arrives without a region, and
+        // the scaffold's stops are the only thing that could say. Tagging the
+        // whole store settles it once, here, rather than at every reader.
+        self.store = MergedStore.tagged(workspace.store)
         selectedTrainID = workspace.selectedTrainID
-        publishRecordIndex(country: country)
+        publishRecordIndex()
         let selection = workspace.selectedTrainID
+        let tagged = self.store ?? workspace.store
         Task {
             do {
-                state = .loaded(try await Self.group(store: workspace.store, country: country))
+                state = .loaded(try await Self.group(store: tagged))
                 selectedTrainID = selection
             } catch {
                 state = .failed(error.localizedDescription)
@@ -423,46 +448,91 @@ final class ItineraryStore {
         return workspace.selectedTrainID
     }
 
-    func load(country: String, from library: RideLibrary) {
+    /// The reader's own rides, or nothing at all.
+    ///
+    /// **Nothing at all is the first-launch state, deliberately.** The web app
+    /// boots into a sample so that a browser tab arriving from a link has
+    /// something on it; this app does not, because a sample loaded without
+    /// being asked for is 201 journeys the reader has to delete before their
+    /// own store means anything. The samples are on the data screen, one
+    /// region at a time, and loading one is an action.
+    func load(from library: RideLibrary) {
         state = .loading
-        library.refreshSavedState(country: country)
+        library.migrateLegacyStores()
+        library.refreshSavedState()
 
         Task {
             do {
-                let store: TrainStore
-                switch library.source {
-                case .mine:
-                    store = try library.savedStore(country: country)
-                case .sample(let resource):
-                    // A sample belongs to one country. Asked for a country
-                    // whose sample is not the current one — after a country
-                    // switch — fall to that country's own first sample rather
-                    // than showing rides with no railway under them.
-                    let wanted = RideLibrary.Sample.all.first { $0.resource == resource }
-                    if wanted?.country == country {
-                        store = try library.sample(resource)
-                    } else if let fallback = RideLibrary.Sample.forCountry(country).first {
-                        store = try library.sample(fallback.resource)
-                        library.use(.sample(fallback.resource))
-                    } else {
-                        store = TrainStore(schemaVersion: "1.3", trains: [])
-                    }
-                }
+                let saved = library.hasSavedStore
+                    ? try library.savedStore()
+                    : TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: [])
+                let store = await MergedStore.regionTagged(saved)
                 self.store = store
-                publishRecordIndex(country: country)
-                state = .loaded(try await Self.group(store: store, country: country))
+                publishRecordIndex()
+                state = .loaded(try await Self.group(store: store))
                 selectedTrainID = nil
+                // Written back, because the point of the pass is that it
+                // happens once: a correction that is not saved is a correction
+                // that runs again on every launch. Only when it changed
+                // something — a store this app wrote is already tagged, and
+                // rewriting it on every launch would be a file touched for
+                // nothing.
+                if store != saved { library.save(store) }
             } catch {
                 state = .failed(error.localizedDescription)
             }
         }
     }
 
+    /// Fold a store — a bundled sample, or a file the reader opened — into the
+    /// working set and save the result.
+    ///
+    /// Returns the ids that were added or updated, so the caller can say how
+    /// many rides arrived rather than how many the file held.
+    @discardableResult
+    func merge(_ incoming: TrainStore, into library: RideLibrary) async -> [String] {
+        // Placed BEFORE the fold, not corrected after it. Every bundled sample
+        // is a web-app store with no `region` in it, and outside Japan its
+        // codes name no region on their face — so a sample folded in untagged
+        // is drawn and solved as Japanese, and the Macanese one reported
+        // 無法繪製路線 until the app was next launched. See ``RegionCodeIndex``.
+        let tagged = await MergedStore.regionTagged(incoming)
+        // Refused while the working set is still being read from disk. Folding
+        // into a store that is not there yet would merge into nothing and then
+        // SAVE that — which is how loading a sample seconds after launch
+        // deletes every ride the reader already had. Read after the tagging
+        // rather than before: an `await` is a suspension point, so a working
+        // set checked before it is not the one being folded into.
+        guard let current = store else { return [] }
+        let next = MergedStore.merging(tagged, into: current)
+        store = next
+        publishRecordIndex()
+        library.save(next)
+        Task {
+            do { state = .loaded(try await Self.group(store: next)) }
+            catch { state = .failed(error.localizedDescription) }
+        }
+        return incoming.trains.map(\.id)
+    }
+
+    /// Replace the whole working set with one store — the 重置示例 action,
+    /// which is the only place the web app's "this sample IS the store"
+    /// meaning survives.
+    func replaceAll(with incoming: TrainStore, into library: RideLibrary) async {
+        let next = await MergedStore.regionTagged(incoming)
+        store = next
+        selectedTrainID = nil
+        publishRecordIndex()
+        library.save(next)
+        Task {
+            do { state = .loaded(try await Self.group(store: next)) }
+            catch { state = .failed(error.localizedDescription) }
+        }
+    }
+
     /// A national store is 201 itineraries, so the grouping runs off the main
     /// actor and the main actor only sees the finished value.
-    private nonisolated static func group(
-        store: TrainStore, country: String
-    ) async throws -> Loaded {
+    private nonisolated static func group(store: TrainStore) async throws -> Loaded {
         let started = ContinuousClock.now
 
         // Both the ordering and the bucketing are the web app's, ported. The
@@ -483,7 +553,7 @@ final class ItineraryStore {
             return Loaded.Day(date: date, trains: sorted.filter { ids.contains($0.id) })
         }
         return Loaded(
-            country: country,
+            regions: MergedStore.regions(of: sorted),
             trains: sorted,
             days: days,
             elapsed: ContinuousClock.now - started

@@ -19,7 +19,6 @@ struct DataManagerView: View {
     @Environment(RailNetworkStore.self) private var network: RailNetworkStore?
     @Bindable var itineraries: ItineraryStore
     @Bindable var library: RideLibrary
-    let country: String
 
     @State private var flow = ImportFlow()
     @State private var showsImporter = false
@@ -33,7 +32,9 @@ struct DataManagerView: View {
 
     @State private var confirmDeleteSaved = false
     @State private var confirmDeleteAll = false
-    @State private var confirmResetSample = false
+    /// The sample a long-press asked to replace EVERYTHING with, held while
+    /// the confirmation is up so the dialog can name it.
+    @State private var replaceCandidate: RideLibrary.Sample?
     @State private var confirmRestore = false
 
     /// An error that blocks a task stays on the screen next to the thing it
@@ -54,6 +55,7 @@ struct DataManagerView: View {
             importSection
             exportSection
             samplesSection
+            sampleRegionSections
             availabilitySection
             recoverySection
             dangerSection
@@ -61,7 +63,7 @@ struct DataManagerView: View {
         .navigationTitle(localization.text("nav.data", fallback: "Data"))
         .sheet(isPresented: $showsImporter) {
             DataImportView(
-                flow: flow, itineraries: itineraries, library: library, country: country)
+                flow: flow, itineraries: itineraries, library: library)
         }
         .confirmationDialog(
             localization.text("sec.import", fallback: "Import"),
@@ -69,11 +71,15 @@ struct DataManagerView: View {
             titleVisibility: .visible
         ) {
             Button(localization.text("btn.openLocal", fallback: "Open JSON")) {
-                importsFile = true
+                showsImportChoice = false
+                afterPresentationDismisses { importsFile = true }
             }
             Button(localization.text("sec.importPaste", fallback: "Paste JSON")) {
-                flow.load("", origin: .pasted)
-                showsImporter = true
+                showsImportChoice = false
+                afterPresentationDismisses {
+                    flow.load("", origin: .pasted)
+                    showsImporter = true
+                }
             }
         }
         .fileImporter(isPresented: $importsFile, allowedContentTypes: [.json]) { result in
@@ -96,7 +102,7 @@ struct DataManagerView: View {
             isPresented: $exportsFile,
             document: exportDocument,
             contentType: .json,
-            defaultFilename: "train-store-\(country)"
+            defaultFilename: "train-store"
         ) { result in
             if case .failure(let error) = result {
                 operationError = OperationError(
@@ -108,8 +114,7 @@ struct DataManagerView: View {
         .onChange(of: rawPreviewExpanded) {
             // A national store is a megabyte of JSON. It is built when the
             // disclosure opens, and not before.
-            rawPreview =
-                rawPreviewExpanded ? (itineraries.exportJSON(country: country) ?? "") : ""
+            rawPreview = rawPreviewExpanded ? (itineraries.exportJSON() ?? "") : ""
         }
     }
 
@@ -119,7 +124,7 @@ struct DataManagerView: View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 14) {
-                    Image(systemName: library.source.isMine ? "person.crop.circle.fill" : "eye")
+                    Image(systemName: "person.crop.circle.fill")
                         .font(.title2)
                         .foregroundStyle(.tint)
                         .frame(width: 44, height: 44)
@@ -135,35 +140,20 @@ struct DataManagerView: View {
                 }
                 .accessibilityElement(children: .combine)
 
-                // One filled button per surface (§3.1): saving a sample as
-                // your own is the thing to do next while previewing, and
-                // importing is the thing to do next once it is yours.
-                if library.source.isMine {
-                    Button {
-                        showsImportChoice = true
-                    } label: {
-                        Label(
-                            localization.text("sec.import", fallback: "Import"),
-                            systemImage: "square.and.arrow.down"
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(itineraries.isImporting)
-                } else {
-                    Button {
-                        guard let store = itineraries.store else { return }
-                        library.save(store, country: country)
-                    } label: {
-                        Label(
-                            localization.text("btn.saveAsMine", fallback: "Save as my data"),
-                            systemImage: "square.and.arrow.down"
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(itineraries.store == nil)
+                // One filled button per surface (§3.1). There is only one
+                // thing to do next here now: everything on this screen acts on
+                // the reader's own rides, so importing more of them is it.
+                Button {
+                    showsImportChoice = true
+                } label: {
+                    Label(
+                        localization.text("sec.import", fallback: "Import"),
+                        systemImage: "square.and.arrow.down"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(itineraries.isImporting)
             }
             .padding(.vertical, 6)
         } footer: {
@@ -193,7 +183,7 @@ struct DataManagerView: View {
                     detail: message,
                     kept: localization.dataText("data.loadFailedKept"))
                 Button(localization.dataText("data.retryLoad")) {
-                    itineraries.load(country: country, from: library)
+                    itineraries.load(from: library)
                 }
             }
         }
@@ -206,7 +196,7 @@ struct DataManagerView: View {
                     kept: localization.dataText("data.saveFailedKept"))
                 Button(localization.dataText("data.saveRetry")) {
                     guard let store = itineraries.store else { return }
-                    library.save(store, country: country)
+                    library.save(store)
                 }
                 .disabled(itineraries.store == nil)
             }
@@ -255,7 +245,7 @@ struct DataManagerView: View {
     private var exportSection: some View {
         Section {
             Button {
-                guard let text = itineraries.exportJSON(country: country) else { return }
+                guard let text = itineraries.exportJSON() else { return }
                 exportDocument = TrainStoreDocument(text: text)
                 exportsFile = true
             } label: {
@@ -266,7 +256,7 @@ struct DataManagerView: View {
             .disabled(itineraries.store == nil)
 
             Button {
-                guard let text = itineraries.exportJSON(country: country) else { return }
+                guard let text = itineraries.exportJSON() else { return }
                 UIPasteboard.general.string = text
                 copied = true
                 Task {
@@ -313,7 +303,7 @@ struct DataManagerView: View {
         Section {
             Button {
                 guard let store = itineraries.store else { return }
-                library.save(store, country: country)
+                library.save(store)
             } label: {
                 Label(
                     localization.text("btn.saveAsMine", fallback: "Save current rides"),
@@ -322,32 +312,106 @@ struct DataManagerView: View {
             .disabled(itineraries.store == nil)
 
             Button {
-                library.use(.mine)
-                itineraries.load(country: country, from: library)
+                itineraries.load(from: library)
             } label: {
                 Label(
                     localization.text("btn.restoreMine", fallback: "Restore saved rides"),
                     systemImage: "arrow.uturn.backward")
             }
             .disabled(!library.hasSavedStore)
-
-            ForEach(RideLibrary.Sample.forCountry(country)) { sample in
-                Button {
-                    library.use(.sample(sample.resource))
-                    itineraries.load(country: country, from: library)
-                } label: {
-                    Label(
-                        localization.text(sample.titleKey, fallback: sample.title),
-                        systemImage: library.source == .sample(sample.resource)
-                            ? "checkmark" : "doc.text")
-                }
-            }
         } header: {
-            Text(localization.text("chip.sample", fallback: "Samples"))
+            Text(localization.text("ios.myRides", fallback: "My rides"))
         } footer: {
-            Text(localization.dataText("data.sampleFootnote"))
+            Text(localization.dataText("data.storageFootnote"))
         }
         .disabled(itineraries.isImporting)
+    }
+
+    /// The seven samples, grouped by the region each belongs to.
+    ///
+    /// **Loading one adds its rides to the working set.** In the web app the
+    /// button replaces the store, because the store is one region's and the
+    /// sample is that region's; with one merged store, replacing everything to
+    /// see the Macao sample would delete the reader's Japanese rides. So a
+    /// sample is folded in, a recovery copy is written first, and loading the
+    /// same one twice updates those rides rather than duplicating them.
+    ///
+    /// The web app's 重置示例 — "this sample IS the store" — survives as the
+    /// long-press action, where it has an unambiguous subject.
+    private var sampleRegionSections: some View {
+        ForEach(Region.ordered) { region in
+            let samples = RideLibrary.Sample.forRegion(region)
+            if !samples.isEmpty {
+                Section {
+                    ForEach(samples) { sample in
+                        Button {
+                            loadSample(sample, replacingEverything: false)
+                        } label: {
+                            Label(
+                                localization.text(sample.titleKey, fallback: sample.title),
+                                systemImage: library.loadedSamples.contains(sample.resource)
+                                    ? "checkmark.circle" : "doc.text")
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                // A context menu is itself a presentation on
+                                // iOS. Let its controller leave before asking
+                                // SwiftUI for the confirmation dialog.
+                                afterPresentationDismisses {
+                                    replaceCandidate = sample
+                                }
+                            } label: {
+                                Label(
+                                    localization.text(
+                                        "btn.resetDefaults", fallback: "Replace all rides"),
+                                    systemImage: "arrow.counterclockwise")
+                            }
+                        }
+                    }
+                } header: {
+                    Text(localization.text(region.localizationKey, fallback: region.fallbackName))
+                } footer: {
+                    if region == Region.ordered.last {
+                        Text(localization.dataText("data.sampleFootnote"))
+                    }
+                }
+            }
+        }
+        .disabled(itineraries.isImporting)
+    }
+
+    /// Fold a sample in, or — from the long-press action — make it the whole
+    /// working set. Either way a recovery copy is written first, because both
+    /// can overwrite rides the reader edited.
+    private func loadSample(_ sample: RideLibrary.Sample, replacingEverything: Bool) {
+        // A `Task` because both doors now place the incoming rides in their
+        // region before they are published, and that reads a shipped dataset
+        // for the four whose station codes do not say which region they are.
+        // The read is off the main actor and the button is disabled while an
+        // import runs, so the only thing this changes for the reader is that
+        // a Macanese sample arrives already Macanese instead of arriving
+        // Japanese and failing to solve.
+        Task {
+            do {
+                let incoming = try library.sample(sample.resource)
+                if let store = itineraries.store, !store.trains.isEmpty {
+                    library.snapshotBackup(
+                        store, reason: replacingEverything ? .beforeReplace : .beforeImport)
+                }
+                if replacingEverything {
+                    library.forgetLoadedSamples()
+                    await itineraries.replaceAll(with: incoming, into: library)
+                } else {
+                    await itineraries.merge(incoming, into: library)
+                }
+                library.noteSampleLoaded(sample.resource)
+            } catch {
+                operationError = OperationError(
+                    titleKey: "data.loadFailedTitle",
+                    detail: error.localizedDescription,
+                    keptKey: "data.loadFailedKept")
+            }
+        }
     }
 
     // MARK: - §8.8 degradation
@@ -357,35 +421,57 @@ struct DataManagerView: View {
         if let network {
             Section {
                 switch network.state {
-                case .idle, .loading:
+                case .idle:
                     HStack(spacing: 10) {
                         ProgressView()
                         Text(
                             localization.dataText(
-                                "data.packageLoading", ["region": .string(regionName)]))
+                                "data.packageLoading",
+                                ["region": .string(
+                                    Region.ordered.map(regionName).joined(separator: "・"))]))
                     }
-                case .loaded(_, let lines, _):
-                    Label(
-                        localization.dataText(
-                            "data.packageReady",
-                            [
-                                "region": .string(regionName),
-                                "count": .number(Double(lines.count)),
-                            ]),
-                        systemImage: "checkmark.circle")
-                case .failed(let message):
-                    // A missing network package blocks this region's MAP. It
-                    // does not block the records, and saying so is the
-                    // difference between a degraded app and a broken one.
-                    DataErrorCard(
-                        title: localization.dataText(
-                            "data.packageMissingTitle", ["region": .string(regionName)]),
-                        detail: [
-                            localization.dataText("data.packageMissingImpact"), message,
-                        ].joined(separator: "\n"),
-                        kept: localization.dataText("data.packageMissingKept"))
-                    Button(localization.dataText("data.packageRetry")) {
-                        network.load(country: country)
+                case .loading(let pending):
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        // Named, because the five packages differ by three
+                        // orders of magnitude and "still loading" says nothing
+                        // about which one is holding the map up.
+                        Text(
+                            localization.dataText(
+                                "data.packageLoading",
+                                ["region": .string(
+                                    pending.map(regionName).joined(separator: "・"))]))
+                    }
+                case .loaded(let regions, let failures, _):
+                    ForEach(regions) { load in
+                        Label(
+                            localization.dataText(
+                                "data.packageReady",
+                                [
+                                    "region": .string(regionName(load.region)),
+                                    "count": .number(Double(load.lineCount)),
+                                ]),
+                            systemImage: "checkmark.circle")
+                    }
+                    // One package missing blocks that region's MAP. It does
+                    // not block the records, and it does not block the other
+                    // four regions either — which is the difference between a
+                    // degraded app and a broken one.
+                    ForEach(failures) { failure in
+                        DataErrorCard(
+                            title: localization.dataText(
+                                "data.packageMissingTitle",
+                                ["region": .string(regionName(failure.region))]),
+                            detail: [
+                                localization.dataText("data.packageMissingImpact"),
+                                failure.message,
+                            ].joined(separator: "\n"),
+                            kept: localization.dataText("data.packageMissingKept"))
+                    }
+                    if !failures.isEmpty {
+                        Button(localization.dataText("data.packageRetry")) {
+                            network.loadAll()
+                        }
                     }
                 }
             } header: {
@@ -411,7 +497,9 @@ struct DataManagerView: View {
                             [
                                 "count": .number(Double(backup.trainCount)),
                                 "time": .string(
-                                    backup.created.formatted(date: .abbreviated, time: .shortened)),
+                                    backup.created.formatted(
+                                        Date.FormatStyle(date: .abbreviated, time: .shortened)
+                                            .locale(localization.locale))),
                             ])
                     )
                     Text(localization.dataText(backup.reason.localizationKey))
@@ -427,7 +515,7 @@ struct DataManagerView: View {
                         systemImage: "clock.arrow.circlepath")
                 }
                 Button(role: .destructive) {
-                    library.discardBackup(country: country)
+                    library.discardBackup()
                 } label: {
                     Label(localization.dataText("data.discardBackup"), systemImage: "trash")
                 }
@@ -441,14 +529,17 @@ struct DataManagerView: View {
                 titleVisibility: .visible
             ) {
                 Button(localization.dataText("data.restoreBackup")) {
-                    do {
-                        _ = try library.restoreBackup(country: country)
-                        itineraries.load(country: country, from: library)
-                    } catch {
-                        operationError = OperationError(
-                            titleKey: "data.loadFailedTitle",
-                            detail: error.localizedDescription,
-                            keptKey: "data.errorNothingChanged")
+                    confirmRestore = false
+                    afterPresentationDismisses {
+                        do {
+                            _ = try library.restoreBackup()
+                            itineraries.load(from: library)
+                        } catch {
+                            operationError = OperationError(
+                                titleKey: "data.loadFailedTitle",
+                                detail: error.localizedDescription,
+                                keptKey: "data.errorNothingChanged")
+                        }
                     }
                 }
             } message: {
@@ -477,12 +568,6 @@ struct DataManagerView: View {
                 }
                 .disabled(trainCount == 0)
 
-                Button(role: .destructive) { confirmResetSample = true } label: {
-                    Label(
-                        localization.text("btn.resetDefaults", fallback: "Reset to sample"),
-                        systemImage: "arrow.counterclockwise")
-                }
-                .disabled(RideLibrary.Sample.forCountry(country).isEmpty)
             }
         }
         .listSectionSpacing(.custom(44))
@@ -496,11 +581,14 @@ struct DataManagerView: View {
                 localization.text("btn.clearStorage", fallback: "Delete saved rides"),
                 role: .destructive
             ) {
-                if let store = itineraries.store {
-                    library.snapshotBackup(store, country: country, reason: .beforeDeleteAll)
+                confirmDeleteSaved = false
+                afterPresentationDismisses {
+                    if let store = itineraries.store {
+                        library.snapshotBackup(store, reason: .beforeDeleteAll)
+                    }
+                    library.deleteSavedStore()
+                    itineraries.load(from: library)
                 }
-                library.deleteSavedStore(country: country)
-                itineraries.load(country: country, from: library)
             }
         } message: {
             Text(
@@ -514,12 +602,15 @@ struct DataManagerView: View {
             titleVisibility: .visible
         ) {
             Button(localization.dataText("data.deleteAllTitle"), role: .destructive) {
-                if let store = itineraries.store {
-                    library.snapshotBackup(store, country: country, reason: .beforeDeleteAll)
-                }
-                itineraries.deleteAll(country: country)
-                if let store = itineraries.store {
-                    library.save(store, country: country)
+                confirmDeleteAll = false
+                afterPresentationDismisses {
+                    if let store = itineraries.store {
+                        library.snapshotBackup(store, reason: .beforeDeleteAll)
+                    }
+                    itineraries.deleteAll(clearing: library)
+                    if let store = itineraries.store {
+                        library.save(store)
+                    }
                 }
             }
         } message: {
@@ -529,44 +620,67 @@ struct DataManagerView: View {
                     ["region": .string(regionName), "count": .number(Double(trainCount))])
                     + "\n" + localization.dataText("data.deleteAllRecovery"))
         }
+        // 重置示例, which now names WHICH sample rather than "the one this
+        // region ships": the reader long-pressed a specific one, so the
+        // dialog can say what it is about to become.
         .confirmationDialog(
             localization.text(
                 "confirm.resetDefaults",
                 fallback: "Replace the current journeys with the bundled sample?"),
-            isPresented: $confirmResetSample,
+            isPresented: Binding(
+                get: { replaceCandidate != nil },
+                set: { if !$0 { replaceCandidate = nil } }),
             titleVisibility: .visible
         ) {
             Button(
                 localization.text("btn.resetDefaults", fallback: "Reset sample"),
                 role: .destructive
             ) {
-                guard let sample = RideLibrary.Sample.forCountry(country).first else { return }
-                if let store = itineraries.store {
-                    library.snapshotBackup(store, country: country, reason: .beforeReplace)
+                let sample = replaceCandidate
+                replaceCandidate = nil
+                afterPresentationDismisses {
+                    if let sample {
+                        loadSample(sample, replacingEverything: true)
+                    }
                 }
-                library.use(.sample(sample.resource))
-                itineraries.load(country: country, from: library)
             }
         } message: {
-            Text(localization.dataText("data.deleteAllRecovery"))
+            Text(
+                (replaceCandidate.map { localization.text($0.titleKey, fallback: $0.title) }
+                    ?? "") + "\n" + localization.dataText("data.deleteAllRecovery"))
         }
+    }
+
+    /// UIKit dismisses menus and alert controllers asynchronously. Starting a
+    /// sheet, importer, or store-driven rebuild from the action callback races
+    /// that dismissal and produces "already presenting" warnings. Keep the
+    /// action declarative, but publish its next state after the old controller
+    /// has completed its transition.
+    private func afterPresentationDismisses(_ action: @escaping @MainActor () -> Void) {
+        PresentationHost.afterTeardown(action)
     }
 
     // MARK: - the sentences the hero says
 
     private var trainCount: Int { itineraries.loaded?.trains.count ?? 0 }
 
+    private func regionName(_ region: Region) -> String {
+        localization.text(region.localizationKey, fallback: region.fallbackName)
+    }
+
+    /// Which regions the working set actually holds — the sentence that used
+    /// to be "you are looking at Japan", now that no region is being looked at
+    /// in particular.
     private var regionName: String {
-        localization.text("country.\(country)", fallback: country.uppercased())
+        let regions = itineraries.loaded?.regions ?? []
+        guard !regions.isEmpty else {
+            return localization.text("date.all", fallback: "All")
+        }
+        return regions.map(regionName).joined(separator: "・")
     }
 
     private var sourceTitle: String {
-        switch library.source {
-        case .mine:
-            localization.dataText("data.sourceMine", ["region": .string(regionName)])
-        case .sample:
-            localization.dataText("data.sourceSample")
-        }
+        localization.text("ios.myRides", fallback: "My rides")
     }
 
     private var sourceSubtitle: String {
@@ -574,20 +688,14 @@ struct DataManagerView: View {
             return localization.dataText("data.readingJourneys")
         }
         let count: [String: Localization.Param] = ["count": .number(Double(trainCount))]
-        switch library.source {
-        case .mine:
-            guard library.hasSavedStore else {
-                return localization.dataText("data.notSavedOnDevice", count)
-            }
-            let saved = localization.dataText("data.savedOnDevice", count)
-            guard let date = library.savedStoreDate else { return saved }
-            return saved + " · " + date.formatted(date: .abbreviated, time: .shortened)
-        case .sample(let resource):
-            let sample = RideLibrary.Sample.all.first { $0.resource == resource }
-            let title =
-                sample.map { localization.text($0.titleKey, fallback: $0.title) }
-                ?? localization.text("chip.sample", fallback: "Sample")
-            return title + " · " + localization.dataText("data.sampleSubtitle", count)
+        guard library.hasSavedStore else {
+            return localization.dataText("data.notSavedOnDevice", count)
         }
+        let saved = localization.dataText("data.savedOnDevice", count)
+        guard let date = library.savedStoreDate else { return saved }
+        return saved + " · "
+            + date.formatted(
+                Date.FormatStyle(date: .abbreviated, time: .shortened)
+                    .locale(localization.locale))
     }
 }

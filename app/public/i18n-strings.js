@@ -26,6 +26,7 @@
     "app.title.tw": { zh: "TDX 台灣列車管理", en: "TDX Taiwan Train Manager" },
     "app.title.hk": { zh: "香港鐵路列車管理", en: "Hong Kong Rail Manager" },
     "app.title.mo": { zh: "澳門輕軌列車管理", en: "Macao LRT Manager" },
+    "app.title.kr": { zh: "韓國鐵道列車管理", en: "Korea Rail Manager" },
     "app.hint": {
       zh: "在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。",
       en: "View journeys on the map, edit trains and stops, and manage JSON data.",
@@ -42,6 +43,70 @@
     "menu.show": { zh: "顯示選單", en: "Show menu" },
     "menu.expand": { zh: "展開選單", en: "Expand menu" },
     "menu.minimize": { zh: "縮小選單", en: "Minimize menu" },
+
+    // §2.2: three content destinations. Data Library and Settings are tasks,
+    // reached from the Utility group, and are deliberately NOT here.
+    "nav.journeys": { zh: "旅程", en: "Journeys" },
+    "nav.network": { zh: "鐵路網絡", en: "Network" },
+    "nav.passport": { zh: "乘車護照", en: "Passport" },
+    // §2.2 (revised on iOS): the three destinations the native shell offers.
+    // The railway network stopped being one of them when the map became the
+    // root layer every destination shares — a "network" tab would have been a
+    // tab whose whole content is a set of switches for the map behind it.
+    "nav.upcoming": { zh: "未來行程", en: "Upcoming" },
+    "nav.allJourneys": { zh: "全部行程", en: "All journeys" },
+    "nav.utilities": { zh: "資料與設定", en: "Data and settings" },
+    "nav.dataLibrary": { zh: "資料庫", en: "Data Library" },
+    "nav.settings": { zh: "設定", en: "Settings" },
+    "utility.close": { zh: "返回", en: "Back" },
+    // §4.3's three panel stops, in the reader's vocabulary. The iOS port
+    // spells the same three in JourneyStrings.swift.
+    "panel.docked": { zh: "底欄", en: "Docked" },
+    "panel.half": { zh: "半屏", en: "Half" },
+    "panel.full": { zh: "滿屏", en: "Full" },
+    "menu.resizePanel": { zh: "調整面板高度", en: "Resize the panel" },
+
+    // §5.2 Network workspace
+    "grp.networkContents": { zh: "路網內容", en: "Network contents" },
+    "btn.showNetwork": { zh: "顯示完整鐵路網絡", en: "Show the complete network" },
+    "btn.hideNetwork": { zh: "隱藏完整鐵路網絡", en: "Hide the complete network" },
+    "btn.fitNetwork": { zh: "適配完整路網", en: "Frame the complete network" },
+    "network.hint": {
+      zh: "路線顏色、車站圓點與縮放分級由地圖圖層與顯示設定控制。",
+      en: "Line colours, station dots and zoom tiers are controlled by the map layers and Settings.",
+    },
+    "network.packageOff": {
+      zh: "完整鐵路網絡目前關閉；已乘路線仍然顯示。",
+      en: "The complete network is off. Recorded journeys are still drawn.",
+    },
+    "network.packageLoading": {
+      zh: "正在載入 {region} 鐵路資料…",
+      en: "Loading the {region} railway package…",
+    },
+    "network.packageReady": {
+      zh: "{region} 鐵路資料已載入。",
+      en: "The {region} railway package is loaded.",
+    },
+    "network.packageFailed": {
+      zh: "無法載入 {region} 鐵路資料。已乘路線不受影響。",
+      en: "The {region} railway package could not be loaded. Recorded journeys are unaffected.",
+    },
+    "network.lines": { zh: "路線 {n} 條", en: "{n} lines" },
+    "network.stations": { zh: "車站 {n} 座", en: "{n} stations" },
+
+    // §5.3 Passport
+    "grp.journeyLog": { zh: "旅程記錄", en: "Journey log" },
+    "grp.passportShare": { zh: "回放與匯出", en: "Replay and export" },
+    "passport.scope": { zh: "統計範圍", en: "Scope" },
+    "passport.coverage": { zh: "已乘路網", en: "Ridden network" },
+    "passport.coverageHint": {
+      zh: "地圖上加粗的線是已記錄的乘車區間。",
+      en: "The emphasised lines on the map are the recorded ride segments.",
+    },
+    "passport.logEmpty": {
+      zh: "此範圍內沒有旅程記錄。",
+      en: "No journeys are recorded in this scope.",
+    },
 
     // search & actions
     "sec.search": { zh: "搜尋與操作", en: "Search & Actions" },
@@ -417,6 +482,8 @@
     "stat.metro.kr": { zh: "都市鐵道", en: "Urban rail" },
     "stat.tram.kr": { zh: "輕電鐵", en: "Light rail" },
     "stat.priv.kr": { zh: "單軌・磁浮", en: "Monorail & maglev" },
+    "stat.jrconv.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
+    "stat.ltdexp.kr": { zh: "優等列車", en: "Reserved-seat express" },
     "stat.all.kr": { zh: "全韓", en: "Nationwide" },
     "stat.allrail": { zh: "全部鐵道", en: "All Railways" },
     "stat.jrconv": { zh: "JR在來線", en: "JR Conventional" },
@@ -468,6 +535,7 @@
     "ph.trainType.tw": { zh: "自強／區間／高鐵", en: "Tze-Chiang / Local / HSR" },
     "ph.trainType.hk": { zh: "普通／機場快綫", en: "Local / Airport Express" },
     "ph.trainType.mo": { zh: "普通", en: "Local" },
+    "ph.trainType.kr": { zh: "KTX／ITX／無窮花", en: "KTX / ITX / Mugunghwa" },
     "field.company": { zh: "車輛公司", en: "Company" },
     "ph.company": {
       zh: "JR西日本；直通用／分隔多家公司",
@@ -489,6 +557,7 @@
     "sec.stops": { zh: "停靠站與通過站", en: "Stops & Pass-throughs" },
     "th.seq": { zh: "序", en: "#" },
     "th.station": { zh: "車站", en: "Station" },
+    "th.platform": { zh: "站台", en: "Platform" },
     "th.arr": { zh: "到", en: "Arr" },
     "th.dep": { zh: "發", en: "Dep" },
     "th.type": { zh: "類型", en: "Type" },
@@ -605,6 +674,10 @@
       zh: "使用 mo-2025 澳門輕軌資料包。",
       en: "Uses the mo-2025 Macao LRT package.",
     },
+    "info.packageBody.kr": {
+      zh: "使用 kr-2025 韓國鐵道資料包。",
+      en: "Uses the kr-2025 South Korea rail package.",
+    },
     "info.twRailTitle": { zh: "台灣鐵路網", en: "Taiwan railway network" },
     "info.twRailBody": {
       zh: "結合交通部「TDX 運輸資料流通服務平臺」、內政部國土測繪中心、農業部阿里山林業鐵路及文化資產管理處與臺北市政府捷運工程局的官方資料經加工製作。",
@@ -622,6 +695,12 @@
       zh: "依香港鐵路有限公司官方行程指南與開放數據，以及香港電車有限公司官方電車站開放數據加工製作，包含港鐵重鐵、全部 11 條輕鐵路線及港島電車軌道。",
       en: "Derived from MTR Corporation's official journey planner and open data plus Hong Kong Tramways' official tram stop list, covering heavy rail, all 11 Light Rail routes and the Hong Kong Island tramway.",
     },
+    "info.krRailTitle": { zh: "韓國鐵道網", en: "South Korea railway network" },
+    "info.krRailBody": {
+      zh: "站點識別、座標與站間距離取自國土交通部、國家鐵道公團、韓國鐵道公社與首爾交通公社的公開資料；軌道中心線取自 OpenStreetMap（ODbL）。",
+      en: "Station identities, coordinates and inter-station distances come from open data published by MOLIT, the Korea National Railway, KORAIL and Seoul Metro; track centre lines come from OpenStreetMap (ODbL).",
+    },
+    "info.krOpenData": { zh: "公共資料入口 data.go.kr", en: "data.go.kr open data" },
     "info.moRailTitle": { zh: "澳門輕軌網", en: "Macao LRT network" },
     "info.moRailBody": {
       zh: "依澳門輕軌股份有限公司官方現行路線與車站資料加工製作。",
@@ -641,6 +720,15 @@
     "map.riddenGroup": { zh: "已乘路線顯示", en: "Ridden Lines" },
     "map.riddenJr": { zh: "JR在來線", en: "JR Conventional" },
     "map.riddenPriv": { zh: "私鐵・其他", en: "Private / Other" },
+    // Every country reuses the same four filter slots; only the names of the
+    // operators filling them change, so each needs its own pair here or the
+    // legend keeps calling Taiwan's 臺鐵 "JR在來線".
+    "map.riddenJr.tw": { zh: "臺鐵", en: "Taiwan Railway (TRA)" },
+    "map.riddenPriv.tw": { zh: "輕軌・林鐵", en: "Light rail & forest railway" },
+    "map.riddenJr.hk": { zh: "港鐵重鐵", en: "MTR heavy rail" },
+    "map.riddenPriv.hk": { zh: "輕鐵・電車", en: "Light Rail & tramways" },
+    "map.riddenJr.mo": { zh: "澳門輕軌", en: "Macao LRT" },
+    "map.riddenPriv.mo": { zh: "其他路線", en: "Other lines" },
     // South Korea reuses the same four filter slots: KTX/SRT, KORAIL
     // conventional, urban rail and the light/monorail remainder.
     "map.riddenJr.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
@@ -828,6 +916,7 @@
     "date.undated": { zh: "未分配日期", en: "Undated" },
     "list.allTitle": { zh: "全部列車（{count}）", en: "All Trains ({count})" },
     "list.dateTitle": { zh: "{date} 列車", en: "{date} Trains" },
+    "list.dayCount": { zh: "{count} 個出行日", en: "{count} travel days" },
     "empty.allSearch": { zh: "沒有符合搜尋的列車。", en: "No trains match your search." },
     "empty.allNone": { zh: "尚無任何列車，請匯入 JSON。", en: "No trains yet — import JSON." },
     "empty.dateSearch": {
@@ -912,9 +1001,11 @@
     "app.title.tw": "TDX 台湾列車管理",
     "app.title.hk": "香港鉄道列車管理",
     "app.title.mo": "マカオ LRT 列車管理",
+    "app.title.kr": "韓国鉄道列車管理",
     "ph.trainType.tw": "自強／區間／高鐵",
     "ph.trainType.hk": "普通／エアポートエクスプレス",
     "ph.trainType.mo": "普通",
+    "ph.trainType.kr": "KTX／ITX／ムグンファ",
     "app.hint": "地図上で行程を確認し、列車・停車駅・JSON データを管理します。",
     "nav.label": "ワークスペースナビゲーション",
     "nav.trains": "列車",
@@ -926,6 +1017,38 @@
     "menu.show": "メニューを表示",
     "menu.expand": "メニューを展開",
     "menu.minimize": "メニューを縮小",
+    "nav.journeys": "行程",
+    "nav.network": "鉄道ネットワーク",
+    "nav.passport": "乗車パスポート",
+    "nav.upcoming": "今後の行程",
+    "nav.allJourneys": "すべての行程",
+    "nav.utilities": "データと設定",
+    "nav.dataLibrary": "データライブラリ",
+    "nav.settings": "設定",
+    "utility.close": "戻る",
+    "panel.docked": "ドッキング",
+    "panel.half": "半分",
+    "panel.full": "全画面",
+    "menu.resizePanel": "パネルの高さを調整",
+    "grp.networkContents": "路線データ",
+    "btn.showNetwork": "全鉄道路線を表示",
+    "btn.hideNetwork": "全鉄道路線を隠す",
+    "btn.fitNetwork": "全路線に合わせる",
+    "network.hint":
+      "路線色・駅の点・ズーム段階は地図レイヤーと設定で切り替えます。",
+    "network.packageOff": "全鉄道路線は現在オフです。乗車路線は表示されます。",
+    "network.packageLoading": "{region}の鉄道データを読み込んでいます…",
+    "network.packageReady": "{region}の鉄道データを読み込みました。",
+    "network.packageFailed":
+      "{region}の鉄道データを読み込めませんでした。乗車路線には影響しません。",
+    "network.lines": "路線 {n} 本",
+    "network.stations": "駅 {n} 駅",
+    "grp.journeyLog": "乗車記録",
+    "grp.passportShare": "再生と書き出し",
+    "passport.scope": "集計範囲",
+    "passport.coverage": "乗車済みネットワーク",
+    "passport.coverageHint": "地図上で強調された線が記録された乗車区間です。",
+    "passport.logEmpty": "この範囲に行程の記録はありません。",
     "sec.search": "検索と操作",
     "ph.search": "列車番号・列車名・駅名・ID で検索",
     "btn.addTrain": "列車を追加",
@@ -1147,6 +1270,8 @@
     "stat.metro.kr": "都市鉄道",
     "stat.tram.kr": "軽電鉄",
     "stat.priv.kr": "モノレール・リニア",
+    "stat.jrconv.kr": "韓国鉄道（一般鉄道）",
+    "stat.ltdexp.kr": "座席指定列車",
     "stat.all.kr": "韓国全域",
     "stat.allrail": "全鉄道",
     "stat.jrconv": "JR在来線",
@@ -1180,6 +1305,7 @@
     "sec.stops": "停車駅と通過駅",
     "th.seq": "順",
     "th.station": "駅",
+    "th.platform": "番線",
     "th.arr": "着",
     "th.dep": "発",
     "th.type": "種別",
@@ -1232,6 +1358,7 @@
     "info.packageBody.tw": "railprint の台湾鉄道データパッケージ tw-2025 を使用しています。",
     "info.packageBody.hk": "香港鉄道データパッケージ hk-2025 を使用しています。",
     "info.packageBody.mo": "マカオ LRT データパッケージ mo-2025 を使用しています。",
+    "info.packageBody.kr": "韓国鉄道データパッケージ kr-2025 を使用しています。",
     "info.twRailTitle": "台湾の鉄道網",
     "info.twRailBody": "交通部「TDX 運輸データ流通サービスプラットフォーム」、内政部国土測量製図センター、農業部阿里山林業鉄道及び文化資産管理処、台北市政府捷運工程局の公式データを組み合わせて加工し作成しています。",
     "info.twNlsc": "国土測量製図センター",
@@ -1240,6 +1367,9 @@
     "info.twLicense": "政府データオープンライセンス",
     "info.hkRailTitle": "香港の鉄道網",
     "info.hkRailBody": "香港鉄路有限公司の公式経路案内・オープンデータと、香港電車有限公司の公式停留所データを加工し、MTR と全 11 系統のライトレール、香港島のトラム軌道を収録しています。",
+    "info.krRailTitle": "韓国の鉄道網",
+    "info.krRailBody": "駅の同定・座標・駅間キロは国土交通部、国家鉄道公団、韓国鉄道公社、ソウル交通公社の公開データにより、線路中心線は OpenStreetMap（ODbL）によります。",
+    "info.krOpenData": "公共データポータル data.go.kr",
     "info.moRailTitle": "マカオ LRT 網",
     "info.moRailBody": "マカオ LRT 株式会社が公開する現行路線・駅の公式情報を加工して作成しています。",
     "map.layers": "地図レイヤー",
@@ -1253,6 +1383,12 @@
     "map.allRailways": "全鉄道路線",
     "map.riddenJr.kr": "韓国鉄道（一般鉄道）",
     "map.riddenPriv.kr": "軽電鉄・モノレール",
+    "map.riddenJr.tw": "台湾鉄路（TRA）",
+    "map.riddenPriv.tw": "ライトレール・森林鉄道",
+    "map.riddenJr.hk": "MTR（重鉄）",
+    "map.riddenPriv.hk": "軽鉄・香港トラム",
+    "map.riddenJr.mo": "マカオLRT",
+    "map.riddenPriv.mo": "その他の路線",
     "map.riddenGroup": "乗車済み路線の表示",
     "map.riddenJr": "JR在来線",
     "map.riddenPriv": "私鉄・その他",
@@ -1332,6 +1468,7 @@
     "date.undated": "日付未設定",
     "list.allTitle": "すべての列車（{count}）",
     "list.dateTitle": "{date} の列車",
+    "list.dayCount": "{count} 日の乗車",
     "empty.allSearch": "検索条件に一致する列車はありません。",
     "empty.allNone": "列車がありません。JSON を読み込んでください。",
     "empty.dateSearch": "この日には検索条件に一致する列車がありません。",

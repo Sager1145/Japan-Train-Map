@@ -34,12 +34,14 @@ actor StationReadingsStore {
 
     static let shared = StationReadingsStore()
 
-    /// One country at a time. The route pipeline never loads two countries
-    /// together (same-named stations exist in several of them), so a cache
-    /// that grew to five tables would be holding four tables nothing can ask
-    /// for — Korea's alone is 2,812 rows.
-    private var cachedCountry: String?
-    private var cachedTable: Localization.StationReadings?
+    /// All five, because all five are on screen at once.
+    ///
+    /// This used to hold one table and say so: the app had a region switch, so
+    /// four of the five could never be asked for. Now every region is drawn
+    /// together and a station's names come from its own region's table, so the
+    /// cache holds what the map can ask for. About a megabyte of JSON in
+    /// total, decoded once each.
+    private var tables: [String: Localization.StationReadings] = [:]
 
     /// `AppCore.countrySuffixed("station-readings", country)`.
     nonisolated static func resourceName(country: String) -> String {
@@ -52,10 +54,9 @@ actor StationReadingsStore {
     /// country `"JP"`, so names are annotated with whatever the gloss
     /// dictionaries hold and never replaced with a wrong language's name.
     func table(for country: String) -> Localization.StationReadings {
-        if cachedCountry == country, let cachedTable { return cachedTable }
+        if let cached = tables[country] { return cached }
         let table = Self.decode(country: country) ?? .empty
-        cachedCountry = country
-        cachedTable = table
+        tables[country] = table
         return table
     }
 

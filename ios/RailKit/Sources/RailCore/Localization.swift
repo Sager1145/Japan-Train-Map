@@ -543,6 +543,29 @@ public struct Localization: Sendable {
         nameReadingsTyped(name, code: code).map(\.text)
     }
 
+    /// Every name the readings table holds for a station, whatever the reader
+    /// has the app set to.
+    ///
+    /// This is not a display function and has no JavaScript counterpart: the
+    /// web app only ever needs the names for the ACTIVE language, and
+    /// `nameReadingsTyped` answers that — filtered by the three reading
+    /// toggles, and empty for the four countries whose table localises the name
+    /// itself.
+    ///
+    /// What needs all of them is matching a station against a service that
+    /// answers in its own language rather than the app's. Apple Maps returns
+    /// 台北车站 to a Chinese device and Taibei Station to an English one, and
+    /// the app's language setting is independent of the device's — so a reader
+    /// with the app in Chinese on an English phone would otherwise be handed
+    /// names none of their station's spellings could match. See
+    /// `StationPlaceLink`.
+    public func stationNameAliases(_ name: String?, code: String? = nil) -> [String] {
+        guard let name, !name.isEmpty else { return [] }
+        guard let row = stationReadingRow(code: code, name: name) else { return [] }
+        return [row.zhHant, row.zhHans, row.ja, row.en, row.romaji, row.kana]
+            .compactMap(nonEmpty)
+    }
+
     public func nameReadings(_ name: String?, code: String? = nil) -> String {
         nameReadingsList(name, code: code).joined(separator: " / ")
     }

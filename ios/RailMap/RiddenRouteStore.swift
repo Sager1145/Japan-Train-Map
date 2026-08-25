@@ -13,7 +13,23 @@ final class RiddenRouteStore {
         let segmentIndex: Int
         let from: String?
         let to: String?
+        /// Canonical WGS84 geometry used by the solver, cache and statistics.
+        /// It must remain in the same datum as the region's edge index.
+        let sourceCoordinates: [Coordinate]
+        /// Geometry presented to MapKit. This differs for Taiwan, Hong Kong,
+        /// Macao and Korea, where Apple's basemap is displaced to GCJ-02.
         let coordinates: [Coordinate]
+
+        init(
+            segmentIndex: Int, from: String?, to: String?,
+            coordinates: [Coordinate], country: String
+        ) {
+            self.segmentIndex = segmentIndex
+            self.from = from
+            self.to = to
+            sourceCoordinates = coordinates
+            self.coordinates = AppleMapDatum.display(coordinates, country: country)
+        }
     }
 
     /// What became of one journey's route, per journey rather than per store.
@@ -50,6 +66,19 @@ final class RiddenRouteStore {
 
     struct DrawnRide: Identifiable, Sendable {
         let id: String
+        /// The service description drives journey-station level of detail:
+        /// sparse high-speed and limited services reveal their calls before a
+        /// dense local service does.
+        let trainType: String?
+        /// The region this ride was solved against — `"jp"`, `"tw"`, `"hk"`,
+        /// `"mo"` or `"kr"`.
+        ///
+        /// Carried on the ride rather than looked up from the train, because
+        /// the map is handed rides and not journeys: the ridden-line category
+        /// filter classifies a drawn segment against its own region's N02 edge
+        /// index, and picking the wrong region's index would not fail — it
+        /// would answer, wrongly.
+        let country: String
         let colorHex: String
         let visible: Bool
         let segments: [DrawnSegment]
@@ -75,50 +104,51 @@ final class RiddenRouteStore {
     enum LoadState {
         case idle
         case loading
-        case loaded(dataset: String, rides: [DrawnRide])
+        case loaded(rides: [DrawnRide])
         case failed(String)
     }
 
     private(set) var state: LoadState = .idle
     private(set) var rides: [DrawnRide] = []
     private var loadTask: Task<Void, Never>?
-    /// What the last load was for, so a single-journey re-solve (``resolve``)
-    /// can put its answer back into the same `.loaded` state rather than
-    /// inventing a dataset name.
-    private var loadedDataset: String?
-    private var loadedCountry: String?
 
-    func load(dataset: String, country: String, trains: [Train]) {
+    /// Solve and draw every ride, whatever region each belongs to.
+    ///
+    /// The web app is handed one dataset and one country because it has one
+    /// region open. Here each ride names its own region (`Train.region`), the
+    /// pipeline groups by it, and the per-region resources — the sections
+    /// file, the station table, the package, the route cache — are loaded once
+    /// per region that actually has rides rather than once per app.
+    func load(trains: [Train]) {
         loadTask?.cancel()
         state = .loading
-        loadedDataset = dataset
-        loadedCountry = country
         // The status centre is how the journey detail and the editor — neither
         // of which is handed this store — learn what became of a route. See
         // `RideStatusCenter` for why that is a published projection rather
         // than an initialiser argument.
         RideStatusCenter.shared.routeStore = self
-        RideStatusCenter.shared.publish(phase: .loading, country: country)
-        let wanted = Dictionary(uniqueKeysWithValues: trains.map { ($0.id, $0) })
+        RideStatusCenter.shared.publish(phase: .loading)
+        // Duplicate ids cannot survive `StoreOperations`, but a store merged
+        // out of five files once could carry one, and a trap here would be a
+        // crash on a data fault rather than a drawing of it.
+        let wanted = Dictionary(trains.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let wantedIDs = trains.map(\.id)
         loadTask = Task {
             do {
-                let decoded = try await Self.decode(
-                    dataset: dataset, country: country, wanted: wanted)
+                let decoded = try await Self.decode(wanted: wanted)
                 try Task.checkCancellation()
                 rides = decoded
-                state = .loaded(dataset: dataset, rides: decoded)
+                state = .loaded(rides: decoded)
                 RideStatusCenter.shared.publish(
                     entries: Self.statusEntries(for: decoded, wanted: wantedIDs),
-                    phase: .loaded,
-                    country: country)
+                    phase: .loaded)
             } catch is CancellationError {
                 return
             } catch {
                 rides = []
                 state = .failed(error.localizedDescription)
                 RideStatusCenter.shared.publish(
-                    entries: [:], phase: .failed(error.localizedDescription), country: country)
+                    entries: [:], phase: .failed(error.localizedDescription))
             }
         }
     }
@@ -127,27 +157,23 @@ final class RiddenRouteStore {
         loadTask?.cancel()
         rides = []
         state = .idle
-        loadedDataset = nil
-        loadedCountry = nil
         RideStatusCenter.shared.clear()
     }
 
     /// Solve one journey's route again, in place (§8.4).
     ///
-    /// The reason this exists: rebuilding `route_sections` changes the record
-    /// but not the id list, and the shell reloads routes on a key built from
-    /// ids and visibility. Without this, a rebuild left the OLD geometry on
-    /// the map under a NEW section list — the one failure mode worse than
-    /// showing nothing, because the drawn line stops being a picture of the
-    /// record it claims to be.
+    /// The failure this guards against: the drawn line stops being a picture
+    /// of the record it claims to be — OLD geometry under a NEW section list,
+    /// which is worse than showing nothing. The shell's route key now covers
+    /// the whole record, so a full reload would eventually correct it; this
+    /// corrects the one journey the reader just rebuilt without waiting for
+    /// the other two hundred to be read back.
     ///
     /// Nothing is deleted from the itinerary store here, and nothing is
     /// straight-lined: a journey whose new sections solve to nothing keeps its
     /// record and loses its strokes, which is what "unavailable" means.
-    func resolve(_ train: Train, country: String) {
-        // A region switched under the rebuild would solve this journey against
-        // another country's package. Refuse rather than draw it.
-        guard loadedCountry == nil || loadedCountry == country else { return }
+    func resolve(_ train: Train) {
+        let country = Region.resolved(train).code
         let id = train.id
         RideStatusCenter.shared.beginResolving(id)
         Task {
@@ -164,9 +190,7 @@ final class RiddenRouteStore {
             } else {
                 rides.removeAll { $0.id == id }
             }
-            if let loadedDataset, case .loaded = state {
-                state = .loaded(dataset: loadedDataset, rides: rides)
-            }
+            if case .loaded = state { state = .loaded(rides: rides) }
             RideStatusCenter.shared.finishResolving(
                 id,
                 entry: solved.map {
@@ -209,11 +233,52 @@ final class RiddenRouteStore {
         return entries
     }
 
-    private nonisolated static func decode(
+    /// Cache, then the precomputed datasets, then solve — per region.
+    ///
+    /// The order is the reverse of the web app's, and the reason is the merged
+    /// store. The web app reads its one dataset first because that dataset IS
+    /// its store; here a reader can hold the 201-journey Japanese sample, the
+    /// New Year loop and their own rides at once, so "which dataset?" has no
+    /// single answer and scanning every candidate on every reload would decode
+    /// 11 MB of parts to answer a question the on-disk cache has already
+    /// answered. Rides that come out of a dataset are written into that cache,
+    /// so the scan happens once per journey rather than once per load.
+    private nonisolated static func decode(wanted: [String: Train]) async throws -> [DrawnRide] {
+        var result: [DrawnRide] = []
+        var unresolved: [Region: [Train]] = [:]
+        for (region, trains) in Dictionary(grouping: wanted.values, by: Region.resolved) {
+            let cached = loadCached(trains, country: region.code)
+            result += cached.rides
+            if !cached.missing.isEmpty { unresolved[region] = cached.missing }
+        }
+
+        for (region, trains) in unresolved {
+            var missing = Dictionary(
+                trains.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            for dataset in RideLibrary.routeDatasets(for: region) {
+                if missing.isEmpty { break }
+                let found = try datasetRides(
+                    dataset: dataset, country: region.code, wanted: missing)
+                for ride in found { missing.removeValue(forKey: ride.id) }
+                result += found
+            }
+            if !missing.isEmpty {
+                result += try solveMissing(Array(missing.values), country: region.code)
+            }
+        }
+        return result
+    }
+
+    /// The rides one precomputed dataset can answer for.
+    ///
+    /// A part is accepted only when its train's route-cache digest matches the
+    /// one in the store, which is what makes searching several datasets safe:
+    /// geometry solved for another itinerary is rejected rather than drawn.
+    private nonisolated static func datasetRides(
         dataset: String,
         country: String,
         wanted: [String: Train]
-    ) async throws -> [DrawnRide] {
+    ) throws -> [DrawnRide] {
         guard let manifestURL = Bundle.main.url(
             forResource: "manifest",
             withExtension: "json",
@@ -253,23 +318,23 @@ final class RiddenRouteStore {
                         segmentIndex: feature.properties?.segmentIndex ?? partIndex,
                         from: feature.properties?.from,
                         to: feature.properties?.to,
-                        coordinates: coordinates)
+                        coordinates: coordinates,
+                        country: country)
                 }
             }
             guard !segments.isEmpty else { continue }
-            result.append(
-                drawnRide(
-                    train,
-                    segments: segments,
-                    expectedSections: canonicalSections(train, country: country),
-                    indicesAreAuthoritative: indicesAreAuthoritative))
-        }
-        let solvedIDs = Set(result.map(\.id))
-        let missing = wanted.values.filter { !solvedIDs.contains($0.id) }
-        let cached = loadCached(missing, country: country)
-        result += cached.rides
-        if !cached.missing.isEmpty {
-            result += try solveMissing(cached.missing, country: country)
+            let ride = drawnRide(
+                train,
+                country: country,
+                segments: segments,
+                expectedSections: canonicalSections(train, country: country),
+                indicesAreAuthoritative: indicesAreAuthoritative)
+            // Written into the same cache a solve writes to, so the next load
+            // finds this journey without opening a dataset at all. That is
+            // what keeps the dataset search a first-load cost rather than a
+            // per-load one.
+            try? saveCache(ride, train: train, country: country)
+            result.append(ride)
         }
         return result
     }
@@ -284,6 +349,7 @@ final class RiddenRouteStore {
     /// answer that could disagree with the first.
     private nonisolated static func drawnRide(
         _ train: Train,
+        country: String,
         segments: [DrawnSegment],
         expectedSections: [RouteSection],
         indicesAreAuthoritative: Bool = true
@@ -311,6 +377,8 @@ final class RiddenRouteStore {
         }
         return DrawnRide(
             id: train.id,
+            trainType: train.trainType,
+            country: country,
             colorHex: train.style?.color ?? "#0a84ff",
             visible: train.visible != false,
             segments: segments,
@@ -425,7 +493,8 @@ final class RiddenRouteStore {
                         segmentIndex: index,
                         from: section.from ?? stationIndex.name(forCode: section.fromN02StationCode),
                         to: section.to ?? stationIndex.name(forCode: section.toN02StationCode),
-                        coordinates: drawnCoordinates))
+                        coordinates: drawnCoordinates,
+                        country: country))
                     lastSolvedIndex = index
                     continuity = solved.coordinates.last
                     displayContinuity = drawnCoordinates.last
@@ -437,7 +506,8 @@ final class RiddenRouteStore {
             // route became a journey the interface had never heard of — and a
             // ride that is absent cannot be told from a ride that is still
             // being solved. It is reported as `unavailable` instead.
-            let ride = drawnRide(train, segments: segments, expectedSections: sections)
+            let ride = drawnRide(
+                train, country: country, segments: segments, expectedSections: sections)
             rides.append(ride)
             if !segments.isEmpty { try? saveCache(ride, train: train, country: country) }
         }
@@ -519,13 +589,15 @@ final class RiddenRouteStore {
                 guard coordinates.count >= 2 else { return nil }
                 return DrawnSegment(
                     segmentIndex: cached.segmentIndex, from: cached.from,
-                    to: cached.to, coordinates: coordinates)
+                    to: cached.to, coordinates: coordinates,
+                    country: country)
             }
             if segments.isEmpty {
                 missing.append(train)
             } else {
                 rides.append(drawnRide(
                     train,
+                    country: country,
                     segments: segments,
                     expectedSections: canonicalSections(train, country: country)))
             }
@@ -545,7 +617,7 @@ final class RiddenRouteStore {
             segments: ride.segments.map {
                 CachedSegment(
                     segmentIndex: $0.segmentIndex, from: $0.from, to: $0.to,
-                    coordinates: $0.coordinates.map(\.pair))
+                    coordinates: $0.sourceCoordinates.map(\.pair))
             })
         try JSONEncoder().encode(cache).write(
             to: cacheURL(country: country, digest: digest), options: .atomic)

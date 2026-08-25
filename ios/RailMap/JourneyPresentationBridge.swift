@@ -120,6 +120,17 @@ struct JourneyActionAppearance {
     var label: String
     var systemImage: String
     var isDestructive: Bool = false
+    /// A one- or two-word form of ``label``, for a control that has to share a
+    /// scan line with three others in a 300-point landscape sidebar (§4.3).
+    ///
+    /// Optional, and ``shortLabel`` falls back to the full one: most actions
+    /// never appear in that row, and inventing a clipped word for each of them
+    /// would be four more strings to keep true in four languages for no
+    /// reader's benefit.
+    var short: String?
+
+    /// ``short`` where there is one, the full label otherwise.
+    var shortLabel: String { short ?? label }
 }
 
 extension JourneyPresentation.PrimaryAction {
@@ -134,12 +145,16 @@ extension JourneyPresentation.PrimaryAction {
                   systemImage: "square.and.arrow.down")
         case .locate:
             .init(label: localization.journeyText("ios.journey.locateRoute", fallback: "Locate route"),
-                  systemImage: "scope")
+                  systemImage: "scope",
+                  short: localization.text("ios.journey.locateShort", fallback: "Focus"))
         case .showOnMap:
             .init(label: localization.text("ios.showOnMap", fallback: "Show on map"),
-                  systemImage: "eye")
+                  systemImage: "eye",
+                  short: localization.text("ios.journey.showShort", fallback: "Show"))
         case .rebuildRoute:
-            .init(label: localization.journeyText(label), systemImage: "arrow.triangle.2.circlepath")
+            .init(label: localization.journeyText(label),
+                  systemImage: "arrow.triangle.2.circlepath",
+                  short: localization.text("ios.journey.rebuildShort", fallback: "Rebuild"))
         case .save:
             .init(label: localization.journeyText(label), systemImage: "checkmark")
         case .pause:

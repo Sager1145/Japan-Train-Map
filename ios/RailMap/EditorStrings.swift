@@ -192,6 +192,10 @@ enum EditorStrings {
             .zhHant: "{count} 個停站", .zhHans: "{count} 个停靠站", .ja: "停車駅 {count}",
             .en: "{count} stops",
         ],
+        "ios.detail.platformValue": [
+            .zhHant: "站台 {number}", .zhHans: "站台 {number}", .ja: "{number}番線",
+            .en: "Platform {number}",
+        ],
 
         // MARK: - §5.4 editor — groups
 
@@ -206,6 +210,36 @@ enum EditorStrings {
             .zhHans: "技术字段。ID 决定路线缓存与导出文件里的键，新建时已自动生成。",
             .ja: "技術的な項目です。ID は経路キャッシュと書き出しファイルのキーになります。新規作成時は自動生成されます。",
             .en: "Technical fields. The id keys the route cache and the exported file; a new journey already has one.",
+        ],
+        "ios.editor.sectionEndpoints": [
+            .zhHant: "第 {index} 段：起訖各需要站名或車站代碼其中之一。",
+            .zhHans: "第 {index} 段：起讫各需要站名或车站代码其中之一。",
+            .ja: "区間 {index}：始終点それぞれに駅名か駅コードのどちらかが必要です。",
+            .en: "Section {index}: each end needs either a station name or a station code.",
+        ],
+        "ios.editor.sectionCodeRule": [
+            .zhHant: "第 {index} 段：車站代碼須為六位 N02_005c 或 TDX StationUID。",
+            .zhHans: "第 {index} 段：车站代码须为六位 N02_005c 或 TDX StationUID。",
+            .ja: "区間 {index}：駅コードは 6 桁の N02_005c か TDX StationUID である必要があります。",
+            .en: "Section {index}: a station code must be a six-digit N02_005c or a TDX StationUID.",
+        ],
+        "ios.editor.policyCodesRule": [
+            .zhHant: "允許的事業者種別只能是 N02_002 的 1／2／3／4／5。",
+            .zhHans: "允许的事业者种别只能是 N02_002 的 1／2／3／4／5。",
+            .ja: "許可する事業者種別は N02_002 の 1／2／3／4／5 のみです。",
+            .en: "Allowed institution types must be N02_002 codes 1/2/3/4/5 only.",
+        ],
+        "ios.editor.policyModeRule": [
+            .zhHant: "事業者篩選模式只能是 soft 或 hard。",
+            .zhHans: "事业者筛选模式只能是 soft 或 hard。",
+            .ja: "事業者フィルタのモードは soft か hard のみです。",
+            .en: "The institution filter mode must be soft or hard.",
+        ],
+        "ios.editor.regionNote": [
+            .zhHant: "決定這趟行程用哪一國的路網求解路線、計入哪一區的統計，以及選站時可挑哪些車站。",
+            .zhHans: "决定这趟行程用哪一国的路网求解路线、计入哪一区的统计，以及选站时可挑哪些车站。",
+            .ja: "この乗車をどの国の路線網で経路探索し、どの地域の統計に数え、駅選択でどの駅を出すかを決めます。",
+            .en: "Which network this journey is routed on, which region's statistics it counts towards, and which stations the picker offers.",
         ],
         "ios.editor.date": [
             .zhHant: "日期", .zhHans: "日期", .ja: "日付", .en: "Date",
@@ -406,6 +440,19 @@ enum EditorStrings {
         ],
         "ios.editor.stationCode": [
             .zhHant: "車站代碼", .zhHans: "车站代码", .ja: "駅コード", .en: "Station code",
+        ],
+        "ios.editor.platformNumber": [
+            .zhHant: "站台編號", .zhHans: "站台编号", .ja: "番線", .en: "Platform number",
+        ],
+        "ios.editor.platformOptional": [
+            .zhHant: "沒有資料時留空", .zhHans: "没有数据时留空", .ja: "不明なら空欄",
+            .en: "Leave blank when unknown",
+        ],
+        "ios.editor.platformRule": [
+            .zhHant: "站台編號必須是 0 或正整數；沒有資料時請留空。",
+            .zhHans: "站台编号必须是 0 或正整数；没有数据时请留空。",
+            .ja: "番線は 0 以上の整数で入力してください。不明なら空欄にします。",
+            .en: "Platform number must be zero or a positive integer; leave it blank when unknown.",
         ],
         "ios.editor.chooseStation": [
             .zhHant: "從路網車站選擇", .zhHans: "从路网车站选择", .ja: "路線網の駅から選ぶ",

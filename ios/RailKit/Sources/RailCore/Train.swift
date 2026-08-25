@@ -97,6 +97,24 @@ public struct Train: Codable, Equatable, Sendable {
     public var routePolicy: RoutePolicy?
     public var routeSections: [RouteSection]?
     public var stops: [Stop]
+    /// Which regional package this itinerary belongs to — `"jp"`, `"tw"`,
+    /// `"hk"`, `"mo"` or `"kr"`.
+    ///
+    /// **Not in the web app, and deliberately not in jsonspec.** The web app
+    /// keeps one store per region and answers this question by asking which
+    /// region is switched on; this app draws every region at once, so the
+    /// question has to be answered per itinerary instead — the solver, the
+    /// mileage statistics and the route cache each need to know which package
+    /// a ride is measured against.
+    ///
+    /// Safe to add to the canonical file: `validateTrainStore` in
+    /// app-validation.js applies `assertOnlyKeys` to the store ROOT only, and
+    /// `validateTrain` checks the fields it knows without rejecting others, so
+    /// a store written here still imports into the web app. Optional, and
+    /// written only when set, so a file that never had one round-trips
+    /// unchanged — and ``RegionCatalog`` can re-derive it from the stops when
+    /// it is missing.
+    public var region: String?
 
     public init(
         id: String,
@@ -111,7 +129,8 @@ public struct Train: Codable, Equatable, Sendable {
         style: TrainStyle? = nil,
         routePolicy: RoutePolicy? = nil,
         routeSections: [RouteSection]? = nil,
-        stops: [Stop]
+        stops: [Stop],
+        region: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -126,6 +145,7 @@ public struct Train: Codable, Equatable, Sendable {
         self.routePolicy = routePolicy
         self.routeSections = routeSections
         self.stops = stops
+        self.region = region
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -134,6 +154,7 @@ public struct Train: Codable, Equatable, Sendable {
         case company
         case routePolicy = "route_policy"
         case routeSections = "route_sections"
+        case region
     }
 
     // Written out only when present, so that a store which omits a field
@@ -155,17 +176,16 @@ public struct Train: Codable, Equatable, Sendable {
         try container.encodeIfPresent(routePolicy, forKey: .routePolicy)
         try container.encodeIfPresent(routeSections, forKey: .routeSections)
         try container.encode(stops, forKey: .stops)
+        try container.encodeIfPresent(region, forKey: .region)
     }
 }
 
 /// One station on the itinerary — jsonspec §7.1.
 ///
-/// All six fields are encoded every time, `null` included. That is not a
-/// style choice: `canonicalStopShape` in app-store-ops.js §18 writes exactly
-/// these six on every stop it touches, and both committed stores carry all
-/// six on all 2 980 stops. Encoding `arrival` only when non-nil would turn a
-/// stop that says "no arrival time" into one that says nothing, and the two
-/// are the same to the app but not to a diff of the archive.
+/// A canonical stop encodes all seven fields, `null` included. The bundled
+/// 1.3 archives predate `platform_number`, so direct decode→encode preserves
+/// that one legacy absence; every import, edit, or canonical export creates a
+/// stop with the field present and writes an unknown value as explicit null.
 ///
 /// `name`, `stopType` and `rideSegment` are non-optional for the same reason
 /// — the canonical writer never leaves them out or null. A lean hand-written
@@ -181,6 +201,16 @@ public struct Stop: Codable, Equatable, Sendable {
     /// The key name is historical (jsonspec §2.3): the value has not been
     /// N02-only since Taiwan was added.
     public var n02StationCode: String?
+    /// Passenger-facing platform/track number. `0` is valid; negative and
+    /// fractional values are rejected. `nil` serializes as JSON `null` and is
+    /// never rendered as the word "null".
+    public var platformNumber: Int? {
+        didSet { hasPlatformNumberField = true }
+    }
+    /// Distinguishes a legacy absent field from an explicit JSON null for
+    /// lossless archive reads. It is intentionally not part of semantic
+    /// equality: both spell the same unknown platform.
+    var hasPlatformNumberField: Bool
     /// `"HH:MM"`, where hours run past 24 to spell the next day (§10.5:
     /// `25:10` is 01:10 tomorrow). Nothing validates the format — see
     /// ``TrainValidation/validateTrain(_:index:ids:)``.
@@ -193,6 +223,7 @@ public struct Stop: Codable, Equatable, Sendable {
     public init(
         name: String,
         n02StationCode: String? = nil,
+        platformNumber: Int? = nil,
         arrival: String? = nil,
         departure: String? = nil,
         stopType: String = "passenger_stop",
@@ -200,6 +231,8 @@ public struct Stop: Codable, Equatable, Sendable {
     ) {
         self.name = name
         self.n02StationCode = n02StationCode
+        self.platformNumber = platformNumber
+        self.hasPlatformNumberField = true
         self.arrival = arrival
         self.departure = departure
         self.stopType = stopType
@@ -207,20 +240,45 @@ public struct Stop: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, arrival, departure
+        case name, platformNumber = "platform_number", arrival, departure
         case n02StationCode = "n02_station_code"
         case stopType = "stop_type"
         case rideSegment = "ride_segment"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        n02StationCode = try container.decodeIfPresent(String.self, forKey: .n02StationCode)
+        hasPlatformNumberField = container.contains(.platformNumber)
+        platformNumber = try container.decodeIfPresent(Int.self, forKey: .platformNumber)
+        arrival = try container.decodeIfPresent(String.self, forKey: .arrival)
+        departure = try container.decodeIfPresent(String.self, forKey: .departure)
+        stopType = try container.decode(String.self, forKey: .stopType)
+        rideSegment = try container.decode(Bool.self, forKey: .rideSegment)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encode(n02StationCode, forKey: .n02StationCode)  // null, not absent
+        if hasPlatformNumberField {
+            try container.encode(platformNumber, forKey: .platformNumber)  // null, not absent
+        }
         try container.encode(arrival, forKey: .arrival)
         try container.encode(departure, forKey: .departure)
         try container.encode(stopType, forKey: .stopType)
         try container.encode(rideSegment, forKey: .rideSegment)
+    }
+
+    public static func == (lhs: Stop, rhs: Stop) -> Bool {
+        lhs.name == rhs.name
+            && lhs.n02StationCode == rhs.n02StationCode
+            && lhs.platformNumber == rhs.platformNumber
+            && lhs.arrival == rhs.arrival
+            && lhs.departure == rhs.departure
+            && lhs.stopType == rhs.stopType
+            && lhs.rideSegment == rhs.rideSegment
     }
 }
 
@@ -609,6 +667,21 @@ public enum TrainValidation {
         return stationCodeSystem(code) != nil
     }
 
+    /// `platform_number` — absent/null, zero, or a positive JSON integer.
+    /// Booleans and numeric strings are not integers in JSON and are rejected.
+    public static func isValidPlatformNumber(_ value: JSON?) -> Bool {
+        guard let value, value != .null else { return true }
+        guard case .number(let number) = value,
+              number.isFinite,
+              number >= 0,
+              number.rounded(.towardZero) == number,
+              // `Double(Int.max)` rounds up to 2^63 on 64-bit platforms, so
+              // equality is already outside Int's representable range.
+              number < Double(Int.max)
+        else { return false }
+        return true
+    }
+
     /// `stopName(stop)` = `stop.name || ""`, as a truthiness test.
     ///
     /// ACCEPTS: the JavaScript returns the raw value rather than a string, so
@@ -764,6 +837,10 @@ public enum TrainValidation {
                 throw fail(
                     "\(at): n02_station_code must be a six-digit N02_005c, a TDX StationUID, or null."
                 )
+            }
+            if !isValidPlatformNumber(stop["platform_number"]) {
+                throw fail(
+                    "\(at): platform_number must be a non-negative integer or null.")
             }
             for field in ["arrival", "departure"] {
                 if let value = stop[field], value != .null, !value.isString {
@@ -934,12 +1011,18 @@ public enum TrainValidation {
         }
         try assertOnlyKeys(
             stop,
-            ["name", "n02_station_code", "arrival", "departure", "stop_type", "ride_segment"],
+            [
+                "name", "n02_station_code", "platform_number", "arrival", "departure",
+                "stop_type", "ride_segment",
+            ],
             "Stop")
         // ACCEPTS: the guard is key PRESENCE, not a usable value, so
         // `{"name": null}` imports as a stop with an empty name and is only
         // caught later by validateTrain.
         guard stop.hasOwnKey("name") else { throw fail("Each stop must contain name.") }
+        guard isValidPlatformNumber(stop["platform_number"]) else {
+            throw fail("platform_number must be a non-negative integer or null.")
+        }
         return canonicalStopShape(stop)
     }
 
@@ -1061,11 +1144,12 @@ public enum TrainValidation {
 
     // MARK: - §18: the canonical shapes
 
-    /// `canonicalStopShape` — the six fields, every time.
+    /// `canonicalStopShape` — the seven fields, every time.
     public static func canonicalStopShape(_ stop: JSON) -> Stop {
         Stop(
             name: (stop["name"] ?? .null).isTruthy ? jsToString(stop["name"] ?? .null) : "",
             n02StationCode: (stop["n02_station_code"] ?? .null).orNullString,
+            platformNumber: platformNumber(stop["platform_number"]),
             arrival: normalizeNullableTime(stop["arrival"]),
             departure: normalizeNullableTime(stop["departure"]),
             stopType: (stop["stop_type"] ?? .null).stringOrNilIfFalsy ?? "passenger_stop",
@@ -1082,10 +1166,16 @@ public enum TrainValidation {
         Stop(
             name: stop.name,
             n02StationCode: stop.n02StationCode.flatMap { $0.isEmpty ? nil : $0 },
+            platformNumber: stop.platformNumber.flatMap { $0 >= 0 ? $0 : nil },
             arrival: normalizeNullableTime(stop.arrival.map(JSON.string)),
             departure: normalizeNullableTime(stop.departure.map(JSON.string)),
             stopType: stop.stopType.isEmpty ? "passenger_stop" : stop.stopType,
             rideSegment: stop.rideSegment)
+    }
+
+    private static func platformNumber(_ value: JSON?) -> Int? {
+        guard isValidPlatformNumber(value), case .number(let number)? = value else { return nil }
+        return Int(number)
     }
 
     /// `normalizeNullableTime` — trim, and collapse a blank to null.
@@ -1220,7 +1310,12 @@ public enum TrainValidation {
             routePolicy: canonicalRoutePolicy(routePolicyJSON(train.routePolicy)),
             routeSections: rideRouteSections(for: train, stations: stations)
                 .map { leanExportSection($0, stations: stations) },
-            stops: train.stops.map(canonicalStopShape))
+            stops: train.stops.map(canonicalStopShape),
+            // Carried, not derived. `region` is this app's own field (see
+            // `Train.region`) and the export is the only path to disk, so
+            // dropping it here would lose the answer on every save and make
+            // every load re-derive it.
+            region: train.region)
     }
 
     /// `getRideRouteSectionsForTrain` — one section per adjacent stop pair.

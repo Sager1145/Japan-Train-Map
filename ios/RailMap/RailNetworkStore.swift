@@ -15,6 +15,12 @@ final class RailNetworkStore {
 
     struct DrawnLine: Identifiable, Sendable {
         let id: String
+        /// Which package this line came out of. Nothing about *drawing* needs
+        /// it — every line draws in its own colour on its own geometry — but
+        /// the statistics screen and the ride editor both scope by region, and
+        /// re-deriving it from the id at every call site would be a rule
+        /// spelled out in several places instead of one.
+        let region: Region
         let name: String
         let nameRoma: String?
         let color: Color
@@ -33,9 +39,14 @@ final class RailNetworkStore {
         /// The zoom below which this line is not drawn — the web app's own
         /// rule, ported in `RailCore.Visibility`, not a performance knob.
         let minZoom: Int
+        /// Complete visibility-group length, not this administrative piece's
+        /// own length. The native low-zoom policy uses the unbucketed value so
+        /// very long trunks can survive wider views than merely long lines.
+        let visibilityLengthKm: Double
         /// The threshold this app actually uses: the ported rule plus the rank
-        /// term. See `NetworkLOD` — it is deliberately stricter than the web
-        /// app at low zoom, and deliberately not in `RailCore`.
+        /// and finer wide-view length terms. See `NetworkLOD` — it is
+        /// deliberately stricter than the web app at low zoom, and
+        /// deliberately not in `RailCore`.
         let lodMinZoom: Double
         /// Bounding box in projected map space, computed once at decode time
         /// so the per-rebuild off-screen test is a rectangle intersection
@@ -49,6 +60,10 @@ final class RailNetworkStore {
 
     struct DrawnStation: Identifiable, Sendable {
         let id: String
+        /// The package this station came out of — the ride editor's picker is
+        /// scoped to the region of the itinerary being edited, so that a
+        /// Japanese ride cannot pick up a Korean platform.
+        let region: Region
         /// The package's own station-group code — the identity a ride's stop
         /// carries (`n02_station_code`), which is why the ride editor picks
         /// stations by it rather than by name.
@@ -63,40 +78,106 @@ final class RailNetworkStore {
         let popup: StationDisplay.PopupModel
     }
 
+    /// What one region's package cost and contributed, so the diagnostics
+    /// panel reports measurements rather than an estimate.
+    struct RegionLoad: Identifiable, Sendable {
+        var region: Region
+        var lineCount: Int
+        var stationCount: Int
+        var elapsed: Duration
+        var id: String { region.rawValue }
+    }
+
     enum LoadState {
         case idle
-        case loading
-        case loaded(country: String, lines: [DrawnLine], elapsed: Duration)
-        case failed(String)
+        /// Regions still being decoded. The map draws what has already
+        /// arrived: the packages differ by three orders of magnitude in size,
+        /// so waiting for Japan before showing Macao would hide four networks
+        /// behind the slowest one.
+        case loading(pending: [Region])
+        case loaded(regions: [RegionLoad], failures: [RegionFailure], elapsed: Duration)
+    }
+
+    struct RegionFailure: Identifiable, Sendable {
+        var region: Region
+        var message: String
+        var id: String { region.rawValue }
     }
 
     private(set) var state: LoadState = .idle
+    private(set) var lines: [DrawnLine] = []
     private(set) var stations: [DrawnStation] = []
 
-    /// The five countries the packages cover, smallest first — which is also
-    /// least to most demanding on the renderer, so the ordering doubles as the
-    /// order to try things in when measuring.
-    static let countries: [(code: String, label: String)] = [
-        ("mo", "澳門 Macao"),
-        ("hk", "香港 Hong Kong"),
-        ("tw", "臺灣 Taiwan"),
-        ("kr", "한국 Korea"),
-        ("jp", "日本 Japan"),
-    ]
-
-    func load(country: String) {
-        state = .loading
+    /// Every region drawn at once.
+    ///
+    /// The web app loads one package because it has a region switch; this app
+    /// has none, so all five are decoded together and merged into one field of
+    /// lines and one of stations. Nothing downstream needs to know a region
+    /// boundary exists — `NetworkLOD` culls by zoom and by the visible rect,
+    /// which is a rule about what is on screen rather than about which country
+    /// it is in.
+    ///
+    /// Decoding runs concurrently and publishes each region as it lands, in
+    /// completion order: Macao's 8 KB is on screen long before Japan's 9.5 MB
+    /// has finished.
+    func loadAll() {
+        if case .loading = state { return }
+        state = .loading(pending: Region.ordered)
+        lines = []
         stations = []
         Task {
-            do {
-                let decoded = try await Self.decode(country: country)
-                stations = decoded.stations
-                state = .loaded(
-                    country: country, lines: decoded.lines, elapsed: decoded.elapsed)
-            } catch {
-                state = .failed(error.localizedDescription)
+            let started = ContinuousClock.now
+            var loads: [RegionLoad] = []
+            var failures: [RegionFailure] = []
+            var pending = Region.ordered
+
+            await withTaskGroup(of: (Region, Result<Decoded, Error>).self) { group in
+                for region in Region.ordered {
+                    group.addTask {
+                        do { return (region, .success(try await Self.decode(region: region))) }
+                        catch { return (region, .failure(error)) }
+                    }
+                }
+                for await (region, result) in group {
+                    pending.removeAll { $0 == region }
+                    switch result {
+                    case .success(let decoded):
+                        lines.append(contentsOf: decoded.lines)
+                        stations.append(contentsOf: decoded.stations)
+                        loads.append(
+                            RegionLoad(
+                                region: region, lineCount: decoded.lines.count,
+                                stationCount: decoded.stations.count,
+                                elapsed: decoded.elapsed))
+                    case .failure(let error):
+                        // One missing package is not a dead map: the other four
+                        // still draw, and the data screen names the one that
+                        // did not. A region-switching app could treat this as
+                        // fatal; an all-regions one cannot.
+                        failures.append(
+                            RegionFailure(
+                                region: region, message: error.localizedDescription))
+                    }
+                    if !pending.isEmpty { state = .loading(pending: pending) }
+                }
             }
+            loads.sort { Region.ordered.firstIndex(of: $0.region) ?? 0
+                < Region.ordered.firstIndex(of: $1.region) ?? 0 }
+            state = .loaded(
+                regions: loads, failures: failures, elapsed: ContinuousClock.now - started)
         }
+    }
+
+    /// The stations of one region only — the ride editor's picker, which is
+    /// scoped to the region the itinerary being edited belongs to.
+    func stations(in region: Region) -> [DrawnStation] {
+        stations.filter { $0.region == region }
+    }
+
+    private struct Decoded: Sendable {
+        var lines: [DrawnLine]
+        var stations: [DrawnStation]
+        var elapsed: Duration
     }
 
     /// Decoding a national package is tens of thousands of coordinates, so it
@@ -104,26 +185,36 @@ final class RailNetworkStore {
     /// sees the finished value. Marked `async` rather than dispatched by hand
     /// because that is what lets the compiler check the hand-off instead of
     /// trusting it.
-    private nonisolated static func decode(
-        country: String
-    ) async throws -> (lines: [DrawnLine], stations: [DrawnStation], elapsed: Duration) {
+    private nonisolated static func decode(region: Region) async throws -> Decoded {
         let started = ContinuousClock.now
-        guard let url = Bundle.main.url(forResource: "\(country)-2025", withExtension: "json")
-        else { throw LoadError.missingResource(country) }
+        guard let url = Bundle.main.url(
+            forResource: region.packageResource, withExtension: "json")
+        else { throw LoadError.missingResource(region.code) }
 
         let package = try CompactPackage.load(contentsOf: url)
         let topologies = try DisplayParts.LineTopology.byLineID(contentsOf: url)
-        let minZoomByLineId = Visibility.minZoomByLineId(package)
+        let visibilityLengthByLineId = Visibility.groupLengthByLineId(package)
+        let minZoomByLineId = visibilityLengthByLineId.mapValues {
+            Visibility.minZoomForLength(totalKm: $0)
+        }
         let lines = package.lines.map { line in
-            let intervals = DisplayParts.parts(
+            let sourceIntervals = DisplayParts.parts(
                 for: line, topology: topologies[line.id] ?? .init())
+            // `DisplayParts` stays byte-for-byte WGS84-compatible with the
+            // WebUI. Only the coordinates handed to MapKit are shifted for
+            // regions served by Apple's GCJ-02 basemap.
+            let intervals = sourceIntervals.map {
+                AppleMapDatum.display($0, country: region.code)
+            }
             // The line's own length is deliberately NOT used for the LOD:
             // `minZoomByLineId` answers with the length of the line's
             // visibility GROUP, so every administrative piece of one physical
             // railway appears and vanishes together.
             let portedMinZoom = minZoomByLineId[line.id] ?? 0
+            let visibilityLengthKm = visibilityLengthByLineId[line.id] ?? 0
             return DrawnLine(
                 id: line.id,
+                region: region,
                 name: line.name,
                 nameRoma: line.nameRoma,
                 color: Color(hex: line.color) ?? .accentColor,
@@ -132,8 +223,11 @@ final class RailNetworkStore {
                 colorDarkHex: (line.colorDark ?? line.color ?? "#7a7a7a").lowercased(),
                 rank: line.rank,
                 minZoom: portedMinZoom,
+                visibilityLengthKm: visibilityLengthKm,
                 lodMinZoom: NetworkLOD.minZoom(
-                    portedMinZoom: portedMinZoom, rank: line.rank),
+                    portedMinZoom: portedMinZoom,
+                    rank: line.rank,
+                    visibilityLengthKm: visibilityLengthKm),
                 mapRect: Self.boundingRect(of: intervals),
                 intervals: intervals
             )
@@ -143,15 +237,17 @@ final class RailNetworkStore {
         let stations = stationNetwork.stations.enumerated().map { index, station in
             let line = stationNetwork.lines[station.lineIndex]
             return DrawnStation(
-                id: station.stationID, stationCode: station.stationGroupID,
+                id: station.stationID, region: region,
+                stationCode: station.stationGroupID,
                 name: station.name,
-                nameRoma: station.nameRoma ?? "", coordinate: station.coordinate,
+                nameRoma: station.nameRoma ?? "",
+                coordinate: AppleMapDatum.display(station.coordinate, country: region.code),
                 colorHex: line.color, minZoom: station.minZoom,
                 isTerminal: station.isTerminal, showsLabel: labelWinners.contains(index),
                 popup: StationDisplay.buildPopupModel(
                     network: stationNetwork, stationID: station.stationID))
         }
-        return (lines, stations, ContinuousClock.now - started)
+        return Decoded(lines: lines, stations: stations, elapsed: ContinuousClock.now - started)
     }
 
     /// Union of every vertex, in projected map space.

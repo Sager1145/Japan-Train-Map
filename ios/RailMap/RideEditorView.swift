@@ -22,7 +22,13 @@ import SwiftUI
 struct RideEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppLocalization.self) private var localization
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draft: Train
+    /// Editor-session identity for stops. `Stop` is a canonical value without
+    /// an id, but these rows can be inserted, deleted and moved; tying SwiftUI
+    /// identity to their array offsets moves navigation/focus state to a
+    /// different stop whenever the order changes.
+    @State private var stopIDs: [UUID]
     @State private var showsDiscardConfirmation = false
     /// The stops removed by the last delete, with the rows they came from.
     ///
@@ -53,6 +59,7 @@ struct RideEditorView: View {
     private struct Deletion: Equatable {
         var offset: Int
         var stop: Stop
+        var id: UUID
     }
 
     init(
@@ -65,6 +72,7 @@ struct RideEditorView: View {
         self.title = title
         self.existingIDs = existingIDs
         _draft = State(initialValue: train)
+        _stopIDs = State(initialValue: train.stops.map { _ in UUID() })
         self.onSave = onSave
     }
 
@@ -83,10 +91,35 @@ struct RideEditorView: View {
                     styleSection
                     recordSection
                 }
+                // Inline, and short. §14.5 forbids a fixed English-width
+                // assumption, and the large title fought both toolbar buttons
+                // for the same row and lost — 「乗車記録を編集」 came back as
+                // 「乗車記録…」, a heading truncated to a stub. The specific
+                // verb the spec asks for is on the SAVE button, which is where
+                // it does work; this row only has to say which surface this is.
                 .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
                 .navigationBarTitleDisplayMode(.inline)
                 .environment(\.editMode, .constant(.active))
                 .onChange(of: draft, initial: true) { _, _ in revalidate() }
+#if DEBUG
+                // Scroll straight to a named section, for the same reason the
+                // other `RAILMAP_UI_TEST_*` hooks exist: a screenshot harness
+                // cannot scroll a form, so anything below the first screen —
+                // the region row, the route sections and their messages —
+                // would never be reviewed outside a hand session.
+                .task {
+                    guard let wanted = ProcessInfo.processInfo
+                        .environment["RAILMAP_UI_TEST_EDITOR_SECTION"] else { return }
+                    try? await Task.sleep(for: .milliseconds(700))
+                    switch wanted {
+                    case "record": proxy.scrollTo(RideDraftIssue.Field.id, anchor: .center)
+                    case "routing":
+                        proxy.scrollTo(RideDraftIssue.Field.routePolicy, anchor: .center)
+                    default: break
+                    }
+                }
+#endif
                 .onChange(of: publishedIDs, initial: true) { _, _ in revalidate() }
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -103,7 +136,19 @@ struct RideEditorView: View {
                         Button(localization.editorText("ios.editor.saveJourney")) {
                             onSave(draft)
                         }
+                        // §7.6: the primary action takes the one filled
+                        // emphasis on the screen. Cancel and Save were the
+                        // same glass capsule with the same white label at the
+                        // same weight, so the row said nothing about which of
+                        // the two commits the reader's work — and the two sit
+                        // a thumb's width apart.
+                        .buttonStyle(.borderedProminent)
                         .disabled(!blocking.isEmpty)
+                        // §10.3's ⌘S. On the button rather than on the form,
+                        // so it is disabled by exactly the same condition —
+                        // a shortcut that commits a draft the button refuses
+                        // would be a second, looser save path.
+                        .keyboardShortcut("s", modifiers: .command)
                     }
                 }
             }
@@ -156,8 +201,24 @@ struct RideEditorView: View {
     /// §5.4: "第一个错误字段应可被『查看错误』动作聚焦."
     private func focusFirstProblem(_ proxy: ScrollViewProxy) {
         guard let issue = blocking.first else { return }
-        withAnimation { proxy.scrollTo(issue.field, anchor: .center) }
+        let target = scrollTarget(for: issue.field)
+        if reduceMotion {
+            proxy.scrollTo(target, anchor: .center)
+        } else {
+            withAnimation(RailMotion.spring) {
+                proxy.scrollTo(target, anchor: .center)
+            }
+        }
         if issue.field.isTextField { focused = issue.field }
+    }
+
+    /// Validation identifies stop problems by their current ordinal; scrolling
+    /// identifies the mutable row by its stable editor-session id.
+    private func scrollTarget(for field: RideDraftIssue.Field) -> AnyHashable {
+        if case .stop(let index) = field, stopIDs.indices.contains(index) {
+            return AnyHashable(stopIDs[index])
+        }
+        return AnyHashable(field)
     }
 
     // MARK: - 1. Basics
@@ -237,19 +298,23 @@ struct RideEditorView: View {
 
     private var stopsSection: some View {
         Section {
-            ForEach(draft.stops.indices, id: \.self) { index in
-                VStack(alignment: .leading, spacing: 4) {
-                    NavigationLink {
-                        StopEditorView(stop: $draft.stops[index], index: index)
-                    } label: {
-                        StopEditorLabel(stop: draft.stops[index], index: index + 1)
+            ForEach(stopIDs, id: \.self) { stopID in
+                if let index = stopIDs.firstIndex(of: stopID) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        NavigationLink {
+                            StopEditorView(
+                                stop: $draft.stops[index], index: index,
+                                region: Region.resolved(draft))
+                        } label: {
+                            StopEditorLabel(stop: draft.stops[index], index: index + 1)
+                        }
+                        fieldIssues(.stop(index))
                     }
-                    fieldIssues(.stop(index))
+                    .id(stopID)
                 }
-                .id(RideDraftIssue.Field.stop(index))
             }
             .onDelete(perform: deleteStops)
-            .onMove { draft.stops.move(fromOffsets: $0, toOffset: $1) }
+            .onMove(perform: moveStops)
 
             if !undoableDeletion.isEmpty { undoBanner }
 
@@ -257,6 +322,7 @@ struct RideEditorView: View {
                 undoableDeletion = []
                 draft.stops.append(
                     Stop(name: "", stopType: "passenger_stop", rideSegment: true))
+                stopIDs.append(UUID())
             } label: {
                 Label(
                     localization.countryText("btn.addStop", fallback: "Add stop"),
@@ -287,6 +353,7 @@ struct RideEditorView: View {
                 for deletion in undoableDeletion.sorted(by: { $0.offset < $1.offset }) {
                     let at = min(deletion.offset, draft.stops.count)
                     draft.stops.insert(deletion.stop, at: at)
+                    stopIDs.insert(deletion.id, at: at)
                 }
                 undoableDeletion = []
             }
@@ -295,8 +362,17 @@ struct RideEditorView: View {
     }
 
     private func deleteStops(at offsets: IndexSet) {
-        undoableDeletion = offsets.sorted().map { Deletion(offset: $0, stop: draft.stops[$0]) }
+        undoableDeletion = offsets.sorted().map {
+            Deletion(offset: $0, stop: draft.stops[$0], id: stopIDs[$0])
+        }
         draft.stops.remove(atOffsets: offsets)
+        stopIDs.remove(atOffsets: offsets)
+    }
+
+    private func moveStops(from offsets: IndexSet, to destination: Int) {
+        undoableDeletion = []
+        draft.stops.move(fromOffsets: offsets, toOffset: destination)
+        stopIDs.move(fromOffsets: offsets, toOffset: destination)
     }
 
     // MARK: - 4. Routing (advanced)
@@ -333,6 +409,16 @@ struct RideEditorView: View {
             }
             .onDelete(perform: deleteRouteSections)
             .onMove(perform: moveRouteSections)
+
+            // Below the list rather than inside it: a `ForEach` that carries
+            // `onDelete` and `onMove` addresses its OWN elements, and a second
+            // view per element makes a swipe ambiguous about which row it is
+            // acting on. Each message names its section number, which is what
+            // it would have said standing next to it.
+            ForEach(routeSectionIndices, id: \.self) { index in
+                fieldIssues(.routeSection(index))
+                    .id(RideDraftIssue.Field.routeSection(index))
+            }
 
             Button(action: addRouteSection) {
                 Label(
@@ -379,6 +465,23 @@ struct RideEditorView: View {
 
     private var recordSection: some View {
         Section {
+            // Which region this ride is measured against: its solver, its
+            // statistics, its station picker. Offered rather than derived
+            // because a hand-written ride may carry no station codes at all,
+            // and then nothing else in the record can say.
+            Picker(
+                localization.countryText("country.label", fallback: "Region"),
+                selection: regionSelection
+            ) {
+                ForEach(Region.ordered) { region in
+                    Text(localization.text(region.localizationKey, fallback: region.fallbackName))
+                        .tag(region)
+                }
+            }
+            Text(localization.editorText("ios.editor.regionNote"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
             EditorTextField(
                 title: localization.countryText("field.id", fallback: "Identifier"),
                 text: $draft.id,
@@ -440,6 +543,19 @@ struct RideEditorView: View {
 
     private var visibleBinding: Binding<Bool> {
         Binding(get: { draft.visible != false }, set: { draft.visible = $0 })
+    }
+
+    /// The region row.
+    ///
+    /// Reading falls back to what the stops say — an untagged ride shows the
+    /// region it would be treated as, not a blank — and writing states it,
+    /// because a reader who picked a region meant it even where the stops
+    /// would have said something else.
+    private var regionSelection: Binding<Region> {
+        Binding(
+            get: { Region.resolved(draft) },
+            set: { draft.region = $0.code }
+        )
     }
 
     private var styleColor: Binding<String> {
@@ -537,15 +653,24 @@ private struct RouteSectionLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(localization.editorText("ios.editor.sectionIndex", ["index": .number(Double(index))]))
-            Text(
-                "\(section?.from ?? localization.editorText("ios.route.unnamedStation")) → "
-                    + "\(section?.to ?? localization.editorText("ios.route.unnamedStation"))"
-            )
+            // A section whose endpoint NAME was dropped on the way to disk
+            // still knows its station code: `leanExportSection` omits a name
+            // the stop list can re-derive, so 「駅名未設定 → 駅名未設定」 is
+            // what an ordinary, perfectly valid section reads as unless the
+            // code is allowed to stand in for it.
+            Text("\(endpoint(section?.from, section?.fromN02StationCode)) → "
+                + "\(endpoint(section?.to, section?.toN02StationCode))")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(2)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func endpoint(_ name: String?, _ code: String?) -> String {
+        if let name, !name.isEmpty { return localization.stationName(name, code: code) }
+        if let code, !code.isEmpty { return code }
+        return localization.editorText("ios.route.unnamedStation")
     }
 }
 
@@ -724,6 +849,12 @@ private struct StopEditorLabel: View {
                 HStack(spacing: 6) {
                     if let arrival = stop.arrival, !arrival.isEmpty { Text(arrival) }
                     if let departure = stop.departure, !departure.isEmpty { Text(departure) }
+                    if let platform = stop.platformNumber {
+                        Text(
+                            localization.editorText(
+                                "ios.detail.platformValue",
+                                ["number": .number(Double(platform))]))
+                    }
                     if stop.stopType != "passenger_stop" {
                         Text(localization.countryText("stoptype.\(stop.stopType)", fallback: stop.stopType))
                     }
@@ -751,6 +882,11 @@ private struct StopEditorView: View {
     @Environment(AppLocalization.self) private var localization
     @Binding var stop: Stop
     let index: Int
+    /// The ride's region, so the picker offers that network's stations rather
+    /// than all 14,000 across five countries — where 中央駅 and 中央站 would
+    /// sit next to each other and picking the wrong one is a route that will
+    /// never solve.
+    let region: Region
 
     /// `TrainValidation.stopTypes`, not a copy of it: the order is the web
     /// editor's `<select>` order and is quoted into the rejection message, so
@@ -771,7 +907,7 @@ private struct StopEditorView: View {
                     .foregroundStyle(.red)
                 }
                 NavigationLink {
-                    StationPickerView(stop: $stop, stations: network.stations)
+                    StationPickerView(stop: $stop, stations: network.stations(in: region))
                         .environment(localization)
                 } label: {
                     Label(
@@ -789,6 +925,23 @@ private struct StopEditorView: View {
                 {
                     Label(
                         localization.editorText("ios.editor.stationCodeRule"),
+                        systemImage: "exclamationmark.circle.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                EditorTextField(
+                    title: localization.editorText("ios.editor.platformNumber"),
+                    text: platformText,
+                    prompt: localization.editorText("ios.editor.platformOptional")
+                )
+                .keyboardType(.numbersAndPunctuation)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                if let platform = stop.platformNumber, platform < 0 {
+                    Label(
+                        localization.editorText("ios.editor.platformRule"),
                         systemImage: "exclamationmark.circle.fill"
                     )
                     .font(.footnote)
@@ -852,6 +1005,16 @@ private struct StopEditorView: View {
             set: { stop[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
         )
     }
+
+    private var platformText: Binding<String> {
+        Binding(
+            get: { stop.platformNumber.map(String.init) ?? "" },
+            set: {
+                let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                stop.platformNumber = value.isEmpty ? nil : Int(value)
+            }
+        )
+    }
 }
 
 private struct StationPickerView: View {
@@ -874,9 +1037,15 @@ private struct StationPickerView: View {
                         Text(station.nameRoma).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .frame(minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            // §14.3, on a row whose whole purpose is to be tapped. `.plain`
+            // inside a `List` suppresses the system's own row highlight and
+            // puts nothing in its place, so choosing a station gave no answer
+            // until the sheet dismissed. Square corners because this is a
+            // plain list row rather than one of the panel's rounded cards.
+            .buttonStyle(RailRowPressStyle(cornerRadius: 0))
         }
         .navigationTitle(localization.editorText("ios.editor.chooseStation"))
         .navigationBarTitleDisplayMode(.inline)

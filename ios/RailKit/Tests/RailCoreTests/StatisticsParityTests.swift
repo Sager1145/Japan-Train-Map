@@ -590,6 +590,31 @@ struct StatisticsParityTests {
         }
     }
 
+    @Test("a short station-anchor tail inherits the edge it leaves")
+    func terminalStationAnchorConnector() throws {
+        let a = Coordinate(lon: 139.0, lat: 35.0)
+        let b = Coordinate(lon: 139.01, lat: 35.0)
+        let stationAnchor = Coordinate(lon: 139.0105, lat: 35.0)
+        let properties = Statistics.SectionProperties(
+            n02_001: .string("11"), n02_002: .string("2"),
+            n02_003: .string("test"), n02_004: .string("東日本旅客鉄道"))
+        let index = Statistics.buildEdgeIndex(
+            sections: [.init(properties: properties, coordinates: [a, b])],
+            country: "jp")
+        let entry = Statistics.collectTrainStatsEntry(
+            features: [.init(
+                lines: [[a, b, stationAnchor]], rideSegment: true,
+                from: "A", to: "B")],
+            index: index)
+
+        let tail = try #require(entry.spans.first)
+        #expect(tail.mask == index.mask[0])
+        let stats = Statistics.aggregateMileageStats(
+            index: index, entries: [entry], country: "jp")
+        #expect(stats.unmatchedKm == 0)
+        #expect(stats.riddenByMask[Statistics.maskCONV] == entry.km)
+    }
+
     // MARK: - the deduped union
 
     @Test("aggregateMileageStats folds repeat rides into one union")

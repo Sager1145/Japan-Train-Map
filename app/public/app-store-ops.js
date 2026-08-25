@@ -112,6 +112,8 @@ function canonicalStopShape(stop) {
   return {
     name: stop.name || "",
     n02_station_code: stop.n02_station_code || null,
+    // `??` is intentional: platform 0 exists and must not collapse to null.
+    platform_number: stop.platform_number ?? null,
     arrival: normalizeNullableTime(stop.arrival),
     departure: normalizeNullableTime(stop.departure),
     stop_type: stop.stop_type || "passenger_stop",
@@ -369,6 +371,7 @@ function normalizeImportedStop(stop) {
     [
       "name",
       "n02_station_code",
+      "platform_number",
       "arrival",
       "departure",
       "stop_type",
@@ -379,6 +382,16 @@ function normalizeImportedStop(stop) {
 
   if (!("name" in stop)) {
     throw new Error("Each stop must contain name.");
+  }
+
+  if (
+    stop.platform_number !== null &&
+    stop.platform_number !== undefined &&
+    (!Number.isInteger(stop.platform_number) || stop.platform_number < 0)
+  ) {
+    throw new Error(
+      "platform_number must be a non-negative integer or null.",
+    );
   }
 
   return canonicalStopShape(stop);
@@ -626,6 +639,7 @@ function createBlankRegionalTrain(config) {
       {
         name: config.origin,
         n02_station_code: config.originCode,
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -634,6 +648,7 @@ function createBlankRegionalTrain(config) {
       {
         name: config.destination,
         n02_station_code: config.destinationCode,
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",
@@ -674,6 +689,7 @@ function createBlankTrainTw() {
       {
         name: "台北車站",
         n02_station_code: "TYMC-A1",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -682,6 +698,7 @@ function createBlankTrainTw() {
       {
         name: "機場第二航廈站",
         n02_station_code: "TYMC-A13",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",
@@ -743,6 +760,7 @@ function createBlankTrainJp() {
       {
         name: "東京",
         n02_station_code: "003770",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -751,6 +769,7 @@ function createBlankTrainJp() {
       {
         name: "熱海",
         n02_station_code: "005685",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",

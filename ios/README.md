@@ -117,6 +117,79 @@ line (`rail-network.js` reads `colorDark || color`), so the overlays are rebuilt
 with the other palette when the trait flips. Ignoring it would make dark mode a
 different map rather than a darker one.
 
+## The typography contract
+
+**Every text role in this app has a stated font-size floor and ceiling, and
+this rule may not be removed.** It is spelled once, in `RailMap/RailType.swift`,
+and applied with `.railType(_:)`.
+
+This is a contract rather than a convention because the same failure has
+arrived four separate times, each from a piece of text that was free to grow or
+shrink without a stated bound:
+
+| What broke | How |
+| --- | --- |
+| 統計「概要」 row | 「197 時間 9 分」 wrapped to two lines, so its caption sat a line below the other three and the row lost its shared baseline |
+| Editor navigation title | reached the toolbar as 「乗車記録…」 |
+| Journey card date chip | crushed to a sliver at an accessibility size, with the train name drawn over it |
+| A row's quiet button | carried `minimumScaleFactor`, so it reported that it fitted any width and the `ViewThatFits` above it never reached the candidate that actually fitted |
+
+### The roles
+
+| Role | Dynamic Type range | Lines | For |
+| --- | --- | --- | --- |
+| `.metricValue` | `xSmall … accessibility5` | 1 | a figure in a dense tile; states its true width |
+| `.metricValueStacked` | `xSmall … accessibility5` | 2 | the same figure in the grid's last candidate, where it must wrap rather than overflow |
+| `.metricLabel` | `xSmall … accessibility1` | 2 | that figure's caption; held at or below the value |
+| `.chrome` | `xSmall … xxLarge` | 1 | control glyphs, bar labels, scope capsules |
+| `.title` | `xSmall … accessibility5` | 2 | headings |
+| `.content` | `xSmall … accessibility5` | unbounded | reading text |
+
+### Why a ceiling is not a Dynamic Type cap
+
+There used to be an app-wide Dynamic Type ceiling in `RailMapApp.swift`. It was
+removed on purpose, and this is not it coming back. Clamping the text was the
+wrong lever: it made every accessibility-size code path in the app — the
+stacked `RouteTimingView`, the three-line journey name, the measured compact
+row — unreachable by the readers they were written for.
+
+A ceiling is only safe when it is not below the ceiling of text sitting beside
+it in the same card. `.metricValue` was briefly capped at `accessibility1`, and
+that was wrong twice over: on a statistics screen the figure IS the content, so
+at AX5 the prose would have rendered larger than the number it describes; and
+the cap bought nothing, because `StatisticsMetricGrid` already degrades
+row → pairs → column on its own once the figure states its true width. What is
+bounded on that role is its SHAPE — one line — not its size.
+
+The difference is that these bounds are **per role**. `.content` is the role
+§14.4 is about and its ceiling is the system maximum: reading text reaches
+`accessibility5` intact and carries no line limit, because when it does not fit
+the CONTAINER changes shape. That is the whole of §10.1 — 「空间不足时改为纵向，
+不通过无限缩小字体解决」. The tight bounds are on chrome and on dense numeric
+tiles, which are not reading text and which §7.7 already says should not grow
+past their own capsules.
+
+### Two rules that are easy to get wrong
+
+1. **Never put `minimumScaleFactor` on anything that is, or is inside, a
+   `ViewThatFits` candidate.** It satisfies any width by squashing its own text,
+   so the candidate always "fits" and every later candidate is dead code. The
+   rule is transitive: `StatisticsMetric` is a candidate's subtree even though
+   the `ViewThatFits` lives in `StatisticsMetricGrid`. A candidate must state
+   its true width — `lineLimit(1)` plus `fixedSize(horizontal: true, …)`.
+
+   `minimumScaleFactor` is still legitimate where nothing above is choosing
+   between candidates and several controls share a width — see
+   `JourneyComponents.quietButton`, which is a terminal fallback.
+
+2. **`Text` answers a height proposal that is too short by dropping a line and
+   truncating, not by overflowing.** A reserved height computed from a
+   `@ScaledMetric` under-estimates real line height at accessibility sizes and
+   truncates silently. Release the height constraint once the container is
+   fully open and pair it with `fixedSize(horizontal: false, vertical: true)`.
+
+Both were found by measurement rather than by reading.
+
 ## Performance: what the simulator said, and what fixed it
 
 The first version drew one SwiftUI `MapPolyline` per station interval. On
@@ -169,20 +242,26 @@ adds three rules — and lives outside `RailCore` on purpose, because there is n
 JavaScript to check it against and mixing a policy of our own into the ported
 tier would make the parity fixtures meaningless.
 
-1. **A line waits for both its length and its rank.** The web app hides by
-   group length alone, which is enough over a vector basemap that can draw a
-   hairline. Requiring both leaves the trunk corridors at a national view and
-   holds branches back until there is a map under them to make sense of.
+1. **A line waits for its complete-group length and its rank.** The web app's
+   coarse length tier remains the base rule; a finer native ladder keeps only
+   groups over 300/120/50/20 km at app zoom 4/5/6/7. Long trunk corridors
+   therefore survive wide views while regional branches wait. Zoom 8 still
+   restores every line.
 2. **Nothing far off screen is built.** The build covers the visible rect plus
    half a screen each way and is remembered, so panning inside it does no work.
 3. **A vertex budget is the backstop**, shedding least-important first, so the
    worst case is a function of the budget rather than of the data.
 
-| Japan, national view | batched only | with LOD |
+| Japan, national view — first LOD pass | batched only | with LOD |
 | --- | ---: | ---: |
 | lines drawn | 262 | **33** |
 | drawn vertices | 12,433 | **3,192** |
 | rebuild | 98 ms | **19 ms** |
+
+The finer 2026-08-23 ladder changes Japan's all-package eligibility at app
+zoom 4–8 from `41/62/262/431/652` lines to `24/51/195/337/652`, before the
+visible-rect cull. This keeps the close-view endpoint unchanged while reducing
+each wider tier.
 
 Panned away from Japan, all 652 lines cull to nothing rather than being built
 off screen.
@@ -213,9 +292,15 @@ Xcode's own derived data is already outside the repository and is unaffected.
 simulator (`ActiveTileGroup.pbd` missing, then `NSURLErrorTimedOut`) and the
 map draws only its graticule. Relaunching once fixes it. The region here is
 `zh_TW`, so MapKit resolves to Apple's China tile host and attributes to
-高德地图; the tile requests carry `vertical_datum=wgs84`, and the Macao
-overlay lands on the correct viaduct, so WGS84 coordinates need no datum
-correction for the covered countries.
+高德地图. The tile request's `vertical_datum=wgs84` is an elevation datum and
+does not describe the horizontal coordinate system. Direct `MKLocalSearch`
+checks against geographically distributed station anchors show that Taiwan,
+Hong Kong and Macao are exposed in GCJ-02 on this service (median residuals
+fall from 504/596/615 m to 37/30/7 m). Real-device comparison shows the same
+systematic displacement in Korea; its 1,412 station anchors require a
+420–569 m forward shift (476 m median). These four WGS84 packages are converted
+only at the MapKit presentation boundary; the WebUI, route cache, statistics
+and Japan coordinates remain WGS84.
 
 ## What is not here yet
 

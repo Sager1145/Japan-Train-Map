@@ -294,7 +294,7 @@ struct TrainValidationParityTests {
 
     /// `buildCanonicalTrainStore` over every committed train.
     ///
-    /// This is where the model, the six-field stop shape, the section
+    /// This is where the model, the seven-field stop shape, the section
     /// recomputation from stop pairs, `leanExportSection`'s name-dropping and
     /// the per-country company rule all meet. The fixture was generated with
     /// no station table installed — a real boot state — and the port is driven
@@ -588,6 +588,34 @@ struct TrainValidationParityTests {
         // Neither nil nor "" is a colour, and neither throws: the JavaScript
         // tests `value || ""`.
         #expect(!TrainValidation.isValidTrainColor(nil))
+    }
+
+    @Test func platformNumbersAreNullableNonNegativeIntegers() {
+        #expect(TrainValidation.isValidPlatformNumber(nil))
+        #expect(TrainValidation.isValidPlatformNumber(.null))
+        #expect(TrainValidation.isValidPlatformNumber(.number(0)))
+        #expect(TrainValidation.isValidPlatformNumber(.number(12)))
+        #expect(!TrainValidation.isValidPlatformNumber(.number(-1)))
+        #expect(!TrainValidation.isValidPlatformNumber(.number(1.5)))
+        #expect(!TrainValidation.isValidPlatformNumber(.string("2")))
+        #expect(!TrainValidation.isValidPlatformNumber(.bool(false)))
+    }
+
+    @Test func legacyMissingPlatformIsPreservedUntilCanonicalExport() throws {
+        let legacy = Data(
+            #"{"name":"東京","n02_station_code":null,"arrival":null,"departure":null,"stop_type":"origin","ride_segment":true}"#.utf8)
+        let decoded = try JSONDecoder().decode(Stop.self, from: legacy)
+        let roundTrip = try TrainValidation.JSON.parse(Self.canonicalText(decoded))
+        #expect(!roundTrip.hasOwnKey("platform_number"))
+
+        let canonical = TrainValidation.canonicalStopShape(decoded)
+        let exported = try TrainValidation.JSON.parse(Self.canonicalText(canonical))
+        #expect(exported["platform_number"] == .null)
+
+        var edited = decoded
+        edited.platformNumber = 0
+        let editedJSON = try TrainValidation.JSON.parse(Self.canonicalText(edited))
+        #expect(editedJSON["platform_number"] == .number(0))
     }
 
     @Test func trainIDs() throws {

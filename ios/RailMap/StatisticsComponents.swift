@@ -4,14 +4,17 @@ import SwiftUI
 // MARK: - card chrome
 
 extension View {
-    /// One statistics card. §6.4's card radius, and a background that is a
-    /// surface rather than a colour, so Increase Contrast and the dark
-    /// appearance both stay the system's business.
+    /// One ordinary content card: §6.4's card radius on a system surface, one
+    /// visual step above the panel so the group remains identifiable.
+    ///
+    /// The surface itself is spelled once, in ``PassportTone/plain``. The
+    /// statistics screen now draws three tones of card (§6.1's Memory
+    /// personality — see `PassportCardStyle.swift`), and two surfaces that
+    /// agree only by coincidence are two that disagree after the next edit.
+    /// Every non-statistics card in the Passport workspace keeps calling this
+    /// name and keeps getting exactly the card it had.
     func statisticsCard() -> some View {
-        self
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        passportCard(.plain)
     }
 }
 
@@ -124,105 +127,29 @@ struct StatisticsBar: View {
     }
 }
 
-// MARK: - metric tiles
+// MARK: - metric row
 
-/// One figure with its caption.
+/// One label and one figure, on a row.
 ///
-/// §10.1: at an accessibility text size the caller lays these out vertically
-/// instead of shrinking them, so nothing is solved by making the number
-/// smaller. `minimumScaleFactor` is therefore absent by design.
-struct StatisticsMetric: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title3.bold())
-                .monospacedDigit()
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
+/// Takes `metricValueStacked` rather than `metricValue`: nothing below this
+/// re-lays it out, so the figure has to be allowed to wrap inside the card
+/// rather than state a width the card cannot give it. (`metricValue` exists
+/// for the opposite case — a `ViewThatFits` candidate, which has to state its
+/// TRUE width or the arrangements below it are never reached. See `RailType`.)
 struct StatisticsMetricRow: View {
     let label: String
     let value: String
 
     var body: some View {
         LabeledContent {
-            Text(value).font(.headline).monospacedDigit()
+            Text(value)
+                .font(.headline)
+                .monospacedDigit()
+                .railType(.metricValueStacked)
         } label: {
-            Text(label).foregroundStyle(.secondary)
-        }
-    }
-}
-
-/// Four figures across, two by two, or stacked — whichever the current text
-/// size actually fits (§10.1).
-struct StatisticsMetricGrid: View {
-    struct Item: Identifiable {
-        let label: String
-        let value: String
-        var id: String { label }
-
-        init(_ label: String, _ value: String) {
-            self.label = label
-            self.value = value
-        }
-    }
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    let items: [Item]
-
-    var body: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            column
-        } else {
-            ViewThatFits(in: .horizontal) {
-                row
-                pairs
-                column
-            }
-        }
-    }
-
-    private var row: some View {
-        HStack(spacing: 0) {
-            ForEach(items.indices, id: \.self) { index in
-                if index > 0 { Divider().frame(height: 44) }
-                StatisticsMetric(label: items[index].label, value: items[index].value)
-            }
-        }
-    }
-
-    private var pairs: some View {
-        VStack(spacing: 14) {
-            ForEach(Array(stride(from: 0, to: items.count, by: 2)), id: \.self) { start in
-                HStack(spacing: 0) {
-                    StatisticsMetric(
-                        label: items[start].label, value: items[start].value)
-                    if start + 1 < items.count {
-                        Divider().frame(height: 44)
-                        StatisticsMetric(
-                            label: items[start + 1].label, value: items[start + 1].value)
-                    }
-                }
-            }
-        }
-    }
-
-    private var column: some View {
-        VStack(spacing: 12) {
-            ForEach(items.indices, id: \.self) { index in
-                if index > 0 { Divider() }
-                StatisticsMetricRow(label: items[index].label, value: items[index].value)
-            }
+            Text(label)
+                .foregroundStyle(.secondary)
+                .railType(.metricLabel)
         }
     }
 }

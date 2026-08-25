@@ -82,6 +82,9 @@ enum MapRideMarkers {
         /// The ride's own day span, so the renderer can apply the date scope
         /// without looking the ride up again.
         var daySpan: Dates.DaySpan
+        /// The role/type/density floor in MapLibre zoom units. `nil` belongs
+        /// to terminals and cross-day boundaries, which never disappear.
+        var mapLibreMinZoom: Double?
     }
 
     // MARK: - the style numbers, from app-style.js
@@ -168,38 +171,12 @@ enum MapRideMarkers {
 
     // MARK: - level of detail
 
-    /// `STOP_MIN_ZOOM` — below this, only the `terminal` dots draw.
-    ///
-    /// In MapLibre's convention, like everything ported: feed it through
-    /// ``RailStyle/zoom(fromMapLibre:)`` before comparing. The web app cannot
-    /// express this as a layer `minzoom` because one layer carries both the
-    /// stops and the terminals, and the terminals must stay visible at every
-    /// zoom — a ride's two ends are the whole of what it says at a national
-    /// view, while its intermediate calls at that scale are a smear.
-    static let stopDotMapLibreMinZoom: Double = 7
-
-    /// `PASSTHROUGH_MIN_ZOOM` — the numerous white pass-through dots follow at
-    /// a HIGHER threshold, so pulling back sheds pass-throughs first and stops
-    /// second while the terminals never leave.
-    static let passDotMapLibreMinZoom: Double = 9
-
-    static func drawsStopDots(atZoom zoom: Double) -> Bool {
-        zoom >= RailStyle.zoom(fromMapLibre: stopDotMapLibreMinZoom)
-    }
-
-    static func drawsPassDots(atZoom zoom: Double) -> Bool {
-        zoom >= RailStyle.zoom(fromMapLibre: passDotMapLibreMinZoom)
-    }
-
-    /// Whether a role's dot draws at this zoom. The cross-day diamond rides
-    /// with the terminals: it is a boundary of the same kind, and a day break
-    /// is exactly what a wide view of a multi-day trip is for.
-    static func drawsDot(role: String, atZoom zoom: Double) -> Bool {
-        switch role {
-        case "terminal", "xday": return true
-        case "pass": return drawsPassDots(atZoom: zoom)
-        default: return drawsStopDots(atZoom: zoom)
-        }
+    /// Whether one built dot draws at this zoom. Its floor has already folded
+    /// in role, service tier and local station density, while a `nil` floor is
+    /// the always-visible boundary case.
+    static func drawsDot(_ item: Drawn, atZoom zoom: Double) -> Bool {
+        guard let minimum = item.mapLibreMinZoom else { return true }
+        return zoom >= RailStyle.zoom(fromMapLibre: minimum)
     }
 
     // MARK: - the ride flags
@@ -415,10 +392,46 @@ enum MapRideMarkers {
     ) -> [Drawn] {
         let built = records(rides: rides, settings: settings)
         let features = StationDisplay.markerRecordsToFC(built.map(\.record))
+
+        // Density is local rather than journey-wide. A five-station window
+        // lets a local train stay quiet through central Tokyo without forcing
+        // its widely spaced rural calls to wait for the same close zoom.
+        var positionsByRide: [String: [Coordinate]] = [:]
+        var seenByRide: [String: Set<Coordinate>] = [:]
+        for entry in built where entry.record.role != "stop-center" {
+            if seenByRide[entry.ride.id, default: []].insert(entry.record.position).inserted {
+                positionsByRide[entry.ride.id, default: []].append(entry.record.position)
+            }
+        }
+        var densityByRide: [String: [Coordinate: Int]] = [:]
+        for (rideID, positions) in positionsByRide {
+            guard positions.count >= 2 else { continue }
+            for index in positions.indices {
+                let lower = max(positions.startIndex, index - 2)
+                let upper = min(positions.endIndex, index + 3)
+                let window = positions[lower..<upper]
+                var metres = 0.0
+                for pair in zip(window, window.dropFirst()) {
+                    metres += Geometry.distanceMeters(pair.0, pair.1)
+                }
+                let density = Visibility.stationMinZoom(
+                    lineMinZoom: 0,
+                    totalKm: metres / 1_000,
+                    stationCount: window.count)
+                densityByRide[rideID, default: [:]][positions[index]] = max(
+                    densityByRide[rideID]?[positions[index]] ?? 0, density)
+            }
+        }
+
         return zip(built, features).map { entry, feature in
             Drawn(
                 record: entry.record, feature: feature, stationCode: entry.code,
-                daySpan: entry.ride.daySpan)
+                daySpan: entry.ride.daySpan,
+                mapLibreMinZoom: RideMarkerVisibility.minimumMapLibreZoom(
+                    role: feature.role,
+                    trainType: entry.ride.trainType,
+                    country: entry.ride.country,
+                    densityMinZoom: densityByRide[entry.ride.id]?[entry.record.position] ?? 0))
         }
     }
 }

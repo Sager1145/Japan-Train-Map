@@ -114,6 +114,27 @@ final class ImportFlow {
         case failed(Failure)
     }
 
+    /// Which phase this is, without what is in it.
+    ///
+    /// `Phase` cannot be `Equatable` — its payloads are reports and outcomes —
+    /// and `onChange(of:)` needs something that can be compared. This is that:
+    /// it changes exactly when the phase does, so an announcement fires once
+    /// per transition rather than on every progress tick inside one.
+    enum PhaseKind: Equatable {
+        case editing, checking, checked, importing, finished, failed
+    }
+
+    var phaseKind: PhaseKind {
+        switch phase {
+        case .editing: .editing
+        case .checking: .checking
+        case .checked: .checked
+        case .importing: .importing
+        case .finished: .finished
+        case .failed: .failed
+        }
+    }
+
     struct Outcome {
         var imported: Int
         var renamed: Int
@@ -201,7 +222,7 @@ final class ImportFlow {
 
     /// The dry run. Nothing it does can change the store, which is why it is
     /// safe to run automatically the moment a file is chosen.
-    func check(itineraries: ItineraryStore, country: String) {
+    func check(itineraries: ItineraryStore, region: Region) {
         work?.cancel()
         preflight?.cancel()
         let source = text
@@ -217,7 +238,7 @@ final class ImportFlow {
         let job = Task.detached(priority: .userInitiated) { () throws -> ImportPreflight.Report in
             defer { continuation.finish() }
             return try ImportPreflight.inspect(
-                text: source, currentTrains: current, country: country, mode: checkedMode
+                text: source, currentTrains: current, country: region.code, mode: checkedMode
             ) { done, total in
                 continuation.yield(
                     ItineraryStore.ImportProgress(completed: done, total: total, trainID: nil))
@@ -260,7 +281,7 @@ final class ImportFlow {
     func commit(
         itineraries: ItineraryStore,
         library: RideLibrary,
-        country: String
+        region: Region
     ) {
         guard let report, report.isCommittable else { return }
         work?.cancel()
@@ -280,11 +301,11 @@ final class ImportFlow {
             // The recovery copy is written BEFORE the store changes, which is
             // the only moment at which it can still be written (§5.8).
             if let current = itineraries.store, !current.trains.isEmpty {
-                library.snapshotBackup(current, country: country, reason: .beforeImport)
+                library.snapshotBackup(current, reason: .beforeImport)
             }
             do {
                 let summary = try await itineraries.runImport(
-                    text: source, country: country, mode: mode,
+                    text: source, region: region, mode: mode,
                     sourceLabel: label.isEmpty ? "JSON" : label
                 ) { progress in
                     self.phase = .importing(
@@ -297,7 +318,7 @@ final class ImportFlow {
                         stage: .saving, completed: nil, total: nil, canInteract: false,
                         canCancel: false))
                 if let store = itineraries.store {
-                    library.save(store, country: country)
+                    library.save(store)
                 }
                 stopVisibilityClock()
                 phase = .finished(

@@ -74,6 +74,38 @@ for family in logos line-logos operator-logos; do
     /usr/bin/ditto "$source" "$target_dir/rail/$family"
 done
 
+# …and the PNG companions for the 95 of those files that are SVG.
+#
+# ImageIO ships no SVG decoder on iOS. macOS has one — which is why this went
+# unnoticed: every host-side check of the artwork passes, and only the device
+# and the simulator return nil. Roughly a quarter of the badge paths in the
+# `station-display` fixture name an SVG, so a quarter of the popup's rows were
+# falling back to the colour swatch.
+#
+# `rasterize-badge-svgs.swift` writes one PNG per SVG under the SVG's own name
+# plus `.png`, and they land in the same directory as their sources, so a
+# `.svg` path out of the branding table becomes a loadable file by appending
+# four characters. No second naming scheme: the table still decides.
+raster="$here/Resources/rail-badge-raster"
+if [ ! -d "$raster" ]; then
+    echo "error: missing $raster — run: swift ios/tools/rasterize-badge-svgs.swift" >&2
+    exit 1
+fi
+
+# A count mismatch means artwork was added or removed without the companions
+# being regenerated. Caught here rather than at run time, where the symptom is
+# one railway quietly wearing a colour swatch.
+svg_count=$(find "$source_dir/logos" "$source_dir/line-logos" "$source_dir/operator-logos" \
+    -name '*.svg' | wc -l | tr -d ' ')
+png_count=$(find "$raster" -name '*.svg.png' | wc -l | tr -d ' ')
+if [ "$svg_count" != "$png_count" ]; then
+    echo "error: $svg_count badge SVGs but $png_count rasterized companions —" >&2
+    echo "       run: swift ios/tools/rasterize-badge-svgs.swift" >&2
+    exit 1
+fi
+
+/usr/bin/ditto "$raster" "$target_dir/rail"
+
 # The legacy matched pair is still the instant route source for stores whose
 # ids it covers, and the progressive sample parts carry a precomputed route for
 # every bundled sample train. Keeping those parts lets the native app draw the

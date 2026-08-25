@@ -13,12 +13,22 @@ final class PlaybackVideoExporter {
         case idle
         case recording
         case finishing
-        case finished(URL)
+        /// `partial` is the run that was cancelled part-way. The file is
+        /// still written and still offered — `video.readyPartial` in the web
+        /// app, whose cancel "stop[s] the recorder — the partial file is still
+        /// written rather than thrown away". Minutes of rendering deleted
+        /// because the reader stopped a few seconds early is a worse answer
+        /// than a shorter film.
+        case finished(URL, partial: Bool = false)
         case failed(String)
     }
 
     private(set) var state: State = .idle
     private(set) var progress = 0.0
+
+    /// Frames actually written. A cancel with none of them has no film to
+    /// keep, only a zero-length file that no player will open.
+    @ObservationIgnored private var appendedFrames = 0
 
     @ObservationIgnored private var writer: AVAssetWriter?
     @ObservationIgnored private var input: AVAssetWriterInput?
@@ -102,6 +112,7 @@ final class PlaybackVideoExporter {
             self.outputSize = size
             self.startedAt = CACurrentMediaTime()
             self.lastFrameAt = -.infinity
+            self.appendedFrames = 0
             self.progress = 0
             self.state = .recording
 
@@ -109,23 +120,50 @@ final class PlaybackVideoExporter {
                 self?.append(snapshot)
             }
             playback.onFinish = { [weak self] in self?.finish() }
+            // `autoBegin`: nobody is going to press play on a recording, so
+            // the run begins once the opening overview has landed.
             guard playback.start(
-                trains: trains, rides: rides, reducedMotion: reducedMotion)
+                trains: trains, rides: rides, reducedMotion: reducedMotion,
+                autoBegin: true)
             else { throw ExportError.noPlayableGeometry }
         } catch {
             fail(error)
         }
     }
 
+    /// Stop early and keep what was filmed.
+    ///
+    /// The writer is FINISHED rather than cancelled: `cancelWriting` leaves no
+    /// readable file, so a reader who stopped a five-minute export at four
+    /// minutes was left with nothing at all. What has been appended so far is
+    /// a valid film of the part that ran, and it is offered as one — marked
+    /// partial so the offer does not claim to be the whole run.
+    ///
+    /// A cancel before the first frame lands has nothing to finish, and that
+    /// path still discards the empty file rather than offering an unplayable
+    /// one.
     func cancel(clearPlayback: Bool = true) {
         playback?.onFrame = nil
         playback?.onFinish = nil
         if clearPlayback { playback?.stop() }
-        writer?.cancelWriting()
-        if let outputURL { try? FileManager.default.removeItem(at: outputURL) }
-        resetWriter()
-        state = .idle
-        progress = 0
+
+        guard state == .recording, let writer, let input, let outputURL,
+            writer.status == .writing, appendedFrames > 0
+        else {
+            writer?.cancelWriting()
+            if let outputURL { try? FileManager.default.removeItem(at: outputURL) }
+            resetWriter()
+            state = .idle
+            progress = 0
+            return
+        }
+        state = .finishing
+        input.markAsFinished()
+        writer.finishWriting { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.completeFinish(outputURL: outputURL, partial: true)
+            }
+        }
     }
 
     private func append(_ snapshot: PlaybackMapSnapshot) {
@@ -170,6 +208,7 @@ final class PlaybackVideoExporter {
 
         let elapsed = max(0, now - startedAt)
         adapter.append(buffer, withPresentationTime: CMTime(seconds: elapsed, preferredTimescale: 600))
+        appendedFrames += 1
         progress = snapshot.frame.progress
     }
 
@@ -231,13 +270,17 @@ final class PlaybackVideoExporter {
         }
     }
 
-    private func completeFinish(outputURL: URL) {
+    private func completeFinish(outputURL: URL, partial: Bool = false) {
         guard let writer else { return }
         if writer.status == .completed {
             resetWriter()
             progress = 1
-            state = .finished(outputURL)
+            state = .finished(outputURL, partial: partial)
         } else {
+            // A partial film that will not close is not a failure the reader
+            // caused — they asked to stop — but the file is unusable either
+            // way, so it goes rather than being offered.
+            try? FileManager.default.removeItem(at: outputURL)
             fail(writer.error ?? ExportError.cannotFinishWriter)
         }
     }

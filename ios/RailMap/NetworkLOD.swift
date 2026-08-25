@@ -13,12 +13,15 @@ import RailCore
 /// Three rules, in the order they matter:
 ///
 /// 1. **A line waits for both its length and its rank.** The web app hides a
-///    line only by the length of its group. That is enough for a vector
-///    basemap that can draw a hairline, but Apple Maps at z4 is a
-///    country-outline map with a few motorways, and a national network drawn
+///    line only by the length of its group. At the widest native-map views an
+///    additional, finer length ladder keeps only genuinely long corridors.
+///    That is enough for a vector basemap that can draw a hairline, but Apple
+///    Maps at z4 is a country-outline map with a few motorways, and a national
+///    network drawn
 ///    over it reads as a coloured smear. So a line now appears only when the
-///    zoom clears *both* thresholds: how long it is, and how important its
-///    operator says it is. Trunks survive the wide views; branches wait.
+///    zoom clears *all three* thresholds: the ported length tier, the finer
+///    wide-view length tier, and how important its operator says it is. Trunks
+///    survive the wide views; branches wait.
 ///
 /// 2. **Nothing far off screen is built.** Overlays outside the visible rect
 ///    cost geometry, Metal buffers and decimation time to produce something
@@ -39,6 +42,21 @@ enum NetworkLOD {
     /// 12,433 vertices in 98 ms, and the city view's 89,785 in 229 ms was
     /// already visible as a hitch when crossing a zoom bucket. 40,000 sits
     /// between them with room to spare.
+    ///
+    /// "Room to spare" is thinner since 2026-08-24, and deliberately so.
+    /// Bringing decimation onto the web app's geometry contract — see
+    /// `RailStyle.simplifyTolerance`, which was eight times too loose — raised
+    /// the worst build measured anywhere in the five packages from 25,000
+    /// drawn vertices to 38,698 (largest iPad, app zoom 8, over the Kansai and
+    /// Chugoku density). That is still under the budget, so nothing is dropped
+    /// today, but the backstop is now within a few per cent of binding, and if
+    /// a denser package pushes it past, this is where it shows: branches shed
+    /// first, ``fitToBudget`` reports the threshold it stopped at, and the
+    /// diagnostics panel shows a threshold below the zoom. The measured lever
+    /// if that happens is clipping each interval to the build rect before
+    /// decimating rather than raising the number — it takes a city view from
+    /// 22,185 vertices to 2,460, though it does little at the wide zooms where
+    /// the worst case actually sits.
     static let vertexBudget = 40_000
 
     /// How far outside the visible rect to build, as a fraction of its size.
@@ -76,29 +94,60 @@ enum NetworkLOD {
     ///     before      33    67   386   652   652
     ///     after       41    62   262   431   652
     ///
-    /// So this now agrees with the web app exactly from a national view (app
-    /// z6) upward, and stays deliberately stricter only where the reason for
-    /// being stricter applies — the widest views, where Apple Maps is a
-    /// country outline and a whole national network over it reads as a
-    /// coloured smear rather than as a network. The old ladder had it
-    /// backwards: it over-drew by half at z6/z7 and under-drew at z4/z5.
+    /// That rank-only recalibration agreed with the web app from app z6
+    /// upward. The finer length ladder below deliberately tightens z4–z7
+    /// further; z8 remains the unchanged all-lines stop. The old rank ladder
+    /// had it backwards: it over-drew by half at z6/z7 and under-drew at
+    /// z4/z5.
     ///
     /// The ladder was chosen by measurement, not taste: 3,3,4,4,5 and 3,3,3,4,5
     /// also land on 262/431 but give the web app's own z5 count back, and
     /// 0,0,0,0,0 is simply the web app with no policy of ours at all.
     private static let rankMinZoom = [3, 3, 4, 5, 6]
 
+    /// A finer length ladder for the widest Apple Maps views, in MapLibre's
+    /// zoom convention.
+    ///
+    /// The ported ladder groups every line over 150 km together. That makes a
+    /// 160 km regional line and a 1,000 km national trunk equally eligible at
+    /// the largest scale. These extra stops retain the same complete-group
+    /// length input while spreading those long lines over the low zooms:
+    ///
+    ///     app zoom       4       5       6       7       8
+    ///     minimum km   300     120      50      20       0
+    ///     jp before     41      62     262     431     652
+    ///     jp after      24      51     195     337     652
+    ///
+    /// Near detail is unchanged: every line is still present by app zoom 8.
+    /// These are iOS rendering thresholds, not changes to RailCore's
+    /// fixture-protected web parity rule.
+    private static func wideViewMinZoom(visibilityLengthKm: Double) -> Int {
+        if visibilityLengthKm >= 300 { return 3 }
+        if visibilityLengthKm >= 120 { return 4 }
+        if visibilityLengthKm >= 50 { return 5 }
+        if visibilityLengthKm >= 20 { return 6 }
+        return 7
+    }
+
     /// The zoom at which a line may first be drawn, in **this app's** zoom.
     ///
     /// `portedMinZoom` is `Visibility.minZoomByLineId`'s answer for this line —
     /// a MapLibre zoom, computed from the line's visibility group. The rank
-    /// term is the addition: taking the larger of the two means a line has to
-    /// be both long enough and important enough, where the web app asks only
-    /// the first. The sum is then converted once, here, so no caller has to
-    /// remember which convention it is holding.
-    static func minZoom(portedMinZoom: Int, rank: Int?) -> Double {
-        let byRank = rank.flatMap { $0 >= 0 && $0 < rankMinZoom.count ? rankMinZoom[$0] : nil } ?? 0
-        return RailStyle.zoom(fromMapLibre: Double(max(portedMinZoom, byRank)))
+    /// terms are the native additions: taking the largest means a line has to
+    /// be long enough at both levels and important enough, where the web app
+    /// asks only the first. The result is then converted once, here, so no
+    /// caller has to remember which convention it is holding.
+    static func minZoom(
+        portedMinZoom: Int,
+        rank: Int?,
+        visibilityLengthKm: Double
+    ) -> Double {
+        let byRank = rank.flatMap {
+            $0 >= 0 && $0 < rankMinZoom.count ? rankMinZoom[$0] : nil
+        } ?? 0
+        let byWideViewLength = wideViewMinZoom(visibilityLengthKm: visibilityLengthKm)
+        return RailStyle.zoom(
+            fromMapLibre: Double(max(max(portedMinZoom, byRank), byWideViewLength)))
     }
 
     /// The rect to build for: the visible one, grown by ``padding``.

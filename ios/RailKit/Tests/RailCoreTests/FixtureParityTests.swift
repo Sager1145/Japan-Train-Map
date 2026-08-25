@@ -286,8 +286,13 @@ struct FixtureParityTests {
         let fixture = try Self.decode(VisibilityFixture.self, "visibility.json")
         for country in ["mo", "hk", "tw", "kr", "jp"] {
             let package = try Self.package(country: country)
+            let groupLengths = Visibility.groupLengthByLineId(package)
             let computed = Visibility.minZoomByLineId(package)
             for item in fixture.cases where item.country == country {
+                #expect(
+                    groupLengths[item.lineId]?.bitPattern == item.groupKm.bitPattern,
+                    "\(item.lineId): expose the complete visibility-group length"
+                )
                 #expect(
                     computed[item.lineId] == item.minZoomForLength,
                     "\(item.lineId): group key must be operator + NUL + name"

@@ -24,27 +24,27 @@ import RailCore
 final class RideLibrary {
 
     /// A source the reader can load. The seven samples mirror index.html's
-    /// buttons exactly, including which country each belongs to — loading the
-    /// Taiwan sample while the Japanese network is drawn would show rides with
-    /// no railway under them.
+    /// buttons exactly, including which region each belongs to — which now
+    /// says where a sample's rides will appear on a map that draws every
+    /// region at once, rather than which region has to be switched on first.
     struct Sample: Identifiable, Hashable {
         var id: String { resource }
         var resource: String
         var title: String
-        var country: String
+        var region: Region
 
         static let all: [Sample] = [
-            .init(resource: "train-store", title: "日本 全部示例資料", country: "jp"),
-            .init(resource: "new-year-grand-loop", title: "跨年大回行程", country: "jp"),
-            .init(resource: "tokyo-limited-express-loop", title: "東京特急大回行程", country: "jp"),
-            .init(resource: "train-store-tw", title: "台灣示例資料", country: "tw"),
-            .init(resource: "train-store-hk", title: "香港示例資料", country: "hk"),
-            .init(resource: "train-store-mo", title: "澳門示例資料", country: "mo"),
-            .init(resource: "train-store-kr", title: "韓國示例資料", country: "kr"),
+            .init(resource: "train-store", title: "日本 全部示例資料", region: .jp),
+            .init(resource: "new-year-grand-loop", title: "跨年大回行程", region: .jp),
+            .init(resource: "tokyo-limited-express-loop", title: "東京特急大回行程", region: .jp),
+            .init(resource: "train-store-tw", title: "台灣示例資料", region: .tw),
+            .init(resource: "train-store-hk", title: "香港示例資料", region: .hk),
+            .init(resource: "train-store-mo", title: "澳門示例資料", region: .mo),
+            .init(resource: "train-store-kr", title: "韓國示例資料", region: .kr),
         ]
 
-        static func forCountry(_ country: String) -> [Sample] {
-            all.filter { $0.country == country }
+        static func forRegion(_ region: Region) -> [Sample] {
+            all.filter { $0.region == region }
         }
 
         /// The catalog key index.html gives this sample's own button, so the
@@ -66,24 +66,20 @@ final class RideLibrary {
         }
     }
 
-    /// What the ride list is currently showing.
-    enum Source: Equatable {
-        case sample(String)
-        /// The reader's own store, read from disk.
-        case mine
+    /// Which samples have been loaded into the working set, so the data
+    /// screen can say "loaded" beside one instead of offering seven buttons
+    /// that all look untouched.
+    ///
+    /// A note about the reader's own store, not a claim about its contents:
+    /// rides loaded from a sample can be edited and deleted like any other,
+    /// and this is cleared when everything is.
+    private(set) var loadedSamples: Set<String> = Set(
+        UserDefaults.standard.stringArray(forKey: RideLibrary.loadedSamplesKey) ?? [])
 
-        var isMine: Bool { self == .mine }
-    }
+    private static let loadedSamplesKey = "loaded-samples"
 
-    private(set) var source: Source = .sample("train-store")
-
-    /// Progressive sample directory whose parts carry solved route geometry.
-    /// Saving a sample as the reader's own store intentionally keeps this
-    /// provenance so unchanged trains continue to draw without a new solve.
-    private(set) var routeDataset = "sample-data"
-
-    /// Whether a saved store exists on disk for this country, so the interface
-    /// can offer "restore" only when there is something to restore.
+    /// Whether a saved store exists on disk, so the interface can offer
+    /// "restore" only when there is something to restore.
     private(set) var hasSavedStore = false
 
     private(set) var lastSaveError: String?
@@ -133,27 +129,26 @@ final class RideLibrary {
         return try JSONDecoder().decode(TrainStore.self, from: Data(contentsOf: url))
     }
 
-    func savedStore(country: String) throws -> TrainStore {
-        let url = Self.storeURL(country: country)
-        return try JSONDecoder().decode(TrainStore.self, from: Data(contentsOf: url))
+    func savedStore() throws -> TrainStore {
+        try JSONDecoder().decode(TrainStore.self, from: Data(contentsOf: Self.storeURL()))
     }
 
-    func refreshSavedState(country: String) {
-        let url = Self.storeURL(country: country)
+    func refreshSavedState() {
+        let url = Self.storeURL()
         hasSavedStore = FileManager.default.fileExists(atPath: url.path)
         savedStoreDate =
             hasSavedStore
             ? (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate : nil
-        refreshBackupState(country: country)
+        refreshBackupState()
     }
 
     /// Reads the sidecar rather than the backup itself: what the screen shows
     /// is a date and a count, and decoding a 201-journey store to learn them
     /// would be a megabyte of work every time the tab is opened.
-    func refreshBackupState(country: String) {
-        guard FileManager.default.fileExists(atPath: Self.backupURL(country: country).path),
-            let data = try? Data(contentsOf: Self.backupMetaURL(country: country)),
+    func refreshBackupState() {
+        guard FileManager.default.fileExists(atPath: Self.backupURL().path),
+            let data = try? Data(contentsOf: Self.backupMetaURL()),
             let decoded = try? Self.metaDecoder.decode(Backup.self, from: data)
         else {
             backup = nil
@@ -180,19 +175,18 @@ final class RideLibrary {
     /// Written atomically: a store half-written because the app was killed
     /// mid-save is worse than no store, because the reader would not find out
     /// until the next launch.
-    func save(_ store: TrainStore, country: String) {
+    func save(_ store: TrainStore) {
         lastSaveError = nil
         do {
             let directory = Self.directory()
             try FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true)
 
-            let workspace = StoreOperations.Workspace(store: store, country: country)
-            let text = StoreOperations.exportTrainStore(workspace)
-            try Data(text.utf8).write(to: Self.storeURL(country: country), options: .atomic)
+            try Data(MergedStore.export(store).utf8)
+                .write(to: Self.storeURL(), options: .atomic)
 
             hasSavedStore = true
-            source = .mine
+            savedStoreDate = Date()
         } catch {
             lastSaveError = error.localizedDescription
         }
@@ -207,16 +201,15 @@ final class RideLibrary {
     /// the screen refuses to go ahead unsupervised when the backup did not
     /// land rather than silently proceeding without one.
     @discardableResult
-    func snapshotBackup(_ store: TrainStore, country: String, reason: Backup.Reason) -> Bool {
+    func snapshotBackup(_ store: TrainStore, reason: Backup.Reason) -> Bool {
         do {
             try FileManager.default.createDirectory(
                 at: Self.directory(), withIntermediateDirectories: true)
-            let text = StoreOperations.exportTrainStore(
-                StoreOperations.Workspace(store: store, country: country))
-            try Data(text.utf8).write(to: Self.backupURL(country: country), options: .atomic)
+            try Data(MergedStore.export(store).utf8)
+                .write(to: Self.backupURL(), options: .atomic)
             let meta = Backup(created: Date(), trainCount: store.trains.count, reason: reason)
             try Self.metaEncoder.encode(meta).write(
-                to: Self.backupMetaURL(country: country), options: .atomic)
+                to: Self.backupMetaURL(), options: .atomic)
             backup = meta
             return true
         } catch {
@@ -231,69 +224,133 @@ final class RideLibrary {
     /// a "restore" button that now restores what is already on screen, which
     /// reads as a second undo that does nothing.
     @discardableResult
-    func restoreBackup(country: String) throws -> TrainStore {
-        let url = Self.backupURL(country: country)
+    func restoreBackup() throws -> TrainStore {
+        let url = Self.backupURL()
         let store = try JSONDecoder().decode(TrainStore.self, from: Data(contentsOf: url))
         try FileManager.default.createDirectory(
             at: Self.directory(), withIntermediateDirectories: true)
-        try Data(contentsOf: url).write(to: Self.storeURL(country: country), options: .atomic)
+        try Data(contentsOf: url).write(to: Self.storeURL(), options: .atomic)
         hasSavedStore = true
-        source = .mine
         lastSaveError = nil
-        discardBackup(country: country)
-        refreshSavedState(country: country)
+        discardBackup()
+        refreshSavedState()
         return store
     }
 
-    func discardBackup(country: String) {
-        try? FileManager.default.removeItem(at: Self.backupURL(country: country))
-        try? FileManager.default.removeItem(at: Self.backupMetaURL(country: country))
+    func discardBackup() {
+        try? FileManager.default.removeItem(at: Self.backupURL())
+        try? FileManager.default.removeItem(at: Self.backupMetaURL())
         backup = nil
     }
 
-    func deleteSavedStore(country: String) {
-        try? FileManager.default.removeItem(at: Self.storeURL(country: country))
+    func deleteSavedStore() {
+        try? FileManager.default.removeItem(at: Self.storeURL())
         hasSavedStore = false
-        if source.isMine { source = .sample(Sample.forCountry(country).first?.resource ?? "train-store") }
+        savedStoreDate = nil
+        forgetLoadedSamples()
     }
 
-    func use(_ source: Source) {
-        self.source = source
-        if case .sample(let resource) = source {
-            routeDataset = Self.routeDataset(for: resource)
-        }
+    /// Remember that a sample's rides are in the working set.
+    ///
+    /// Persisted, because the claim it makes — "these rides are already here" —
+    /// outlives the launch that loaded them, and a checkmark that disappeared
+    /// overnight would invite loading the same 201 journeys again.
+    func noteSampleLoaded(_ resource: String) {
+        loadedSamples.insert(resource)
+        persistLoadedSamples()
     }
 
-    private static func routeDataset(for resource: String) -> String {
-        switch resource {
-        case "train-store-tw": "sample-data-tw"
-        case "train-store-hk": "sample-data-hk"
-        case "train-store-mo": "sample-data-mo"
-        case "train-store-kr": "sample-data-kr"
-        case "new-year-grand-loop": "new-year-grand-loop-data"
-        case "tokyo-limited-express-loop": "tokyo-limited-express-loop-data"
-        default: "sample-data"
+    func forgetLoadedSamples() {
+        loadedSamples.removeAll()
+        persistLoadedSamples()
+    }
+
+    private func persistLoadedSamples() {
+        UserDefaults.standard.set(Array(loadedSamples).sorted(), forKey: Self.loadedSamplesKey)
+    }
+
+    /// The precomputed route directories a region's rides may have been solved
+    /// into, most likely first.
+    ///
+    /// The web app knows which one to read because it has one store open at a
+    /// time and that store came from one place. A merged store has no such
+    /// provenance — a reader can hold the 201-journey Japanese sample, the
+    /// New Year loop and their own rides at once — so the route store searches
+    /// this list instead. That is safe rather than approximate: every part is
+    /// matched by the same route-cache digest the web app uses, so a part
+    /// belonging to another itinerary is rejected rather than drawn.
+    nonisolated static func routeDatasets(for region: Region) -> [String] {
+        switch region {
+        case .jp: ["sample-data", "new-year-grand-loop-data", "tokyo-limited-express-loop-data"]
+        case .tw: ["sample-data-tw"]
+        case .hk: ["sample-data-hk"]
+        case .mo: ["sample-data-mo"]
+        case .kr: ["sample-data-kr"]
         }
     }
 
     // MARK: - locations
 
-    /// One file per country. The web app keys its own store the same way, and
-    /// a single merged file would make "load the Taiwan sample" ambiguous
-    /// about what it replaces.
-    private static func storeURL(country: String) -> URL {
-        directory().appending(path: "train-store-\(country).json")
+    /// One file, holding every region.
+    ///
+    /// It used to be one file per region, because the app had a region switch
+    /// and "load the Taiwan sample" had to be unambiguous about what it
+    /// replaced. With every region drawn at once there is one working set, so
+    /// there is one file — and each ride says which region it belongs to
+    /// (`Train.region`) rather than being told by which file it was in.
+    private static func storeURL() -> URL {
+        directory().appending(path: "train-store.json")
+    }
+
+    /// The per-region files this app wrote before the merge, in the order they
+    /// are folded into the merged store.
+    private static let legacyStoreURLs: [(Region, String)] = Region.ordered.map {
+        ($0, "train-store-\($0.rawValue).json")
+    }
+
+    /// Fold any per-region stores left by an earlier version into the merged
+    /// one, once.
+    ///
+    /// Runs before the first read and does nothing when there is nothing to
+    /// do. The legacy files are left on disk rather than deleted: the merge is
+    /// the kind of one-way step that is worth being able to check afterwards,
+    /// and five small JSON files are a cheap receipt. A subsequent launch sees
+    /// the merged file and skips this entirely.
+    func migrateLegacyStores() {
+        let merged = Self.storeURL()
+        guard !FileManager.default.fileExists(atPath: merged.path) else { return }
+        var trains: [Train] = []
+        var seen = Set<String>()
+        for (region, name) in Self.legacyStoreURLs {
+            let url = Self.directory().appending(path: name)
+            guard let data = try? Data(contentsOf: url),
+                  let store = try? JSONDecoder().decode(TrainStore.self, from: data)
+            else { continue }
+            for train in store.trains {
+                var copy = train
+                copy.region = region.code
+                // Two regions could have written the same id — nothing stopped
+                // them while the stores were separate. Renaming rather than
+                // dropping keeps both rides; losing one silently would be the
+                // migration eating data.
+                if seen.contains(copy.id) { copy.id = "\(copy.id)-\(region.code)" }
+                seen.insert(copy.id)
+                trains.append(copy)
+            }
+        }
+        guard !trains.isEmpty else { return }
+        save(TrainStore(schemaVersion: TrainValidation.schemaVersion, trains: trains))
     }
 
     /// The recovery copy and its sidecar. The sidecar is separate so that the
     /// backup file itself stays byte-identical to an export — a date stamped
     /// inside it would make it a different document from the one it copies.
-    private static func backupURL(country: String) -> URL {
-        directory().appending(path: "train-store-\(country).backup.json")
+    private static func backupURL() -> URL {
+        directory().appending(path: "train-store.backup.json")
     }
 
-    private static func backupMetaURL(country: String) -> URL {
-        directory().appending(path: "train-store-\(country).backup-meta.json")
+    private static func backupMetaURL() -> URL {
+        directory().appending(path: "train-store.backup-meta.json")
     }
 
     private static let metaEncoder: JSONEncoder = {

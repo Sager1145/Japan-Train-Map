@@ -525,6 +525,38 @@ public enum Statistics {
         /// company at a joint station, and first-wins let that one edge label
         /// the whole line wrongly.
         public let lineOperator: OrderedDictionary<String, String>
+
+        /// Plumbing, not a rule.
+        ///
+        /// `buildEdgeIndex` is the only thing that computes one of these, and
+        /// it stays the only thing that decides what an edge MEANS. The
+        /// memberwise initialiser is published so a client that has several
+        /// regions open at once can lay their finished indexes side by side —
+        /// see `EdgeIndexCache.merged` in the iOS app, which is what the
+        /// all-regions statistics scope is built on. The JavaScript has one
+        /// country loaded at a time and therefore never needed it, which is
+        /// why this is exposed rather than ported.
+        public init(
+            map: [String: Int],
+            km: [Double],
+            mask: [Int],
+            lineName: [String],
+            lineMask: [Int],
+            totalKm: Double,
+            totalsByMask: [Int: Double],
+            lineTotByCat: OrderedDictionary<String, [Int: Double]>,
+            lineOperator: OrderedDictionary<String, String>
+        ) {
+            self.map = map
+            self.km = km
+            self.mask = mask
+            self.lineName = lineName
+            self.lineMask = lineMask
+            self.totalKm = totalKm
+            self.totalsByMask = totalsByMask
+            self.lineTotByCat = lineTotByCat
+            self.lineOperator = lineOperator
+        }
     }
 
     // ── Mini-Shinkansen reclassification (§23a-mini) ──────────────────────
@@ -931,6 +963,13 @@ public enum Statistics {
         func walk(_ coords: [Coordinate]) {
             guard coords.count >= 2 else { return }
             var anchor = coords[0]
+            // Category of the edge the anchor most recently reached. The
+            // display network deliberately finishes a station interval at
+            // the station anchor, which can sit a short connector away from
+            // the raw section edge. A leading connector already inherits the
+            // edge it reconnects to below; keeping this makes the trailing
+            // connector inherit the edge it just left, symmetrically.
+            var anchorMask = 0
             var pendingKm = 0.0
             for i in 1..<coords.count {
                 let prev = coords[i - 1]
@@ -939,6 +978,7 @@ public enum Statistics {
                 if let e = index.map[edgeKey(anchor, v)] {
                     edges.append(e)
                     anchor = v
+                    anchorMask = index.mask[e]
                     pendingKm = 0  // pending hops were interior to this matched edge
                     continue
                 }
@@ -946,12 +986,18 @@ public enum Statistics {
                     recordSpan(anchor, prev, pendingKm, index.mask[e2])
                     edges.append(e2)
                     anchor = v
+                    anchorMask = index.mask[e2]
                     pendingKm = 0
                     continue
                 }
                 pendingKm += equirectKm(prev.lon, prev.lat, v.lon, v.lat)
-                if pendingKm > maxBridgeKm || i == coords.count - 1 {
+                if pendingKm > maxBridgeKm {
                     recordSpan(anchor, v, pendingKm, 0)
+                    anchor = v
+                    anchorMask = 0
+                    pendingKm = 0
+                } else if i == coords.count - 1 {
+                    recordSpan(anchor, v, pendingKm, anchorMask)
                     anchor = v
                     pendingKm = 0
                 }

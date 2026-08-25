@@ -178,6 +178,15 @@ function validateTrain(train, index, ids) {
         `${prefix} stop ${stopIndex + 1}: n02_station_code must be a six-digit N02_005c, a TDX StationUID, or null.`,
       );
     }
+    if (
+      stop.platform_number !== null &&
+      stop.platform_number !== undefined &&
+      (!Number.isInteger(stop.platform_number) || stop.platform_number < 0)
+    ) {
+      throw new Error(
+        `${prefix} stop ${stopIndex + 1}: platform_number must be a non-negative integer or null.`,
+      );
+    }
     ["arrival", "departure"].forEach((field) => {
       if (
         stop[field] !== null &&

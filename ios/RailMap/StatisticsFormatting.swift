@@ -180,6 +180,31 @@ enum StatisticsStrings {
             .zhHans: "行程记录与路线均未改变。",
             .zhHant: "行程記錄與路線均未改變。",
         ],
+        "ios.stats.passportTitle": [
+            .en: "All-time rail passport", .ja: "全期間 鉄道パスポート",
+            .zhHans: "全时段 铁道护照", .zhHant: "全期間 鐵道護照",
+        ],
+        // The reference's "1.4x around the world". Written with the number
+        // ahead of the unit in English and behind it in CJK, because
+        // 「地球 1.4 周」 is how the lap is counted in all three.
+        "ios.stats.earthLaps": [
+            .en: "{n}× around the world", .ja: "地球 {n} 周",
+            .zhHans: "绕地球 {n} 圈", .zhHant: "繞地球 {n} 圈",
+        ],
+        "ios.stats.journeysLabel": [
+            .en: "Journeys", .ja: "乗車本数", .zhHans: "乘车趟数", .zhHant: "乘車趟數",
+        ],
+        "ios.stats.linesRidden": [
+            .en: "Lines ridden", .ja: "乗車路線", .zhHans: "已乘线路", .zhHant: "已乘線路",
+        ],
+        "ios.stats.operatorCount": [
+            .en: "{n} operators", .ja: "{n} 事業者",
+            .zhHans: "{n} 家运营商", .zhHant: "{n} 家業者",
+        ],
+        "ios.stats.topSection": [
+            .en: "Most ridden section", .ja: "最も乗った区間",
+            .zhHans: "乘坐最多的区间", .zhHant: "乘坐最多的區間",
+        ],
         "ios.stats.unsetSpoken": [
             .en: "not available", .ja: "対象日が未選択", .zhHans: "未选择日期", .zhHant: "未選擇日期",
         ],

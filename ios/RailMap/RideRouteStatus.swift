@@ -128,10 +128,6 @@ final class RideStatusCenter {
     /// overwrite another record, and the editor can only warn about a
     /// collision it can see.
     private(set) var trainIDs: Set<String> = []
-    /// The region the published journeys belong to, so a rebuild solves
-    /// against the right package.
-    private(set) var country = "jp"
-
     /// The live route store, for the one thing a status reader has to be able
     /// to ask for: solve this journey again. Weak, and ignored by observation
     /// — it is a wire, not state.
@@ -177,22 +173,19 @@ final class RideStatusCenter {
 
     // MARK: - Writing (stores only)
 
-    func publish(phase: Phase, country: String) {
+    func publish(phase: Phase) {
         self.phase = phase
-        self.country = country
         if phase == .loading { resolvingIDs.removeAll() }
     }
 
-    func publish(entries: [String: Entry], phase: Phase, country: String) {
+    func publish(entries: [String: Entry], phase: Phase) {
         self.entries = entries
         self.phase = phase
-        self.country = country
         resolvingIDs.removeAll()
     }
 
-    func publish(trainIDs: Set<String>, country: String) {
+    func publish(trainIDs: Set<String>) {
         self.trainIDs = trainIDs
-        self.country = country
     }
 
     func beginResolving(_ id: String) { resolvingIDs.insert(id) }
@@ -219,9 +212,12 @@ final class RideStatusCenter {
     /// caller says "sections rebuilt" rather than "route rebuilt" in that
     /// case instead of claiming work that nobody is doing.
     @discardableResult
-    func resolveAgain(_ train: Train, country: String) -> Bool {
+    func resolveAgain(_ train: Train) -> Bool {
         guard let routeStore else { return false }
-        routeStore.resolve(train, country: country)
+        // Which package a rebuild solves against comes from the journey
+        // itself — `Train.region` — rather than from a region the app is
+        // switched to, because there is no longer such a thing.
+        routeStore.resolve(train)
         return true
     }
 }

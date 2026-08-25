@@ -687,3 +687,85 @@ test("the corridor report says how many railways each corridor holds", async () 
     for (const line of corridor.lines)
       assert.ok(line.railwayId, `${line.lineId} reports no railway identity`);
 });
+
+
+// ─────────────── single-source guard for the audit's geometry primitives ───────────────
+//
+// railway-topology.mjs owns localMetric / distanceMeters / turnDegrees for
+// everything that GRADES the drawn network. Until 2026-08-25 two consumers
+// carried their own character-for-character copies instead — the census script
+// and the station-anchoring suite — which meant the suite that grades the
+// audit measured with a function the audit did not use. Over 435,238 real
+// package coordinates the copies agreed with the leaf on all 1,305,708
+// comparisons, bit for bit, so consolidating them moved no number; the point
+// of this guard is that they cannot quietly come back and then drift.
+const AUDIT_CONSUMERS = [
+  "scripts/validation/measure-geometry-fidelity.mjs",
+  "test/station-render-anchoring.test.js",
+];
+
+// Not every equirectangular projection in the repo belongs to this leaf. These
+// carry DIFFERENT arithmetic on purpose and merging them would move numbers:
+// listing them here says "already checked, leave alone" to the next reader.
+const DELIBERATELY_SEPARATE = [
+  // (b-a)*k rather than a*k-b*k, a `|| 1` cos guard, and a turn measured as an
+  // atan2 heading difference rather than acos of the dot product.
+  "scripts/validation/validate-route-station-approach.mjs",
+  // The runtime's own copy. rail-network.js is a classic script and cannot
+  // import ESM at all; test/distance-meters-parity.test.js guards it.
+  "public/rail-network.js",
+  // Region package characterisation: Korea pre-bakes cos at its own latitude
+  // (88_800), Macao and Hong Kong measure the turn on UNPROJECTED degrees.
+  "test/korea-rail-package.test.js",
+  "test/macao-rail-package.test.js",
+  "test/hong-kong-rail-package.test.js",
+  // Macao's and Hong Kong's copies became one shared helper on 2026-08-25.
+  // Listing the consumers is no longer enough: the helper is now the single
+  // edit that would move both suites at once.
+  "scripts/lib/region-package-geometry.js",
+];
+
+// require("…/railway-topology.mjs"), import("…") or `from "…"` — but NOT a
+// mention in prose, which is how the files below explain why they stay apart.
+const READS_THE_LEAF =
+  /(?:require|import)\s*\(\s*["'][^"']*railway-topology\.mjs["']|from\s+["'][^"']*railway-topology\.mjs["']/;
+
+const declares = (relative, name) =>
+  new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(?:function|const)\\s+${name}\\b`).test(
+    fs.readFileSync(path.join(__dirname, "..", relative), "utf8"),
+  );
+
+test("the audit's geometry primitives are declared once, in railway-topology.mjs", async () => {
+  const topology = await topologyPromise;
+  for (const name of ["localMetric", "distanceMeters", "turnDegrees"])
+    assert.equal(
+      typeof topology[name],
+      "function",
+      `railway-topology.mjs no longer exports ${name}`,
+    );
+  for (const relative of AUDIT_CONSUMERS) {
+    for (const name of ["localMetric", "distanceMeters", "turnDegrees"])
+      assert.equal(
+        declares(relative, name),
+        false,
+        `${relative} declares its own ${name} again — import it from railway-topology.mjs`,
+      );
+    assert.match(
+      fs.readFileSync(path.join(__dirname, "..", relative), "utf8"),
+      READS_THE_LEAF,
+      `${relative} no longer reads the shared primitives`,
+    );
+  }
+});
+
+test("the equirectangular copies that are deliberately different stay different", () => {
+  for (const relative of DELIBERATELY_SEPARATE) {
+    const source = fs.readFileSync(path.join(__dirname, "..", relative), "utf8");
+    assert.doesNotMatch(
+      source,
+      READS_THE_LEAF,
+      `${relative} now imports the shared primitives — that changes its numbers, ` +
+        "and the reason it has its own is recorded above",
+    );
+  }
+});

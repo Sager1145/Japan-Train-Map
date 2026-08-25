@@ -91,6 +91,36 @@ nonisolated public enum RailStyle {
     /// nothing a radius could add that the ink has not already drawn.
     static let minCornerRadius: CGFloat = railWidth
 
+    // MARK: - §6.4's radius tokens
+
+    /// The radius a CONTENT CARD is drawn at — a journey row, a statistics
+    /// card, a ride-detail section.
+    ///
+    /// §6.4 gives `radius-card` as 18–20 and adds the rule this exists to
+    /// keep: "同层组件只从 Token 取值，不临时发明 13、17、19 等随机间距". Every
+    /// card in the app was already 20 except the journey summary row, which
+    /// was 16 — and that row is the single most repeated card here, so the one
+    /// that was off-token was the one the reader sees most.
+    ///
+    /// Named rather than repeated, because a token spelled at each call site
+    /// is a token until the next call site disagrees.
+    public static let cardCornerRadius: CGFloat = 20
+
+    /// §6.4's `radius-control`: a small control, or a block nested INSIDE a
+    /// card. The rule the pair exists to keep is that radius expresses depth —
+    /// small control < content card < sheet — so a block inside a card must not
+    /// match the card it sits in.
+    public static let controlCornerRadius: CGFloat = 12
+
+    /// A floating chrome surface over the map: the control rail's capsules, the
+    /// playback transport. Between the control and the card, because that is
+    /// where it sits in the depth order — above the map, below the panel.
+    ///
+    /// The three surfaces this replaces were drawn at 22, 18 and 20 by three
+    /// different call sites, which is §6.4's "同层组件只从 Token 取值,不临时
+    /// 发明 13、17、19 等随机间距" in the corner-radius register.
+    public static let chromeCornerRadius: CGFloat = 20
+
     // MARK: - the map-scale weight ramp
 
     /// The scale at which the railway draws at full token weight, in metres of
@@ -152,6 +182,47 @@ nonisolated public enum RailStyle {
     static func weight(_ token: CGFloat, atZoom zoom: Double) -> CGFloat {
         token * scale(atZoom: zoom)
     }
+
+    // MARK: - how far off the surveyed line the map may draw
+
+    /// `SEGMENT_SIMPLIFY_TOLERANCE_PX` — the licence the drawn line has to
+    /// leave the surveyed one, in points of the zoom it is drawn for.
+    ///
+    /// Both renderers decimate: MapLibre gets it free from geojson-vt, and
+    /// `RailMapView` runs `Geometry.douglasPeuckerIndices` because MapKit has
+    /// no equivalent. So this is neither a quality dial nor a performance
+    /// knob — it is literally how far the map may draw a line from where the
+    /// railway is, and it has to be the SAME number on both sides or the two
+    /// apps draw different railways out of identical geometry.
+    ///
+    /// `railmap-style.js` derives it from the tightest corner radius the map
+    /// promises to show, and that derivation is the authority: the number is
+    /// copied here rather than re-argued, and `verify.sh` fails if the two
+    /// drift apart. In outline — an arc of radius R turning Θ, reduced to the
+    /// two chords that meet at its apex, still stands R × (1 − cos(Θ/4)) off
+    /// the arc, so at the shape a reader calls a corner (Θ = 90°) and one
+    /// stroke of radius, a tolerance at or above 0.114 px lets a right angle
+    /// be drawn as a bare kink; a sixteenth is the clean binary fraction under
+    /// that once geojson-vt's under-scoring is allowed for.
+    ///
+    /// This app decimated at **0.5** until 2026-08-24 — eight times the web
+    /// app's licence — and nothing could see it. The `DisplayParts` fixtures
+    /// compare the two apps' line geometry BEFORE either of them decimates, so
+    /// every parity test passed while the drawn line stood eight times further
+    /// off the track than the web app's. Measured over the five packages at
+    /// the setting each app held, the worst offset was 0.500 pt here against
+    /// 0.062 pt there, and what a reader saw for it was curve spent on a
+    /// single vertex: the web app's own audit counts 231 bends collapsing hard
+    /// enough to warn on at half a pixel, and two switchbacks drawn flat.
+    ///
+    /// The cost is vertices, and it was weighed against `NetworkLOD`'s budget
+    /// before the change rather than after. Swept over every viewport centre
+    /// across the five packages at zooms 5–19, on the largest iPad, the worst
+    /// build grows from 25,000 drawn vertices to 38,698 — still inside the
+    /// 40,000 budget, so no line is dropped anywhere for it, but no longer by
+    /// much. `NetworkLOD.vertexBudget` records what the backstop does if a
+    /// denser package ever pushes past it.
+    static let simplifyTolerance: Double = 0.0625
 
     // MARK: - the two zoom conventions, spelled once
 
