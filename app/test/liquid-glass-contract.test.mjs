@@ -1,4 +1,6 @@
 // JRM_FLIGHTY_UI_REFACTOR_SPEC.md §1.1, §4.2, §6.5 and §10.5 — the material
+// (the spec lives in the JTM-iOS-App repository, which cites it from ten more
+// files; it is one contract for both platforms, so it is kept in one place)
 // policy, as a regression guard.
 //
 // This exists because of a specific past decision that has to stay reversed.

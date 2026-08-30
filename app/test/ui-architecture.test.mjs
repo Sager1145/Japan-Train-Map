@@ -1,4 +1,5 @@
-// JRM_FLIGHTY_UI_REFACTOR_SPEC.md §2.2's navigation tree, asserted against the
+// JRM_FLIGHTY_UI_REFACTOR_SPEC.md §2.2's navigation tree — the spec lives in the
+// JTM-iOS-App repository — asserted against the
 // DOM that realises it.
 //
 // This is an ARCHITECTURE test, not a styling one. §2.2's rule — three content

@@ -1,6 +1,8 @@
-// JRM_FLIGHTY_UI_REFACTOR_SPEC.md §4.3 and §9.3, over the same figures the
+// JRM_FLIGHTY_UI_REFACTOR_SPEC.md §4.3 and §9.3 — the spec lives in the
+// JTM-iOS-App repository — over the same figures the
 // Swift port asserts in
-// ios/RailKit/Tests/RailPresentationTests/PanelDetentResolverTests.swift.
+// JTM-iOS-App 仓库的
+// ios/RailKit/Tests/RailPresentationTests/PanelDetentResolverTests.swift。
 //
 // Both platforms implement the panel's physics separately — one in SwiftUI's
 // gesture layer, one in pointer events — and the only thing that keeps them
