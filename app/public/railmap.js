@@ -164,12 +164,19 @@
   async function loadNetwork(packageUrl) {
     try {
       if (!packageUrl) throw new Error("A rail package URL is required.");
+      const packageUrls = Array.isArray(packageUrl) ? packageUrl : [packageUrl];
       // Rail packages are replaced in place. Revalidate the URL so a newly
       // rebuilt official package cannot be shadowed by the 24-hour static
       // JSON browser cache.
-      const res = await fetch(packageUrl, { cache: "no-cache" });
-      if (!res.ok) return null;
-      return global.RailNetwork.buildNetworkFromCompactPackage(await res.json());
+      const responses = await Promise.all(
+        packageUrls.map((url) => fetch(url, { cache: "no-cache" })),
+      );
+      if (responses.some((response) => !response.ok)) return null;
+      const packages = await Promise.all(
+        responses.map((response) => response.json()),
+      );
+      const merged = global.RailNetwork.mergeCompactPackages(packages);
+      return global.RailNetwork.buildNetworkFromCompactPackage(merged);
     } catch (e) {
       console.warn("[railmap] rail package unavailable:", e);
       return null;

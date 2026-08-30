@@ -85,7 +85,7 @@ async function switchCountrySession(next) {
     const networkCountryReady =
       typeof RailMap !== "undefined" &&
       typeof RailMap.switchNetworkCountry === "function"
-        ? RailMap.switchNetworkCountry(next, railPackageUrlForCountry(next))
+        ? RailMap.switchNetworkCountry(next, railPackageUrlsForCountry(next))
         : Promise.resolve(null);
     PersistenceService.resetForCountry();
     PersistenceService.exitRecoveryMode();

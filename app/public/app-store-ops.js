@@ -603,6 +603,40 @@ function createBlankTrain() {
       lineName: "氹仔線",
       color: "#72BF44",
     });
+  // The two North American countries fell through to the Japanese starter,
+  // which is the one thing this factory exists to prevent: a new train in the
+  // United States store opened as 特急 東京→熱海 carrying N02 codes that
+  // resolve against no station in either North American package, so the first
+  // solve failed and the reader's first edit was deleting two Japanese stops.
+  // Acela is the flagship the package marks isHSR; the VIA corridor is
+  // Canada's own equivalent, and both are institution codes the section
+  // datasets really carry (1 = high speed, 2 = intercity).
+  if (activeCountry === "us")
+    return createBlankRegionalTrain({
+      id: "US-ACELA",
+      trainType: "Acela",
+      company: "Amtrak",
+      origin: "Ny Moynihan Train Hall At Penn Station",
+      destination: "Washington Union Station",
+      originCode: "US-AMTRAK-NYP",
+      destinationCode: "US-AMTRAK-WAS",
+      lineName: "Acela",
+      color: "#318cba",
+      institutionCode: "1",
+    });
+  if (activeCountry === "ca")
+    return createBlankRegionalTrain({
+      id: "CA-VIA",
+      trainType: "Corridor",
+      company: "VIA Rail",
+      origin: "Montréal",
+      destination: "Ottawa",
+      originCode: "CA-VIA-226",
+      destinationCode: "CA-VIA-617",
+      lineName: "Ottawa - Montréal",
+      color: "#ebba00",
+      institutionCode: "2",
+    });
   return createBlankTrainJp();
 }
 

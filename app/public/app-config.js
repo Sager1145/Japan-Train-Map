@@ -70,7 +70,7 @@ function installLongTaskObserver() {
 // reachable.
 let TRAIN_STORE_API = "train-store";
 const COUNTRY_STORAGE_KEY = "n02-active-country";
-const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo", "kr"];
+const SUPPORTED_COUNTRIES = ["jp", "tw", "hk", "mo", "kr", "us", "ca"];
 let activeCountry = "jp";
 // Every per-country resource name flows through AppCore.countrySuffixed
 // (Japan keeps the historical unsuffixed name, others get "-{country}") —
@@ -80,6 +80,16 @@ function trainStoreApiForCountry(country) {
 }
 function railPackageUrlForCountry(country) {
   return `./rail/${country}-2025.json`;
+}
+// The United States and Canada form one connected passenger-rail graph. Keep
+// the selected country as the storage/statistics namespace, but load both
+// countries' infrastructure so Maple Leaf, Adirondack and Cascades journeys
+// can cross the border without an artificial network break.
+function railScopeCountriesForCountry(country) {
+  return country === "us" || country === "ca" ? ["us", "ca"] : [country];
+}
+function railPackageUrlsForCountry(country) {
+  return railScopeCountriesForCountry(country).map(railPackageUrlForCountry);
 }
 function stationReadingsApiForCountry(country) {
   return AppCore.countrySuffixed("station-readings", country);
@@ -98,8 +108,17 @@ function railSectionsApiForCountry(country) {
 function stationsApiForCountry(country) {
   return AppCore.countrySuffixed("stations", country);
 }
+function railSectionsApisForCountry(country) {
+  return railScopeCountriesForCountry(country).map(railSectionsApiForCountry);
+}
+function stationsApisForCountry(country) {
+  return railScopeCountriesForCountry(country).map(stationsApiForCountry);
+}
+function stationReadingsApisForCountry(country) {
+  return railScopeCountriesForCountry(country).map(stationReadingsApiForCountry);
+}
 function activeRailPackageUrl() {
-  return railPackageUrlForCountry(activeCountry);
+  return railPackageUrlsForCountry(activeCountry);
 }
 // Resolve the persisted country BEFORE any store/IndexedDB access (called at
 // the top of boot). Guarded so the precompute sandbox stub is enough.
@@ -134,10 +153,13 @@ function applyCountryVisibility(root) {
 function countryDbName(base) {
   return AppCore.countrySuffixed(base, activeCountry);
 }
-// Does the ACTIVE country ship a solver dataset pair? Both supported
-// countries now do (railSectionsApiForCountry), so the in-browser solver and
-// the mileage statistics built on the same graph run for either — each on its
-// own country's files, never on a mixture. A country added without datasets
+// Does the ACTIVE country ship a solver dataset pair? Every supported country
+// now does (railSectionsApiForCountry), so the in-browser solver and the
+// mileage statistics built on the same graph run for all of them — each on its
+// own country's files, never on a mixture. (North America is the ONE exception
+// the rule is written to allow: us and ca deliberately load BOTH of their
+// files, because railScopeCountriesForCountry says the two are one network.)
+// A country added without datasets
 // must return false here: its cache misses then stay misses instead of
 // solving foreign stops against another country's network, where a same-named
 // station (松山, 板橋, 岡山 …) would let a "successful" solve draw the train
@@ -163,6 +185,9 @@ const COUNTRY_SAMPLE_DATA_APIS = {
   hk: "sample-data-hk",
   mo: "sample-data-mo",
   kr: "sample-data-kr",
+  // No precomputed sample dataset for the two North American packages: the
+  // 資料 card offers a country's loaders only when it has one, and these two
+  // ship their sample itineraries as an ordinary train store instead.
 };
 const NEW_YEAR_GRAND_LOOP_API = "new-year-grand-loop-data";
 const TOKYO_LIMITED_EXPRESS_LOOP_API = "tokyo-limited-express-loop-data";
@@ -191,7 +216,13 @@ const ROUTE_CACHE_STORE_NAME = "routes";
 // instead of graph-shortcutting switchbacks (and preserve ordered retraces).
 // 17: consecutive Japan sections that share an explicit station are stitched
 // across large N02 station throats, preventing stale discontinuous geometry.
-const ROUTE_SOLVER_CACHE_VERSION = "17";
+// 18: ten Kumamoto tram and Okinawa monorail hops in the Japanese sample
+// dataset were stored as the solver's own chord across a curve the display
+// line draws in full — visibly cutting the corner, under-reporting the ride
+// by up to 227 m, and matching no N02 edge at all. The geometry was redrawn
+// off the complete display line, so every cache still holding a chord is
+// stale.
+const ROUTE_SOLVER_CACHE_VERSION = "18";
 const JAPAN_MAIN_ISLANDS_BOUNDS = [
   [30.85, 129.1],
   [45.75, 146.2],
@@ -229,12 +260,37 @@ const KOREA_FULL_TERRITORY_BOUNDS = [
   [33.0, 124.5],
   [38.7, 131.1],
 ];
+// The United States: the contiguous network plus the Alaska Railroad, which
+// is what puts the west edge at Seward rather than Seattle. The territory
+// clamp adds Puerto Rico's Tren Urbano and Hawaii's Skyline, both of which are
+// in the package and neither of which the overview frames — a view that
+// included San Juan would open on two thousand kilometres of Atlantic.
+const UNITED_STATES_MAINLAND_BOUNDS = [
+  [24.4, -125.0],
+  [49.4, -66.9],
+];
+const UNITED_STATES_FULL_TERRITORY_BOUNDS = [
+  [17.9, -160.3],
+  [64.9, -65.2],
+];
+// Canada: the corridor and the transcontinental, Vancouver Island to Halifax
+// and north to Churchill on the Hudson Bay line.
+const CANADA_MAINLAND_BOUNDS = [
+  [42.2, -123.4],
+  [50.5, -52.6],
+];
+const CANADA_FULL_TERRITORY_BOUNDS = [
+  [42.2, -128.5],
+  [59.2, -52.6],
+];
 const COUNTRY_OVERVIEW_BOUNDS = {
   jp: JAPAN_MAIN_ISLANDS_BOUNDS,
   tw: TAIWAN_MAIN_ISLAND_BOUNDS,
   hk: HONG_KONG_BOUNDS,
   mo: MACAO_BOUNDS,
   kr: KOREA_MAINLAND_BOUNDS,
+  us: UNITED_STATES_MAINLAND_BOUNDS,
+  ca: CANADA_MAINLAND_BOUNDS,
 };
 const COUNTRY_TERRITORY_BOUNDS = {
   jp: JAPAN_FULL_TERRITORY_BOUNDS,
@@ -242,6 +298,8 @@ const COUNTRY_TERRITORY_BOUNDS = {
   hk: HONG_KONG_BOUNDS,
   mo: MACAO_BOUNDS,
   kr: KOREA_FULL_TERRITORY_BOUNDS,
+  us: UNITED_STATES_FULL_TERRITORY_BOUNDS,
+  ca: CANADA_FULL_TERRITORY_BOUNDS,
 };
 // The map frames / clamps to the ACTIVE country (see loadActiveCountry).
 function activeCountryOverviewBounds() {
@@ -293,8 +351,8 @@ const {
 // nobody has ridden, the stroke of a ride over it, the diameter of a station
 // dot under either, and the ring around it. It lives in railmap-style.js
 // (RAILWAY_STYLE), it is stated in CSS pixels at full scale, and it is the
-// SAME block for jp / tw / hk / mo / kr: switching country switches data, never
-// sizes. The app family reads it through this alias so nothing down here ever
+// SAME block for every country in SUPPORTED_COUNTRIES: switching country
+// switches data, never sizes. The app family reads it through this alias so nothing down here ever
 // restates a size as a literal — see DEFAULT_TRAIN_WEIGHT below,
 // app-display-values.js's marker radii and app-style.js's rings.
 const RAILWAY_STYLE_TOKENS = window.RailMapStyle.RAILWAY_STYLE;

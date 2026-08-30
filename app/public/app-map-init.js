@@ -393,6 +393,23 @@ function buildMapInfoControl() {
           <p data-i18n="info.moRailBody">依澳門輕軌股份有限公司官方現行路線與車站資料加工製作。</p>
           <div class="map-info-links"><a href="https://www.mlm.com.mo/en/route.html" target="_blank" rel="noopener noreferrer">Macao LRT Lines</a></div>
         </article>
+        <!-- The two North American packages carry THREE authorities under three
+             different licences (rail/us-2025.sources.md, rail/ca-2025.sources.md),
+             so each gets its own link with its own licence beside it: the NTAD
+             network is United States federal open data in the public domain,
+             each operator's GTFS keeps its own open-data terms, and the
+             OpenStreetMap track is ODbL 1.0. One link labelled "sources" would
+             be a licence statement for none of them. -->
+        <article class="map-info-source" data-country="us">
+          <strong data-i18n="info.usRailTitle">美國鐵路網</strong>
+          <p data-i18n="info.usRailBody">以聯邦鐵路管理局／運輸統計局「北美鐵路網（NTAD）」與各營運機構自行公開的 GTFS 加工製作；OpenStreetMap 貢獻者的軌道資料（ODbL 1.0）作為交叉驗證，以及無機構公開班表之鐵道的來源。</p>
+          <div class="map-info-links"><a href="https://geodata.bts.gov/datasets/usdot::north-american-rail-network-lines" target="_blank" rel="noopener noreferrer" data-i18n="info.naNarn">北美鐵路網（NTAD）</a><a href="https://www.usa.gov/government-works" target="_blank" rel="noopener noreferrer" data-i18n="info.naNarnLicense">美國聯邦公開資料（公有領域）</a><a href="https://mobilitydatabase.org/" target="_blank" rel="noopener noreferrer" data-i18n="info.naGtfs">各營運機構 GTFS（依各自開放條款）</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors (ODbL 1.0)</a></div>
+        </article>
+        <article class="map-info-source" data-country="ca">
+          <strong data-i18n="info.caRailTitle">加拿大鐵路網</strong>
+          <p data-i18n="info.caRailBody">以聯邦鐵路管理局／運輸統計局「北美鐵路網（NTAD）」——其涵蓋加拿大路網，與 VIA Rail、Metrolinx、exo、STM、TTC、TransLink 等營運機構自行公開的 GTFS 加工製作；OpenStreetMap 貢獻者的軌道資料（ODbL 1.0）作為交叉驗證。</p>
+          <div class="map-info-links"><a href="https://geodata.bts.gov/datasets/usdot::north-american-rail-network-lines" target="_blank" rel="noopener noreferrer" data-i18n="info.naNarn">北美鐵路網（NTAD）</a><a href="https://www.usa.gov/government-works" target="_blank" rel="noopener noreferrer" data-i18n="info.naNarnLicense">美國聯邦公開資料（公有領域）</a><a href="https://open.canada.ca/data/en/dataset/e13b6a2f-934c-4b30-a494-1cfff31a02fb" target="_blank" rel="noopener noreferrer" data-i18n="info.naGtfs">各營運機構 GTFS（依各自開放條款）</a><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors (ODbL 1.0)</a></div>
+        </article>
         <article class="map-info-source">
           <strong data-i18n="info.basemapTitle">地圖底圖</strong>
           <p data-i18n="info.basemapBody">亮色使用 OpenFreeMap Positron，暗色使用官方 Dark 樣式。</p>

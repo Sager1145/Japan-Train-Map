@@ -115,6 +115,14 @@
                   <option value="hk" data-i18n="country.hk">香港</option>
                   <option value="mo" data-i18n="country.mo">澳門</option>
                   <option value="kr" data-i18n="country.kr">韓國</option>
+                  <!-- Every entry of SUPPORTED_COUNTRIES needs a row here: the
+                       persisted country is validated against that list, but the
+                       ONLY way to reach one is this <select>. us / ca shipped
+                       their packages, datasets, stores and bounds without a row,
+                       so the two were unreachable except by editing
+                       localStorage by hand. -->
+                  <option value="us" data-i18n="country.us">美國</option>
+                  <option value="ca" data-i18n="country.ca">加拿大</option>
                 </select>
               </div>
               <div class="lang-switch">
@@ -368,6 +376,15 @@
             </div>
             <p class="hint" data-country="jp" data-i18n="stats.hint">
               依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。
+            </p>
+            <!-- The same sentence for the two countries whose mileage does not
+                 come from N02. `data-i18n` resolves the country variant on its
+                 own (stats.hint.us / .ca), so these carry the base key. -->
+            <p class="hint" data-country="us" data-i18n="stats.hint" hidden>
+              依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自聯邦鐵路管理局北美鐵路網（NTAD）與各營運機構公開的 GTFS 路線。
+            </p>
+            <p class="hint" data-country="ca" data-i18n="stats.hint" hidden>
+              依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自聯邦鐵路管理局北美鐵路網（NTAD）與各營運機構公開的 GTFS 路線。
             </p>
           </div>
         </section>

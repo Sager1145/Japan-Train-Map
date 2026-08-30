@@ -935,7 +935,7 @@ test("route cache keys include the solver version", () => {
     }).cacheKey`,
     context,
   );
-  assert.match(key, /^solver:17\|/);
+  assert.match(key, /^solver:18\|/);
 });
 
 test("offline precompute is exposed through one named adapter", () => {

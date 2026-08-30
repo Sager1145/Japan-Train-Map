@@ -27,6 +27,8 @@
     "app.title.hk": { zh: "香港鐵路列車管理", en: "Hong Kong Rail Manager" },
     "app.title.mo": { zh: "澳門輕軌列車管理", en: "Macao LRT Manager" },
     "app.title.kr": { zh: "韓國鐵道列車管理", en: "Korea Rail Manager" },
+    "app.title.us": { zh: "美國鐵路列車管理", en: "United States Rail Manager" },
+    "app.title.ca": { zh: "加拿大鐵路列車管理", en: "Canada Rail Manager" },
     "app.hint": {
       zh: "在地圖中檢視行程、編輯列車與停站，並管理 JSON 資料。",
       en: "View journeys on the map, edit trains and stops, and manage JSON data.",
@@ -211,6 +213,8 @@
     "country.hk": { zh: "香港", en: "Hong Kong" },
     "country.mo": { zh: "澳門", en: "Macao" },
     "country.kr": { zh: "韓國", en: "South Korea" },
+    "country.us": { zh: "美國", en: "United States" },
+    "country.ca": { zh: "加拿大", en: "Canada" },
 
     // display settings
     "disp.reset": { zh: "重置為預設", en: "Reset to Defaults" },
@@ -485,6 +489,31 @@
     "stat.jrconv.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
     "stat.ltdexp.kr": { zh: "優等列車", en: "Reserved-seat express" },
     "stat.all.kr": { zh: "全韓", en: "Nationwide" },
+    // The United States and Canada share ONE set of buckets, because they
+    // share one network: railScopeCountriesForCountry loads both packages for
+    // either country, so the denominator under both is the whole North
+    // American graph — which is also why the aggregate row is named for the
+    // continent rather than for a country. Naming it 全美 would put the
+    // Canadian half of the network behind a label that excludes it.
+    // The buckets over classifyNaSectionMask: Acela and Brightline high speed,
+    // the intercity railroads (Amtrak, VIA Rail, the Alaska Railroad, Ontario
+    // Northland), the publicly operated urban and commuter railways, the
+    // streetcar / light-rail layer, and the remainder — monorails, airport
+    // people movers, funiculars, cable cars and the heritage railways.
+    "stat.all.us": { zh: "全北美", en: "North America" },
+    "stat.hsr.us": { zh: "高速鐵路", en: "High-speed rail" },
+    "stat.conv.us": { zh: "城際鐵路", en: "Intercity rail" },
+    "stat.jrconv.us": { zh: "城際鐵路", en: "Intercity rail" },
+    "stat.metro.us": { zh: "都市與通勤鐵路", en: "Urban & commuter rail" },
+    "stat.tram.us": { zh: "輕軌與有軌電車", en: "Light rail & streetcars" },
+    "stat.priv.us": { zh: "單軌・纜索・觀光鐵道", en: "Monorail, funicular & heritage" },
+    "stat.all.ca": { zh: "全北美", en: "North America" },
+    "stat.hsr.ca": { zh: "高速鐵路", en: "High-speed rail" },
+    "stat.conv.ca": { zh: "城際鐵路", en: "Intercity rail" },
+    "stat.jrconv.ca": { zh: "城際鐵路", en: "Intercity rail" },
+    "stat.metro.ca": { zh: "都市與通勤鐵路", en: "Urban & commuter rail" },
+    "stat.tram.ca": { zh: "輕軌與有軌電車", en: "Light rail & streetcars" },
+    "stat.priv.ca": { zh: "單軌・纜索・觀光鐵道", en: "Monorail, funicular & heritage" },
     "stat.allrail": { zh: "全部鐵道", en: "All Railways" },
     "stat.jrconv": { zh: "JR在來線", en: "JR Conventional" },
     "stats.loading": { zh: "正在載入路網資料…", en: "Loading rail network…" },
@@ -519,6 +548,14 @@
       zh: "依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。",
       en: "Computed from every train's actually-ridden intervals (ride checkboxes), deduplicated across trains; totals come from the full N02-25 national network.",
     },
+    "stats.hint.us": {
+      zh: "依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自聯邦鐵路管理局北美鐵路網（NTAD）與各營運機構公開的 GTFS 路線。",
+      en: "Computed from every train's actually-ridden intervals (ride checkboxes), deduplicated across trains; totals come from the FRA North American Rail Network (NTAD) and each operator's published GTFS.",
+    },
+    "stats.hint.ca": {
+      zh: "依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自聯邦鐵路管理局北美鐵路網（NTAD）與各營運機構公開的 GTFS 路線。",
+      en: "Computed from every train's actually-ridden intervals (ride checkboxes), deduplicated across trains; totals come from the FRA North American Rail Network (NTAD) and each operator's published GTFS.",
+    },
 
     // train list
     "sec.list": { zh: "列車清單", en: "Train List" },
@@ -536,6 +573,8 @@
     "ph.trainType.hk": { zh: "普通／機場快綫", en: "Local / Airport Express" },
     "ph.trainType.mo": { zh: "普通", en: "Local" },
     "ph.trainType.kr": { zh: "KTX／ITX／無窮花", en: "KTX / ITX / Mugunghwa" },
+    "ph.trainType.us": { zh: "Acela／城際／通勤", en: "Acela / Intercity / Commuter" },
+    "ph.trainType.ca": { zh: "VIA／城際／通勤", en: "VIA / Intercity / Commuter" },
     "field.company": { zh: "車輛公司", en: "Company" },
     "ph.company": {
       zh: "JR西日本；直通用／分隔多家公司",
@@ -678,6 +717,20 @@
       zh: "使用 kr-2025 韓國鐵道資料包。",
       en: "Uses the kr-2025 South Korea rail package.",
     },
+    // North America is the one region where the sentence has to name TWO
+    // packages: railScopeCountriesForCountry loads us-2025 and ca-2025 together
+    // under either country, because the Maple Leaf, the Adirondack and the
+    // Cascades are one journey split across the border and a package says what
+    // ONE country's railways are. Crediting only the selected country's package
+    // would credit half the track on screen.
+    "info.packageBody.us": {
+      zh: "同時使用 us-2025 與 ca-2025 資料包：跨境列車需要兩國的路網。",
+      en: "Uses the us-2025 and ca-2025 packages together: the cross-border trains need both networks.",
+    },
+    "info.packageBody.ca": {
+      zh: "同時使用 us-2025 與 ca-2025 資料包：跨境列車需要兩國的路網。",
+      en: "Uses the us-2025 and ca-2025 packages together: the cross-border trains need both networks.",
+    },
     "info.twRailTitle": { zh: "台灣鐵路網", en: "Taiwan railway network" },
     "info.twRailBody": {
       zh: "結合交通部「TDX 運輸資料流通服務平臺」、內政部國土測繪中心、農業部阿里山林業鐵路及文化資產管理處與臺北市政府捷運工程局的官方資料經加工製作。",
@@ -706,6 +759,39 @@
       zh: "依澳門輕軌股份有限公司官方現行路線與車站資料加工製作。",
       en: "Derived from the current official lines and stations published by Macao Light Rapid Transit Corporation.",
     },
+    // The two North American packages, per rail/us-2025.sources.md and
+    // rail/ca-2025.sources.md. THREE authorities, three different licences,
+    // and the credit has to keep them apart: the NTAD network is United States
+    // federal open data in the public domain, each operator's GTFS carries its
+    // OWN open-data terms, and OpenStreetMap is ODbL 1.0. Collapsing them into
+    // one sentence would state a licence none of the three actually grants.
+    // OSM's role also differs by country and is written as it is: south of the
+    // border it is both the cross-check and the source of last resort for the
+    // railways whose operators publish no feed (the Alaska Railroad, most
+    // heritage lines, most airport people movers); north of it the package's
+    // own sources.md claims cross-check only.
+    "info.usRailTitle": { zh: "美國鐵路網", en: "United States railway network" },
+    "info.usRailBody": {
+      zh: "以聯邦鐵路管理局／運輸統計局「北美鐵路網（NTAD）」與各營運機構自行公開的 GTFS 加工製作；OpenStreetMap 貢獻者的軌道資料（ODbL 1.0）作為交叉驗證，以及無機構公開班表之鐵道的來源。",
+      en: "Built from the Federal Railroad Administration / Bureau of Transportation Statistics North American Rail Network (NTAD) and each operator's own published GTFS feed; OpenStreetMap contributors' track (ODbL 1.0) serves as the cross-check, and as the source for the railways no operator publishes a feed for.",
+    },
+    "info.caRailTitle": { zh: "加拿大鐵路網", en: "Canada railway network" },
+    "info.caRailBody": {
+      zh: "以聯邦鐵路管理局／運輸統計局「北美鐵路網（NTAD）」——其涵蓋加拿大路網，與 VIA Rail、Metrolinx、exo、STM、TTC、TransLink 等營運機構自行公開的 GTFS 加工製作；OpenStreetMap 貢獻者的軌道資料（ODbL 1.0）作為交叉驗證。",
+      en: "Built from the Federal Railroad Administration / Bureau of Transportation Statistics North American Rail Network (NTAD), which surveys the Canadian network too, and from the published GTFS of VIA Rail, Metrolinx, exo, the STM, the TTC, TransLink and the rest; OpenStreetMap contributors' track (ODbL 1.0) serves as the cross-check.",
+    },
+    "info.naNarn": {
+      zh: "北美鐵路網（NTAD）",
+      en: "North American Rail Network (NTAD)",
+    },
+    "info.naNarnLicense": {
+      zh: "美國聯邦公開資料（公有領域）",
+      en: "US federal open data (public domain)",
+    },
+    "info.naGtfs": {
+      zh: "各營運機構 GTFS（依各自開放條款）",
+      en: "Operator GTFS (each feed's own terms)",
+    },
 
     // map corner control
     "map.layers": { zh: "地圖圖層", en: "Map Layers" },
@@ -733,6 +819,14 @@
     // conventional, urban rail and the light/monorail remainder.
     "map.riddenJr.kr": { zh: "韓國鐵道（一般鐵道）", en: "KORAIL conventional" },
     "map.riddenPriv.kr": { zh: "輕電鐵・單軌", en: "Light rail & monorail" },
+    // North America fills the "jr" slot with the intercity railroads, the same
+    // way Taiwan fills it with 臺鐵 — see NATIONAL_RAILWAY_IN_CONV_SLOT, which
+    // already lists us and ca. Without these the layer menu offered a reader in
+    // Chicago a checkbox labelled JR在來線.
+    "map.riddenJr.us": { zh: "城際鐵路", en: "Intercity rail" },
+    "map.riddenPriv.us": { zh: "單軌・觀光鐵道", en: "Monorail & heritage" },
+    "map.riddenJr.ca": { zh: "城際鐵路", en: "Intercity rail" },
+    "map.riddenPriv.ca": { zh: "單軌・觀光鐵道", en: "Monorail & heritage" },
     "map.unavailable": { zh: "不可用", en: "unavailable" },
     "map.connecting": { zh: "連線中…", en: "connecting…" },
     "map.retryFailed": { zh: "重試失敗", en: "retry failed" },
@@ -1002,10 +1096,14 @@
     "app.title.hk": "香港鉄道列車管理",
     "app.title.mo": "マカオ LRT 列車管理",
     "app.title.kr": "韓国鉄道列車管理",
+    "app.title.us": "アメリカ鉄道列車管理",
+    "app.title.ca": "カナダ鉄道列車管理",
     "ph.trainType.tw": "自強／區間／高鐵",
     "ph.trainType.hk": "普通／エアポートエクスプレス",
     "ph.trainType.mo": "普通",
     "ph.trainType.kr": "KTX／ITX／ムグンファ",
+    "ph.trainType.us": "Acela／都市間／通勤",
+    "ph.trainType.ca": "VIA／都市間／通勤",
     "app.hint": "地図上で行程を確認し、列車・停車駅・JSON データを管理します。",
     "nav.label": "ワークスペースナビゲーション",
     "nav.trains": "列車",
@@ -1112,6 +1210,8 @@
     "country.hk": "香港",
     "country.mo": "マカオ",
     "country.kr": "韓国",
+    "country.us": "アメリカ",
+    "country.ca": "カナダ",
     "disp.reset": "初期設定に戻す",
     "theme.label": "テーマ",
     "theme.system": "システム",
@@ -1273,6 +1373,20 @@
     "stat.jrconv.kr": "韓国鉄道（一般鉄道）",
     "stat.ltdexp.kr": "座席指定列車",
     "stat.all.kr": "韓国全域",
+    "stat.all.us": "北米全域",
+    "stat.hsr.us": "高速鉄道",
+    "stat.conv.us": "都市間鉄道",
+    "stat.jrconv.us": "都市間鉄道",
+    "stat.metro.us": "都市・通勤鉄道",
+    "stat.tram.us": "ライトレール・路面電車",
+    "stat.priv.us": "モノレール・ケーブル・観光鉄道",
+    "stat.all.ca": "北米全域",
+    "stat.hsr.ca": "高速鉄道",
+    "stat.conv.ca": "都市間鉄道",
+    "stat.jrconv.ca": "都市間鉄道",
+    "stat.metro.ca": "都市・通勤鉄道",
+    "stat.tram.ca": "ライトレール・路面電車",
+    "stat.priv.ca": "モノレール・ケーブル・観光鉄道",
     "stat.allrail": "全鉄道",
     "stat.jrconv": "JR在来線",
     "stat.rides": "{n} 回",
@@ -1280,6 +1394,8 @@
     "stats.unavailableCountry": "統計は現在、日本の路線網データのみ対応しています。",
     "stats.empty": "乗車記録がありません。",
     "stats.hint": "全列車で実際に乗車した区間を重複を除いて集計します。総延長は国土数値情報 N02-25 の全国鉄道網に基づきます。",
+    "stats.hint.us": "全列車で実際に乗車した区間を重複を除いて集計します。総延長は FRA 北米鉄道網（NTAD）と各事業者が公開する GTFS に基づきます。",
+    "stats.hint.ca": "全列車で実際に乗車した区間を重複を除いて集計します。総延長は FRA 北米鉄道網（NTAD）と各事業者が公開する GTFS に基づきます。",
     "sec.list": "列車一覧",
     "btn.addDate": "日付を追加",
     "btn.removeEmpty": "空の日付を削除",
@@ -1359,6 +1475,8 @@
     "info.packageBody.hk": "香港鉄道データパッケージ hk-2025 を使用しています。",
     "info.packageBody.mo": "マカオ LRT データパッケージ mo-2025 を使用しています。",
     "info.packageBody.kr": "韓国鉄道データパッケージ kr-2025 を使用しています。",
+    "info.packageBody.us": "us-2025 と ca-2025 の両パッケージを使用します。国境をまたぐ列車には両国の路線網が必要です。",
+    "info.packageBody.ca": "us-2025 と ca-2025 の両パッケージを使用します。国境をまたぐ列車には両国の路線網が必要です。",
     "info.twRailTitle": "台湾の鉄道網",
     "info.twRailBody": "交通部「TDX 運輸データ流通サービスプラットフォーム」、内政部国土測量製図センター、農業部阿里山林業鉄道及び文化資産管理処、台北市政府捷運工程局の公式データを組み合わせて加工し作成しています。",
     "info.twNlsc": "国土測量製図センター",
@@ -1372,6 +1490,13 @@
     "info.krOpenData": "公共データポータル data.go.kr",
     "info.moRailTitle": "マカオ LRT 網",
     "info.moRailBody": "マカオ LRT 株式会社が公開する現行路線・駅の公式情報を加工して作成しています。",
+    "info.usRailTitle": "アメリカの鉄道網",
+    "info.usRailBody": "連邦鉄道局／運輸統計局『北米鉄道網（NTAD）』と、各事業者が自ら公開する GTFS を加工して作成しています。OpenStreetMap コントリビューターの線路データ（ODbL 1.0）は相互検証に、また GTFS を公開しない鉄道の出典として使用します。",
+    "info.caRailTitle": "カナダの鉄道網",
+    "info.caRailBody": "カナダの路線網も収録する連邦鉄道局／運輸統計局『北米鉄道網（NTAD）』と、VIA Rail・Metrolinx・exo・STM・TTC・TransLink ほか各事業者が公開する GTFS を加工して作成しています。OpenStreetMap コントリビューターの線路データ（ODbL 1.0）は相互検証に使用します。",
+    "info.naNarn": "北米鉄道網（NTAD）",
+    "info.naNarnLicense": "米国連邦オープンデータ（パブリックドメイン）",
+    "info.naGtfs": "各事業者の GTFS（それぞれの公開条件による）",
     "map.layers": "地図レイヤー",
     "map.basemap": "背景地図",
     "map.positron": "OpenFreeMap（オンライン）",
@@ -1389,6 +1514,10 @@
     "map.riddenPriv.hk": "軽鉄・香港トラム",
     "map.riddenJr.mo": "マカオLRT",
     "map.riddenPriv.mo": "その他の路線",
+    "map.riddenJr.us": "都市間鉄道",
+    "map.riddenPriv.us": "モノレール・観光鉄道",
+    "map.riddenJr.ca": "都市間鉄道",
+    "map.riddenPriv.ca": "モノレール・観光鉄道",
     "map.riddenGroup": "乗車済み路線の表示",
     "map.riddenJr": "JR在来線",
     "map.riddenPriv": "私鉄・その他",

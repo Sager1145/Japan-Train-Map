@@ -225,6 +225,25 @@
       "자료: 국토교통부·국가철도공단·한국철도공사·서울교통공사 공공데이터" +
       "（이용허락범위 제한 없음）를 가공하여 제작" +
       "｜선로 기하 © OpenStreetMap contributors, ODbL",
+    // The two North American strings name the network by the name its
+    // publisher gives it — the FRA/BTS North American Rail Network (NTAD) — and
+    // say which licence covers which part, because three different ones do:
+    // NTAD is United States federal open data in the public domain, each
+    // operator's GTFS keeps its own open-data terms, and the OpenStreetMap
+    // track is ODbL 1.0. The previous pair credited a "U.S. DOT/FRA National
+    // Rail Network" (no such dataset) and, for Canada, a "Government of Canada
+    // transit inventory" that is a registry of WHERE the feeds are, not a
+    // source of any coordinate — while attributing all the geometry to OSM,
+    // which supplies 32 of the 470 American lines and 3 of the 92 Canadian
+    // ones. Keep each string in sync with the package's own .sources.md.
+    us:
+      "Sources: FRA/BTS North American Rail Network (NTAD), US federal open data" +
+      "; operator-published GTFS under each feed's own terms" +
+      "｜cross-check and remaining track © OpenStreetMap contributors, ODbL 1.0",
+    ca:
+      "Sources: FRA/BTS North American Rail Network (NTAD), US federal open data" +
+      "; operator-published GTFS under each feed's own terms" +
+      "｜cross-check © OpenStreetMap contributors, ODbL 1.0",
   };
   function railAttributionForCountry(country) {
     return RAIL_ATTRIBUTIONS[country] || RAIL_ATTRIBUTIONS.jp;

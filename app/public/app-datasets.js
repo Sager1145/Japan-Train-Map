@@ -71,7 +71,11 @@ const AppDatasets = {
   // parses it in yielding chunks after the map is on screen. Returns the
   // promise so the caller can attach its own failure reporting.
   startRailSectionsDownload() {
-    railSectionsTextReady = fetchText(railSectionsApiForCountry(activeCountry));
+    railSectionsTextReady = Promise.all(
+      railSectionsApisForCountry(activeCountry).map((resource) =>
+        fetchText(resource),
+      ),
+    );
     return railSectionsTextReady;
   },
   installStationIndexes(candidates, nameByCode) {
@@ -103,15 +107,19 @@ async function ensureRailSectionsLoaded() {
   if (!railSectionsReady) {
     railSectionsReady = (async () => {
       // Reuse the in-flight/finished boot download; re-fetch once on failure.
-      let text;
+      let texts;
       try {
-        text = await (railSectionsTextReady ||
+        texts = await (railSectionsTextReady ||
           AppDatasets.startRailSectionsDownload());
       } catch {
-        text = await AppDatasets.startRailSectionsDownload();
+        texts = await AppDatasets.startRailSectionsDownload();
       }
+      if (!Array.isArray(texts)) texts = [texts];
+      const collections = [];
+      for (const text of texts)
+        collections.push(await parseFeatureCollectionChunked(text));
       const data = AppDatasets.installRailSections(
-        await parseFeatureCollectionChunked(text),
+        mergeFeatureCollections(collections),
       );
       // Release the raw ~12 MB JSON string (≈24 MB as a JS string): the memoised
       // download promise would otherwise keep it resident for the whole session,
@@ -125,4 +133,13 @@ async function ensureRailSectionsLoaded() {
     });
   }
   return railSectionsReady;
+}
+
+function mergeFeatureCollections(collections) {
+  return {
+    type: "FeatureCollection",
+    features: collections.flatMap((collection) =>
+      Array.isArray(collection?.features) ? collection.features : [],
+    ),
+  };
 }

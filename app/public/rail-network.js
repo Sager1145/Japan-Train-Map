@@ -1906,6 +1906,30 @@
     return `${compactLine.operator}\u0000${compactLine.name}`;
   }
 
+  function mergeCompactPackages(packages) {
+    const valid = (packages || []).filter(
+      (pkg) => pkg && pkg.format === "compact-v1" && Array.isArray(pkg.lines),
+    );
+    if (!valid.length) return null;
+    if (valid.length === 1) return valid[0];
+    const ids = new Set();
+    const lines = [];
+    for (const pkg of valid) {
+      for (const line of pkg.lines) {
+        if (ids.has(line.id))
+          throw new Error(`Duplicate rail line id across packages: ${line.id}`);
+        ids.add(line.id);
+        lines.push(line);
+      }
+    }
+    return {
+      ...valid[0],
+      version: valid.map((pkg) => pkg.version).join("+"),
+      country: valid.map((pkg) => pkg.country).filter(Boolean).join("+"),
+      lines,
+    };
+  }
+
   function buildNetworkFromCompactPackage(pkg) {
     if (!pkg || pkg.format !== "compact-v1" || !Array.isArray(pkg.lines))
       return null;
@@ -1980,7 +2004,7 @@
         // left `日豊線-2`, a badge that was never drawn either.
         logo: compactLine.logo
           ? `/rail/logos/${lineId.replace(/(?:-p?\d+)+$/, "")}.png`
-          : null,
+          : compactLine.operatorLogo || null,
         stationOrder: stationIds,
         km: totalKm,
         visibilityKm,
@@ -2274,6 +2298,7 @@
 
   return Object.freeze({
     DEFAULT_LINE_COLOR,
+    mergeCompactPackages,
     buildNetworkFromCompactPackage,
     // Exported for the Swift port's golden fixtures: the fixture generator
     // must call THIS decoder, never a copy of it, or the fixture only proves
