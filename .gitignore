@@ -63,30 +63,34 @@ _site*/
 # Local output directory for reports and dumps
 outputs/
 
-# Apple Maps transit survey (app/data/raw/railway/jp/apple-maps/).
-# 2,417 full-screen captures of Apple Maps in transit mode covering Hokkaido,
-# Honshu, Shikoku and Kyushu at three zoom levels — 11 GB of PNG. Source
-# imagery rather than derived data, and reproducible: 3-RUN-CAPTURE.command
-# replays the whole survey from tiles/*.tsv in ~1h45m and resumes if stopped.
-app/data/raw/railway/jp/apple-maps/out/
+# ---------------------------------------------------------------------------
+# Railway source data. Local-only, never committed.
+#
+# app/data/raw/ holds the inputs the packages are built from: MLIT 国土数値情報
+# N02 shapefiles, data.go.kr CSV snapshots, TW/HK/MO operator publications,
+# OpenStreetMap extracts and the normalized tables derived from them, the
+# Apple Maps transit survey, and every rebuild-inventory. None of it is ours to
+# redistribute — N02 and the operator publications carry their own attribution
+# and use terms, OSM is ODbL, and the Apple Maps captures are Apple's imagery.
+#
+# Nothing at runtime reads this directory: the server serves processed JSON
+# from app/data/ and published packages from app/public/rail/. Re-download it
+# with the fetchers in app/scripts/railway/; app/data/raw/README.md lists every
+# source and its URL.
+# ---------------------------------------------------------------------------
+app/data/raw/*
+!app/data/raw/README.md
 
-# Calibration captures used to measure Apple's zoom-to-ground-scale mapping.
-# Kept locally as evidence for the constants in stitch.py; ~190 MB, not needed
-# to rebuild anything.
-app/data/raw/railway/jp/apple-maps/_calib/
-app/data/raw/railway/jp/apple-maps/_calib2/
-
-# Stitched mosaics, rebuilt from the tiles by stitch.py / fullres_png.py.
-# japan_z2_FULLRES.png alone is 453 MB (2.85 gigapixels) — well past GitHub's
-# 100 MB per-file limit, and this repo has no LFS configured.
-app/data/raw/railway/jp/apple-maps/mosaics/
-
-# Transport archives used to move the survey onto this machine.
-app/data/raw/railway/jp/apple-maps/*.zip
-
-# NOTE: tiles/*.tsv (the capture grids) and manifests/*.csv (per-tile lat/lon
-# and N/S/E/W bounds) ARE committed. They are small, they define the survey,
-# and stitch.py needs them to place every tile.
+# Source GIS formats, wherever they land.
+*.osm
+*.osm.pbf
+*.osm.xml
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.gpkg
 
 # Staged-rebuild scratch. Country builders write WHOLE packages here; only
 # scripts/railway/promote-lines.mjs writes public/rail/*.json, one session's
@@ -96,16 +100,6 @@ app/data/staging/
 # Scratch: transport archives, applied-patch snapshots and staging copies moved
 # through here by hand. 245 MB and none of it reproduces anything.
 tmp/
-
-# Duplicates of app/data/raw/railway/jp/rebuild-inventory/, which IS committed.
-# `classification/` is the same tables under their pre-organisation names and
-# `backup-n02-.../` is a snapshot taken before the 2026-08-13 corrections were
-# applied; together 277 MB of second copies.
-app/data/raw/railway/jp/classification/
-app/data/raw/railway/jp/backup-n02-2025-baseline-20260813/
-
-# Transport archive of the directory committed beside it.
-app/data/raw/railway/hk/rebuild-inventory.zip
 
 # Agent worktrees: real git checkouts, so an unqualified `git add` picks them
 # up as embedded repositories.
