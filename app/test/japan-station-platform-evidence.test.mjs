@@ -15,9 +15,12 @@
 //     station went onto its viaduct in 2008, 52 m from any of their own metals,
 //     with a 55 m hook drawn to reach them.
 //
-// Everything here is measured against COMMITTED data only — the package, the
-// two evidence files and the N02 platform-feature table — so it runs in CI
-// without the OSM cache.
+// The package is committed; the two evidence files and the N02 platform-feature
+// table are not — they live under app/data/raw/, which is local-only because it
+// is 国土数値情報 and OpenStreetMap input, not ours to redistribute (see
+// app/data/raw/README.md). So these checks run on a machine that has the
+// sources and skip on one that only has the built package. Nothing here needs
+// the OSM cache itself.
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -26,17 +29,23 @@ import test from "node:test";
 
 const APP_DIR = path.join(import.meta.dirname, "..");
 const read = (...parts) => JSON.parse(fs.readFileSync(path.join(APP_DIR, ...parts), "utf8"));
+const readLocal = (...parts) =>
+  fs.existsSync(path.join(APP_DIR, ...parts)) ? read(...parts) : null;
 
 const pkg = read("public", "rail", "jp-2025.json");
-const overrides = read(
+const overrides = readLocal(
   "data", "raw", "railway", "jp", "evidence", "station-anchor-overrides.json",
 );
-const assignments = read(
+const assignments = readLocal(
   "data", "raw", "railway", "jp", "evidence", "station-platform-assignments.json",
 );
-const n02Features = read(
+const platformFeatures = readLocal(
   "data", "raw", "railway", "jp", "rebuild-inventory", "stations", "n02-platform-features.json",
-).features;
+);
+const n02Features = platformFeatures?.features ?? [];
+const skip = overrides && assignments && platformFeatures
+  ? false
+  : "the platform evidence needs app/data/raw, which is local-only";
 
 // The package files a few operators under a brand name; the evidence is keyed
 // by the N02 legal name, which is what the builder reads.
@@ -123,7 +132,7 @@ function partPlatformTarget(sourceLine, stationNames, stationName) {
   return null;
 }
 
-test("every registered platform assignment is the feature the package drew", () => {
+test("every registered platform assignment is the feature the package drew", { skip }, () => {
   const rows = assignments.platform_assignments;
   assert.ok(rows.length > 0, "no platform_assignments rows to check");
   for (const row of rows) {
@@ -163,7 +172,7 @@ test("every registered platform assignment is the feature the package drew", () 
   }
 });
 
-test("every station anchor override stands on the platform it names", () => {
+test("every station anchor override stands on the platform it names", { skip }, () => {
   const rows = overrides.station_anchor_overrides;
   assert.ok(rows.length > 0, "no station_anchor_overrides rows to check");
   for (const row of rows) {
