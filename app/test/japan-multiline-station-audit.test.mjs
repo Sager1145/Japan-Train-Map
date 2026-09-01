@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import { buildAudit } from "../scripts/validation/audit-japan-multiline-stations.mjs";
+
+// buildAudit reads the N02 station network and the evidence tables under
+// app/data/raw/, which is local-only and never committed: official GIS and
+// OpenStreetMap input, not ours to redistribute (app/data/raw/README.md). The
+// audit therefore runs on a machine that has the sources and skips on one that
+// only carries the built package.
+const skip = fs.existsSync(
+  path.join(import.meta.dirname, "..", "data/raw/railway/jp/rebuild-inventory"),
+)
+  ? false
+  : "the multi-line audit needs app/data/raw, which is local-only";
 
 // osm: false on purpose. The station-zone basemap comparison and the
 // duplicate-stroke adjudication both read the machine-local OSM cell cache
@@ -13,7 +26,7 @@ let auditPromise;
 const audit = () =>
   (auditPromise ||= Promise.resolve().then(() => buildAudit({ osm: false })));
 
-test("every discovered Japanese multi-line station satisfies the render-junction contract", async () => {
+test("every discovered Japanese multi-line station satisfies the render-junction contract", { skip }, async () => {
   const report = await audit();
   assert.equal(report.summary.physical_station_groups_in_package, 9039);
   // 881 since 2026-08-19: ユーカリが丘線's 公園 is drawn by two strokes now
@@ -72,7 +85,7 @@ test("every discovered Japanese multi-line station satisfies the render-junction
   }
 });
 
-test("Tokyo and Nippori are explicit evidence-backed repairs", async () => {
+test("Tokyo and Nippori are explicit evidence-backed repairs", { skip }, async () => {
   const report = await audit();
   const fixed = new Map(
     report.fixed_station_groups.map((row) => [row.station_group, row.station_name]),

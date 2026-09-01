@@ -42,13 +42,24 @@ function referencePackage(country) {
   return JSON.parse(zlib.gunzipSync(fs.readFileSync(file)).toString("utf8"));
 }
 
+// The pre-rebuild reference packages live under app/data/raw/, which is
+// local-only and never committed: it is the official GIS and OpenStreetMap
+// input the packages are built from, and not ours to redistribute (see
+// app/data/raw/README.md). Without it these comparisons have no input at all,
+// so they skip rather than fail on a checkout that only carries the output.
+const skip = Object.values(REFERENCE_PACKAGES).every((relative) =>
+  fs.existsSync(path.join(APP_DIR, relative)),
+)
+  ? false
+  : "the reference packages need app/data/raw, which is local-only";
+
 function emptyLike(pkg) {
   const next = { ...pkg, lines: [] };
   if ("lanes" in next) next.lanes = [];
   return next;
 }
 
-test("promoting in two batches equals promoting both at once", () => {
+test("promoting in two batches equals promoting both at once", { skip }, () => {
   const source = referencePackage("hk");
   assert.ok(source, "hk reference package missing");
   const first = source.lines.slice(0, 5).map((line) => line.id);
@@ -73,7 +84,7 @@ test("promoting in two batches equals promoting both at once", () => {
   assert.equal(JSON.stringify(forward), JSON.stringify(together));
 });
 
-test("promoting a line twice changes nothing the second time", () => {
+test("promoting a line twice changes nothing the second time", { skip }, () => {
   const source = referencePackage("hk");
   const ids = source.lines.slice(0, 4).map((line) => line.id);
   const once = promoteLines(emptyLike(source), source, ids).package;
@@ -81,7 +92,7 @@ test("promoting a line twice changes nothing the second time", () => {
   assert.equal(JSON.stringify(once), JSON.stringify(twice));
 });
 
-test("promotion never touches a line it was not asked for", () => {
+test("promotion never touches a line it was not asked for", { skip }, () => {
   const source = referencePackage("hk");
   const target = promoteLines(
     emptyLike(source),
@@ -109,7 +120,7 @@ test("promotion never touches a line it was not asked for", () => {
   assert.equal(result.untouched.length, source.lines.length - 1);
 });
 
-test("promotion refuses a package that is not the same country", () => {
+test("promotion refuses a package that is not the same country", { skip }, () => {
   const hk = referencePackage("hk");
   const tw = referencePackage("tw");
   assert.throws(
@@ -118,7 +129,7 @@ test("promotion refuses a package that is not the same country", () => {
   );
 });
 
-test("promotion refuses a line the staging package does not have", () => {
+test("promotion refuses a line the staging package does not have", { skip }, () => {
   const source = referencePackage("hk");
   assert.throws(
     () => promoteLines(emptyLike(source), source, ["hk-does-not-exist"]),
@@ -126,7 +137,7 @@ test("promotion refuses a line the staging package does not have", () => {
   );
 });
 
-test("a fully promoted package matches the reference package line for line", () => {
+test("a fully promoted package matches the reference package line for line", { skip }, () => {
   for (const country of ["hk", "tw", "jp"]) {
     const source = referencePackage(country);
     if (!source) continue;
@@ -151,7 +162,7 @@ test("a fully promoted package matches the reference package line for line", () 
   }
 });
 
-test("every batch-table row resolves against its reference package", () => {
+test("every batch-table row resolves against its reference package", { skip }, () => {
   const table = readBatchTable();
   // 663 with the 2026-08-18 京王新線 split: the new canonical joins 京王線's
   // own session row (38 / J07-4).
@@ -188,7 +199,7 @@ test("every batch-table row resolves against its reference package", () => {
   }
 });
 
-test("the batch table covers every line of every reference package", () => {
+test("the batch table covers every line of every reference package", { skip }, () => {
   const table = readBatchTable();
   for (const country of ["hk", "tw", "jp"]) {
     const source = referencePackage(country);

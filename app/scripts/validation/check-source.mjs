@@ -13,8 +13,10 @@ const APP_DIR = path.join(
 // re-validate on every lint — output the precompute just wrote and that
 // test/sample-data.test.mjs already checks against its manifest, structurally
 // rather than for mere parseability. Everything hand-authored stays in scope,
-// including data/raw/railway/ (builder INPUTS): that is what caught a generator
-// emitting bare `Infinity`, which is not valid JSON.
+// including data/raw/railway/ (builder INPUTS) when it is present: that is what
+// caught a generator emitting bare `Infinity`, which is not valid JSON. That
+// directory is local-only and never committed, so this check covers it on a
+// developer's machine and finds nothing to cover in CI.
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
   ".perf-backup",

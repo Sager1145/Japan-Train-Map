@@ -8,7 +8,17 @@ const test = require("node:test");
 const APP_DIR = path.join(__dirname, "..");
 const RAW_RAILWAY_DIR = path.join(APP_DIR, "data", "raw", "railway");
 
-test("downloaded railway sources are retained in one country-based archive", () => {
+// app/data/raw/ is local-only and never committed: it is official GIS and
+// OpenStreetMap input, not ours to redistribute (see app/data/raw/README.md).
+// The layout check therefore runs on a machine that has the archive and skips
+// on one that does not. The rule it exists to enforce — that downloaded data
+// never drifts back into the executable tooling — holds either way and is
+// asserted on its own below.
+const skip = fs.existsSync(RAW_RAILWAY_DIR)
+  ? false
+  : "the source archive is app/data/raw, which is local-only";
+
+test("downloaded railway sources are retained in one country-based archive", { skip }, () => {
   const expectedSources = [
     "jp/N02-25_GML.zip",
     "jp/packages/jp-2025-recovered-copy-97d39339.json.gz",
@@ -29,6 +39,9 @@ test("downloaded railway sources are retained in one country-based archive", () 
       relativePath,
     );
   }
+});
+
+test("downloaded data never drifts back into the executable tooling", () => {
   assert.equal(
     fs.existsSync(path.join(APP_DIR, "scripts", "railway", "data")),
     false,

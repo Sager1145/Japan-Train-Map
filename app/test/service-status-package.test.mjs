@@ -15,6 +15,20 @@ const CODE_STATUS = {
   4: "all_trains_pass",
 };
 
+// The N02 inventory these two tests re-derive from lives under app/data/raw/,
+// which is local-only and never committed: it is 国土数値情報 N02 output, not
+// ours to redistribute (see app/data/raw/README.md). On a checkout that only
+// carries the built packages they skip instead of failing.
+const INVENTORY = [
+  "data/raw/railway/jp/rebuild-inventory/stations/n02-station-connections.csv",
+  "data/raw/railway/jp/rebuild-inventory/stations/n02-station-network.json",
+];
+const skip = INVENTORY.every((relative) =>
+  fs.existsSync(path.join(APP_DIR, relative)),
+)
+  ? false
+  : "the N02 inventory needs app/data/raw, which is local-only";
+
 function packageFor(country) {
   return JSON.parse(
     fs.readFileSync(path.join(APP_DIR, "public", "rail", `${country}-2025.json`), "utf8"),
@@ -115,7 +129,7 @@ test("service spans index real, ordered, non-overlapping station pairs", () => {
   assert.equal(spans, 9);
 });
 
-test("service spans restate the inventory's own edge column, line for line", () => {
+test("service spans restate the inventory's own edge column, line for line", { skip }, () => {
   // The CSV is the single authority; the package is a derivation of it. This
   // re-derives independently of lib/service_status.py and compares.
   const pkg = packageFor("jp");
@@ -168,7 +182,7 @@ test("service spans restate the inventory's own edge column, line for line", () 
       assert.ok(SKIP_EDGES.has(key), `${key} is marked but in no package span`);
 });
 
-test("the builder's own input carries the same statuses the CSV does", () => {
+test("the builder's own input carries the same statuses the CSV does", { skip }, () => {
   // The inventory keeps the 19,256 connection rows twice: the CSV for people,
   // and n02-station-network.json for build-japan-package-from-inventory.py,
   // which reads `network["connections"]` and nothing else. A correction
