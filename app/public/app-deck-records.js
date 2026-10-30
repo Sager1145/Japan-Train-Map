@@ -766,6 +766,194 @@ function mergeRunLineIntoGroup(gi, runLine) {
   if (!duplicate) gi._lines.push(runLine);
 }
 
+// INTERMEDIATE PRODUCT: a run's lane group — the group-wide shift vector, and
+// every member's slot-centered lane multiplier, plus the run geometry the
+// corridor pass below stitches. One per groupKey: the second physical run
+// that resolves to the same key goes through mergeRunLineIntoGroup instead,
+// which is why the two are written as a pair.
+function createCorridorRunGroup(
+  overlap,
+  orig,
+  segKeys,
+  ra,
+  rb,
+  groupKey,
+  ids,
+  runLine,
+) {
+  const { latRef, coslatRef, dx, dy, len } = corridorRunShiftAxis(
+    overlap,
+    orig,
+    segKeys,
+    ra,
+    rb,
+  );
+  const mults = {};
+  ids.forEach((id) => {
+    mults[id] = overlap.slotFor(ids, id) - (ids.size - 1) / 2;
+  });
+  return {
+    sx: dy / len / coslatRef, // right-hand perpendicular of chord
+    sy: -dx / len,
+    mults,
+    // Run endpoints, geometry + reference latitude, kept for the
+    // corridor stitching pass below (which builds the smoothed
+    // corridor curve and the fallback unified vector).
+    _pa: orig[ra],
+    _pb: orig[rb],
+    _line: runLine,
+    _lines: [runLine],
+    _latRef: latRef,
+    _nearParallel: overlap.nearGroupInfo(groupKey),
+  };
+}
+
+// INTERMEDIATE PRODUCT: one route item's draw parameters — everything every
+// record of that item shares. null = the item draws nothing.
+//
+// This is the record builder's own visibility filter, and it is deliberately
+// WIDER than deckOverlapItemDrawn's at the top of the file: an off-date ride
+// is kept out of the overlap map (no lane slot, no fan membership) yet still
+// DRAWS, dimmed — the difference the returned noPick carries downstream.
+function deckRouteItemDrawStyle(item) {
+  const train = item.train;
+  const feature = item.feature;
+  const ridden =
+    feature.properties && feature.properties.ride_segment === true;
+  // Category toggled off.
+  if (ridden && !riddenFeatureVisible(feature)) return null;
+  const rgb = hexToRgb(
+    train.style && train.style.color ? train.style.color : DEFAULT_TRAIN_COLOR,
+  );
+  const scopeFlags = routeRecordScopeFlags(train);
+  // Which calendar day THIS piece of the itinerary runs on. Identical to the
+  // train's own date unless the train crosses midnight, in which case the
+  // stretch past the day break carries the next date and draws dashed while
+  // the neighbouring day is selected (see RailMap.setDateScope).
+  const daySpan = getTrainDaySpan(train);
+  const edate = segmentDateForTrain(
+    daySpan,
+    Number(feature.properties?.segment_index ?? 0),
+  );
+  const { opacity, width } = routeSegmentStyleValues(train, ridden, scopeFlags);
+  // Hidden trains contribute nothing to the GPU buffer.
+  if (opacity <= 0) return null;
+  const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
+  return {
+    train,
+    feature,
+    color: [rgb[0], rgb[1], rgb[2], alpha],
+    width,
+    // Off-date trains still DRAW (dimmed) while a day is active, but they are
+    // not interactive: no hover, no tooltip, no click-select, no fan lanes.
+    noPick: scopeFlags.dimmed === true,
+    edate,
+    dspan: daySpan.key,
+  };
+}
+
+// §1 for ONE (train, line) pair: lanes → runs → drawn subset → one base+pick
+// record per run, plus the line's single expand record. Appends to the build
+// state rather than returning: the lane groups it creates on the way are read
+// by every later phase through `groupInfo`, and the records of all lines share
+// one flat array because the painter's order is assigned across it.
+function appendDeckRouteLineRecords(build, style, pair, spacingPx) {
+  const { orig, keepIdx, segKeys } = pair;
+  if (!orig || orig.length < 2) return;
+  const { overlap, records, expandRecords, groupInfo, drawnLenByTid } = build;
+  const { train, feature, color, width, noPick, edate, dspan } = style;
+  const tid = train && train.id;
+  const nSeg = orig.length - 1;
+  const { segIds, segSlot, segMult, segBridged, lineHasOverlap } =
+    assignSegmentOverlapLanes(overlap, orig, segKeys, tid, noPick);
+  if (lineHasOverlap) _deckHasOverlaps = true;
+  const runs = maximalOverlapRuns(segIds, nSeg);
+  const { drawn, posOf, drawnLen } = buildDrawnVertexSubset(
+    orig,
+    keepIdx,
+    runs,
+    nSeg,
+  );
+  drawnLenByTid.set(tid, (drawnLenByTid.get(tid) || 0) + drawnLen);
+
+  // ── base + pick records, one per run ──
+  // The visible line stays on its TRUE track at full width (no permanent
+  // fan-out). The invisible PICK target is translated into per-train
+  // lanes; hovering an overlapped run temporarily shows every member
+  // train's COMPLETE course rigidly translated into those lanes
+  // (railmap.js + the expand record below). groupKey identifies the
+  // shared run: its smallest ORIGINAL segment key is identical for every
+  // train sharing it, whichever way each train traverses the track and
+  // however each geometry was simplified.
+  runs.forEach(({ a: ra, b: rb }) => {
+    const ka = posOf.get(ra);
+    const kb = posOf.get(rb);
+    const runLine = drawn.slice(ka, kb + 1);
+    if (runLine.length < 2) return;
+    const ids = segIds[ra];
+    const n = ids ? ids.size : 1;
+    const mult = segMult[ra];
+    let groupKey = "";
+    if (n > 1)
+      groupKey = canonicalRunGroupKey(overlap, segKeys, segBridged, ra, rb);
+    // One shift vector + lane multipliers per GROUP: the whole fan
+    // translates along ONE consistent axis no matter where on the run the
+    // pointer hovers or how the track curves in between.
+    let gi = null;
+    if (n > 1) {
+      gi = groupInfo.get(groupKey);
+      if (gi) mergeRunLineIntoGroup(gi, runLine);
+      else {
+        gi = createCorridorRunGroup(
+          overlap,
+          orig,
+          segKeys,
+          ra,
+          rb,
+          groupKey,
+          ids,
+          runLine,
+        );
+        groupInfo.set(groupKey, gi);
+      }
+    }
+    // The run is cut once more, where the railway under it changes lane.
+    //
+    // Deliberately NOT a run boundary: `runs` are keyed on overlap
+    // MEMBERSHIP and every train sharing a corridor has to derive the
+    // identical set of them, or two members of one fan end up with
+    // different groupKeys and the fan splits in two. Lanes belong to the
+    // RAILWAY, not to the sharing set, so two trains on two different
+    // parallel lines change lane at different places — which is exactly
+    // why this cut happens here, after groupKey and the shift axis are
+    // settled, and touches nothing but the drawn and picked geometry.
+    const base = {
+      shiftX: gi ? gi.sx : 0,
+      shiftY: gi ? gi.sy : 0,
+      laneMult: mult,
+      color,
+      width,
+      train,
+      feature,
+      pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 4, 10),
+      overlapCount: n,
+      overlapSlot: segSlot[ra],
+      groupKey,
+      nopick: noPick,
+      tdate: getTrainDate(train),
+      edate,
+      dspan,
+    };
+    records.push({ ...base, path: runLine, lane: 0 });
+  });
+
+  // ── one expand record for the whole line (true-track geometry) ──
+  // Every line of every train gets one, so a hovered group can translate
+  // each member train's COMPLETE course intact — including sections that
+  // overlap nothing.
+  expandRecords.push({ path: drawn, color, width, train });
+}
+
 // Each group's representative geometry + the snapped node keys of the curve
 // it will own. Run first in the corridor phase, because every later pass
 // reads gi._line.
@@ -992,16 +1180,201 @@ function corridorStationJoinGroups(groupInfo) {
   return joinGroups;
 }
 
+// The fallback shape of a corridor: every member run keeps its own
+// interaction key, its own chord and an independently fitted curve. Reached
+// wherever a UNIFIED corridor cannot be published — a multi-run cycle (an
+// open B-spline would need an arbitrary seam), a chain that would not
+// assemble, or a unified fit that failed a hard constraint.
+function fitCorridorRunsIndependently(c, ctx) {
+  c.keys.forEach((k) => {
+    const g = ctx.groupInfo.get(k);
+    ctx.corridorAliases.set(k, k);
+    ctx.corridorMasters.add(k);
+    g._corridorJoins = [];
+    g._curveEndpointNodeKeys = [
+      overlapNodeKey(g._line[0]),
+      overlapNodeKey(g._line[g._line.length - 1]),
+    ];
+    if (ctx.deferFit) {
+      g.curve = null;
+      ctx.queueFitJob(k, g._line);
+    } else g.curve = smoothStandaloneCorridorRun(g._line, false);
+  });
+}
+
+// One contiguous corridor, resolved: its curve, its canonical interaction key
+// (the alias every member run is rewritten onto) and its unified shift axis.
+// `ctx` carries the state the whole §2 phase shares — groupInfo, the endpoint
+// joins, the alias/master tables being filled, and the fit mode.
+//
+// Three outcomes, and the two fallbacks are as important as the main line:
+// a closed corridor and a corridor whose chain or fit fails keep independent
+// per-run curves (fitCorridorRunsIndependently); only a corridor that
+// assembles AND validates collapses onto one key.
+function resolveCorridorComponent(c, ctx) {
+  const { groupInfo, joins, corridorAliases, corridorMasters, deferFit } = ctx;
+  const componentJoins = joins.filter(
+    (j) => c.keySet.has(j.a.key) && c.keySet.has(j.b.key),
+  );
+  const lone = c.keys.length === 1 ? groupInfo.get(c.keys[0]) : null;
+  const isClosed =
+    (c.keys.length > 1 && componentJoins.length === c.keys.length) ||
+    (lone &&
+      lone._line &&
+      lone._line.length > 3 &&
+      distanceMeters(lone._pa, lone._pb) <= OVERLAP_SNAP_METERS);
+  if (isClosed) {
+    // An open B-spline would insert an arbitrary seam into this cycle.
+    // A multi-run cycle can keep its open member runs independently. A
+    // single self-closing run has no safe seam at all, so use only its
+    // static group vector until a periodic solver is available.
+    if (lone) {
+      const key = c.keys[0];
+      corridorAliases.set(key, key);
+      corridorMasters.add(key);
+      lone._corridorJoins = [];
+      lone.curve = smoothStandaloneCorridorRun(lone._line, true);
+    } else fitCorridorRunsIndependently(c, ctx);
+    return;
+  }
+  // Smoothed corridor centerline: chain the member runs end-to-end and
+  // normalize into a very smooth curve. railmap.js derives the fan's
+  // shift direction from this curve's LOCAL perpendicular under the
+  // pointer, so the direction turns smoothly as the pointer moves.
+  const chain = buildCorridorChain(c, groupInfo, joins);
+  if (!chain && c.keys.length > 1) {
+    // No continuable chain could be assembled at all — a sync-time fact,
+    // so both fit modes keep independently fitted per-run curves.
+    fitCorridorRunsIndependently(c, ctx);
+    return;
+  }
+  const curve = !deferFit && chain ? smoothCorridorCurve(chain) : null;
+  const canonicalKey = c.keys.slice().sort()[0];
+  const master = groupInfo.get(canonicalKey);
+  if (chain)
+    master._curveEndpointNodeKeys = [
+      overlapNodeKey(chain[0]),
+      overlapNodeKey(chain[chain.length - 1]),
+    ];
+  const nearInfos = c.keys
+    .map((k) => groupInfo.get(k)._nearParallel)
+    .filter(Boolean);
+  if (curve) curve.nearParallel = nearInfos.length > 0;
+  if (nearInfos.length) {
+    master._nearParallel = {
+      pairCount: Math.max(...nearInfos.map((info) => info.pairCount || 0)),
+      maxSeparationMeters: Math.max(
+        ...nearInfos.map((info) => info.maxSeparationMeters || 0),
+      ),
+      thresholdMeters: Math.max(
+        ...nearInfos.map((info) => info.thresholdMeters || 0),
+      ),
+    };
+  }
+  if (!deferFit && !curve && c.keys.length > 1) {
+    // The unified candidate failed at least one final hard constraint.
+    // Preserve independently validated runs instead of publishing a
+    // geometrically invalid shared direction field.
+    fitCorridorRunsIndependently(c, ctx);
+    return;
+  }
+  corridorMasters.add(canonicalKey);
+  c.keys.forEach((k) => corridorAliases.set(k, canonicalKey));
+  master._corridorJoins = componentJoins.filter((j) => j.metres > 0.05);
+  if (curve)
+    c.keys.forEach((k) => {
+      groupInfo.get(k).curve = curve;
+    });
+  else if (deferFit && chain)
+    ctx.queueFitJob(canonicalKey, chain, nearInfos.length > 0);
+  if (c.keys.length < 2) return; // lone run keeps its own chord
+  const axis = unifiedCorridorShiftAxis(c);
+  if (!axis) return;
+  c.keys.forEach((k) => {
+    const g = groupInfo.get(k);
+    g.sx = axis.sx;
+    g.sy = axis.sy;
+  });
+}
+
+// §2: one shift axis per contiguous CORRIDOR.
+//
+// A single visual overlap corridor is usually split into many runs (the
+// source geometry is chopped into per-feature LineStrings), so each run
+// got its own chord in §1 and the fan direction changed as the pointer
+// moved between runs. Stitch together groups whose member-train sets are
+// identical and whose runs touch end-to-end, then give the whole chain ONE
+// shift vector: the perpendicular of the straight line joining the
+// corridor's overall start and end points. Hovering anywhere along the
+// corridor now fans along the same axis.
+//
+// Rewrites `records` and `groupInfo` in place; RETURNS the deferred-fit
+// payload for publishDeckRouteRecordBundle, or null when the fit ran inline.
+function stitchCorridorGroups(records, groupInfo, spacingPx) {
+  if (groupInfo.size === 0) return null;
+  // Deferred fitting: with a usable Worker the expensive B-spline solves +
+  // the station-join pass run OFF the main thread (app-fit-worker.js via
+  // scheduleFitCurveWorker). Records render immediately with the static
+  // per-group axis; curves attach to these same gi objects when the worker
+  // replies — hover reads gi.curve per event, so nothing rebuilds except
+  // the fitted-curve debug overlay/diagnostics. Without a Worker (precompute
+  // VM, tests, worker boot failure) everything below runs inline exactly as
+  // before. Known trade-off of the deferred path: a multi-run corridor
+  // whose UNIFIED chain fit fails hard constraints keeps a null curve
+  // (static-axis hover) instead of re-splitting into per-run curves — the
+  // aliases are already collapsed by the time the worker answers. No real
+  // dataset currently hits that branch.
+  const deferFit = fitCurveWorkerUsable();
+  const fitJobs = deferFit ? [] : null;
+  stampCorridorRepresentativeGeometry(groupInfo);
+  const joins = matchCorridorEndpointJoins(groupInfo);
+  const comps = buildCorridorComponents(groupInfo, joins);
+  const ctx = {
+    groupInfo,
+    joins,
+    corridorAliases: new Map(),
+    corridorMasters: new Set(),
+    deferFit,
+    queueFitJob: (key, line, nearParallel) => {
+      fitJobs.push({ key, line, nearParallel: Boolean(nearParallel) });
+    },
+  };
+  comps.forEach((c) => resolveCorridorComponent(c, ctx));
+  const { corridorAliases, corridorMasters } = ctx;
+  const representative = collapseCorridorRecordAliases(
+    records,
+    groupInfo,
+    corridorAliases,
+  );
+  attachCorridorPickBridges(
+    groupInfo,
+    corridorMasters,
+    representative,
+    spacingPx,
+  );
+  dropAliasedGroupEntries(groupInfo, corridorAliases);
+  // Membership changes at stations create separate corridor curves. Round
+  // their shared endpoints only after aliases collapse, so each physical
+  // curve is edited once and both sides receive the exact same tangent.
+  // Deferred mode ships that pass to the worker together with the solve
+  // jobs (runFitCurveJobs replays it on a minimal groupInfo mirror).
+  if (!deferFit) {
+    smoothCurveStationJoins(groupInfo);
+    return null;
+  }
+  return { jobs: fitJobs, joinGroups: corridorStationJoinGroups(groupInfo) };
+}
+
 // Three phases, each named for the intermediate product it yields:
 //
-//   §1 per line   assignSegmentOverlapLanes → maximalOverlapRuns →
-//                 buildDrawnVertexSubset, then one base+pick record per run
-//                 (canonicalRunGroupKey / corridorRunShiftAxis per group)
-//   §2 corridor   stampCorridorRepresentativeGeometry →
+//   §1 per line   deckRouteItemDrawStyle → appendDeckRouteLineRecords
+//                 (assignSegmentOverlapLanes → maximalOverlapRuns →
+//                 buildDrawnVertexSubset, then one base+pick record per run)
+//   §2 corridor   stitchCorridorGroups (stampCorridorRepresentativeGeometry →
 //                 matchCorridorEndpointJoins → buildCorridorComponents →
-//                 per component: curve + unifiedCorridorShiftAxis, then
+//                 resolveCorridorComponent per component, then
 //                 collapseCorridorRecordAliases → attachCorridorPickBridges →
-//                 dropAliasedGroupEntries
+//                 dropAliasedGroupEntries)
 //   §3 publish    assignDeckRouteSortKeys → publishDeckRouteRecordBundle
 function buildDeckRouteRecords(items) {
   const sig = cachedRouteSignature;
@@ -1011,310 +1384,25 @@ function buildDeckRouteRecords(items) {
   // unchanged. MapLibre owns the pixel translation across view changes.
   const cachedBundle = readDeckRouteRecordCache(sig);
   if (cachedBundle) return cachedBundle;
-  const { overlap, records, expandRecords, groupInfo, drawnLenByTid } =
-    createDeckRouteBuildState(items);
-  // Total drawn ridden meters per train — the primary input of the painter's
-  // order assigned after the build (see the line-sort-key pass below). Run
-  // lengths can't serve: on a shared corridor every member's run has
-  // IDENTICAL geometry, so they tie exactly where the order matters.
+  const build = createDeckRouteBuildState(items);
+  const { records, expandRecords, groupInfo, drawnLenByTid } = build;
+  // §1 also totals the drawn ridden meters per train — the primary input of
+  // the painter's order assigned after the build (see the line-sort-key pass
+  // below). Run lengths can't serve: on a shared corridor every member's run
+  // has IDENTICAL geometry, so they tie exactly where the order matters.
   items.forEach((item) => {
-    const train = item.train;
-    const feature = item.feature;
-    const tid = train && train.id;
-    const ridden =
-      feature.properties && feature.properties.ride_segment === true;
-    if (ridden && !riddenFeatureVisible(feature)) return; // category toggled off
-    const rgb = hexToRgb(
-      train.style && train.style.color
-        ? train.style.color
-        : DEFAULT_TRAIN_COLOR,
-    );
-    const scopeFlags = routeRecordScopeFlags(train);
-    // Which calendar day THIS piece of the itinerary runs on. Identical to the
-    // train's own date unless the train crosses midnight, in which case the
-    // stretch past the day break carries the next date and draws dashed while
-    // the neighbouring day is selected (see RailMap.setDateScope).
-    const daySpan = getTrainDaySpan(train);
-    const edate = segmentDateForTrain(
-      daySpan,
-      Number(feature.properties?.segment_index ?? 0),
-    );
-    const { opacity, width } = routeSegmentStyleValues(
-      train,
-      ridden,
-      scopeFlags,
-    );
-    if (opacity <= 0) return; // hidden trains contribute nothing to the GPU buffer
-    // Off-date trains still DRAW (dimmed) while a day is active, but they are
-    // not interactive: no hover, no tooltip, no click-select, no fan lanes.
-    const noPick = scopeFlags.dimmed === true;
-    const alpha = Math.round(Math.max(0, Math.min(1, opacity)) * 255);
-    const color = [rgb[0], rgb[1], rgb[2], alpha];
-    getRouteLinePairs(feature).forEach(({ orig, keepIdx, segKeys }) => {
-      if (!orig || orig.length < 2) return;
-      const nSeg = orig.length - 1;
-      const { segIds, segSlot, segMult, segBridged, lineHasOverlap } =
-        assignSegmentOverlapLanes(overlap, orig, segKeys, tid, noPick);
-      if (lineHasOverlap) _deckHasOverlaps = true;
-      const runs = maximalOverlapRuns(segIds, nSeg);
-      const { drawn, posOf, drawnLen } = buildDrawnVertexSubset(
-        orig,
-        keepIdx,
-        runs,
-        nSeg,
-      );
-      drawnLenByTid.set(tid, (drawnLenByTid.get(tid) || 0) + drawnLen);
-
-      // ── base + pick records, one per run ──
-      // The visible line stays on its TRUE track at full width (no permanent
-      // fan-out). The invisible PICK target is translated into per-train
-      // lanes; hovering an overlapped run temporarily shows every member
-      // train's COMPLETE course rigidly translated into those lanes
-      // (railmap.js + the expand record below). groupKey identifies the
-      // shared run: its smallest ORIGINAL segment key is identical for every
-      // train sharing it, whichever way each train traverses the track and
-      // however each geometry was simplified.
-      runs.forEach(({ a: ra, b: rb }) => {
-        const ka = posOf.get(ra);
-        const kb = posOf.get(rb);
-        const runLine = drawn.slice(ka, kb + 1);
-        if (runLine.length < 2) return;
-        const ids = segIds[ra];
-        const n = ids ? ids.size : 1;
-        const mult = segMult[ra];
-        let groupKey = "";
-        if (n > 1)
-          groupKey = canonicalRunGroupKey(overlap, segKeys, segBridged, ra, rb);
-        // One shift vector + lane multipliers per GROUP: the whole fan
-        // translates along ONE consistent axis no matter where on the run the
-        // pointer hovers or how the track curves in between.
-        let gi = null;
-        if (n > 1) {
-          gi = groupInfo.get(groupKey);
-          if (!gi) {
-            const { latRef, coslatRef, dx, dy, len } = corridorRunShiftAxis(
-              overlap,
-              orig,
-              segKeys,
-              ra,
-              rb,
-            );
-            const mults = {};
-            ids.forEach((id) => {
-              mults[id] = overlap.slotFor(ids, id) - (ids.size - 1) / 2;
-            });
-            gi = {
-              sx: dy / len / coslatRef, // right-hand perpendicular of chord
-              sy: -dx / len,
-              mults,
-              // Run endpoints, geometry + reference latitude, kept for the
-              // corridor stitching pass below (which builds the smoothed
-              // corridor curve and the fallback unified vector).
-              _pa: orig[ra],
-              _pb: orig[rb],
-              _line: runLine,
-              _lines: [runLine],
-              _latRef: latRef,
-              _nearParallel: overlap.nearGroupInfo(groupKey),
-            };
-            groupInfo.set(groupKey, gi);
-          } else mergeRunLineIntoGroup(gi, runLine);
-        }
-        // The run is cut once more, where the railway under it changes lane.
-        //
-        // Deliberately NOT a run boundary: `runs` are keyed on overlap
-        // MEMBERSHIP and every train sharing a corridor has to derive the
-        // identical set of them, or two members of one fan end up with
-        // different groupKeys and the fan splits in two. Lanes belong to the
-        // RAILWAY, not to the sharing set, so two trains on two different
-        // parallel lines change lane at different places — which is exactly
-        // why this cut happens here, after groupKey and the shift axis are
-        // settled, and touches nothing but the drawn and picked geometry.
-        const base = {
-          shiftX: gi ? gi.sx : 0,
-          shiftY: gi ? gi.sy : 0,
-          laneMult: mult,
-          color,
-          width,
-          train,
-          feature,
-          pickWidth: n > 1 ? Math.max(spacingPx, 6) : Math.max(width + 4, 10),
-          overlapCount: n,
-          overlapSlot: segSlot[ra],
-          groupKey,
-          nopick: noPick,
-          tdate: getTrainDate(train),
-          edate,
-          dspan: daySpan.key,
-        };
-        records.push({ ...base, path: runLine, lane: 0 });
-      });
-
-      // ── one expand record for the whole line (true-track geometry) ──
-      // Every line of every train gets one, so a hovered group can translate
-      // each member train's COMPLETE course intact — including sections that
-      // overlap nothing.
-      expandRecords.push({ path: drawn, color, width, train });
+    const style = deckRouteItemDrawStyle(item);
+    if (!style) return;
+    getRouteLinePairs(item.feature).forEach((pair) => {
+      appendDeckRouteLineRecords(build, style, pair, spacingPx);
     });
   });
 
-  // ── one shift axis per contiguous CORRIDOR ──
-  // A single visual overlap corridor is usually split into many runs (the
-  // source geometry is chopped into per-feature LineStrings), so each run
-  // got its own chord above and the fan direction changed as the pointer
-  // moved between runs. Stitch together groups whose member-train sets are
-  // identical and whose runs touch end-to-end, then give the whole chain ONE
-  // shift vector: the perpendicular of the straight line joining the
-  // corridor's overall start and end points. Hovering anywhere along the
-  // corridor now fans along the same axis.
-  let pendingDeferredFit = null;
-  if (groupInfo.size > 0) {
-    // Deferred fitting: with a usable Worker the expensive B-spline solves +
-    // the station-join pass run OFF the main thread (app-fit-worker.js via
-    // scheduleFitCurveWorker). Records render immediately with the static
-    // per-group axis; curves attach to these same gi objects when the worker
-    // replies — hover reads gi.curve per event, so nothing rebuilds except
-    // the fitted-curve debug overlay/diagnostics. Without a Worker (precompute
-    // VM, tests, worker boot failure) everything below runs inline exactly as
-    // before. Known trade-off of the deferred path: a multi-run corridor
-    // whose UNIFIED chain fit fails hard constraints keeps a null curve
-    // (static-axis hover) instead of re-splitting into per-run curves — the
-    // aliases are already collapsed by the time the worker answers. No real
-    // dataset currently hits that branch.
-    const deferFit = fitCurveWorkerUsable();
-    const fitJobs = deferFit ? [] : null;
-    const queueFitJob = (key, line, nearParallel) => {
-      fitJobs.push({ key, line, nearParallel: Boolean(nearParallel) });
-    };
-    stampCorridorRepresentativeGeometry(groupInfo);
-    const joins = matchCorridorEndpointJoins(groupInfo);
-    const comps = buildCorridorComponents(groupInfo, joins);
-    const corridorAliases = new Map();
-    const corridorMasters = new Set();
-    comps.forEach((c) => {
-      const componentJoins = joins.filter(
-        (j) => c.keySet.has(j.a.key) && c.keySet.has(j.b.key),
-      );
-      const usePerRunCurves = () => {
-        c.keys.forEach((k) => {
-          const g = groupInfo.get(k);
-          corridorAliases.set(k, k);
-          corridorMasters.add(k);
-          g._corridorJoins = [];
-          g._curveEndpointNodeKeys = [
-            overlapNodeKey(g._line[0]),
-            overlapNodeKey(g._line[g._line.length - 1]),
-          ];
-          if (deferFit) {
-            g.curve = null;
-            queueFitJob(k, g._line);
-          } else g.curve = smoothStandaloneCorridorRun(g._line, false);
-        });
-      };
-      const lone = c.keys.length === 1 ? groupInfo.get(c.keys[0]) : null;
-      const isClosed =
-        (c.keys.length > 1 && componentJoins.length === c.keys.length) ||
-        (lone &&
-          lone._line &&
-          lone._line.length > 3 &&
-          distanceMeters(lone._pa, lone._pb) <= OVERLAP_SNAP_METERS);
-      if (isClosed) {
-        // An open B-spline would insert an arbitrary seam into this cycle.
-        // A multi-run cycle can keep its open member runs independently. A
-        // single self-closing run has no safe seam at all, so use only its
-        // static group vector until a periodic solver is available.
-        if (lone) {
-          const key = c.keys[0];
-          corridorAliases.set(key, key);
-          corridorMasters.add(key);
-          lone._corridorJoins = [];
-          lone.curve = smoothStandaloneCorridorRun(lone._line, true);
-        } else usePerRunCurves();
-        return;
-      }
-      // Smoothed corridor centerline: chain the member runs end-to-end and
-      // normalize into a very smooth curve. railmap.js derives the fan's
-      // shift direction from this curve's LOCAL perpendicular under the
-      // pointer, so the direction turns smoothly as the pointer moves.
-      const chain = buildCorridorChain(c, groupInfo, joins);
-      if (!chain && c.keys.length > 1) {
-        // No continuable chain could be assembled at all — a sync-time fact,
-        // so both fit modes keep independently fitted per-run curves.
-        usePerRunCurves();
-        return;
-      }
-      const curve = !deferFit && chain ? smoothCorridorCurve(chain) : null;
-      const canonicalKey = c.keys.slice().sort()[0];
-      const master = groupInfo.get(canonicalKey);
-      if (chain)
-        master._curveEndpointNodeKeys = [
-          overlapNodeKey(chain[0]),
-          overlapNodeKey(chain[chain.length - 1]),
-        ];
-      const nearInfos = c.keys
-        .map((k) => groupInfo.get(k)._nearParallel)
-        .filter(Boolean);
-      if (curve) curve.nearParallel = nearInfos.length > 0;
-      if (nearInfos.length) {
-        master._nearParallel = {
-          pairCount: Math.max(...nearInfos.map((info) => info.pairCount || 0)),
-          maxSeparationMeters: Math.max(
-            ...nearInfos.map((info) => info.maxSeparationMeters || 0),
-          ),
-          thresholdMeters: Math.max(
-            ...nearInfos.map((info) => info.thresholdMeters || 0),
-          ),
-        };
-      }
-      if (!deferFit && !curve && c.keys.length > 1) {
-        // The unified candidate failed at least one final hard constraint.
-        // Preserve independently validated runs instead of publishing a
-        // geometrically invalid shared direction field.
-        usePerRunCurves();
-        return;
-      }
-      corridorMasters.add(canonicalKey);
-      c.keys.forEach((k) => corridorAliases.set(k, canonicalKey));
-      master._corridorJoins = componentJoins.filter((j) => j.metres > 0.05);
-      if (curve)
-        c.keys.forEach((k) => {
-          groupInfo.get(k).curve = curve;
-        });
-      else if (deferFit && chain)
-        queueFitJob(canonicalKey, chain, nearInfos.length > 0);
-      if (c.keys.length < 2) return; // lone run keeps its own chord
-      const axis = unifiedCorridorShiftAxis(c);
-      if (!axis) return;
-      c.keys.forEach((k) => {
-        const g = groupInfo.get(k);
-        g.sx = axis.sx;
-        g.sy = axis.sy;
-      });
-    });
-    const representative = collapseCorridorRecordAliases(
-      records,
-      groupInfo,
-      corridorAliases,
-    );
-    attachCorridorPickBridges(
-      groupInfo,
-      corridorMasters,
-      representative,
-      spacingPx,
-    );
-    dropAliasedGroupEntries(groupInfo, corridorAliases);
-    // Membership changes at stations create separate corridor curves. Round
-    // their shared endpoints only after aliases collapse, so each physical
-    // curve is edited once and both sides receive the exact same tangent.
-    // Deferred mode ships that pass to the worker together with the solve
-    // jobs (runFitCurveJobs replays it on a minimal groupInfo mirror).
-    if (deferFit)
-      pendingDeferredFit = {
-        jobs: fitJobs,
-        joinGroups: corridorStationJoinGroups(groupInfo),
-      };
-    else smoothCurveStationJoins(groupInfo);
-  }
+  const pendingDeferredFit = stitchCorridorGroups(
+    records,
+    groupInfo,
+    spacingPx,
+  );
 
   // ── static painter's order (line-sort-key, higher = on top) ──
   // The sort key overrides feature order inside the route layers, so the

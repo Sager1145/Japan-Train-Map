@@ -122,8 +122,8 @@ Minimal valid train (the browser solves the route from these fields):
       "origin": "東京",
       "destination": "伊豆急下田",
       "stops": [
-        { "name": "東京", "stop_type": "origin", "departure": "09:00", "ride_segment": true },
-        { "name": "伊豆急下田", "stop_type": "destination", "arrival": "11:40", "ride_segment": true }
+        { "name": "東京", "platform_number": null, "stop_type": "origin", "departure": "09:00", "ride_segment": true },
+        { "name": "伊豆急下田", "platform_number": null, "stop_type": "destination", "arrival": "11:40", "ride_segment": true }
       ]
     }
   ]
@@ -138,6 +138,9 @@ Minimal valid train (the browser solves the route from these fields):
 > **`ride_segment` 很重要：**缺省为 `false`，而非乘坐区间会被**完全隐藏**
 > （见 jsonspec §7.1/§8.3）——全部省略该字段的列车能导入成功，但地图上
 > **什么都不会画**。请为实际乘坐的每个停站写 `"ride_segment": true`。
+>
+> **`platform_number`：**只允许 `null`、`0` 或正整数。找不到可信的班次站台信息时写
+> `null`；不要从 N02 / OSM 的站台几何推断，界面也不会显示空值。
 
 ---
 

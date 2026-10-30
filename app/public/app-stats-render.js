@@ -351,9 +351,190 @@ function serviceRowsHtml(services) {
           <span class="stat-val"><span class="stat-km">${formatStatKm(g.km)} km · ${escapeHtml(formatStatDuration(g.minutes))} · ${escapeHtml(I18N.t("stat.trains", { n: g.count }))}</span></span>
         </div>
       </div>`;
-  return (
-    row("stat.hsr", services.hsr) +
-    row("stat.ltdexp", services.ltd) +
-    row("stat.othertrains", services.other)
+  const LABELS = {
+    hsr: "stat.hsr",
+    ltd: "stat.ltdexp",
+    other: "stat.othertrains",
+  };
+  return activeServiceRows()
+    .map((key) => row(LABELS[key], services[key]))
+    .join("");
+}
+
+// =========================================================================
+//  §5.3 Passport: Scope, Coverage Map and Journey Log
+//
+//  Passport is the recollection surface, so it answers "how much have I
+//  ridden, and where" — the same question the statistics block already
+//  answers in numbers, plus the two things numbers cannot show: which rails
+//  the ride actually covered, and which journeys those numbers are made of.
+//
+//  Nothing here computes a statistic. The scope control owns §5.3.1's own
+//  date, the coverage map is the map already on screen, and the log reads the
+//  store.
+// =========================================================================
+
+// The scope this Passport is reporting on, and the way to change it.
+//
+// §5.3.1: "Passport 的日期 Scope 独立于 Journeys 筛选，切换后不扰动旅程列表".
+// It reads and writes `passportScopeDate` and nothing else — the journeys date
+// bar, the list, the map filter and the editor are all untouched by it.
+//
+// This is not the second filter source §5.1 forbids. That rule is about the
+// journeys list and the map agreeing on one day; this is a different
+// destination asking a different question, and the two were only ever one
+// value because Passport started as a card inside the journeys panel.
+//
+// Chips rather than a select: it is the same control the date bar uses for the
+// same kind of value, and §5.3.1 draws it that way.
+function renderPassportScope() {
+  const host = document.getElementById("passport-scope");
+  if (!host) return;
+  const dates = getAvailableDates(trainStore.trains);
+  // A day can stop existing under the reader — a delete, an import, a country
+  // switch. Reporting on a day with nothing in it is a statistic that reads as
+  // "you rode nothing", which is a different claim from "that day is gone".
+  if (passportScopeDate !== ALL_DATES && !dates.includes(passportScopeDate))
+    passportScopeDate = ALL_DATES;
+
+  const countByDate = new Map();
+  for (const train of trainStore.trains) {
+    const date = getTrainDate(train);
+    countByDate.set(date, (countByDate.get(date) || 0) + 1);
+  }
+  const chip = (date, label, count) => `
+      <button
+        class="date-btn${date === passportScopeDate ? " active" : ""}"
+        type="button"
+        data-passport-scope="${escapeHtml(date)}"
+        ${date === passportScopeDate ? 'aria-current="true"' : ""}
+      >${escapeHtml(label)}<span class="date-count">${count}</span></button>`;
+
+  const scope =
+    passportScopeDate === ALL_DATES
+      ? I18N.t("date.all")
+      : dateLabel(passportScopeDate);
+  host.innerHTML = `
+    <div class="passport-scope-row">
+      <span class="passport-scope-label">${escapeHtml(I18N.t("passport.scope"))}</span>
+      <strong class="passport-scope-value">${escapeHtml(scope)}</strong>
+    </div>
+    <div class="date-bar passport-scope-dates" role="group" aria-label="${escapeHtml(I18N.t("passport.scope"))}">
+      ${chip(ALL_DATES, I18N.t("date.all"), trainStore.trains.length)}
+      ${dates
+        .map((date) => chip(date, dateLabel(date), countByDate.get(date) || 0))
+        .join("")}
+    </div>`;
+}
+
+// Change §5.3.1's scope. Passport-only by construction: the statistics job and
+// the log are the only things that read `passportScopeDate`, so there is
+// nothing here to disturb the journeys list with.
+function setPassportScopeDate(date) {
+  const next = date === ALL_DATES || date ? date : ALL_DATES;
+  if (next === passportScopeDate) return;
+  passportScopeDate = next;
+  persistUiDateState();
+  renderPassportJourneyLog();
+  scheduleMileageStats();
+  // §4.3: the docked strip names the span Passport is reporting on, so it is
+  // one of the things this scope owns.
+  if (typeof renderPanelDockedSummary === "function") renderPanelDockedSummary();
+}
+
+// §5.3.2. The coverage map IS the map behind the panel — drawing a second one
+// would be a second WebGL context over the same data, and would answer the
+// question in a 280-pixel box the first one answers full-screen. So this is
+// the note that says so and the control that frames it.
+function renderPassportCoverageNote() {
+  const host = document.getElementById("passport-coverage-map");
+  if (!host) return;
+  host.innerHTML = `
+    <div class="passport-coverage-note">
+      <span class="passport-coverage-title">${escapeHtml(I18N.t("passport.coverage"))}</span>
+      <p class="hint">${escapeHtml(I18N.t("passport.coverageHint"))}</p>
+    </div>`;
+}
+
+// §5.3.4 Journey Log — the journeys in scope, by date.
+//
+// Selecting one is the SAME selection the journeys list makes: one record id,
+// one highlighted route, one editor. §5.1 requires it ("搜索结果与地图选择使用
+// 同一记录 ID"), and it is why this opens the existing Journey Detail rather
+// than a Passport-only copy of it.
+function renderPassportJourneyLog() {
+  const host = document.getElementById("passport-journey-log");
+  if (!host) return;
+  renderPassportScope();
+  renderPassportCoverageNote();
+
+  const inScope = trainStore.trains.filter(
+    (train) =>
+      passportScopeDate === ALL_DATES ||
+      getTrainDate(train) === passportScopeDate,
   );
+  if (!inScope.length) {
+    host.innerHTML = `<div class="list-empty">${escapeHtml(I18N.t("passport.logEmpty"))}</div>`;
+    return;
+  }
+
+  // Grouped by date, in store order within a date — the order the reader
+  // entered them, which for one day IS the order they were travelled.
+  const byDate = new Map();
+  for (const train of inScope) {
+    const date = getTrainDate(train) || "";
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(train);
+  }
+
+  const sections = [...byDate.entries()].map(([date, trains]) => {
+    const rows = trains
+      .map((train) => {
+        const name = escapeHtml(listPrimaryName(train.number || train.id));
+        const route = escapeHtml(
+          [train.origin, train.destination]
+            .filter(Boolean)
+            .map(listPrimaryName)
+            .join(" → "),
+        );
+        const selected = train.id === selectedTrainId ? " selected" : "";
+        return `
+        <button
+          class="passport-log-row${selected}"
+          type="button"
+          data-passport-train-id="${escapeHtml(train.id)}"
+          ${train.id === selectedTrainId ? 'aria-current="true"' : ""}
+        >
+          <span class="passport-log-name">${name}</span>
+          <span class="passport-log-route">${route}</span>
+        </button>`;
+      })
+      .join("");
+    return `
+      <section class="passport-log-day">
+        <h4 class="passport-log-date">${escapeHtml(dateLabel(date))}</h4>
+        ${rows}
+      </section>`;
+  });
+  host.innerHTML = sections.join("");
+  updatePassportLogHighlight();
+}
+
+// Move the log's highlight without rebuilding it.
+//
+// A selection change must not cost a 201-row innerHTML rewrite, and — more
+// importantly — it must not be the LAST thing a caller does. `selectTrain`
+// redraws the map on its way through, and a MapLibre style that is not ready
+// throws from there; anything queued after that call never runs. So the
+// highlight rides with `updateSelectionHighlight`, which is the function whose
+// whole job is reflecting the current selection in the lists.
+function updatePassportLogHighlight() {
+  const host = document.getElementById("passport-journey-log");
+  if (!host) return;
+  for (const row of host.querySelectorAll("[data-passport-train-id]")) {
+    const isSelected = row.dataset.passportTrainId === selectedTrainId;
+    row.classList.toggle("selected", isSelected);
+    if (isSelected) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+  }
 }

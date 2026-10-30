@@ -191,8 +191,8 @@ function applyJapanMapConstraints() {
   map.setMinZoom(minZoom);
   if (map.getZoom() < minZoom) map.setZoom(minZoom);
   // Nothing about the railway's WEIGHT is anchored here any more. Its widths,
-  // its lane offsets, its station stubs and its recorded-call dots all ride
-  // one ramp keyed to the map's SCALE — how much ground a pixel is worth —
+  // its station dots and its recorded-call dots all ride one ramp keyed to the
+  // map's SCALE — how much ground a pixel is worth —
   // which is a pure function of zoom, so it needs no re-anchoring when the
   // territory or the viewport moves this limit (see the screen-space weight
   // contract at the top of railmap-style.js).

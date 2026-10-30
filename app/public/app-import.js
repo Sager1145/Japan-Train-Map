@@ -473,7 +473,14 @@ const sampleManifestLoaders = Object.fromEntries(
   ]),
 );
 function loadSampleManifest() {
-  return (sampleManifestLoaders[activeCountry] || sampleManifestLoaders.jp)();
+  // A country with no sample dataset answers NOTHING, not Japan's. Falling
+  // back to `jp` was safe while every supported country had a dataset; with
+  // the two North American packages it would do the one thing this whole
+  // per-country split exists to prevent — show a reader who switched to the
+  // United States two hundred Japanese journeys, and offer to load them into
+  // a store keyed to a country they are not in.
+  const loader = sampleManifestLoaders[activeCountry];
+  return loader ? loader() : Promise.resolve(null);
 }
 
 // The manifest's per-day index, defensively filtered to non-empty name lists.

@@ -544,18 +544,21 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 
 ### 7.1 Stop 字段
 
-导入时每个 stop **只强制要求 `name`**；其余字段缺省时按下表默认值补全。规范化 / 导出后每个 stop 都包含全部 6 个字段（即字段结构完整；站序完整规则见第 12 节）。stop 出现 6 个字段以外的键会导致导入失败。
+导入时每个 stop **只强制要求 `name`**；其余字段缺省时按下表默认值补全。规范化 / 导出后每个 stop 都包含全部 7 个字段（即字段结构完整；站序完整规则见第 12 节）。stop 出现 7 个字段以外的键会导致导入失败。
 
 | 字段                 | 类型          | 导入必填 | 缺省默认值              | 说明                        |
 | ------------------ | ----------- | -: | ------------------ | ------------------------- |
 | `name`             | string      |  是 | —                  | 站名                        |
 | `n02_station_code` | string/null |  否 | `null`             | 官方站点代码：日本 `N02_005c` / 台湾 TDX `StationUID`（历史兼容键名，见 2.3） |
+| `platform_number`  | integer/null | 否 | `null`             | 乘车站台编号；只允许 `0` 或正整数，未知时写 `null`，UI 不显示空值 |
 | `arrival`          | string/null |  否 | `null`             | 到达时间，格式见第 10 节，可为 `null`  |
 | `departure`        | string/null |  否 | `null`             | 出发时间，格式见第 10 节，可为 `null`  |
 | `stop_type`        | string      |  否 | `"passenger_stop"` | 站点类型（见 7.2）               |
 | `ride_segment`     | boolean     |  否 | `false`            | 该站是否处于实际乘坐状态（导出时强制布尔）     |
 
-> 校验（`validateTrain`）对已规范化的 store 更严格：`ride_segment` 必须是 boolean，`arrival`/`departure` 必须是字符串或 `null`，`name` 与 `stop_type` 必须非空。内部编辑时会临时写入 `n02_group_code`，但它**不在** stop 的导出/导入字段内，导出时被丢弃。
+> 校验（`validateTrain`）对已规范化的 store 更严格：`ride_segment` 必须是 boolean，`arrival`/`departure` 必须是字符串或 `null`，`platform_number` 必须是 `null`、`0` 或正整数，`name` 与 `stop_type` 必须非空。内部编辑时会临时写入 `n02_group_code`，但它**不在** stop 的导出/导入字段内，导出时被丢弃。
+>
+> `platform_number` 只能来自已核实、面向具体班次的时刻表或乘车记录。N02 / OSM / rail package 中名为 platform 的站台几何、锚点或分组不是乘车站台编号，**不得推断后写入**；没有可信值时使用 `null`。
 
 ### 7.2 stop_type 允许值
 
@@ -578,6 +581,7 @@ N02 铁路网在很多车站会分叉（一条本线上挂着支线、绕行线�
 {
   "name": "品川",
   "n02_station_code": "004095",
+  "platform_number": 2,
   "arrival": "12:08",
   "departure": "12:09",
   "stop_type": "passenger_stop",
@@ -1000,13 +1004,14 @@ null
 ```text
 name
 n02_station_code
+platform_number
 arrival
 departure
 stop_type
 ride_segment
 ```
 
-“完整 stop”有两层含义：每个已写入站点都具有上述 6 个字段；并且实际乘坐区间内
+“完整 stop”有两层含义：每个已写入站点都具有上述 7 个字段；并且实际乘坐区间内
 列车物理经过的站点必须按顺序完整列出，停车站写相应停靠类型，不停车站写
 `pass_through`。它不表示保存该列车在乘坐范围外的完整运行全程。特急、新干线、
 台湾直达车也只导出实际乘坐区间内的停靠站与通过站，详见 §8.5～§8.6。
@@ -1282,6 +1287,7 @@ arrival 是字符串或 null
 departure 是字符串或 null
 n02_station_code 允许 null
 n02_station_code 非 null 时须为六位 N02_005c 或 TDX StationUID（见 2.3）
+platform_number 允许 null；非 null 时必须为 0 或正整数（负数、小数、字符串均拒绝）
 ```
 
 （导入阶段更宽松：只要求 `name` 存在，其余按 7.1 补默认值。）
@@ -2340,6 +2346,10 @@ N02_005g 不能覆盖不同名称但现实可换乘的站。
 | `N02_004`      | 匹配 hint                    | 运营公司           |
 | `N02_001`      | 匹配 filter                  | 铁道区分           |
 | `N02_002`      | 匹配 filter                  | 事业者种别          |
+
+`platform_number` **没有 N02 映射**。N02、OSM 及 rail package 中的 platform
+要素描述站台位置、形状或分组，不提供某一班次的乘车站台编号。该字段只能来自已核实的班次
+时刻表或乘车记录；没有该来源时必须为 `null`。
 
 > 站名的假名 / 罗马字**不进入** Stop 字段；另见 13.4 的 `station-readings.json`（前端 `placeName` 按 `n02_station_code` 查表，站名兜底）。
 

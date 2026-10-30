@@ -76,6 +76,13 @@
     "農": "农", "臺": "台",
     // Taiwan's coverage categories (輕軌 …).
     "輕": "轻", "軌": "轨",
+    // The North America panels and coverage categories (聯邦鐵路管理局,
+    // 各營運機構, OpenStreetMap 貢獻者, 公有領域; 單軌・纜索・觀光鐵道; 兩國的
+    // 路網). These eight are every Traditional-only glyph the us / ca copy
+    // introduces — verified against the catalog, so nothing outside the two
+    // North American countries' strings changes shape by their arrival.
+    "纜": "缆", "觀": "观", "聯": "联", "構": "构", "貢": "贡",
+    "獻": "献", "領": "领", "兩": "两",
   };
 
   const HANS_PHRASE_MAP = {
@@ -233,7 +240,16 @@
   let STATION_READINGS_COUNTRY = "JP";
   // Countries whose readings table localizes the base station NAME itself
   // (rather than annotating a Japanese name with kana/romaji sublines).
-  const LOCALIZED_NAME_COUNTRIES = new Set(["TW", "HK", "MO", "KR"]);
+  // US and CA belong here on the evidence of their own tables: station-readings
+  // -us.json / -ca.json carry {name, zh_Hant, zh_Hans, ja, en} rows, the same
+  // shape Taiwan's does, and NO kana or romaji field. Left out of this set they
+  // were read as Japanese pronunciation annotations instead — which sent every
+  // American station name through the KANA / NAMES dictionaries looking for a
+  // reading it could not have, and bypassed the rule the packages' own
+  // sources.md states: the Chinese and Japanese columns are deliberately empty
+  // where the operator publishes no such name, and the interface then falls
+  // back to the official one (stationName's `|| name`).
+  const LOCALIZED_NAME_COUNTRIES = new Set(["TW", "HK", "MO", "KR", "US", "CA"]);
   // One station-name key rule for the whole system, owned by AppCore (the
   // station-resolution index and the build scripts use the same function).
   // app-core.js loads before this file — same load-order contract as
@@ -365,7 +381,9 @@
   // the country in via I18N.setCountry (i18n.js loads before app-config.js).
   let uiCountry = "jp";
   function setCountry(country) {
-    uiCountry = ["jp", "tw", "hk", "mo", "kr"].includes(country) ? country : "jp";
+    uiCountry = ["jp", "tw", "hk", "mo", "kr", "us", "ca"].includes(country)
+      ? country
+      : "jp";
   }
   function countryVariantKey(key) {
     if (uiCountry === "jp") return key;

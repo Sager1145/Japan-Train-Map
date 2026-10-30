@@ -22,6 +22,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
+// The census grades the same geometry the topology audit does, so it measures
+// it with the audit's own primitives rather than a second copy of them. They
+// were a copy until 2026-08-25, character for character — 0 bit differences
+// over 435,238 real package coordinates. Still re-exported: nothing in the
+// repo imports them off this module today, but they were part of its surface
+// and dropping that is a separate decision from removing the duplication.
+import {
+  distanceMeters,
+  turnDegrees,
+} from "../railway/lib/railway-topology.mjs";
+
+export { distanceMeters, turnDegrees };
+
 const require = createRequire(import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(HERE, "../..");
@@ -36,37 +49,6 @@ const BANDS = [
   ["b30_45", 30, 45],
   ["b20_30", 20, 30],
 ];
-
-function localMetric(point, latitude) {
-  const radians = (latitude * Math.PI) / 180;
-  return [point[0] * 111320 * Math.cos(radians), point[1] * 111320];
-}
-
-export function distanceMeters(left, right) {
-  const latitude = (left[1] + right[1]) / 2;
-  const a = localMetric(left, latitude);
-  const b = localMetric(right, latitude);
-  return Math.hypot(a[0] - b[0], a[1] - b[1]);
-}
-
-export function turnDegrees(previous, corner, following) {
-  const latitude = corner[1];
-  const a = localMetric(previous, latitude);
-  const b = localMetric(corner, latitude);
-  const c = localMetric(following, latitude);
-  const incoming = [b[0] - a[0], b[1] - a[1]];
-  const outgoing = [c[0] - b[0], c[1] - b[1]];
-  const denominator = Math.hypot(...incoming) * Math.hypot(...outgoing);
-  if (!denominator) return 0;
-  const cosine = Math.max(
-    -1,
-    Math.min(
-      1,
-      (incoming[0] * outgoing[0] + incoming[1] * outgoing[1]) / denominator,
-    ),
-  );
-  return (Math.acos(cosine) * 180) / Math.PI;
-}
 
 export function loadCountry(country) {
   const pkg = JSON.parse(

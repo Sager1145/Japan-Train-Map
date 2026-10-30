@@ -91,16 +91,19 @@ async function loadAppData() {
   // blocking parse left in the render path. DOWNLOAD it as text in parallel with
   // the small datasets, then parse it in yielding chunks (same path as
   // rail-sections) so it interleaves with paint/input instead of freezing.
-  const stationsTextReady = fetchText(stationsApiForCountry(activeCountry));
+  const stationsTextReady = Promise.all(
+    stationsApisForCountry(activeCountry).map((resource) => fetchText(resource)),
+  );
   const [defaultStore, matchedRoutes, matchedStops] = await Promise.all([
     fetchJson("default-trains"),
     fetchJson("matched-routes"),
     fetchJson("matched-stops"),
   ]);
   AppDatasets.installSeedData({ defaultStore, matchedRoutes, matchedStops });
-  AppDatasets.installStations(
-    await parseFeatureCollectionChunked(await stationsTextReady),
-  );
+  const stationCollections = [];
+  for (const text of await stationsTextReady)
+    stationCollections.push(await parseFeatureCollectionChunked(text));
+  AppDatasets.installStations(mergeFeatureCollections(stationCollections));
 
   // Build the two station-resolution indexes in ~12 ms slices so this no
   // longer lands as one long synchronous task at the tail of boot Block 1
@@ -148,11 +151,13 @@ async function reloadSolverDatasetsForCountrySwitch() {
       err,
     ),
   );
-  AppDatasets.installStations(
-    await parseFeatureCollectionChunked(
-      await fetchText(stationsApiForCountry(activeCountry)),
-    ),
+  const stationTexts = await Promise.all(
+    stationsApisForCountry(activeCountry).map((resource) => fetchText(resource)),
   );
+  const stationCollections = [];
+  for (const text of stationTexts)
+    stationCollections.push(await parseFeatureCollectionChunked(text));
+  AppDatasets.installStations(mergeFeatureCollections(stationCollections));
   await buildStationIndexesSliced(stationsGeoJson);
 }
 
@@ -161,7 +166,16 @@ async function loadActiveCountryStationReadings() {
   const country = activeCountry;
   const generation = ++stationReadingsLoadGeneration;
   try {
-    const data = await fetchJson(stationReadingsApiForCountry(country));
+    const tables = await Promise.all(
+      stationReadingsApisForCountry(country).map((resource) =>
+        fetchJson(resource),
+      ),
+    );
+    const data = {
+      country: country.toUpperCase(),
+      byCode: Object.assign({}, ...tables.map((table) => table.byCode || {})),
+      byName: Object.assign({}, ...tables.map((table) => table.byName || {})),
+    };
     if (
       generation === stationReadingsLoadGeneration &&
       country === activeCountry &&

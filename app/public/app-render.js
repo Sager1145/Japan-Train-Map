@@ -26,6 +26,9 @@ function renderAll({ updateJsonTextarea = true } = {}) {
   updateImportTarget();
   perfMeasure("renderEditor", renderEditor);
   perfMeasure("renderTrainLayers", renderTrainLayers);
+  renderPanelDockedSummary();
+  renderNetworkWorkspace();
+  renderPassportJourneyLog();
   scheduleMileageStats();
   // Serializing the whole store to fill the export textarea is O(store size).
   // Callers in hot loops (progressive import) skip it; everyone else gets a
@@ -155,6 +158,11 @@ function renderProgressiveCounts() {
     els.listTitle.textContent = I18N.t("list.allTitle", {
       count: trainStore.trains.length,
     });
+  // §4.3's docked strip carries the same count. It is rendered from renderAll
+  // too, but boot never reaches renderAll until every route has solved — so
+  // without this the strip reads "0 journeys" for the whole of a cold start
+  // while the list beside it counts up.
+  renderPanelDockedSummary();
 }
 
 // Switch the sidebar date filter. Does NOT reload the basemap or drop any
@@ -169,8 +177,10 @@ function setSelectedDate(date) {
   // A concrete date now always re-scopes the map (dim other dates), and
   // returning to "全部" restores full opacity — so always redraw.
   renderTrainLayers();
-  // The 統計 tab's 當日統計 block follows the active date bucket.
+  // The 統計 tab's 當日統計 block follows the active date bucket, and so does
+  // Passport's Journey Log — the scope changed, so its CONTENT changed.
   scheduleMileageStats();
+  renderPassportJourneyLog();
 }
 
 // Clicking a date button (including "全部") clears any train selection so the
@@ -381,6 +391,188 @@ function updateSelectionHighlight() {
     el.classList.toggle("selected", id === selectedTrainId);
     el.classList.toggle("focused", id === focusedTrainId);
   }
+  renderPanelDockedSummary();
+  // §5.3.4: the Journey Log and the journeys list show ONE selection, so they
+  // are updated by one call rather than by each caller remembering both.
+  updatePassportLogHighlight();
+}
+
+// =========================================================================
+//  §4.3 the Docked strip, §5.1.2's Docked Hero
+//
+//    踊り子 1号                                              [定位]
+//    東京 → 伊豆急下田 · 09:00
+//
+//  One identity and ONE action (§3.1: "同一表面最多出现一个填充强调的主按钮").
+//  With nothing selected it answers the list's own question instead — how many
+//  journeys, over how many days — and offers the action §13.1 assigns to that
+//  state. Neither version invents a number: a distance that has not been
+//  computed is simply not spelled.
+// =========================================================================
+function renderPanelDockedSummary() {
+  if (!els.panelDockedSummary || !els.panelDockedTitle) return;
+  const action = els.panelDockedAction;
+  const workspace =
+    typeof currentPrimaryWorkspace === "function"
+      ? currentPrimaryWorkspace()
+      : "journeys";
+
+  // The strip names what the panel is ABOUT, and that changes with the
+  // destination. Naming the journey list while the reader is looking at
+  // Network would be answering a question nobody asked — and, at Docked,
+  // it is the only thing on screen to answer with.
+  if (workspace !== "journeys") {
+    const title = {
+      network: I18N.t("nav.network"),
+      passport: I18N.t("nav.passport"),
+      "data-manager": I18N.t("nav.dataLibrary"),
+      "display-settings": I18N.t("nav.settings"),
+    }[workspace];
+    els.panelDockedTitle.textContent = title || I18N.t("nav.journeys");
+    els.panelDockedDetail.textContent =
+      workspace === "network"
+        ? I18N.t(`country.${activeCountry}`)
+        : workspace === "passport"
+          ? // §5.3.1's scope, not the journeys date filter. The strip names
+            // what the panel is ABOUT, and what Passport is about is the span
+            // its numbers cover — which stopped being the journeys filter when
+            // the two became separate values.
+            passportScopeDate === ALL_DATES
+            ? I18N.t("date.all")
+            : dateLabel(passportScopeDate)
+          : "";
+    if (action) {
+      // §3.1: one filled action per surface. Outside Journeys the docked
+      // strip is a label, not a place to bury a verb the workspace already
+      // shows in full a few pixels below.
+      action.hidden = true;
+      delete action.dataset.dockedAction;
+    }
+    return;
+  }
+
+  const train = selectedTrainId ? getTrain(selectedTrainId) : null;
+
+  if (train) {
+    els.panelDockedTitle.textContent = listPrimaryName(
+      train.number || train.id,
+    );
+    const route = [train.origin, train.destination]
+      .filter(Boolean)
+      .map(listPrimaryName)
+      .join(" → ");
+    const departure = firstDepartureTime(train);
+    els.panelDockedDetail.textContent = [route, departure]
+      .filter(Boolean)
+      .join(" · ");
+    if (action) {
+      // §3.3: the primary action is decided by the state, and the state here
+      // is "a journey is selected and the map can show it".
+      action.textContent = I18N.t("btn.fit");
+      action.hidden = false;
+      action.dataset.dockedAction = "locate";
+    }
+    return;
+  }
+
+  const total = trainStore.trains.length;
+  const days = countTrainDays();
+  els.panelDockedTitle.textContent =
+    selectedDate === ALL_DATES
+      ? I18N.t("list.allTitle", { count: total })
+      : I18N.t("list.dateTitle", { date: dateLabel(selectedDate) });
+  els.panelDockedDetail.textContent = total
+    ? I18N.t("list.dayCount", { count: days })
+    : "";
+  if (action) {
+    // §13.1: an empty store's one action is "add a journey"; a populated one
+    // offers the same verb the list's own toolbar leads with.
+    action.textContent = I18N.t("btn.addTrain");
+    action.hidden = false;
+    action.dataset.dockedAction = "add";
+  }
+}
+
+// The first departure the record actually states. `undefined` rather than a
+// placeholder when it states none — §5.1 forbids a stand-in number.
+function firstDepartureTime(train) {
+  const stops = Array.isArray(train && train.stops) ? train.stops : [];
+  for (const stop of stops) {
+    if (stop && stop.departure) return stop.departure;
+    if (stop && stop.arrival) return stop.arrival;
+  }
+  return "";
+}
+
+function countTrainDays() {
+  const days = new Set();
+  for (const train of trainStore.trains) {
+    const date = getTrainDate(train);
+    if (date) days.add(date);
+  }
+  return days.size;
+}
+
+// =========================================================================
+//  §5.2 the Network workspace
+//
+//  It reports what the loaded railway package actually contains, and says so
+//  in the three states §8.8 requires it to distinguish: off, arriving, and
+//  could-not-be-fetched. The recorded journeys keep drawing in all three, and
+//  the panel says that rather than leaving a blank map to be interpreted.
+// =========================================================================
+function renderNetworkWorkspace() {
+  if (!els.networkRegionSummary) return;
+  const region = I18N.t(`country.${activeCountry}`);
+  els.networkRegionSummary.textContent = region;
+
+  const visible =
+    typeof isNetworkOverlayVisible === "function"
+      ? isNetworkOverlayVisible()
+      : false;
+  const state =
+    typeof networkOverlayState === "function" ? networkOverlayState() : "off";
+
+  if (els.networkShowAll) {
+    els.networkShowAll.textContent = I18N.t(
+      visible ? "btn.hideNetwork" : "btn.showNetwork",
+    );
+    els.networkShowAll.setAttribute("aria-pressed", visible ? "true" : "false");
+    els.networkShowAll.classList.toggle("active", visible);
+  }
+
+  const statusKey = {
+    off: "network.packageOff",
+    loading: "network.packageLoading",
+    ready: "network.packageReady",
+    failed: "network.packageFailed",
+  }[state];
+  if (els.networkPackageSummary) {
+    els.networkPackageSummary.textContent = I18N.t(statusKey, { region });
+    els.networkPackageSummary.classList.toggle("warn", state === "failed");
+  }
+
+  // Counts only once there is something to count. A "0 lines" reading while a
+  // package is still arriving is an answer, and "not yet known" is not one.
+  const network =
+    typeof RailMap !== "undefined" && RailMap._network ? RailMap._network : null;
+  const lineCount = network ? countOf(network.lineById) : null;
+  const stationCount = network ? countOf(network.stationById) : null;
+  if (els.networkLinesSummary)
+    els.networkLinesSummary.textContent =
+      lineCount === null ? "" : I18N.t("network.lines", { n: lineCount });
+  if (els.networkStationsSummary)
+    els.networkStationsSummary.textContent =
+      stationCount === null
+        ? ""
+        : I18N.t("network.stations", { n: stationCount });
+}
+
+// Map or plain object — the network decoder has used both spellings.
+function countOf(collection) {
+  if (!collection) return 0;
+  if (typeof collection.size === "number") return collection.size;
+  return Object.keys(collection).length;
 }
 
 // Select + focus a train with the minimum work needed: update the list
@@ -402,6 +594,7 @@ function selectTrain(id, { fit = false } = {}) {
     persistUiDateState();
     renderDateButtons();
     renderTrainList();
+    renderPassportJourneyLog();
     updateImportTarget();
   }
   updateSelectionHighlight();

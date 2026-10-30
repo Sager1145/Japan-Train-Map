@@ -125,6 +125,13 @@ test("importable sample is the complete canonical train store", async () => {
       assert.ok(stop.name.length > 0);
       assert.equal(typeof stop.n02_station_code, "string");
       assert.ok(stop.n02_station_code.length > 0);
+      // Bundled 1.3 archives predate this nullable field; the import path
+      // canonicalises an absent value to null.
+      const platformNumber = stop.platform_number ?? null;
+      assert.ok(
+        platformNumber === null ||
+          (Number.isInteger(platformNumber) && platformNumber >= 0),
+      );
       assert.ok(STOP_TYPES.has(stop.stop_type));
       assert.equal(typeof stop.ride_segment, "boolean");
       assert.ok(stop.arrival === null || typeof stop.arrival === "string");

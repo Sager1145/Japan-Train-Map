@@ -51,6 +51,12 @@ function loadNetwork(country) {
 }
 
 const auditPromise = import("../scripts/validation/validate-station-render-anchoring.mjs");
+// The audit this suite grades imports its geometry primitives from here, so
+// the suite measures with the same ones rather than a second copy: a private
+// copy can drift from the audit and would then be checking itself. Dynamic
+// import because the leaf is ESM and this file is CommonJS — the pattern
+// railway-topology-audit.test.js already uses.
+const topologyPromise = import("../scripts/railway/lib/railway-topology.mjs");
 
 const reports = new Map();
 async function report(country) {
@@ -82,37 +88,6 @@ function detailsFor(rows, code) {
 }
 
 const key = (coordinate) => `${coordinate[0]},${coordinate[1]}`;
-
-const METRIC = (point, latitude) => [
-  point[0] * 111320 * Math.cos((latitude * Math.PI) / 180),
-  point[1] * 111320,
-];
-
-function distanceMeters(left, right) {
-  const latitude = (left[1] + right[1]) / 2;
-  const a = METRIC(left, latitude);
-  const b = METRIC(right, latitude);
-  return Math.hypot(a[0] - b[0], a[1] - b[1]);
-}
-
-function turnDegrees(previous, corner, following) {
-  const latitude = corner[1];
-  const a = METRIC(previous, latitude);
-  const b = METRIC(corner, latitude);
-  const c = METRIC(following, latitude);
-  const incoming = [b[0] - a[0], b[1] - a[1]];
-  const outgoing = [c[0] - b[0], c[1] - b[1]];
-  const denominator = Math.hypot(...incoming) * Math.hypot(...outgoing);
-  if (!denominator) return 0;
-  const cosine = Math.max(
-    -1,
-    Math.min(
-      1,
-      (incoming[0] * outgoing[0] + incoming[1] * outgoing[1]) / denominator,
-    ),
-  );
-  return (Math.acos(cosine) * 180) / Math.PI;
-}
 
 /** Every drawn stroke of a line, and where each of its platforms sits on one. */
 function platformsOnDrawnLine(network, line) {
@@ -207,7 +182,8 @@ test("test_station_approach_has_no_large_artificial_turn", async () => {
 // platform because the anchor is protected from grooming.
 const CONNECTOR_MIN_METERS = 30;
 
-test("test_station_approach_does_not_use_hard_stub", () => {
+test("test_station_approach_does_not_use_hard_stub", async () => {
+  const { distanceMeters, turnDegrees } = await topologyPromise;
   // A "stub" is the shape this whole pass exists to remove: the line stops
   // short, then one last edge darts off at an angle to touch the dot. Its
   // signature is a final edge much shorter than the approach it hangs off AND
@@ -358,7 +334,8 @@ test("test_station_anchor_fix_does_not_modify_topology_geometry", () => {
   }
 });
 
-test("test_station_approach_leaves_correct_geometry_alone", () => {
+test("test_station_approach_leaves_correct_geometry_alone", async () => {
+  const { localMetric } = await topologyPromise;
   // The pass measures before it acts. Macao's builder projects every platform
   // onto the track it belongs to, so there is nothing to correct there and the
   // drawn line must come out on the package's own alignment to the metre —
@@ -385,9 +362,9 @@ test("test_station_approach_leaves_correct_geometry_alone", () => {
         let best = Infinity;
         for (const [a, b] of edges) {
           const latitude = coordinate[1];
-          const p = METRIC(coordinate, latitude);
-          const from = METRIC(a, latitude);
-          const to = METRIC(b, latitude);
+          const p = localMetric(coordinate, latitude);
+          const from = localMetric(a, latitude);
+          const to = localMetric(b, latitude);
           const dx = to[0] - from[0];
           const dy = to[1] - from[1];
           const lengthSquared = dx * dx + dy * dy;

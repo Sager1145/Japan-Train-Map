@@ -73,6 +73,24 @@ function coerceStore(
     if (!Array.isArray(train.stops)) {
       throw new Error(`trains[${index}] (${train.id}): stops must be an array.`);
     }
+    train.stops.forEach((stop, stopIndex) => {
+      if (!stop || typeof stop !== "object" || Array.isArray(stop)) {
+        throw new Error(
+          `trains[${index}] (${train.id}).stops[${stopIndex}] must be an object.`,
+        );
+      }
+      // Older 1.3 stores remain readable; writes make the nullable field
+      // explicit so every consumer sees one stable canonical shape.
+      if (!("platform_number" in stop)) stop.platform_number = null;
+      if (
+        stop.platform_number !== null &&
+        (!Number.isInteger(stop.platform_number) || stop.platform_number < 0)
+      ) {
+        throw new Error(
+          `trains[${index}] (${train.id}).stops[${stopIndex}].platform_number must be a non-negative integer or null.`,
+        );
+      }
+    });
     if (!allowDuplicateIds && ids.has(train.id)) {
       throw new Error(`trains[${index}]: duplicate id ${train.id}.`);
     }

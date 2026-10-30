@@ -43,46 +43,84 @@
 }
 
 /* Mobile UI can apply on tablets and wide mobile browsers, not only a narrow
-   CSS viewport. It keeps iOS touch targets, a three-detent bottom sheet and a
-   persistent five-item bottom bar. */
+   CSS viewport. It keeps iOS touch targets, §4.3's three-detent pull-up panel
+   and the persistent three-item bottom bar §2.2 leaves. */
 html[data-ui-mode="mobile"] #app {
-  --panel-half: 50dvh;
-  --panel-full: calc(100dvh - env(safe-area-inset-top) - 10px);
+  /* §4.3's three stops.
+
+     Half is 55% of the WINDOW, in the 50–58% the spec allows — the same
+     fraction, of the same quantity, that RideSheetMetrics uses on iOS. The
+     JS mirror of this number is SIDEBAR_HALF_FRACTION in app-events.js; the
+     two have to move together.
+
+     Full stops `--panel-top-gap` below the safe area rather than reaching it:
+     §4.3 requires the panel to stay a floating card at every detent, and a
+     card whose top edge meets the status bar has stopped being one. */
+  --panel-margin-inline: 12px;
+  --panel-top-gap: 10px;
+  /* §4.3: "辅助功能大字号可增至 68–76%". `em` in this expression resolves
+     against the reader's own base font size, so raising it in the browser
+     grows Half towards the 76% ceiling instead of leaving the same content in
+     the same box — the browser's equivalent of an iOS accessibility text
+     size. At the default 16 px the `em` term lands on 55% and is inert. */
+  --panel-half: min(76dvh, max(55dvh, 30em));
+  --panel-full: calc(
+    100dvh - env(safe-area-inset-top) - var(--panel-top-gap)
+  );
   --panel-clip: calc(var(--sidebar-open-size) - var(--sidebar-size));
+  /* What scrolling content must clear at the bottom: the tab bar, the home
+     indicator, and §4.3's 12 px. Measured from tokens rather than written as
+     one number, so a change to the bar's height cannot leave the last row of
+     a list under it. */
+  --panel-content-bottom: calc(
+    var(--ios-tabbar-height) + env(safe-area-inset-bottom) + 12px
+  );
   --sidebar-open-size: var(--panel-full);
   --sidebar-size: var(--panel-half);
 }
+
+/* Wider phones and mobile-UI tablets may use the upper end of §4.3's 12–16 px
+   margin — the map has the width to give. */
+@media (min-width: 430px) {
+  html[data-ui-mode="mobile"] #app {
+    --panel-margin-inline: 16px;
+  }
+}
+
 
 html[data-ui-mode="mobile"][data-sidebar="collapsed"] #app,
 html[data-ui-mode="mobile"] #app.sidebar-collapsed {
   --sidebar-size: 0px;
 }
 
+/* §4.3: a card floating over the map, not a drawer welded to the window.
+   The side margins stay the SAME at every detent — a margin that collapsed as
+   the panel grew would read as the card changing shape rather than size — and
+   the map keeps showing through them, which is what keeps this a map
+   workspace rather than a list with a picture behind it.
+
+   Every corner is rounded, including the two at the bottom: an inset card with
+   square bottom corners reads as a drawer that has been cut off. */
 html[data-ui-mode="mobile"] #sidebar {
-  inset: auto 0 0 0;
+  inset: auto var(--panel-margin-inline) 0 var(--panel-margin-inline);
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: auto;
   min-width: 0;
   max-width: none;
   height: var(--sidebar-open-size);
   min-height: var(--sidebar-open-size);
   max-height: var(--sidebar-open-size);
-  padding: 38px 12px
-    calc(
-      var(--ios-tabbar-height) + 24px + env(safe-area-inset-bottom)
-    );
+  padding: 34px 12px var(--panel-content-bottom);
   border: 1px solid var(--ios-separator);
-  border-bottom: 0;
-  border-radius: 18px 18px 0 0;
-  background: var(--ios-material);
+  border-radius: var(--radius-sheet, 28px);
   transform: translateY(
     calc(var(--sidebar-open-size) - var(--sidebar-size))
   );
   transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Reserve scroll room for the off-screen part of a half/peek sheet without
+/* Reserve scroll room for the off-screen part of a half/docked panel without
    putting that reserve in padding. Padding enlarged the sheet's border box
    beyond --panel-full, which hid the grabber under the fixed tab bar and made
    drag calculations report a panel taller than the viewport. */
@@ -125,7 +163,10 @@ html[data-ui-mode="mobile"] .workspace-nav {
   padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
   border-width: 1px 0 0;
   border-radius: 0;
-  background: var(--ios-material-strong);
+  border-color: var(--jrm-glass-border);
+  background: var(--jrm-glass-background-strong);
+  -webkit-backdrop-filter: var(--jrm-glass-blur);
+  backdrop-filter: var(--jrm-glass-blur);
   /* The tab bar remains viewport-fixed while open, then follows the sheet
      only through its final bottom-edge retreat. During a drag, max() keeps
      it fixed until the remaining sheet is shorter than the bar itself. */
@@ -161,10 +202,82 @@ html[data-ui-mode="mobile"] #sidebar > header {
   border-top: 1px solid var(--ios-separator);
 }
 
-html[data-ui-mode="mobile"] #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+/* §4.4: the identity does not swap between two headers as the panel resizes.
+   The same strip carries it at every detent — first in the panel, above the
+   workspace content, and the ONLY thing showing at Docked. */
+html[data-ui-mode="mobile"] .panel-docked-summary {
+  display: flex;
+  order: -1;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: var(--space-2);
+}
+
+html[data-ui-mode="mobile"] .panel-docked-identity {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+html[data-ui-mode="mobile"] #panel-docked-title {
+  overflow: hidden;
+  font-size: var(--font-md, 15px);
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html[data-ui-mode="mobile"] #panel-docked-detail {
+  overflow: hidden;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm, 13px);
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-ui-mode="mobile"] #panel-docked-action {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+/* §4.3: Docked shows the grabber, the identity and ONE action — not just the
+   tab bar. A bottom bar that says nothing is a detent with no reason to be. */
+html[data-ui-mode="mobile"]
+  #app[data-panel="docked"]
+  #sidebar
+  > :not(.panel-docked-summary) {
   visibility: hidden;
   opacity: 1;
   pointer-events: none;
+}
+
+/* The hidden content still occupies its height, so the panel would show a
+   scrollbar down the side of a strip that has nothing to scroll. */
+html[data-ui-mode="mobile"] #app[data-panel="docked"] #sidebar {
+  overflow: hidden;
+}
+
+/* §4.3: "面板把地图控件完全遮住前，应隐藏对应控件，而不是让按钮看起来可用却
+   无法点击." At Full the panel covers the window bar the top gap, so every map
+   corner control is behind it — a control that looks pressable under an opaque
+   surface is worse than one that is not there. */
+html[data-ui-mode="mobile"] #app[data-panel="full"] .map-layers-control,
+html[data-ui-mode="mobile"] #app[data-panel="full"] .map-info-control,
+html[data-ui-mode="mobile"] #app[data-panel="full"] .maplibregl-ctrl-group {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The desktop drawer has room for the real header; the strip is a phone
+   affordance and would only duplicate it there. */
+html[data-ui-mode="desktop"] .panel-docked-summary {
+  display: none;
 }
 
 html[data-ui-mode="mobile"] .sidebar-edge-tab,
@@ -177,7 +290,9 @@ html[data-ui-mode="mobile"] .sidebar-edge-tab:focus-visible {
   height: 25px;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--ios-material);
+  background: var(--jrm-glass-background);
+  -webkit-backdrop-filter: var(--jrm-glass-blur);
+  backdrop-filter: var(--jrm-glass-blur);
   cursor: ns-resize;
   transform: translateX(-50%);
   transition: bottom 0.32s cubic-bezier(0.22, 1, 0.36, 1);

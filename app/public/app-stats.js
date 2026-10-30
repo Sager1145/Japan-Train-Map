@@ -75,6 +75,33 @@ const STAT_CATEGORIES_BY_COUNTRY = {
     { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
     { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
   ],
+  // The United States and Canada, over classifyNaSectionMask below. The two
+  // lists are IDENTICAL on purpose and must stay that way: the scope is one
+  // network, not two (railScopeCountriesForCountry loads both packages under
+  // either country), so a row omitted from one of them would be network
+  // kilometres inside the denominator and inside no row — the Acela's own
+  // track disappearing from a Canadian reader's coverage while still counting
+  // against their percentage. Exclusive buckets; North America records no
+  // JR-style union, so stat.jr keeps no .us / .ca variant.
+  //
+  // Without these two entries the fallback handed the United States JAPAN's
+  // list: six rows in Japanese, one of them 「JR（含新幹線）」 over a mask bit
+  // classifyNaSectionMask never sets, i.e. a row that could only ever read
+  // 0.0 km.
+  us: [
+    { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+    { mask: STAT_MASK_CONV, i18n: "stat.conv" },
+    { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+    { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+    { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+  ],
+  ca: [
+    { mask: STAT_MASK_HSR, i18n: "stat.hsr" },
+    { mask: STAT_MASK_CONV, i18n: "stat.conv" },
+    { mask: STAT_MASK_METRO, i18n: "stat.metro" },
+    { mask: STAT_MASK_TRAM, i18n: "stat.tram" },
+    { mask: STAT_MASK_PRIV, i18n: "stat.priv" },
+  ],
 };
 // Read as a getter everywhere: the active country can change without a
 // reload, and a snapshot taken at script-evaluation time would keep the old
@@ -133,11 +160,14 @@ function exclusiveTrackBucket(mask) {
 // category always hides its lines and its dots together. Taiwan records no
 // JR-style union, so its incumbent conventional railway (臺鐵, CONV-only
 // masks) fills the slot the filter calls "jr" — the national-railway toggle.
+const NATIONAL_RAILWAY_IN_CONV_SLOT = new Set(["tw", "us", "ca"]);
+
 function filterCategoryForMask(mask) {
   if (mask & STAT_MASK_HSR) return "hsr";
   if (mask & STAT_MASK_METRO) return "metro";
   if (mask & STAT_MASK_JR) return "jr";
-  if (mask & STAT_MASK_CONV && activeCountry === "tw") return "jr";
+  if (mask & STAT_MASK_CONV && NATIONAL_RAILWAY_IN_CONV_SLOT.has(activeCountry))
+    return "jr";
   return "priv";
 }
 
@@ -164,7 +194,42 @@ function classifySectionMask(props) {
   if (activeCountry === "hk") return classifyHkSectionMask(props);
   if (activeCountry === "mo") return classifyMoSectionMask(props);
   if (activeCountry === "kr") return classifyKrSectionMask(props);
+  if (activeCountry === "us" || activeCountry === "ca")
+    return classifyNaSectionMask(props);
   return classifyJpSectionMask(props);
+}
+
+// The United States and Canada, over the code space the North American package
+// build assigns: institution 1 = the two services their operators sell as
+// high-speed (Acela, Brightline), 2 = the intercity passenger railroads
+// (Amtrak, VIA Rail, the Alaska Railroad, Ontario Northland), 3 = the public
+// transit authorities, 4 = private and heritage operators — with the railway
+// class separating rapid transit and light rail (普通鐵道) from streetcars
+// (軌道), people movers and monorails (案內軌條式) and funiculars and heritage
+// lines (特殊鐵道).
+//
+// The same rules as Taiwan's, and deliberately so: the two builds emit the
+// same code space because the two networks decompose the same way — one
+// national intercity railway, a layer of publicly operated urban rail, and a
+// private remainder. Exclusive buckets; North America records no JR-style
+// union spanning two of them.
+function classifyNaSectionMask(props) {
+  const code = sectionInstitutionTypeCode(props);
+  const cls = sectionRailwayClassCode(props);
+  if (code === "1") return STAT_MASK_HSR;
+  if (cls === "21") return STAT_MASK_TRAM;
+  if (cls === "31") return STAT_MASK_PRIV;
+  // 案內軌條式 (class 22) is the guideway class: the airport people movers,
+  // the Las Vegas Monorail, the WVU personal rapid transit. The comment above
+  // named it as its own group but nothing tested for it, so all 37 of those
+  // sections fell through to the transit-authority rule below and were counted
+  // as 都市與通勤鐵路 — an airport shuttle inside the commuter-rail total. They
+  // belong in the remainder with the monorails, exactly where Korea's own
+  // classifier puts 모노레일·자기부상.
+  if (cls === "22") return STAT_MASK_PRIV;
+  if (code === "4") return STAT_MASK_PRIV;
+  if (code === "3") return STAT_MASK_METRO;
+  return STAT_MASK_CONV;
 }
 
 // Taiwan, over the same code space the package build assigns
@@ -394,6 +459,12 @@ function collectTrainStatsEntry(train, idx) {
   const walk = (coords) => {
     if (!coords || coords.length < 2) return;
     let anchor = coords[0];
+    // Category of the edge the anchor most recently reached. Display geometry
+    // ends a station interval at the station anchor, which may sit a short
+    // connector away from the raw section edge. Leading connectors already
+    // inherit the edge they reconnect to below; this lets trailing connectors
+    // inherit the edge they just left, symmetrically.
+    let anchorMask = 0;
     let pendingKm = 0;
     for (let i = 1; i < coords.length; i += 1) {
       const prev = coords[i - 1];
@@ -403,6 +474,7 @@ function collectTrainStatsEntry(train, idx) {
       if (e !== undefined) {
         edges.push(e);
         anchor = v;
+        anchorMask = idx.mask[e];
         pendingKm = 0; // pending hops were interior to this matched edge
         continue;
       }
@@ -411,12 +483,18 @@ function collectTrainStatsEntry(train, idx) {
         recordSpan(anchor, prev, pendingKm, idx.mask[e2]);
         edges.push(e2);
         anchor = v;
+        anchorMask = idx.mask[e2];
         pendingKm = 0;
         continue;
       }
       pendingKm += statsEdgeKm(prev[0], prev[1], v[0], v[1]);
-      if (pendingKm > MAX_BRIDGE_KM || i === coords.length - 1) {
+      if (pendingKm > MAX_BRIDGE_KM) {
         recordSpan(anchor, v, pendingKm, 0);
+        anchor = v;
+        anchorMask = 0;
+        pendingKm = 0;
+      } else if (i === coords.length - 1) {
+        recordSpan(anchor, v, pendingKm, anchorMask);
         anchor = v;
         pendingKm = 0;
       }
@@ -501,9 +579,52 @@ function serviceGroupOfTrain(train) {
       return "ltd";
     return "other";
   }
+  if (activeCountry === "kr") {
+    // KTX and SRT are the high-speed services; ITX-새마을 / ITX-마음 and
+    // 무궁화호 are the reserved-seat intercity tier 有料特急 corresponds to.
+    // Without this a KTX ride landed in 其他列車 while the 高速鐵道（KTX・SRT）
+    // row above it read 0.0 km.
+    if (/KTX|SRT|고속/i.test(t)) return "hsr";
+    if (/ITX|새마을|무궁화|セマウル|ムグンファ|新村|無窮花|无穷花/.test(t))
+      return "ltd";
+    return "other";
+  }
+  if (activeCountry === "us" || activeCountry === "ca") {
+    // Acela and Brightline are what the two operators sell as high speed, and
+    // they are exactly the two lines the packages mark isHSR. There is no
+    // third bucket to fill: North America has no surcharged reserved-seat
+    // tier standing apart from ordinary intercity travel the way 有料特急 or
+    // 對號列車 does — an Amtrak or VIA seat is reserved because the train is
+    // an intercity train — so "ltd" stays empty here and is left out of
+    // SERVICE_ROWS_BY_COUNTRY below rather than printed as a 0.0 km row.
+    if (/acela|brightline/i.test(t)) return "hsr";
+    return "other";
+  }
   if (t.includes("新幹線")) return "hsr";
   if (t.includes("特急")) return "ltd";
   return "other";
+}
+
+// Which of the three service rows a country actually has. The buckets exist
+// everywhere in the accumulation code, but Hong Kong and Macao have neither a
+// high-speed nor a reserved-seat tier in their packages, and rendering the
+// rows anyway put "新幹線 0.0 km" and "有料特急 0.0 km" in a Hong Kong
+// Passport. Mirrors STAT_CATEGORIES_BY_COUNTRY above.
+const SERVICE_ROWS_BY_COUNTRY = {
+  jp: ["hsr", "ltd", "other"],
+  tw: ["hsr", "ltd", "other"],
+  kr: ["hsr", "ltd", "other"],
+  hk: ["other"],
+  mo: ["other"],
+  // North America has the high-speed tier (Acela, Brightline) and nothing
+  // that answers to 有料特急 — see serviceGroupOfTrain above. Both countries
+  // list both rows because both load both packages, so a Canadian namespace
+  // can hold an Acela ride and must have somewhere to print it.
+  us: ["hsr", "other"],
+  ca: ["hsr", "other"],
+};
+function activeServiceRows() {
+  return SERVICE_ROWS_BY_COUNTRY[activeCountry] || SERVICE_ROWS_BY_COUNTRY.jp;
 }
 
 function serviceGroupStats(trains, entries) {
@@ -700,13 +821,17 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
   overall.services = serviceGroupStats(trains, entries);
   if (yieldPoint) await yieldPoint();
   overall.topSegments = topRiddenSegments(entries);
+  // §5.3.1: the day scoped HERE is Passport's own, not the journeys date
+  // filter. They used to be one value, which meant clicking a journey — which
+  // jumps the journeys filter to that journey's date — silently re-scoped the
+  // statistics the reader was looking at.
   let daily = null;
-  if (selectedDate && selectedDate !== ALL_DATES) {
+  if (passportScopeDate && passportScopeDate !== ALL_DATES) {
     if (yieldPoint) await yieldPoint();
     const dayTrains = [];
     const dayEntries = [];
     trains.forEach((t, i) => {
-      if (getTrainDate(t) === selectedDate) {
+      if (getTrainDate(t) === passportScopeDate) {
         dayTrains.push(t);
         dayEntries.push(entries[i]);
       }
@@ -714,7 +839,11 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
     const stats = aggregateMileageStats(idx, dayEntries);
     stats.rideMinutes = sumRideMinutes(dayTrains);
     stats.services = serviceGroupStats(dayTrains, dayEntries);
-    daily = { date: dateLabel(selectedDate), trainCount: dayTrains.length, stats };
+    daily = {
+      date: dateLabel(passportScopeDate),
+      trainCount: dayTrains.length,
+      stats,
+    };
   }
   return { overall, daily, categories: activeStatCategories() };
 }

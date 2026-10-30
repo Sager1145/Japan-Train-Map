@@ -173,26 +173,33 @@ label {
   box-shadow: 9px 0 0 currentColor;
 }
 
+/* Network: a rail running corner to corner with a station on it — the same
+   two marks the map itself draws, so the tab reads as "the railway" rather
+   than as a generic globe. */
 .workspace-nav a:nth-of-type(2) > span:first-child::before {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 8px;
-  width: 4px;
-  height: 15px;
-  border-radius: 2px 2px 1px 1px;
+  top: 9px;
+  left: 0;
+  width: 20px;
+  height: 2px;
+  border-radius: var(--radius-pill);
   background: currentColor;
-  transform: rotate(42deg);
+  transform: rotate(-32deg);
 }
 .workspace-nav a:nth-of-type(2) > span:first-child::after {
   content: "";
   position: absolute;
-  right: 2px;
-  bottom: 3px;
-  width: 7px;
-  height: 1.7px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
+  top: 8.5px;
+  left: 8.5px;
+  width: 5px;
+  height: 5px;
+  border: 1.7px solid currentColor;
+  border-radius: 50%;
+  background: var(--ios-material-strong);
+  box-shadow:
+    -8px 5px 0 -1.35px currentColor,
+    8px -5px 0 -1.35px currentColor;
 }
 
 .workspace-nav a:nth-of-type(3) > span:first-child {
@@ -212,32 +219,189 @@ label {
   background: currentColor;
 }
 
-.workspace-nav a:nth-of-type(4) > span:first-child::before,
-.workspace-nav a:nth-of-type(4) > span:first-child::after {
-  content: "";
-  position: absolute;
-  left: 2px;
-  width: 15px;
-  height: 7px;
-  border: 1.7px solid currentColor;
-}
-.workspace-nav a:nth-of-type(4) > span:first-child::before {
-  top: 2px;
-  border-width: 1.7px 1.7px 0 0;
-  transform: skewX(-26deg);
-}
-.workspace-nav a:nth-of-type(4) > span:first-child::after {
-  right: 2px;
-  bottom: 2px;
-  left: auto;
-  border-width: 0 0 1.7px 1.7px;
-  transform: skewX(-26deg);
+/* There is no fourth or fifth destination. §2.2 leaves three, and Data
+   Library / Settings are Utility entries in the header (below). */
+
+/* ── §2.2 Utility entries ─────────────────────────────────────────────────
+   Data Library and Settings. Deliberately quieter than the three destinations
+   and in a different place: they are tasks the reader leaves and comes back
+   from, not a fourth and fifth thing to browse. */
+.workspace-utilities {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
-.workspace-nav a:nth-of-type(5) > span:first-child {
-  border: 1.7px solid currentColor;
-  border-radius: 50%;
-  background: conic-gradient(currentColor 0 50%, transparent 50% 100%);
+.workspace-utilities button {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  min-height: var(--ios-touch-height);
+  padding: 5px 11px;
+  border: 1px solid var(--ios-separator);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.workspace-utilities button:hover,
+.workspace-utilities button:focus-visible {
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+}
+
+/* §4.1: a Utility hands the workspace back. Its own header carries the way
+   out, so leaving never depends on finding the navigation underneath it. */
+.utility-header {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.utility-header h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.utility-header button {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  min-height: var(--ios-touch-height);
+  padding: 4px 10px 4px 6px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ios-fill-tertiary);
+  color: var(--ios-tint);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+/* ── §5.2 Network / §5.3 Passport ──────────────────────────────────────── */
+.workspace-hero h2 {
+  margin: 2px 0 4px;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.workspace-hero .eyebrow {
+  margin: 0;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.network-summary {
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.passport-scope-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 0 var(--space-2);
+}
+
+.passport-scope-label {
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.passport-scope-value {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §5.3.1's scope strip. The same chips as the journeys date bar, because it is
+   the same kind of value — but bound to `passportScopeDate`, which is
+   Passport's own and does not move the journeys list. */
+.passport-scope-dates {
+  margin-bottom: var(--space-3);
+}
+
+.passport-coverage-note {
+  margin-bottom: var(--space-2);
+}
+
+.passport-coverage-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+}
+
+.passport-log-day {
+  margin-bottom: var(--space-2);
+}
+
+.passport-log-date {
+  margin: var(--space-2) 0 4px;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.passport-log-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  min-height: var(--ios-touch-height);
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.passport-log-row:hover,
+.passport-log-row:focus-visible {
+  background: var(--ios-fill-tertiary);
+}
+
+/* §3.1: selection is carried by more than colour — the row also gains an
+   edge, so it survives a greyscale rendering and a contrast preference. */
+.passport-log-row.selected {
+  border-color: var(--ios-tint);
+  background: var(--ios-tint-soft);
+  color: var(--ios-tint);
+  font-weight: 600;
+}
+
+.passport-log-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.passport-log-route {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--ios-label-secondary);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.passport-log-row.selected .passport-log-route {
+  color: inherit;
+}
+
+/* §4.3's docked strip. Opaque against the panel's own material rather than a
+   second translucent surface (§4.2 forbids stacking two). */
+.panel-docked-summary {
+  display: none;
 }
 
 /* Inset-group content surfaces. */
@@ -977,10 +1141,10 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
     height: 21px;
   }
 
-  /* At the compact detent, reduce the sheet to the persistent tab bar. The
-     translated full-height panel otherwise leaves a clipped card sliver above
-     the bar, which reads as accidental overflow instead of a stable detent. */
-  #app[data-panel="peek"] #sidebar {
+  /* §4.3's Docked stop. The panel keeps its identity strip and one action
+     above the tab bar; everything else is under the bar and the map has the
+     rest of the window. */
+  #app[data-panel="docked"] #sidebar {
     border-color: var(--ios-separator);
     background: var(--ios-material);
     box-shadow: none;
@@ -988,7 +1152,7 @@ html[data-theme="dark"] .maplibregl-ctrl-group {
     backdrop-filter: none;
   }
 
-  #app[data-panel="peek"] #sidebar > :not(.workspace-nav) {
+  #app[data-panel="docked"] #sidebar > :not(.panel-docked-summary) {
     visibility: hidden;
     opacity: 1;
     pointer-events: none;

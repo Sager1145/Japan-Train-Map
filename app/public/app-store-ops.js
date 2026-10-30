@@ -112,6 +112,8 @@ function canonicalStopShape(stop) {
   return {
     name: stop.name || "",
     n02_station_code: stop.n02_station_code || null,
+    // `??` is intentional: platform 0 exists and must not collapse to null.
+    platform_number: stop.platform_number ?? null,
     arrival: normalizeNullableTime(stop.arrival),
     departure: normalizeNullableTime(stop.departure),
     stop_type: stop.stop_type || "passenger_stop",
@@ -369,6 +371,7 @@ function normalizeImportedStop(stop) {
     [
       "name",
       "n02_station_code",
+      "platform_number",
       "arrival",
       "departure",
       "stop_type",
@@ -379,6 +382,16 @@ function normalizeImportedStop(stop) {
 
   if (!("name" in stop)) {
     throw new Error("Each stop must contain name.");
+  }
+
+  if (
+    stop.platform_number !== null &&
+    stop.platform_number !== undefined &&
+    (!Number.isInteger(stop.platform_number) || stop.platform_number < 0)
+  ) {
+    throw new Error(
+      "platform_number must be a non-negative integer or null.",
+    );
   }
 
   return canonicalStopShape(stop);
@@ -590,6 +603,40 @@ function createBlankTrain() {
       lineName: "氹仔線",
       color: "#72BF44",
     });
+  // The two North American countries fell through to the Japanese starter,
+  // which is the one thing this factory exists to prevent: a new train in the
+  // United States store opened as 特急 東京→熱海 carrying N02 codes that
+  // resolve against no station in either North American package, so the first
+  // solve failed and the reader's first edit was deleting two Japanese stops.
+  // Acela is the flagship the package marks isHSR; the VIA corridor is
+  // Canada's own equivalent, and both are institution codes the section
+  // datasets really carry (1 = high speed, 2 = intercity).
+  if (activeCountry === "us")
+    return createBlankRegionalTrain({
+      id: "US-ACELA",
+      trainType: "Acela",
+      company: "Amtrak",
+      origin: "Ny Moynihan Train Hall At Penn Station",
+      destination: "Washington Union Station",
+      originCode: "US-AMTRAK-NYP",
+      destinationCode: "US-AMTRAK-WAS",
+      lineName: "Acela",
+      color: "#318cba",
+      institutionCode: "1",
+    });
+  if (activeCountry === "ca")
+    return createBlankRegionalTrain({
+      id: "CA-VIA",
+      trainType: "Corridor",
+      company: "VIA Rail",
+      origin: "Montréal",
+      destination: "Ottawa",
+      originCode: "CA-VIA-226",
+      destinationCode: "CA-VIA-617",
+      lineName: "Ottawa - Montréal",
+      color: "#ebba00",
+      institutionCode: "2",
+    });
   return createBlankTrainJp();
 }
 
@@ -626,6 +673,7 @@ function createBlankRegionalTrain(config) {
       {
         name: config.origin,
         n02_station_code: config.originCode,
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -634,6 +682,7 @@ function createBlankRegionalTrain(config) {
       {
         name: config.destination,
         n02_station_code: config.destinationCode,
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",
@@ -674,6 +723,7 @@ function createBlankTrainTw() {
       {
         name: "台北車站",
         n02_station_code: "TYMC-A1",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -682,6 +732,7 @@ function createBlankTrainTw() {
       {
         name: "機場第二航廈站",
         n02_station_code: "TYMC-A13",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",
@@ -743,6 +794,7 @@ function createBlankTrainJp() {
       {
         name: "東京",
         n02_station_code: "003770",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "origin",
@@ -751,6 +803,7 @@ function createBlankTrainJp() {
       {
         name: "熱海",
         n02_station_code: "005685",
+        platform_number: null,
         arrival: null,
         departure: null,
         stop_type: "destination",

@@ -785,6 +785,36 @@ test("coerceStore backstop rejects shapes the frontend could never load", async 
       error: "Store contains unsupported field: extra.",
     });
 
+    const invalidPlatform = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schema_version: "1.3",
+        trains: [{ id: "negative-platform", stops: [{ platform_number: -1 }] }],
+      }),
+    });
+    assert.equal(invalidPlatform.status, 400);
+    assert.deepEqual(await responseJson(invalidPlatform), {
+      error:
+        "trains[0] (negative-platform).stops[0].platform_number must be a non-negative integer or null.",
+    });
+
+    const validZeroPlatform = await fetch(`${baseUrl}/api/train-store`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schema_version: "1.3",
+        trains: [{ id: "zero-platform", stops: [{ platform_number: 0 }, {}] }],
+      }),
+    });
+    assert.equal(validZeroPlatform.status, 200);
+    assert.deepEqual(await responseJson(validZeroPlatform), { ok: true, trains: 1 });
+    const storedPlatforms = await responseJson(
+      await fetch(`${baseUrl}/api/train-store`),
+    );
+    assert.equal(storedPlatforms.trains[0].stops[0].platform_number, 0);
+    assert.equal(storedPlatforms.trains[0].stops[1].platform_number, null);
+
     // Id-less trains used to collapse onto the Map key `undefined` in append
     // mode: only the last one survived while trains_added counted them all.
     const idless = await fetch(`${baseUrl}/api/agent/import?mode=append`, {
@@ -829,9 +859,10 @@ test("coerceStore backstop rejects shapes the frontend could never load", async 
       error: "trains[1]: duplicate id duplicate.",
     });
 
-    // None of the rejected bodies may have been persisted.
+    // The one valid platform body remains; none of the later rejected bodies
+    // may replace it.
     const saved = await fetch(`${baseUrl}/api/train-store`);
-    assert.equal(saved.status, 404);
+    assert.equal(saved.status, 200);
   });
 });
 

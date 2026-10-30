@@ -213,16 +213,33 @@ function normalizeSingleRouteGeometry(feature) {
   return null;
 }
 
-// matched-stops features indexed by train_id (built once — the dataset is
-// static after load). getStopFeature used to linear-scan ALL features for
-// every stop of every train on every marker rebuild: O(trains × stops ×
-// matchedStops). Scanning only the train's own few features preserves the
-// exact first-match semantics at a tiny fraction of the cost.
+// matched-stops features indexed by train_id. getStopFeature used to
+// linear-scan ALL features for every stop of every train on every marker
+// rebuild: O(trains × stops × matchedStops). Scanning only the train's own few
+// features preserves the exact first-match semantics at a tiny fraction of the
+// cost.
+//
+// The index is DERIVED from matchedStopsGeoJson, which is not static after
+// load: AppDatasets.installMatchedData replaces the collection on a country
+// switch and on the precompute adapter's install. So the index is keyed by the
+// features array it was built from and rebuilt when that array is swapped —
+// one identity comparison per call, and, unlike an invalidation callback from
+// app-datasets.js, nothing a future install path can forget to do. An index
+// that outlived the swap would answer out of the OUTGOING country's features
+// (app-datasets.js: never leave the two loaded at once); train ids are
+// country-scoped, so the visible symptom would not be a wrong station but the
+// new country's stops silently falling through to the resolver path.
+let _matchedStopsIndexSource = null;
 let _matchedStopsByTrain = null;
 function getMatchedStopsForTrain(trainId) {
-  if (!_matchedStopsByTrain) {
+  // installMatchedData assigns whatever it is handed, null included (the pair
+  // is dropped, or a host supplies no matched set at all). An absent
+  // collection indexes as empty, so callers get [] rather than a throw.
+  const features = matchedStopsGeoJson?.features || null;
+  if (!_matchedStopsByTrain || _matchedStopsIndexSource !== features) {
+    _matchedStopsIndexSource = features;
     _matchedStopsByTrain = new Map();
-    for (const f of matchedStopsGeoJson.features) {
+    for (const f of features || []) {
       const tid = (f.properties || {}).train_id;
       if (tid == null) continue;
       let arr = _matchedStopsByTrain.get(tid);

@@ -164,12 +164,19 @@
   async function loadNetwork(packageUrl) {
     try {
       if (!packageUrl) throw new Error("A rail package URL is required.");
+      const packageUrls = Array.isArray(packageUrl) ? packageUrl : [packageUrl];
       // Rail packages are replaced in place. Revalidate the URL so a newly
       // rebuilt official package cannot be shadowed by the 24-hour static
       // JSON browser cache.
-      const res = await fetch(packageUrl, { cache: "no-cache" });
-      if (!res.ok) return null;
-      return global.RailNetwork.buildNetworkFromCompactPackage(await res.json());
+      const responses = await Promise.all(
+        packageUrls.map((url) => fetch(url, { cache: "no-cache" })),
+      );
+      if (responses.some((response) => !response.ok)) return null;
+      const packages = await Promise.all(
+        responses.map((response) => response.json()),
+      );
+      const merged = global.RailNetwork.mergeCompactPackages(packages);
+      return global.RailNetwork.buildNetworkFromCompactPackage(merged);
     } catch (e) {
       console.warn("[railmap] rail package unavailable:", e);
       return null;
@@ -1533,6 +1540,33 @@
     _ensureFanLanePool(size) {
       const m = this._map;
       if (!m) return;
+      // addLayer THROWS while the style is mid-load, and this runs from the
+      // ordinary data push — so a country switch that lands during boot, or
+      // while a basemap install still has setGlyphs/setSprite in flight,
+      // aborted the whole switch with "Style is not done loading" and left the
+      // map empty. The pool is style scaffolding the first hover would rebuild
+      // anyway: remember the size wanted, grow it when the style is ready, and
+      // let the caller's data push stand. Same one-shot retry the network
+      // upload above uses, re-checking because "styledata" also fires early.
+      this._fanLanePoolWanted = Math.max(this._fanLanePoolWanted || 0, size);
+      if (typeof m.isStyleLoaded === "function" && !m.isStyleLoaded()) {
+        if (!this._fanLanePoolPending) {
+          this._fanLanePoolPending = true;
+          // "styledata" alone is not enough: the event that finally flips
+          // isStyleLoaded() can be the last one, leaving the retry armed for a
+          // style event that never comes. "idle" closes that gap; whichever
+          // arrives first runs, and the other finds the flag already cleared.
+          const retry = () => {
+            if (!this._fanLanePoolPending) return;
+            this._fanLanePoolPending = false;
+            this._ensureFanLanePool(this._fanLanePoolWanted || 0);
+          };
+          m.once("styledata", retry);
+          m.once("idle", retry);
+        }
+        return;
+      }
+      size = this._fanLanePoolWanted;
       if (!this._fanLanePool.length) this._initFanLanePool();
       while (this._fanLanePool.length < size) {
         const slot = this._fanLanePool.length;

@@ -114,6 +114,7 @@ function persistUiDateState() {
       uiDateStateStorageKey(),
       JSON.stringify({
         selectedDate,
+        passportScopeDate,
         manualDates,
         mapFollowsSelectedDate,
         focusZoomEnabled,
@@ -141,6 +142,10 @@ function restoreUiDateState() {
         mapFollowsSelectedDate = parsed.mapFollowsSelectedDate;
       if (typeof parsed.focusZoomEnabled === "boolean")
         focusZoomEnabled = parsed.focusZoomEnabled;
+      // §5.3.1's own scope. Restored before the early return below, which
+      // exists to report whether a *journeys* filter was found.
+      if (typeof parsed.passportScopeDate === "string")
+        passportScopeDate = parsed.passportScopeDate;
       if (typeof parsed.selectedDate === "string") {
         selectedDate = parsed.selectedDate;
         return true;
@@ -162,6 +167,9 @@ function applyUiDateStateForCountrySwitch() {
   const keepFollow = mapFollowsSelectedDate;
   const keepFocus = focusZoomEnabled;
   selectedDate = ALL_DATES;
+  // The Passport scope is date-filter DATA too: Taiwan's chosen day is not a
+  // day Japan has, so it resets and is restored from the new country's copy.
+  passportScopeDate = ALL_DATES;
   manualDates = [];
   restoreUiDateState();
   mapFollowsSelectedDate = keepFollow;

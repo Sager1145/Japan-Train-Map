@@ -1,0 +1,60 @@
+# The web app's own gate.
+#
+# The Swift port and the port-fixture contract that verifies it both moved to
+# the JTM-iOS-App repository, which carries its own copy of the reference
+# implementation and regenerates the fixtures there. Keeping a second fixture
+# tree here would be a second copy of one contract, and a second copy is a copy
+# that drifts: the first time this repository's answers moved and the other
+# tree was not regenerated, the two would disagree and neither would say so.
+# So what runs here is what this repository is now responsible for — that the
+# web app's own tests pass and its own sources lint.
+
+name: Web app
+
+on:
+  push:
+    branches: [main, swift-ios-port]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webapp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webapp:
+    name: Tests and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches deploy-pages.yml; rail-database.test.mjs needs node:sqlite.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        working-directory: app
+        run: npm ci
+
+      # The sample datasets the tests read are gitignored build output, so
+      # generate them the same way the Pages deploy does before testing.
+      - name: Build
+        working-directory: app
+        env:
+          CI: true
+        run: npm run build
+
+      - name: Web app tests
+        working-directory: app
+        run: npm test
+
+      - name: Lint
+        working-directory: app
+        run: npm run lint

@@ -11,19 +11,30 @@
 // =========================================================================
 
 // =========================================================================
-//  Workspace tabs — the sidebar nav pills switch EXCLUSIVE panels (railprint
-//  TabBar behavior) instead of scrolling one long column. Every card stays in
-//  the DOM (display:none only), so all JS bindings keep working while hidden.
+//  Workspace routing — §2.2. THREE content destinations (Journeys, Network,
+//  Passport) and two Utility destinations (Data Library, Settings). Every
+//  card stays in the DOM (hidden + inert only), so all JS bindings keep
+//  working while a workspace is off screen.
 // =========================================================================
 const SIDEBAR_VISIBILITY_KEY = "n02-train-manager-sidebar-visible-v1";
 const SIDEBAR_PANEL_STATE_KEY = "n02-train-manager-panel-state-v1";
-// A collapsed mobile sheet still needs a visible/tappable grabber above the
+// A docked mobile sheet still needs a visible/tappable grabber above the
 // independently fixed bottom navigation. The navigation rect already includes
 // its safe-area inset, so do not add that inset a second time here.
 const SIDEBAR_HANDLE_ZONE_PX = 32;
-// Mobile bottom-panel detents. The handle expands half→full, minimizes
-// full→peek, and can hide peek entirely so the map is keyboard-accessible.
-const SIDEBAR_PANEL_STATES = ["peek", "half", "full"];
+// §4.3's three stops, in app-panel-motion.js's own order. There is no fourth,
+// hidden detent on mobile any more: the panel is always AT LEAST docked, so
+// there is always a grabber, an identity and one action within reach. Hiding
+// the panel entirely is a desktop drawer behaviour (`sidebarVisible`), which
+// is a different control with a different affordance.
+const SIDEBAR_PANEL_STATES = PANEL_DETENTS;
+// The detent name this replaced. A reader who parked the old panel at "peek"
+// gets the stop that took its place rather than a silent reset to half.
+const SIDEBAR_LEGACY_PANEL_STATE = "peek";
+// §4.3: "Half（半屏）默认占可用高度的 50–58%". Of the WINDOW, not of a system
+// sheet's inner height — the same quantity RideSheetMetrics measures against
+// on iOS, so the two platforms open at the same fraction of the same thing.
+const SIDEBAR_HALF_FRACTION = 0.55;
 let sidebarVisible = true;
 let sidebarPanelState = "half";
 let sidebarToggleReady = false;
@@ -32,6 +43,72 @@ let sidebarPendingMapSize = null;
 let sidebarWindowResizeTimer = null;
 let sidebarDragState = null;
 let suppressSidebarClick = false;
+// The inline transition a velocity-seeded settle installs, and the timer that
+// takes it back off again. Kept as module state rather than read off the
+// element because a second release arriving mid-settle must cancel the first
+// one's cleanup, not inherit its clock.
+let panelSettleTimer = null;
+let _panelSettleSupported = null;
+
+// `linear()` easing is what lets a CSS transition follow a spring — including
+// the part of a spring a cubic-bezier cannot express, where it passes the stop
+// and comes back. Where it is missing, the stylesheet's own curve runs and the
+// panel simply settles without the momentum handoff.
+function panelSettleSupported() {
+  if (_panelSettleSupported === null) {
+    _panelSettleSupported =
+      typeof CSS !== "undefined" &&
+      typeof CSS.supports === "function" &&
+      CSS.supports("transition-timing-function", "linear(0, 1)");
+  }
+  return _panelSettleSupported;
+}
+
+function clearPanelSettleMotion() {
+  if (panelSettleTimer) {
+    clearTimeout(panelSettleTimer);
+    panelSettleTimer = null;
+  }
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  sidebar.style.removeProperty("transition-duration");
+  sidebar.style.removeProperty("transition-timing-function");
+}
+
+// §9.3: "从手指速度交接给 spring，避免释放瞬间停顿".
+//
+// The stylesheet's fixed 320 ms curve always leaves from rest, so a release at
+// 1,800 px/s visibly stalls for a frame before the panel starts moving again.
+// This replaces that curve, for this one settle only, with a spring sampled
+// from the speed the finger actually left — and then puts the stylesheet's
+// curve back, so every non-gestural change (a tap on the grabber, an arrow
+// key, a keyboard raise) keeps the app's ordinary rhythm.
+//
+// Only the sheet gets it. The bottom navigation sits at the same offset at all
+// three stops, so between detents its transition is a no-op; it moves only on
+// the way back from a rubber-band, where the spring's overshoot would lift it
+// off the bottom edge and show a strip of map under the tab bar.
+//
+// Returns the settle duration in ms (0 when nothing was installed) so the
+// map's padding ease can run on the same clock as the panel it compensates for.
+function applyPanelSettleMotion(release, targetSize) {
+  clearPanelSettleMotion();
+  if (!release || !panelSettleSupported() || REDUCED_MOTION_MEDIA.matches)
+    return 0;
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return 0;
+  const { durationMs, easing } = panelSettleMotion(
+    targetSize - release.fromSize,
+    release.velocity,
+  );
+  if (!(durationMs > 0)) return 0;
+  sidebar.style.transitionDuration = `${durationMs}ms`;
+  sidebar.style.transitionTimingFunction = easing;
+  // Generously past the end: a transitionend listener would miss the case
+  // where the computed transform happens not to change at all.
+  panelSettleTimer = setTimeout(clearPanelSettleMotion, durationMs + 80);
+  return durationMs;
+}
 
 // The resolved terminal UI mode owns the interaction axis. Auto mode combines
 // device/input detection with a compact-window fallback; users can explicitly
@@ -57,16 +134,46 @@ function sidebarFullSize() {
     : 480;
 }
 
-// One mobile detent in px. Peek exposes only the independently fixed bottom
-// navigation while the scrollable sheet parks behind it.
+// One mobile detent in px.
+//
+// Docked is MEASURED, not a constant: §4.3 requires it to show the grabber,
+// what is currently selected and one action, and that strip is a different
+// height in Japanese, at a large browser font size, and on a phone with a home
+// indicator. The same reasoning — and the same defect it avoids — as the iOS
+// panel's `compactChromeProbe`.
 function sidebarPanelSizePx(state) {
   const full = sidebarFullSize();
   if (state === "full") return full;
   if (state === "half")
-    return Math.min(full, Math.round(window.innerHeight * 0.5));
+    return Math.min(full, Math.round(window.innerHeight * SIDEBAR_HALF_FRACTION));
   const nav = document.querySelector(".workspace-nav");
   const navHeight = nav ? nav.getBoundingClientRect().height : 64;
-  return Math.min(full, Math.ceil(navHeight + SIDEBAR_HANDLE_ZONE_PX));
+  const summary = document.getElementById("panel-docked-summary");
+  const summaryHeight =
+    summary && !summary.hidden ? summary.getBoundingClientRect().height : 0;
+  return Math.min(
+    full,
+    Math.ceil(navHeight + SIDEBAR_HANDLE_ZONE_PX + summaryHeight),
+  );
+}
+
+// Every stop the panel may rest at, as app-panel-motion.js wants them.
+function sidebarPanelDetents() {
+  return SIDEBAR_PANEL_STATES.map((state) => ({
+    state,
+    size: sidebarPanelSizePx(state),
+  }));
+}
+
+// Where the panel actually IS on screen, rather than where its stored detent
+// says it should be. A drag has to track from the presented size or the panel
+// jumps under the finger on the first move.
+function presentedSidebarPanelSize() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return sidebarPanelSizePx(sidebarPanelState);
+  const rect = sidebar.getBoundingClientRect();
+  const measured = window.innerHeight - rect.top;
+  return measured > 0 ? measured : sidebarPanelSizePx(sidebarPanelState);
 }
 
 // The footprint the map camera should currently compensate for.
@@ -153,15 +260,51 @@ function cancelScheduledSidebarMapPadding() {
   sidebarPendingMapSize = null;
 }
 
+// §14.4: the grabber must SAY which of the three stops the panel is at, not
+// only what tapping it would do next. A control whose only feedback is its own
+// next action leaves a screen-reader user unable to answer "where am I".
+function panelDetentName(state) {
+  return I18N.t(`panel.${state}`);
+}
+
 function updateSidebarToggleLabel() {
   const tab = document.getElementById("sidebar-edge-tab");
   if (!tab) return;
-  let labelKey = sidebarVisible ? "menu.hide" : "menu.show";
-  if (sidebarVisible && sidebarUsesVerticalDrag()) {
-    if (sidebarPanelState === "half") labelKey = "menu.expand";
-    else if (sidebarPanelState === "full") labelKey = "menu.minimize";
+  const vertical = sidebarUsesVerticalDrag();
+  if (vertical) {
+    // Three stops, so the grabber is a stepper over a value rather than a
+    // two-state disclosure — `aria-expanded` would claim a binary this is
+    // not, and `aria-valuetext` on a plain button is not exposed at all.
+    //
+    // `role="slider"` is what makes the three stops reachable without a
+    // drag: §10.3 requires the panel to be operable from the keyboard, and
+    // §14.4 requires every detent to be reachable by assistive technology.
+    // A resize handle that can only be dragged is unreachable by Switch
+    // Control, Voice Control and every keyboard user — the same defect the
+    // iOS panel's accessibilityAdjustableAction fixes.
+    const label = I18N.t("menu.resizePanel");
+    const index = SIDEBAR_PANEL_STATES.indexOf(sidebarPanelState);
+    tab.removeAttribute("aria-expanded");
+    tab.setAttribute("role", "slider");
+    tab.setAttribute("aria-label", label);
+    tab.setAttribute("aria-valuemin", "0");
+    tab.setAttribute("aria-valuemax", String(SIDEBAR_PANEL_STATES.length - 1));
+    tab.setAttribute("aria-valuenow", String(Math.max(index, 0)));
+    tab.setAttribute("aria-valuetext", panelDetentName(sidebarPanelState));
+    tab.dataset.panelState = sidebarPanelState;
+    tab.title = `${label} · ${panelDetentName(sidebarPanelState)}`;
+    return;
   }
-  const label = I18N.t(labelKey);
+  const label = I18N.t(sidebarVisible ? "menu.hide" : "menu.show");
+  for (const attribute of [
+    "role",
+    "aria-valuetext",
+    "aria-valuemin",
+    "aria-valuemax",
+    "aria-valuenow",
+  ])
+    tab.removeAttribute(attribute);
+  delete tab.dataset.panelState;
   tab.setAttribute("aria-expanded", sidebarVisible ? "true" : "false");
   tab.setAttribute("aria-label", label);
   tab.title = label;
@@ -170,6 +313,12 @@ function updateSidebarToggleLabel() {
 function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   const app = document.getElementById("app");
   if (!app) return;
+  // §4.3: on a narrow screen docked IS the floor, so there is no hidden state
+  // to enter — and, just as importantly, none to be restored INTO. This flag
+  // is the desktop drawer's, and it is shared storage: a reader who closed the
+  // drawer on their laptop was opening the phone onto a fourth, invisible
+  // detent with no grabber to bring anything back.
+  if (sidebarUsesVerticalDrag()) visible = true;
   sidebarVisible = Boolean(visible);
   app.classList.toggle("sidebar-collapsed", !sidebarVisible);
   document.documentElement.dataset.sidebar = sidebarVisible
@@ -205,7 +354,10 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
     }
   }
   updateSidebarToggleLabel();
-  if (persist) {
+  // Only the desktop drawer writes this key. Mobile is always visible, so
+  // storing "1" from here would quietly overwrite a deliberately closed
+  // desktop drawer the next time the same profile opened the app on a phone.
+  if (persist && !sidebarUsesVerticalDrag()) {
     try {
       localStorage.setItem(SIDEBAR_VISIBILITY_KEY, sidebarVisible ? "1" : "0");
     } catch {}
@@ -227,10 +379,14 @@ function setSidebarVisible(visible, { persist = true, animate = true } = {}) {
   }
 }
 
-// Switch the mobile panel to a detent (peek / half / full). From hidden it
+// Switch the mobile panel to a detent (docked / half / full). From hidden it
 // re-opens straight onto the requested detent. On desktop only the stored
 // preference changes — the drawer there stays binary.
-function setSidebarPanelState(state, { persist = true, animate = true } = {}) {
+function setSidebarPanelState(
+  state,
+  { persist = true, animate = true, release = null } = {},
+) {
+  if (state === SIDEBAR_LEGACY_PANEL_STATE) state = "docked";
   if (!SIDEBAR_PANEL_STATES.includes(state)) state = "half";
   sidebarPanelState = state;
   updateSidebarToggleLabel();
@@ -246,11 +402,16 @@ function setSidebarPanelState(state, { persist = true, animate = true } = {}) {
   }
   const app = document.getElementById("app");
   if (!app) return;
+  // Before the transform changes, or the transition it is meant to govern has
+  // already been computed with the stylesheet's curve.
+  const settleMs = animate
+    ? applyPanelSettleMotion(release, sidebarPanelSizePx(state))
+    : (clearPanelSettleMotion(), 0);
   syncSidebarPanelStyle(app);
   cancelScheduledSidebarMapPadding();
   const easedMs = applySidebarMapPadding(
     sidebarCurrentSize(),
-    animate ? 320 : 0,
+    animate ? settleMs || 320 : 0,
   );
   // Same staleness rule as setSidebarVisible: the resting padding changed,
   // so recompute the Japan zoom/bounds envelope once it lands.
@@ -268,13 +429,18 @@ function setupSidebarToggle() {
   if (!app || !tab) return;
   sidebarToggleReady = true;
   try {
-    sidebarVisible = localStorage.getItem(SIDEBAR_VISIBILITY_KEY) !== "0";
+    // The stored flag is only consulted where it means something. See
+    // setSidebarVisible: mobile's minimum is docked, not hidden.
+    sidebarVisible =
+      sidebarUsesVerticalDrag() ||
+      localStorage.getItem(SIDEBAR_VISIBILITY_KEY) !== "0";
   } catch {
     sidebarVisible = true;
   }
   try {
     const savedPanel = localStorage.getItem(SIDEBAR_PANEL_STATE_KEY);
-    if (SIDEBAR_PANEL_STATES.includes(savedPanel))
+    if (savedPanel === SIDEBAR_LEGACY_PANEL_STATE) sidebarPanelState = "docked";
+    else if (SIDEBAR_PANEL_STATES.includes(savedPanel))
       sidebarPanelState = savedPanel;
   } catch {}
   setSidebarVisible(sidebarVisible, { persist: false, animate: false });
@@ -286,34 +452,58 @@ function setupSidebarToggle() {
       return;
     }
     if (sidebarUsesVerticalDrag()) {
-      // Tap advances the useful mobile states. At peek, the navigation itself
-      // raises a chosen workspace; the grabber hides the remaining chrome so
-      // touch and keyboard users both have a route to a true full-screen map.
+      // Tap cycles the three stops, and never hides the panel: §4.3's docked
+      // state IS the minimum, so there is always a grabber to tap back. The
+      // map is reached by dragging the panel down to docked, which leaves the
+      // rest of the window to it.
       if (!sidebarVisible) setSidebarVisible(true);
-      else if (sidebarPanelState === "peek") setSidebarVisible(false);
-      else
-        setSidebarPanelState(
-          SIDEBAR_PANEL_STATES[
-            (SIDEBAR_PANEL_STATES.indexOf(sidebarPanelState) + 1) %
-              SIDEBAR_PANEL_STATES.length
-          ],
-        );
+      else setSidebarPanelState(nextPanelDetent(sidebarPanelState));
       return;
     }
     setSidebarVisible(!sidebarVisible);
+  });
+
+  // §10.3: the arrow keys step the panel, so the three stops are reachable
+  // without a drag. Home and End jump to the ends, which is what a reader who
+  // knows the control expects and what saves two presses on a phone keyboard.
+  tab.addEventListener("keydown", (event) => {
+    if (!sidebarUsesVerticalDrag()) return;
+    const index = SIDEBAR_PANEL_STATES.indexOf(sidebarPanelState);
+    const last = SIDEBAR_PANEL_STATES.length - 1;
+    let next = null;
+    switch (event.key) {
+      case "ArrowUp":
+      case "ArrowRight":
+        next = Math.min(index + 1, last);
+        break;
+      case "ArrowDown":
+      case "ArrowLeft":
+        next = Math.max(index - 1, 0);
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    setSidebarPanelState(SIDEBAR_PANEL_STATES[next]);
   });
 
   tab.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     const vertical = sidebarUsesVerticalDrag();
     const fullSize = sidebarFullSize();
-    // The drag tracks from where the panel actually IS: the current detent on
-    // mobile (starting from fullSize would snap the panel to full under the
-    // finger), the binary open size on desktop.
+    // The drag tracks from where the panel actually IS — measured, not
+    // remembered: starting from the stored detent snaps the panel under the
+    // finger when a previous animation has not finished landing.
     const startSize = !sidebarVisible
       ? 0
       : vertical
-        ? sidebarPanelSizePx(sidebarPanelState)
+        ? presentedSidebarPanelSize()
         : fullSize;
     sidebarDragState = {
       pointerId: event.pointerId,
@@ -324,6 +514,18 @@ function setupSidebarToggle() {
       startSize,
       currentSize: startSize,
       moved: false,
+      // §9.3: the release stop comes from the flick's VELOCITY, which has to
+      // be measured while the finger is down. Sampled rather than taken from
+      // the last pointermove pair, because one dropped frame there reports a
+      // velocity an order of magnitude off.
+      //
+      // Seeded with the touch-down itself, and closed with the lift (see
+      // finishDrag), so the window spans the WHOLE gesture. Without the seed a
+      // flick short enough to produce one pointermove had a single sample,
+      // panelReleaseVelocity refused to divide by one point, and the fastest
+      // gestures on the panel were the ones reported as motionless.
+      samples: [{ size: startSize, time: performance.now() }],
+      detents: vertical ? sidebarPanelDetents() : [],
       detachWindowFallback: null,
     };
     app.classList.add("sidebar-dragging");
@@ -368,13 +570,30 @@ function setupSidebarToggle() {
     const rawDelta = drag.vertical
       ? drag.startY - event.clientY
       : event.clientX - drag.startX;
-    if (Math.abs(rawDelta) > 3) drag.moved = true;
+    // §9.3: a touch has to declare a direction before it counts as a drag, or
+    // a tap on the grabber that wobbles two pixels becomes a resize.
+    const slop = drag.vertical ? PANEL_DRAG_SLOP_PX : 3;
+    if (Math.abs(rawDelta) >= slop) drag.moved = true;
     if (!drag.moved) return;
     event.preventDefault();
-    drag.currentSize = Math.max(
-      0,
-      Math.min(drag.fullSize, drag.startSize + rawDelta),
-    );
+    if (drag.vertical) {
+      // Free between the stops, RESISTED past them — never clamped. A hard
+      // stop at the extreme reads to the hand as the gesture having broken.
+      const sizes = drag.detents.map((detent) => detent.size);
+      drag.currentSize = constrainedPanelSize(
+        drag.startSize + rawDelta,
+        Math.min(...sizes),
+        Math.max(...sizes),
+        window.innerHeight,
+      );
+      drag.samples.push({ size: drag.currentSize, time: performance.now() });
+      if (drag.samples.length > 8) drag.samples.shift();
+    } else {
+      drag.currentSize = Math.max(
+        0,
+        Math.min(drag.fullSize, drag.startSize + rawDelta),
+      );
+    }
     app.style.setProperty("--sidebar-size", `${drag.currentSize}px`);
     scheduleSidebarMapPadding(drag.currentSize);
   };
@@ -396,24 +615,28 @@ function setupSidebarToggle() {
         suppressSidebarClick = false;
       }, 0);
       if (drag.vertical) {
-        // Snap to the nearest detent; releasing below half of peek hides the
-        // panel entirely (full-screen map).
-        const detents = SIDEBAR_PANEL_STATES.map((state) => [
-          state,
-          sidebarPanelSizePx(state),
-        ]);
-        if (drag.currentSize < detents[0][1] * 0.5) {
-          setSidebarVisible(false);
-        } else {
-          let best = detents[0];
-          for (const candidate of detents)
-            if (
-              Math.abs(candidate[1] - drag.currentSize) <
-              Math.abs(best[1] - drag.currentSize)
-            )
-              best = candidate;
-          setSidebarPanelState(best[0]);
-        }
+        // The lift is a sample too. A finger that came to rest before letting
+        // go released at zero, and only a sample taken at the release itself
+        // can say so — without it, a pause at the end of a fast drag still
+        // flung the panel to the next stop.
+        drag.samples.push({ size: drag.currentSize, time: performance.now() });
+        // §9.3: snap to where the flick was GOING, not to where the finger
+        // happened to leave the glass — so a fast flick from just above docked
+        // reaches full without the finger travelling that far, and a slow drag
+        // of the same distance stays put. The panel never hides: docked is the
+        // floor, and it still carries a grabber, an identity and one action.
+        const landing = panelDetentForRelease(
+          drag.currentSize,
+          drag.samples,
+          drag.detents.length ? drag.detents : sidebarPanelDetents(),
+        );
+        // The same velocity that chose the stop also starts the travel to it.
+        setSidebarPanelState(landing ? landing.state : sidebarPanelState, {
+          release: {
+            fromSize: drag.currentSize,
+            velocity: panelReleaseVelocity(drag.samples),
+          },
+        });
       } else {
         // Desktop keeps the binary drawer: a little under halfway feels
         // deliberate while still making it easy to pull a hidden menu back.
@@ -446,6 +669,11 @@ function setupSidebarToggle() {
     clearTimeout(sidebarWindowResizeTimer);
     sidebarWindowResizeTimer = setTimeout(() => {
       sidebarWindowResizeTimer = null;
+      // Crossing INTO the mobile layout: docked is the floor there, so a
+      // drawer closed on the desktop side must not survive the crossing as a
+      // fourth, invisible detent.
+      if (sidebarUsesVerticalDrag() && !sidebarVisible)
+        setSidebarVisible(true, { persist: false, animate: false });
       // Rotation / breakpoint crossings change every detent's px value.
       syncSidebarPanelStyle(app);
       // Crossing INTO the desktop layout re-opens the mobile-collapsed
@@ -478,6 +706,10 @@ function setupSidebarToggle() {
     }
     app.style.removeProperty("--kb-inset");
     app.style.removeProperty("--sidebar-size");
+    // Same floor as the resize path: forcing mobile UI must never land on the
+    // hidden state the desktop drawer is allowed to be in.
+    if (sidebarUsesVerticalDrag() && !sidebarVisible)
+      setSidebarVisible(true, { persist: false, animate: false });
     syncSidebarPanelStyle(app);
     if (!sidebarUsesVerticalDrag())
       document
@@ -530,13 +762,83 @@ function setupSidebarToggle() {
   }
 }
 
-const WORKSPACE_TABS = [
-  "train-browser",
-  "train-editor",
-  "mileage-stats",
-  "data-manager",
-  "display-settings",
-];
+// §2.2's navigation tree, as the DOM realises it.
+//
+// Three destinations, each owning one or more cards. `train-editor` is NOT a
+// destination of its own any more: §2.2 folds Editor into Journey Detail, so
+// it belongs to Journeys and is shown alongside the browser rather than
+// instead of it.
+const PRIMARY_WORKSPACES = {
+  journeys: ["train-browser", "train-editor"],
+  network: ["network-workspace"],
+  passport: ["mileage-stats"],
+};
+const PRIMARY_WORKSPACE_NAMES = Object.keys(PRIMARY_WORKSPACES);
+// §2.2: data ownership and global preferences are TASKS. They open over the
+// current workspace and hand it back when closed — they are not places the
+// reader browses, so they are not tabs.
+const UTILITY_WORKSPACES = ["data-manager", "display-settings"];
+// The five-tab hashes this replaced, so a bookmark or a restored session lands
+// somewhere meaningful instead of silently falling back to Journeys.
+const LEGACY_WORKSPACE_HASHES = {
+  "train-browser": "journeys",
+  "train-editor": "journeys",
+  "mileage-stats": "passport",
+  "data-manager": "data-manager",
+  "display-settings": "display-settings",
+};
+let activePrimaryWorkspace = "journeys";
+let activeUtilityWorkspace = null;
+// §4.1: "切换 Tab 必须保留每个工作区的导航、滚动和筛选状态".
+//
+// One scroll offset per destination, remembered on the way out and re-applied
+// on the way in. The panel is a single scrolling element shared by every card,
+// so without this a reader who was forty rows down a journey list came back to
+// the top of it every time they glanced at Passport.
+const workspaceScrollOffsets = new Map();
+// §4.1 again: "Data/Settings 被关闭后必须返回原 Tab、原导航路径与原滚动位置".
+//
+// A Utility takes the whole panel (§4.3 allows a task to), which means closing
+// one has to give back more than the card underneath: the detent it displaced
+// and the scroll offset it reset are both part of "原位置".
+let utilityReturnState = null;
+
+function panelScrollElement() {
+  return document.getElementById("sidebar");
+}
+
+function rememberWorkspaceScroll() {
+  const sidebar = panelScrollElement();
+  if (!sidebar) return;
+  workspaceScrollOffsets.set(currentPrimaryWorkspace(), sidebar.scrollTop);
+}
+
+function restoreWorkspaceScroll(name) {
+  const sidebar = panelScrollElement();
+  if (!sidebar) return;
+  const top = workspaceScrollOffsets.get(name) || 0;
+  sidebar.scrollTop = top;
+  // A scroll offset assigned to an element that is still short is silently
+  // clamped, and the incoming card can still grow by a frame — the Passport
+  // log and the network summary both render into it on the way in. Retry once,
+  // and only when the first assignment actually came up short.
+  if (
+    top > 0 &&
+    sidebar.scrollTop < top &&
+    typeof requestAnimationFrame === "function"
+  )
+    requestAnimationFrame(() => {
+      if (currentPrimaryWorkspace() === name && sidebar.scrollTop < top)
+        sidebar.scrollTop = top;
+    });
+}
+
+// Which destination is showing. Read by §4.3's docked strip, which has to name
+// what the panel is currently ABOUT — a strip that says "185 journeys" while
+// the reader is looking at Network is answering a question nobody asked.
+function currentPrimaryWorkspace() {
+  return activeUtilityWorkspace || activePrimaryWorkspace;
+}
 
 // A restored #workspace hash can make browsers scroll the otherwise locked
 // body to that card after first paint. The fixed-height app then starts above
@@ -552,35 +854,202 @@ function resetWorkspaceDocumentScroll() {
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(reset);
 }
 
-function setActiveWorkspaceTab(tabId, { updateHash = true } = {}) {
-  if (!WORKSPACE_TABS.includes(tabId)) tabId = WORKSPACE_TABS[0];
-  document
-    .querySelectorAll("#sidebar > .card, #sidebar > details.card")
-    .forEach((card) => {
-      card.classList.toggle("tab-hidden", card.id !== tabId);
-    });
-  document.querySelectorAll(".workspace-nav a").forEach((a) => {
-    const target = (a.getAttribute("href") || "").slice(1);
-    const active = target === tabId;
-    a.classList.toggle("active", active);
-    if (active) a.setAttribute("aria-current", "page");
-    else a.removeAttribute("aria-current");
+// Hide or show one card, in every sense a card can be hidden.
+//
+// `hidden` alone only stops the mouse. A card that is off screen must also
+// leave the tab order and the accessibility tree, or a keyboard reader tabs
+// straight into the Danger Zone of a Data Library nobody opened.
+function setWorkspaceCardVisible(card, visible) {
+  if (!card) return;
+  card.hidden = !visible;
+  card.classList.toggle("tab-hidden", !visible);
+  card.inert = !visible;
+  if (visible) card.removeAttribute("aria-hidden");
+  else card.setAttribute("aria-hidden", "true");
+  // A collapsible card IS its whole workspace — open it when it is shown.
+  if (visible && card.tagName === "DETAILS") card.open = true;
+}
+
+// Move focus out of a region before it becomes inert. Leaving it inside is how
+// a page ends up with `document.activeElement` in a subtree nothing can reach.
+function releaseFocusFrom(cards) {
+  const active = document.activeElement;
+  if (!active) return;
+  if (!cards.some((card) => card && card.contains(active))) return;
+  if (typeof active.blur === "function") active.blur();
+}
+
+function setActivePrimaryWorkspace(
+  name,
+  { updateHash = true, restoreScroll = true } = {},
+) {
+  if (!PRIMARY_WORKSPACES[name]) name = PRIMARY_WORKSPACE_NAMES[0];
+  // Before anything is hidden: whatever is on screen owns the current offset.
+  // Re-selecting the destination already on screen moves nothing, so it must
+  // not overwrite what the reader is looking at with a remembered offset.
+  const arriving = name !== currentPrimaryWorkspace();
+  if (arriving) rememberWorkspaceScroll();
+  // Leaving a Utility by pressing a tab is a decision, not a close — there is
+  // no "back where it was opened from" left to honour.
+  if (activeUtilityWorkspace) utilityReturnState = null;
+  activePrimaryWorkspace = name;
+  activeUtilityWorkspace = null;
+
+  const utilityCards = UTILITY_WORKSPACES.map((id) =>
+    document.getElementById(id),
+  );
+  releaseFocusFrom(utilityCards);
+  utilityCards.forEach((card) => setWorkspaceCardVisible(card, false));
+  document.querySelectorAll("[data-primary-workspace]").forEach((card) => {
+    setWorkspaceCardVisible(card, card.dataset.primaryWorkspace === name);
   });
-  // A collapsible card IS its whole tab — open it when its tab is shown.
-  const panel = document.getElementById(tabId);
-  if (panel && panel.tagName === "DETAILS") panel.open = true;
-  if (updateHash && location.hash !== "#" + tabId)
-    history.replaceState(null, "", "#" + tabId);
+
+  document.querySelectorAll("[data-workspace-target]").forEach((button) => {
+    const active = button.dataset.workspaceTarget === name;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  const app = document.getElementById("app");
+  if (app) {
+    app.dataset.workspace = name;
+    delete app.dataset.utility;
+  }
+
+  if (updateHash && location.hash !== "#" + name)
+    history.replaceState(null, "", "#" + name);
+  resetWorkspaceDocumentScroll();
+  // Compute the mileage stats lazily, the first time (and only when) Passport
+  // is actually opened — scheduleMileageStats() otherwise skips while the card
+  // is hidden, so the 12 MB rail-sections parse it needs never lands on the
+  // boot path. Guarded by typeof because this also runs at module-parse time,
+  // before those functions are defined.
+  if (name === "passport") {
+    if (typeof scheduleMileageStats === "function") scheduleMileageStats();
+    if (typeof renderPassportJourneyLog === "function")
+      renderPassportJourneyLog();
+  }
+  if (name === "network" && typeof renderNetworkWorkspace === "function")
+    renderNetworkWorkspace();
+  // §4.3: the docked strip names what the panel is currently about.
+  if (typeof renderPanelDockedSummary === "function")
+    renderPanelDockedSummary();
+  // After the incoming cards are visible and have rendered, or the offset is
+  // applied to a panel that is still showing the previous destination.
+  if (!arriving) return;
+  if (restoreScroll) restoreWorkspaceScroll(name);
+  else {
+    const sidebar = panelScrollElement();
+    if (sidebar) sidebar.scrollTop = 0;
+  }
+}
+
+// §4.1: a Utility destination opens OVER the current workspace and hands it
+// back on close — the primary selection is not disturbed while it is open, so
+// closing needs no memory beyond `activePrimaryWorkspace`.
+function openUtilityWorkspace(id) {
+  if (!UTILITY_WORKSPACES.includes(id)) return;
+  // Only the FIRST open records the way back: stepping from Data Library to
+  // Settings must not overwrite the workspace both of them opened over.
+  if (!activeUtilityWorkspace) {
+    rememberWorkspaceScroll();
+    utilityReturnState = {
+      workspace: activePrimaryWorkspace,
+      panelState: sidebarPanelState,
+    };
+  }
+  activeUtilityWorkspace = id;
+  document
+    .querySelectorAll("[data-primary-workspace]")
+    .forEach((card) => setWorkspaceCardVisible(card, false));
+  UTILITY_WORKSPACES.forEach((candidate) => {
+    setWorkspaceCardVisible(
+      document.getElementById(candidate),
+      candidate === id,
+    );
+  });
+  const app = document.getElementById("app");
+  if (app) app.dataset.utility = id;
+  // A task wants the room a task needs: §4.3 allows a system task to take the
+  // whole panel, and an import wizard read through a 40%-tall window is not a
+  // wizard anybody can follow.
+  //
+  // Not persisted: this raise belongs to the task, not to the reader. Writing
+  // it to storage would mean quitting with an import open reopens the app at
+  // full, having silently replaced a detent nobody chose.
+  if (sidebarUsesVerticalDrag()) {
+    if (!sidebarVisible) setSidebarVisible(true);
+    setSidebarPanelState("full", { persist: false });
+  }
   const sidebar = document.getElementById("sidebar");
   if (sidebar) sidebar.scrollTop = 0;
-  resetWorkspaceDocumentScroll();
-  // Compute the mileage stats lazily, the first time (and only when) the 統計
-  // tab is actually opened — scheduleMileageStats() otherwise skips while the
-  // panel is hidden, so the 12 MB rail-sections parse it needs never lands on
-  // the boot path. Guarded by typeof because setActiveWorkspaceTab() also runs
-  // at module-parse time, before scheduleMileageStats is defined.
-  if (tabId === "mileage-stats" && typeof scheduleMileageStats === "function")
-    scheduleMileageStats();
+  if (typeof renderPanelDockedSummary === "function")
+    renderPanelDockedSummary();
+  const target = document.getElementById(id);
+  if (target && typeof target.focus === "function")
+    target.focus({ preventScroll: true });
+}
+
+function closeUtilityWorkspace() {
+  if (!activeUtilityWorkspace) return;
+  const returning = utilityReturnState;
+  utilityReturnState = null;
+  // Back to the workspace this was opened from, at ITS hash — the Utility
+  // never wrote one, so nothing has to be restored there. Everything the task
+  // DID displace is put back below.
+  setActivePrimaryWorkspace(
+    returning ? returning.workspace : activePrimaryWorkspace,
+    { updateHash: false },
+  );
+  // The detent the task took for itself. Opening a Utility raises the panel to
+  // full because an import wizard read through a 40%-tall window is not a
+  // wizard anybody can follow — but the reader parked the panel where they
+  // parked it, and a task is not entitled to keep that change after it ends.
+  if (
+    returning &&
+    sidebarUsesVerticalDrag() &&
+    returning.panelState !== sidebarPanelState
+  )
+    setSidebarPanelState(returning.panelState);
+  const nav = document.querySelector(
+    `[data-workspace-target="${activePrimaryWorkspace}"]`,
+  );
+  if (nav && typeof nav.focus === "function") nav.focus({ preventScroll: true });
+}
+
+// §5.3.4: "点击打开同一个 Journey Detail，不复制历史详情页面".
+//
+// Selecting the record was only ever half of that. `train-editor` belongs to
+// Journeys (§2.2 folded the editor into Journey Detail), so while Passport was
+// the destination on screen the detail this "opened" stayed hidden and inert,
+// and the reader was left on a log where one row had changed colour. Passport
+// and Journeys are two views of one set of records, not two record stores — so
+// this goes to the view that owns the detail rather than growing a second copy
+// of the detail here.
+function openJourneyDetail(id) {
+  if (!id) return;
+  selectTrain(id, { fit: focusZoomEnabled });
+  // Not restoreScroll: the reader asked for one specific record, so the
+  // remembered offset of the journeys list is not where they want to be.
+  setActivePrimaryWorkspace("journeys", { restoreScroll: false });
+  // A detail read through the docked strip is not a detail.
+  if (sidebarUsesVerticalDrag() && sidebarPanelState === "docked")
+    setSidebarPanelState("half");
+  const editor = document.getElementById("train-editor");
+  if (editor && typeof editor.scrollIntoView === "function")
+    editor.scrollIntoView({
+      block: "start",
+      behavior: REDUCED_MOTION_MEDIA.matches ? "auto" : "smooth",
+    });
+}
+
+// One route resolver for a hash, a nav press and a restored session.
+function routeToWorkspace(raw, { updateHash = true } = {}) {
+  const name = String(raw || "").replace(/^#/, "");
+  if (UTILITY_WORKSPACES.includes(name)) return openUtilityWorkspace(name);
+  const legacy = LEGACY_WORKSPACE_HASHES[name];
+  if (legacy) return routeToWorkspace(legacy, { updateHash });
+  setActivePrimaryWorkspace(name, { updateHash });
 }
 
 let _workspaceTabsReady = false;
@@ -589,33 +1058,62 @@ function setupWorkspaceTabs() {
   const nav = document.querySelector(".workspace-nav");
   if (!nav) return;
   _workspaceTabsReady = true;
-  nav.addEventListener("click", (ev) => {
-    const link = ev.target.closest("a");
-    if (!link) return;
-    ev.preventDefault();
-    setActiveWorkspaceTab((link.getAttribute("href") || "").slice(1));
-    if (!sidebarVisible) {
-      setSidebarVisible(true);
+
+  document.addEventListener("click", (ev) => {
+    const target = ev.target;
+    if (!target || typeof target.closest !== "function") return;
+
+    const primary = target.closest("[data-workspace-target]");
+    if (primary) {
+      ev.preventDefault();
+      setActivePrimaryWorkspace(primary.dataset.workspaceTarget);
+      if (!sidebarVisible) {
+        setSidebarVisible(true);
+        return;
+      }
+      // A destination CHOSEN from the docked stop means "open that workspace"
+      // — raise the panel so its content is actually visible. Only here, not
+      // in setActivePrimaryWorkspace: boot and hashchange restoration must not
+      // overwrite a deliberately parked docked panel.
+      if (
+        sidebarUsesVerticalDrag() &&
+        sidebarVisible &&
+        sidebarPanelState === "docked"
+      )
+        setSidebarPanelState("half");
       return;
     }
-    // A tab TAPPED from the peek detent means "open that workspace" — raise
-    // the panel so its content is actually visible. Only here, not in
-    // setActiveWorkspaceTab: boot/hashchange restoration must not overwrite
-    // a deliberately parked peek panel.
-    if (
-      sidebarUsesVerticalDrag() &&
-      sidebarVisible &&
-      sidebarPanelState === "peek"
-    )
-      setSidebarPanelState("half");
+
+    const utility = target.closest("[data-utility-target]");
+    if (utility) {
+      ev.preventDefault();
+      openUtilityWorkspace(utility.dataset.utilityTarget);
+      return;
+    }
+
+    if (target.closest("[data-utility-close]")) {
+      ev.preventDefault();
+      closeUtilityWorkspace();
+    }
   });
+
+  // Escape leaves a Utility the way it leaves any other task surface.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !activeUtilityWorkspace) return;
+    const active = document.activeElement;
+    // Not while a text field or an open disclosure is consuming the key.
+    if (active && active.matches && active.matches("input, textarea, select"))
+      return;
+    closeUtilityWorkspace();
+  });
+
   window.addEventListener("hashchange", () => {
-    setActiveWorkspaceTab(location.hash.slice(1), { updateHash: false });
+    routeToWorkspace(location.hash.slice(1), { updateHash: false });
     resetWorkspaceDocumentScroll();
   });
   window.addEventListener("load", resetWorkspaceDocumentScroll);
   window.addEventListener("pageshow", resetWorkspaceDocumentScroll);
-  setActiveWorkspaceTab(location.hash.slice(1) || WORKSPACE_TABS[0], {
+  routeToWorkspace(location.hash.slice(1) || PRIMARY_WORKSPACE_NAMES[0], {
     updateHash: false,
   });
 }
@@ -719,6 +1217,64 @@ function bindEvents() {
   document
     .getElementById("fit-selected")
     .addEventListener("click", () => fitTrainBounds(getTrain()));
+  // §4.1 and §5.1: "定位所选路线" and "适配完整路网" are two controls with two
+  // labels. One button that means either depending on the selection is a
+  // button whose accessibility label is a lie half the time.
+  const fitNetwork = document.getElementById("fit-complete-network");
+  if (fitNetwork)
+    fitNetwork.addEventListener("click", () =>
+      fitActiveCountryOverview({ animate: true }),
+    );
+  // The complete-network switch drives the SAME state the map's own layer
+  // control does (§5.1 forbids two surfaces owning one switch), so the two
+  // can never disagree about whether the network is drawn.
+  const showNetwork = document.getElementById("network-show-all");
+  if (showNetwork)
+    showNetwork.addEventListener("click", () => {
+      setNetworkOverlayVisible(!isNetworkOverlayVisible());
+    });
+  if (typeof onNetworkOverlayChange === "function")
+    onNetworkOverlayChange(() => renderNetworkWorkspace());
+  // §4.3's docked action. One button whose verb the state chooses — which is
+  // why it dispatches on `dockedAction` rather than being two buttons one of
+  // which is always hidden.
+  const dockedAction = document.getElementById("panel-docked-action");
+  if (dockedAction)
+    dockedAction.addEventListener("click", () => {
+      if (dockedAction.dataset.dockedAction === "locate") {
+        const train = getTrain(selectedTrainId);
+        if (train) fitTrainBounds(train);
+        return;
+      }
+      addTrain();
+    });
+  // §5.3.4: a Journey Log row opens the SAME Journey Detail the list opens,
+  // over the same record id. Delegated because the log is rebuilt whenever the
+  // scope changes, and a listener per row would leak one per rebuild.
+  const journeyLog = document.getElementById("passport-journey-log");
+  if (journeyLog)
+    journeyLog.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-passport-train-id]");
+      if (!row) return;
+      openJourneyDetail(row.dataset.passportTrainId);
+    });
+  // §5.3.1's scope, which is Passport's own and nobody else's. Delegated for
+  // the same reason as the log: the chips are rebuilt on every store change.
+  const passportScope = document.getElementById("passport-scope");
+  if (passportScope)
+    passportScope.addEventListener("click", (event) => {
+      const chip = event.target.closest("[data-passport-scope]");
+      if (!chip) return;
+      setPassportScopeDate(chip.dataset.passportScope);
+    });
+  // Passport's replay is the same transport Journeys uses, over the same
+  // scope. §5.3 lists it as an entry point, not as a second player.
+  const passportReplay = document.getElementById("passport-replay");
+  if (passportReplay)
+    passportReplay.addEventListener("click", () => {
+      if (Playback.isActive()) Playback.stop();
+      else Playback.start();
+    });
   document.getElementById("clear-selection").addEventListener("click", () => {
     selectedTrainId = null;
     focusedTrainId = null;

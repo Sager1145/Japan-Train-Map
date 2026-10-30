@@ -382,6 +382,7 @@ Imports and exports use schema version 1.3:
         {
           "name": "東京",
           "n02_station_code": null,
+          "platform_number": null,
           "arrival": null,
           "departure": "09:00",
           "stop_type": "origin",
@@ -405,7 +406,8 @@ Important rules:
 
 - The root must be a schema 1.3 store for canonical import/export. Lenient UI/API paths also accept a train array or one train object.
 - Each train requires a unique `id`, `number`, `origin`, `destination`, and at least two stops.
-- Every stop exports `name`, `n02_station_code`, `arrival`, `departure`, `stop_type`, and boolean `ride_segment`.
+- Every stop exports `name`, `n02_station_code`, nullable non-negative integer `platform_number`, `arrival`, `departure`, `stop_type`, and boolean `ride_segment`.
+- `platform_number` is `null` when unknown; `0` is valid, negatives and fractions are invalid, and the UI hides null values. Only use verified service/timetable data—never infer it from platform geometry.
 - `ride_segment` defaults to `false`; omitting it can produce a valid but invisible train.
 - `n02_station_code` is a historical compatibility key whose value comes from the active region's official station-code system; it is not always a Japanese N02 code.
 - Route geometry is not embedded in the store.
@@ -492,7 +494,10 @@ npm run precompute:new-year-grand-loop
 npm run precompute:tokyo-limited-express-loop
 npm run rebuild:railway:jp
 npm run audit:apple-tiles:jp
+npm run build:db
 ```
+
+`npm run build:db` writes `app/data/rail.db`, a SQLite mirror that joins the five rail packages, the multilingual station-name tables, the route solver's section and station datasets, and the badge attribution files into queryable tables. It is derived output, gitignored, and read by nothing in the app — see [app/docs/rail-database.md](./app/docs/rail-database.md) for the schema and the joins it settles.
 
 The script catalog and dependency rules are documented in [app/scripts/README.md](./app/scripts/README.md). Files in `app/scripts/migrations/` are one-shot historical data corrections, not normal installation steps.
 

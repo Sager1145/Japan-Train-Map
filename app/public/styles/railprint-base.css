@@ -71,6 +71,7 @@
   --radius-small: 6px;
   --radius-button: 10px;
   --radius-card: 14px;
+  --radius-sheet: 28px;
   --radius-pill: 999px;
 
   /* Standard hairline border. Emphasis/selection borders are 2px, matching
@@ -149,10 +150,17 @@ html[data-theme="dark"] {
   --ios-label: #f5f1ef;
   --ios-label-secondary: #b7b3b1;
   --ios-label-tertiary: #918b88;
-  --ios-system-background: #000000;
-  --ios-secondary-background: #1c1c1e;
-  --ios-grouped-background: #111113;
-  --ios-secondary-grouped-background: #1c1c1e;
+  /* iOS's ELEVATED dark ladder, not its base one. §1.1 forbids a fixed pure
+     black as the app's main background and §4.2 forbids a custom pure-black
+     glass; the base dark ladder starts at #000000, so it is the wrong one to
+     map here anyway. Every surface in this app is elevated in Apple's own
+     sense — the panel is a card floating over a map, and the map is what the
+     page background shows through — and the elevated ladder is what iOS uses
+     underneath sheets and popovers for exactly that reason. */
+  --ios-system-background: #1c1c1e;
+  --ios-secondary-background: #2c2c2e;
+  --ios-grouped-background: #1c1c1e;
+  --ios-secondary-grouped-background: #2c2c2e;
   --ios-fill: #545458;
   --ios-fill-secondary: #3f3f43;
   --ios-fill-tertiary: #303034;
@@ -647,6 +655,13 @@ summary.subhead-toggle:hover {
 .card-body {
   padding: 16px 14px 14px;
   display: grid;
+  /* One column that is exactly the panel's width. An `auto` track is sized by
+     its widest item's max-content, so a single wide child — the Passport scope
+     strip, 31 date chips laid end to end — stretched the whole column to
+     3,493px and carried every right-aligned statistic off the panel with it.
+     minmax(0, 1fr) pins the column to the container and leaves overflow to the
+     child that actually overflows. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -1379,6 +1394,9 @@ th.col-seq {
 th.col-station,
 th.col-actions {
   width: 86px;
+}
+th.col-platform {
+  width: 52px;
 }
 th.col-time {
   width: 54px;

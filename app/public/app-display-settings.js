@@ -231,10 +231,11 @@ function setDocumentTheme(resolved) {
   document.documentElement.dataset.theme = resolved;
   document.documentElement.style.colorScheme = resolved;
   // Keep in sync with the index.html boot script, which writes the same
-  // values before this module loads (light --ios-grouped, dark black).
+  // values before this module loads: --ios-grouped-background in each
+  // appearance, so the browser chrome matches the page it frames.
   const themeMeta = document.querySelector('meta[name="theme-color"]');
   if (themeMeta)
-    themeMeta.content = resolved === "dark" ? "#000000" : "#f2f2f7";
+    themeMeta.content = resolved === "dark" ? "#1c1c1e" : "#f2f2f7";
 }
 
 function transitionDocumentTheme(resolved, animate) {
