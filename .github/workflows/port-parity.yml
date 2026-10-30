@@ -34,13 +34,22 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Matches deploy-pages.yml; rail-database.test.mjs needs node:sqlite.
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
       - name: Install
         working-directory: app
         run: npm ci
+
+      # The sample datasets the tests read are gitignored build output, so
+      # generate them the same way the Pages deploy does before testing.
+      - name: Build
+        working-directory: app
+        env:
+          CI: true
+        run: npm run build
 
       - name: Web app tests
         working-directory: app
