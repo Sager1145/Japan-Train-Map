@@ -58,12 +58,11 @@ html[data-ui-mode="mobile"] #app {
      card whose top edge meets the status bar has stopped being one. */
   --panel-margin-inline: 12px;
   --panel-top-gap: 10px;
-  /* §4.3: "辅助功能大字号可增至 68–76%". `em` in this expression resolves
-     against the reader's own base font size, so raising it in the browser
-     grows Half towards the 76% ceiling instead of leaving the same content in
-     the same box — the browser's equivalent of an iOS accessibility text
-     size. At the default 16 px the `em` term lands on 55% and is inert. */
-  --panel-half: min(76dvh, max(55dvh, 30em));
+  /* Keep first paint at the same 55% used by sidebarPanelSizePx(). The old
+     30em floor grew to 74% on a 568px-tall phone before JS replaced it with
+     55%, making the panel jump and briefly hiding most of the map. Longer
+     content scrolls in this stop and remains available at Full. */
+  --panel-half: 55dvh;
   --panel-full: calc(
     100dvh - env(safe-area-inset-top) - var(--panel-top-gap)
   );
@@ -86,7 +85,6 @@ html[data-ui-mode="mobile"] #app {
     --panel-margin-inline: 16px;
   }
 }
-
 
 html[data-ui-mode="mobile"][data-sidebar="collapsed"] #app,
 html[data-ui-mode="mobile"] #app.sidebar-collapsed {
@@ -191,8 +189,8 @@ html[data-ui-mode="mobile"] .workspace-nav a {
   min-height: 50px;
   padding: 3px 2px;
   border-radius: var(--radius-button);
-  font-size: 10px;
-  line-height: 1.05;
+  font-size: max(12px, 0.75rem);
+  line-height: 1.15;
 }
 
 html[data-ui-mode="mobile"] #sidebar > header {
@@ -491,7 +489,7 @@ html[data-ui-mode="desktop"] .workspace-nav a {
   min-height: 44px;
   padding: 2px;
   border-radius: 9px;
-  font-size: 10px;
+  font-size: max(11px, 0.6875rem);
   line-height: 1;
 }
 

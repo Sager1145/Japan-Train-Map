@@ -231,6 +231,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // which IndexedDB databases every later step talks to.
   loadActiveCountry();
   setupCountrySelect();
+  setupGuideImport();
+  setupWebTimetable();
   // Seed the display-tuning knobs from localStorage before the first render so
   // the user's saved line widths / sizes / opacities apply on load.
   loadDisplaySettings();

@@ -122,11 +122,21 @@ function validateTrain(train, index, ids) {
     if (!train[key] || typeof train[key] !== "string")
       throw new Error(`${prefix}: ${key} is required.`);
   });
-  // Optional metadata: 車輛類型 / 營運公司 ("/"-separated = 直通).
-  ["train_type", "company"].forEach((key) => {
+  // Optional metadata. number_en / vehicle_type are shared with the iOS
+  // archive; company may be "/"-separated for through-running services.
+  ["number_en", "train_type", "vehicle_type", "company"].forEach((key) => {
     if (train[key] !== undefined && typeof train[key] !== "string")
       throw new Error(`${prefix}: ${key} must be a string when present.`);
   });
+  if (
+    train.region !== undefined &&
+    (typeof train.region !== "string" ||
+      !SUPPORTED_COUNTRIES.includes(train.region))
+  ) {
+    throw new Error(
+      `${prefix}: region must be one of ${SUPPORTED_COUNTRIES.join(" / ")}.`,
+    );
+  }
   // §3.2: ids feed route_id / cache keys / DOM ids, so keep them to the
   // documented charset instead of accepting arbitrary text.
   if (!TRAIN_ID_PATTERN.test(train.id))
@@ -187,17 +197,19 @@ function validateTrain(train, index, ids) {
         `${prefix} stop ${stopIndex + 1}: platform_number must be a non-negative integer or null.`,
       );
     }
-    ["arrival", "departure"].forEach((field) => {
-      if (
-        stop[field] !== null &&
-        stop[field] !== undefined &&
-        typeof stop[field] !== "string"
-      ) {
-        throw new Error(
-          `${prefix} stop ${stopIndex + 1}: ${field} must be a string or null.`,
-        );
-      }
-    });
+    ["arrival", "actual_arrival", "departure", "actual_departure"].forEach(
+      (field) => {
+        if (
+          stop[field] !== null &&
+          stop[field] !== undefined &&
+          typeof stop[field] !== "string"
+        ) {
+          throw new Error(
+            `${prefix} stop ${stopIndex + 1}: ${field} must be a string or null.`,
+          );
+        }
+      },
+    );
   });
   if (train.route_sections) {
     if (!Array.isArray(train.route_sections))

@@ -14,9 +14,12 @@ Outputs (mirroring the Japan/Taiwan layout):
   data/station-readings-mo.json    localized station names (zh-Hant/zh-Hans/ja/en)
   data/train-store-mo.json         the seeded-random official sample itinerary
 
-Station codes (e.g. ``MLM-TAIPA-MLM-BARRA``) are STABLE identifiers persisted
-in train stores and readings; they derive from the per-line ``codePrefix``
-(the pre-normalization line alias), NOT from the display line id.
+Station codes (e.g. ``MLM-BARRA``) are persisted in train stores and
+readings. They are ``{OPERATOR}-{STOP}``, the upper-cased tail of the
+station's group code (``mo-official-mlm-barra``), so a station has the same
+code on every line; they do not depend on ``codePrefix`` or the display line
+id. The older per-line shape (``MLM-TAIPA-MLM-BARRA``) is aliased by the
+readers (ADR 0010).
 
 Usage:
   python3 scripts/railway/build-macao-rail-package.py
@@ -76,6 +79,30 @@ def write_json(path: Path, value: object) -> None:
         out.write(raw)
 
 
+def station_code_for_group(group: str) -> str:
+    """Platform code for a station group (ADR 0010).
+
+    The code is ``{OPERATOR}-{STOP}``: the upper-cased tail of the group id
+    ``{region}-official-{op}-{stop}``, so a station carries the same code on
+    every line through it (the group code still names the complex).
+    """
+    return group.split("-official-", 1)[1].upper()
+
+
+def reading_row(name: str, zh_hant: str, zh_hans: str, english: str, japanese: str = "") -> dict:
+    # Unified readings row shape (ADR 0010); readings a region lacks are "".
+    return {
+        "name": name,
+        "zh_Hant": zh_hant,
+        "zh_Hans": zh_hans,
+        "en": english,
+        "ja": japanese,
+        "kana": "",
+        "katakana": "",
+        "romaji": "",
+    }
+
+
 def compact_line(line_id, code_prefix, name, english, operator, color, rank, stations, route, *, loop=False):
     try:
         station_coordinates, route_segments = split_route(
@@ -127,9 +154,7 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
     by_name = {}
     seen_names = set()
     for line in lines:
-        code_prefix = line["codePrefix"]
         station_rows = line["stations"]
-        aliases = line["stationAliases"]
         for segment in line["segments"]:
             sections.append({
                 "type": "Feature",
@@ -142,7 +167,7 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
                 "geometry": {"type": "LineString", "coordinates": segment[2]},
             })
         for index, row in enumerate(station_rows):
-            code = f"{code_prefix}-{aliases[index]}"
+            code = station_code_for_group(row[0])
             segments = line["segments"]
             if index < len(segments):
                 stub = station_stub(segments[index][2])
@@ -163,13 +188,12 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
                 "properties": props,
                 "geometry": {"type": "LineString", "coordinates": stub},
             })
-            localized = {
-                "name": row[1],
-                "zh_Hant": row[1],
-                "zh_Hans": to_hans(row[1]),
-                "ja": "",
-                "en": row[4],
-            }
+            localized = reading_row(row[1], row[1], to_hans(row[1]), row[4])
+            if code in by_code and by_code[code] != localized:
+                raise RuntimeError(
+                    f"station readings for {code} differ between lines "
+                    f"(line {line['id']} conflicts with an earlier line)"
+                )
             by_code[code] = localized
             by_code[f"{line['id']}:{row[0]}"] = localized
             if row[1] not in seen_names:
@@ -177,6 +201,7 @@ def build_derived_datasets(country: str, lines: list[dict], source_names: list[s
                 seen_names.add(row[1])
     readings = {
         "note": "Official operator station names for the four UI languages; unavailable translations are empty.",
+        "schema": "station-readings/1",
         "country": country.upper(),
         "languages": ["zh-Hant", "zh-Hans", "ja", "en"],
         "officialRevision": "2026-08-10",
@@ -197,13 +222,12 @@ def sample_store(country: str, lines: list[dict]) -> dict:
     digest = hashlib.sha256(f"{country}:official-sample:2026-08-10".encode()).digest()
     line = candidates[int.from_bytes(digest[:4], "big") % len(candidates)]
     code_prefix = line["codePrefix"]
-    aliases = line["stationAliases"]
     keep = len(line["stations"]) - 1 if len(line["stations"]) > 2 else len(line["stations"])
     rows = line["stations"][:keep]
     sections = []
     stops = []
     for index, row in enumerate(rows):
-        code = f"{code_prefix}-{aliases[index]}"
+        code = station_code_for_group(row[0])
         stop_type = "origin" if index == 0 else "destination" if index == len(rows) - 1 else "passenger_stop"
         stops.append({
             "name": row[1],
@@ -216,7 +240,7 @@ def sample_store(country: str, lines: list[dict]) -> dict:
         if index + 1 < len(rows):
             sections.append({
                 "from_n02_station_code": code,
-                "to_n02_station_code": f"{code_prefix}-{aliases[index + 1]}",
+                "to_n02_station_code": station_code_for_group(rows[index + 1][0]),
                 "line_names": [line["name"]],
                 "operator_names": [line["operator"]],
             })

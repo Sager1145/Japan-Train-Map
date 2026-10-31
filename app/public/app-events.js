@@ -1174,6 +1174,7 @@ function bindEvents() {
       // renderAll() -> renderTrainLayers -> renderTrainMarkers already re-runs
       // updateEndpointLabels(), so no separate call is needed here.
       renderAll();
+      if (guideDraft) renderGuideDraft();
     });
   }
   // ── §2b itinerary playback ──
@@ -1388,51 +1389,8 @@ function bindEvents() {
       const applyButton = document.getElementById("apply-import-json");
       applyButton.disabled = true;
       try {
-        // The pasted JSON may be ONE BIG file (a full store); it is parsed
-        // here once for validation, and persistence chunks it per day.
-        // In sample mode, offer to make the imported content the user's own
-        // data (replacing the ephemeral sample) — otherwise the import would
-        // silently evaporate on reload. Validate BEFORE the confirm/reset so
-        // a typo can't wipe the sample view.
-        if (!HAS_BACKEND && isSampleMode()) {
-          parseImportedCanonicalStore(els.importJson.value); // throws if invalid
-          if (await uiConfirm(I18N.t("confirm.importInSample"))) {
-            dataSourceMode = "user";
-            sampleModeDate = null;
-            resetTrainStoreForProgressiveLoad();
-            updateDataSourceUi();
-          }
-        }
-        fitActiveCountryOverview();
-        resetImportProgress();
-        els.search.value = "";
-        const result = await importCanonicalStoreAppendProgressive(
-          els.importJson.value,
-          ({ count, total, id }) => {
-            // Live count shown only in the progress bar; importStatus gets the
-            // final summary below so the two lines don't repeat each other.
-            setImportProgress(
-              count,
-              total,
-              I18N.t("prog.loadingShort", { count, total, id }),
-            );
-          },
-        );
-        setImportProgress(
-          result.count,
-          result.count,
-          I18N.t("prog.done", { count: result.count }),
-        );
-        setStatus(
-          els.importStatus,
-          I18N.t("status.imported", { count: result.count, ids: result.ids.join(", ") }),
-          "ok",
-        );
-        // Force-flush the debounced server autosave so the import is persisted now.
-        await flushServerStoreSave();
-        // Clear the paste only on success — after a failure the user needs
-        // the original text back to fix the reported problem.
-        els.importJson.value = "";
+        const result = await appendJsonFromUi(els.importJson.value);
+        if (result) els.importJson.value = "";
       } catch (error) {
         setStatus(els.importStatus, error.message, "err");
       } finally {

@@ -142,42 +142,29 @@ function renderMileageStatsDom(view) {
   if (!headline || !rows || !view) return;
   const s = view.overall;
 
-  // ── 當日統計: always rendered ABOVE the all-time block. With a concrete
-  //    date it carries that day's numbers; on 全部 every value reads "--".
+  // A selected day is issued on its own ticket below the complete record.
   if (daily) {
-    if (view.daily) {
-      const d = view.daily;
-      daily.innerHTML = `
-        <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: d.date }))}</h3>
-        <div class="stats-daily-hero">
-          <span class="stats-daily-km">${formatStatKm(d.stats.riddenAll)}<span class="unit">km</span></span>
-          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} ${escapeHtml(formatStatDuration(d.stats.rideMinutes || 0))} · ${escapeHtml(I18N.t("stat.trains", { n: d.trainCount }))}</span>
-        </div>
-        <!-- Use the same mutually-exclusive ride groups as 實際乘坐量. Each
-             row includes distance, time and train count; the overlapping
-             network-category mileage rows previously shown here were removed. -->
-        ${serviceRowsHtml(d.stats.services)}
-        <div class="divider"></div>`;
-    } else {
-      daily.innerHTML = `
-        <h3 class="subhead">${escapeHtml(I18N.t("stats.dailyTitle", { date: "--" }))}</h3>
-        <div class="stats-daily-hero">
-          <span class="stats-daily-km">--<span class="unit">km</span></span>
-          <span class="stats-sub">${escapeHtml(I18N.t("stat.time"))} -- · ${escapeHtml(I18N.t("stat.trains", { n: "--" }))}</span>
-        </div>
-        <div class="divider"></div>`;
-    }
+    daily.innerHTML = view.ticket.rideCount
+      ? `${statsRecordTicketHtml(view)}${view.daily ? statsDailyTicketHtml(view.daily) : ""}`
+      : `<div class="stats-loading">${escapeHtml(I18N.t("stats.empty"))}</div>`;
   }
+  bindStatsTicketPrint(view.ticket.rideCount > 0);
+  bindStatsImage(view);
+  invalidateStatsRegions();
+  bindStatsRegions();
 
   // ── Section 1: 路網覆蓋率 — deduped coverage percentages over N02 totals.
-  const pctAll = s.totals.all > 0 ? (100 * s.riddenAll) / s.totals.all : 0;
+  const networkKm = Math.max(0, s.riddenAll - s.unmatchedKm);
+  const pctAll = s.totals.all > 0 ? (100 * networkKm) / s.totals.all : 0;
   headline.innerHTML = `
+    ${statsPassportCardsHtml(view.passport)}
     <h3 class="subhead">${escapeHtml(I18N.t("stats.coverageTitle"))}</h3>
     <div class="stats-hero">
       <span class="stats-pct">${formatStatPct(pctAll)}<span class="unit">%</span></span>
-      <span class="stats-sub">${formatStatKm(s.riddenAll)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.tc("stat.all"))}</span>
+      <span class="stats-sub">${formatStatKm(networkKm)} / ${formatStatKm(s.totals.all)} km · ${escapeHtml(I18N.tc("stat.all"))}</span>
     </div>
     <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pctAll).toFixed(2)}%"></div></div>`;
+  statsPassportControls(view);
   const timeRow = `
       <div class="stat-row">
         <div class="stat-row-head">
@@ -185,19 +172,12 @@ function renderMileageStatsDom(view) {
           <span class="stat-val"><span class="stat-pct">${escapeHtml(formatStatDuration(s.rideMinutes || 0))}</span></span>
         </div>
       </div>`;
-  // ── Section 2: 路網覆蓋率 per category. Every row expands into a per-line
-  //    breakdown (依線路 button) so a near-100% figure is auditable line by
-  //    line; 新幹線 and 地下鐵 list all member lines including unridden ones.
+  // Coverage remains compact; the line-by-line audit follows the other cards.
   rows.innerHTML =
     (view.categories || []).map((c) => {
       const tot = s.totals.byMask.get(c.mask) || 0;
       const rid = s.riddenByMask.get(c.mask) || 0;
       const pct = tot > 0 ? (100 * rid) / tot : 0;
-      const detail = categoryLineBreakdownHtml(
-        s,
-        c.mask,
-        c.mask === STAT_MASK_HSR || c.mask === STAT_MASK_METRO,
-      );
       return `
       <div class="stat-row">
         <div class="stat-row-head">
@@ -205,14 +185,18 @@ function renderMileageStatsDom(view) {
           <span class="stat-val"><span class="stat-pct">${formatStatPct(pct)}%</span><span class="stat-km">${formatStatKm(rid)} / ${formatStatKm(tot)} km</span></span>
         </div>
         <div class="stats-track"><div class="stats-fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
-        ${detail}
       </div>`;
     }).join("") +
     `<div class="divider"></div>
      <h3 class="subhead">${escapeHtml(I18N.t("stats.actualTitle"))}</h3>` +
     serviceRowsHtml(s.services) +
     timeRow +
-    topSegmentsHtml(s.topSegments);
+    topSegmentsHtml(s.topSegments) +
+    `<section class="passport-line-details"><h3 class="subhead">${escapeHtml(I18N.t("passport.lineDetails"))}</h3>${(view.categories || []).map((c) => {
+      const detail = categoryLineBreakdownHtml(s, c.mask,
+        c.mask === STAT_MASK_HSR || c.mask === STAT_MASK_METRO);
+      return detail ? `<div class="passport-line-detail"><strong>${escapeHtml(I18N.tc(c.i18n))}</strong>${detail}</div>` : "";
+    }).join("")}</section>`;
 }
 
 async function runMileageStatsJob() {

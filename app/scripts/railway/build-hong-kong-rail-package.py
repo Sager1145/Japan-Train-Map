@@ -16,9 +16,12 @@ Outputs (mirroring the Japan/Taiwan layout):
   data/station-readings-hk.json    localized station names (zh-Hant/zh-Hans/ja/en)
   data/train-store-hk.json         the seeded-random official sample itinerary
 
-Station codes (e.g. ``TML-MTR-WKS``) are STABLE identifiers persisted in
-train stores and readings; they derive from the per-line ``codePrefix``
-(the pre-normalization line alias), NOT from the display line id.
+Station codes (e.g. ``MTR-WKS``, ``LR-100``, ``TRAM-105``) are persisted in
+train stores and readings. They are ``{OPERATOR}-{STOP}``, the upper-cased
+tail of the station's group code (``hk-official-mtr-wks``), so a station has
+the same code on every line; they do not depend on ``codePrefix`` or the
+display line id. Older per-line shapes (``TML-MTR-WKS``, ``LR-505-LR-100``,
+``TRAM-HV-105``) are aliased by the readers (ADR 0010).
 
 Usage:
   python3 scripts/railway/build-hong-kong-rail-package.py \
@@ -131,6 +134,30 @@ def write_json(path: Path, value: object) -> None:
         out.write(raw)
 
 
+def station_code_for_group(group: str) -> str:
+    """Platform code for a station group (ADR 0010).
+
+    The code is ``{OPERATOR}-{STOP}``: the upper-cased tail of the group id
+    ``{region}-official-{op}-{stop}``, so a station carries the same code on
+    every line through it (the group code still names the complex).
+    """
+    return group.split("-official-", 1)[1].upper()
+
+
+def reading_row(name: str, zh_hant: str, zh_hans: str, english: str, japanese: str = "") -> dict:
+    # Unified readings row shape (ADR 0010); readings a region lacks are "".
+    return {
+        "name": name,
+        "zh_Hant": zh_hant,
+        "zh_Hans": zh_hans,
+        "en": english,
+        "ja": japanese,
+        "kana": "",
+        "katakana": "",
+        "romaji": "",
+    }
+
+
 def compact_line(line_id, code_prefix, name, english, operator, color, rank, stations, route, *, loop=False):
     try:
         station_coordinates, route_segments = split_route(
@@ -167,8 +194,11 @@ def compact_line(line_id, code_prefix, name, english, operator, color, rank, sta
         "stations": rows,
         "segments": segments,
         # Internal build fields, stripped before the package is written:
-        # codePrefix keeps persisted station codes stable across the display
-        # line-id normalization; stationAliases align 1:1 with stations rows;
+        # codePrefix is the pre-normalization line alias (alignment key and
+        # sample-train id only). Station codes do NOT use it: they are
+        # {OPERATOR}-{STOP} from the group code (station_code_for_group), the
+        # same on every line; readers alias the old per-line shapes (ADR 0010).
+        # stationAliases align 1:1 with stations rows;
         # stationHans carries the operator's official simplified names.
         "codePrefix": code_prefix,
         "stationAliases": [station["alias"] for station in stations],
@@ -201,7 +231,6 @@ def build_derived_datasets(
     by_name = {}
     seen_names = set()
     for line in lines:
-        code_prefix = line["codePrefix"]
         station_rows = line["stations"]
         aliases = line["stationAliases"]
         hans_names = line["stationHans"]
@@ -217,7 +246,7 @@ def build_derived_datasets(
                 "geometry": {"type": "LineString", "coordinates": segment[2]},
             })
         for index, row in enumerate(station_rows):
-            code = f"{code_prefix}-{aliases[index]}"
+            code = station_code_for_group(row[0])
             segments = line["segments"]
             if index < len(segments):
                 # Stub runs forward along this station's own outgoing interval.
@@ -241,13 +270,7 @@ def build_derived_datasets(
                 "properties": props,
                 "geometry": {"type": "LineString", "coordinates": stub},
             })
-            localized = {
-                "name": row[1],
-                "zh_Hant": row[1],
-                "zh_Hans": hans_names[index] or to_hans(row[1]),
-                "ja": "",
-                "en": row[4],
-            }
+            localized = reading_row(row[1], row[1], hans_names[index] or to_hans(row[1]), row[4])
             if row[1] not in seen_names:
                 by_name[row[1]] = localized
                 seen_names.add(row[1])
@@ -267,17 +290,18 @@ def build_derived_datasets(
             for index, row in enumerate(station_rows)
         ]
         for alias in reading_aliases:
-            localized = {
-                "name": alias["zh"],
-                "zh_Hant": alias["zh"],
-                "zh_Hans": alias["zh_hans"] or to_hans(alias["zh"]),
-                "ja": "",
-                "en": alias["en"],
-            }
-            by_code[f'{code_prefix}-{alias["alias"]}'] = localized
+            localized = reading_row(alias["zh"], alias["zh"], alias["zh_hans"] or to_hans(alias["zh"]), alias["en"])
+            bare_code = station_code_for_group(alias["group"])
+            if bare_code in by_code and by_code[bare_code] != localized:
+                raise RuntimeError(
+                    f"station readings for {bare_code} differ between lines "
+                    f"(line {line['id']} conflicts with an earlier line)"
+                )
+            by_code[bare_code] = localized
             by_code[f'{line["id"]}:{alias["group"]}'] = localized
     readings = {
         "note": "Official operator station names for the four UI languages; unavailable translations are empty.",
+        "schema": "station-readings/1",
         "country": country.upper(),
         "languages": ["zh-Hant", "zh-Hans", "ja", "en"],
         "officialRevision": "2026-08-10",
@@ -305,7 +329,6 @@ def sample_store(country: str, lines: list[dict], operator: str | None = None) -
     digest = hashlib.sha256(f"{country}:official-sample:2026-08-10".encode()).digest()
     line = candidates[int.from_bytes(digest[:4], "big") % len(candidates)]
     code_prefix = line["codePrefix"]
-    aliases = line["stationAliases"]
     # Keep the generated demo inside the line by one station. The app's N02
     # compatibility solver treats a terminal station overlay as a one-sided
     # segment and can otherwise discard the last interval during continuity
@@ -315,7 +338,7 @@ def sample_store(country: str, lines: list[dict], operator: str | None = None) -
     sections = []
     stops = []
     for index, row in enumerate(rows):
-        code = f"{code_prefix}-{aliases[index]}"
+        code = station_code_for_group(row[0])
         stop_type = "origin" if index == 0 else "destination" if index == len(rows) - 1 else "passenger_stop"
         stops.append({
             "name": row[1],
@@ -328,7 +351,7 @@ def sample_store(country: str, lines: list[dict], operator: str | None = None) -
         if index + 1 < len(rows):
             sections.append({
                 "from_n02_station_code": code,
-                "to_n02_station_code": f"{code_prefix}-{aliases[index + 1]}",
+                "to_n02_station_code": station_code_for_group(rows[index + 1][0]),
                 "line_names": [line["name"]],
                 "operator_names": [line["operator"]],
             })

@@ -11,12 +11,15 @@
 // =========================================================================
 
 function renderEditor() {
+  resetTimetablePreview();
   const train = getTrain();
   const disabled = !train;
   [
     els.id,
     els.number,
+    els.numberEn,
     els.trainType,
+    els.vehicleType,
     els.company,
     els.direction,
     els.origin,
@@ -34,7 +37,9 @@ function renderEditor() {
   if (!train) {
     els.id.value =
       els.number.value =
+      els.numberEn.value =
       els.trainType.value =
+      els.vehicleType.value =
       els.company.value =
       els.direction.value =
       els.origin.value =
@@ -46,7 +51,9 @@ function renderEditor() {
   }
   els.id.value = train.id || "";
   els.number.value = train.number || "";
+  els.numberEn.value = train.number_en || "";
   els.trainType.value = train.train_type || "";
+  els.vehicleType.value = train.vehicle_type || "";
   els.company.value = train.company || "";
   els.direction.value = train.direction || "";
   els.origin.value = train.origin || "";
@@ -143,8 +150,14 @@ function renderStopsTable(train) {
           <td>${index + 1}</td>
           <td><input data-stop-field="name" data-stop-index="${index}" value="${escapeAttr(stopName(stop))}"></td>
           <td data-label="${escapeAttr(I18N.t("th.platform"))}"><input type="number" min="0" step="1" inputmode="numeric" data-stop-field="platform_number" data-stop-index="${index}" value="${escapeAttr(stop.platform_number ?? "")}"></td>
-          <td data-label="${escapeAttr(I18N.t("th.arr"))}"><input data-stop-field="arrival" data-stop-index="${index}" value="${escapeAttr(stop.arrival ?? "")}"></td>
-          <td data-label="${escapeAttr(I18N.t("th.dep"))}"><input data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}"></td>
+          <td data-label="${escapeAttr(I18N.t("th.arr"))}"><div class="stop-time-stack">
+            <input aria-label="${escapeAttr(I18N.t("th.arr"))}" data-stop-field="arrival" data-stop-index="${index}" value="${escapeAttr(stop.arrival ?? "")}">
+            <input aria-label="${escapeAttr(I18N.t("th.actualArr"))}" title="${escapeAttr(I18N.t("th.actualArr"))}" placeholder="${escapeAttr(I18N.t("th.actual"))}" data-stop-field="actual_arrival" data-stop-index="${index}" value="${escapeAttr(stop.actual_arrival ?? "")}">
+          </div></td>
+          <td data-label="${escapeAttr(I18N.t("th.dep"))}"><div class="stop-time-stack">
+            <input aria-label="${escapeAttr(I18N.t("th.dep"))}" data-stop-field="departure" data-stop-index="${index}" value="${escapeAttr(stop.departure ?? "")}">
+            <input aria-label="${escapeAttr(I18N.t("th.actualDep"))}" title="${escapeAttr(I18N.t("th.actualDep"))}" placeholder="${escapeAttr(I18N.t("th.actual"))}" data-stop-field="actual_departure" data-stop-index="${index}" value="${escapeAttr(stop.actual_departure ?? "")}">
+          </div></td>
           <td data-label="${escapeAttr(I18N.t("th.type"))}">
             <select data-stop-field="stop_type" data-stop-index="${index}">
               ${STOP_TYPES.map((type) => `<option value="${type}" ${stop.stop_type === type ? "selected" : ""}>${I18N.t("stoptype." + type)}</option>`).join("")}
@@ -332,7 +345,9 @@ function saveSelectedFields() {
     ...train,
     id: els.id.value.trim(),
     number: els.number.value.trim(),
+    number_en: els.numberEn.value.trim(),
     train_type: els.trainType.value.trim(),
+    vehicle_type: els.vehicleType.value.trim(),
     company:
       activeCountry === "tw"
         ? RailOperatorBranding.normalizeTaiwanCompanyName(els.company.value)
@@ -344,6 +359,8 @@ function saveSelectedFields() {
       color: els.color.value,
     },
   };
+  if (!next.number_en) delete next.number_en;
+  if (!next.vehicle_type) delete next.vehicle_type;
   try {
     const temp = clone(trainStore);
     temp.trains = temp.trains.map((t) => (t.id === oldId ? next : t));
@@ -379,7 +396,7 @@ function addStopToSelected() {
 function normalizeStopValue(field, value) {
   // Time fields follow AppCore's blank-time rule (whitespace-only → null), the
   // same normalization imported JSON goes through — see normalizeNullableTime.
-  if (field === "arrival" || field === "departure")
+  if (["arrival", "departure", "actual_arrival", "actual_departure"].includes(field))
     return normalizeNullableTime(value);
   if (field === "platform_number") {
     const normalized = String(value).trim();
