@@ -2042,6 +2042,20 @@ def spec_primary_system(spec: LineSpec) -> str:
     return sorted(counts, key=lambda system: (-counts[system], system))[0]
 
 
+def platform_station_code(uid: str) -> str:
+    """Emitted platform code for a TDX StationUID (ADR 0010: ``OP-ID``).
+
+    The Kaohsiung light rail's UIDs carry a ``NETWORK`` line segment
+    (``KLRT-NETWORK-C1``); the platform code drops it (``KLRT-C1``). Group
+    ids (``tw-official-klrt-network-c1``) are unchanged; readers alias the
+    old shape.
+    """
+    parts = uid.split("-")
+    if len(parts) >= 3 and parts[1] == "NETWORK":
+        return "-".join([parts[0], *parts[2:]])
+    return uid
+
+
 def build_app_datasets(
     staged: Sequence[Dict[str, object]],
     group_ids: Dict[str, str],
@@ -2054,7 +2068,9 @@ def build_app_datasets(
     ``station_name`` / ``n02_station_code`` / ``n02_group_code`` /
     ``display_point`` for stations, with the N02_* keys as the Japan-side
     alias).  ``n02_station_code`` carries the official TDX StationUID, which
-    is exactly what a Taiwanese train's stops record.
+    is exactly what a Taiwanese train's stops record, except that the
+    Kaohsiung light rail's ``NETWORK`` segment is removed (``KLRT-NETWORK-C1``
+    becomes ``KLRT-C1``; see ``platform_station_code`` and ADR 0010).
 
     Coordinates come from the SAME densify-and-round pass that produces the
     compact package, and every station anchors on its own on-line point — the
@@ -2111,7 +2127,7 @@ def build_app_datasets(
                     "properties": {
                         **shared,
                         "station_name": station.name,
-                        "n02_station_code": station.uid,
+                        "n02_station_code": platform_station_code(station.uid),
                         "n02_group_code": group_ids[station.uid],
                         "display_point": anchor[0],
                     },

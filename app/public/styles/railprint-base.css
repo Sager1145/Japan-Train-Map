@@ -1415,6 +1415,9 @@ td select {
   border-radius: var(--radius-small);
   font-variant-numeric: tabular-nums;
 }
+.stop-time-stack { display: grid; gap: 4px; }
+.stop-time-stack input { width: 100%; min-width: 0; }
+.stop-time-stack input::placeholder { color: var(--ink-muted); font-size: var(--font-xs); }
 .stop-actions {
   display: flex;
   gap: 4px;

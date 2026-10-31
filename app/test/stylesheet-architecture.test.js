@@ -11,6 +11,7 @@ const EXPECTED_STYLES = [
   "styles/ios-presentation.css",
   "styles/solid-surfaces.css",
   "styles/device-layout.css",
+  "styles/stats-ticket.css",
 ];
 
 test("stylesheet layers retain their behavior-defining cascade order", () => {
@@ -25,4 +26,3 @@ test("stylesheet layers retain their behavior-defining cascade order", () => {
     assert.equal(fs.existsSync(path.join(PUBLIC_DIR, name)), true, name);
   }
 });
-

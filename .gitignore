@@ -90,6 +90,13 @@ outputs/
 app/data/raw/*
 !app/data/raw/README.md
 
+# The web timetable snapshot is exported from the native timetable database by
+# app/scripts/build/export-web-timetable.py. Its source_documents mark most
+# sources verification_only (operator timetables with no reuse grant), so it is
+# local-only like app/data/raw/. Without it, Timetable match reports that the
+# snapshot is unavailable.
+app/public/timetable/snapshot.json
+
 # Source GIS formats, wherever they land.
 *.osm
 *.osm.pbf

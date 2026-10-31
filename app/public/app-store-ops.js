@@ -109,7 +109,7 @@ function exportTrainStore() {
 // Canonical shape builders shared by both the export and import paths so the
 // serialized stop/style/route_policy schema has a single definition.
 function canonicalStopShape(stop) {
-  return {
+  const normalized = {
     name: stop.name || "",
     n02_station_code: stop.n02_station_code || null,
     // `??` is intentional: platform 0 exists and must not collapse to null.
@@ -119,6 +119,14 @@ function canonicalStopShape(stop) {
     stop_type: stop.stop_type || "passenger_stop",
     ride_segment: Boolean(stop.ride_segment),
   };
+  // Observed times are optional iOS parity fields. Keep invalid non-string
+  // values long enough for validateTrain() to reject them, while omitting the
+  // nil/blank form exactly as Swift's encodeIfPresent does.
+  const actualArrival = normalizeNullableTime(stop.actual_arrival);
+  const actualDeparture = normalizeNullableTime(stop.actual_departure);
+  if (actualArrival !== null) normalized.actual_arrival = actualArrival;
+  if (actualDeparture !== null) normalized.actual_departure = actualDeparture;
+  return normalized;
 }
 
 function canonicalStyle(style) {
@@ -268,6 +276,12 @@ function normalizeExportTrain(train) {
       ? train.stops.map(canonicalStopShape)
       : [],
   };
+  // These fields are optional in the shared archive. Existing web stores stay
+  // byte-shape compatible when they do not use them; iOS-authored values round
+  // trip without being discarded.
+  for (const field of ["number_en", "vehicle_type", "region"]) {
+    if (typeof train[field] === "string") normalized[field] = train[field];
+  }
   // Route geometry is intentionally NOT persisted into the store anymore.
   // It is cached cross-session in IndexedDB (warmed into runtimeRouteCache on
   // boot) and re-solved on a miss, so embedding it here only bloated
@@ -373,7 +387,9 @@ function normalizeImportedStop(stop) {
       "n02_station_code",
       "platform_number",
       "arrival",
+      "actual_arrival",
       "departure",
+      "actual_departure",
       "stop_type",
       "ride_segment",
     ],
@@ -453,7 +469,9 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       "id",
       "date",
       "number",
+      "number_en",
       "train_type",
+      "vehicle_type",
       "company",
       "origin",
       "destination",
@@ -463,6 +481,7 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       "route_policy",
       "route_sections",
       "stops",
+      "region",
     ],
     "Train",
   );
@@ -494,6 +513,12 @@ function normalizeImportedTrain(train, { fallbackDate = null } = {}) {
       : [],
     stops: train.stops.map(normalizeImportedStop),
   };
+  // Preserve supplied values verbatim so validateTrain() remains the single
+  // source of truth for their types and the supported-region vocabulary.
+  for (const field of ["number_en", "vehicle_type", "region"]) {
+    if (Object.prototype.hasOwnProperty.call(train, field))
+      normalized[field] = train[field];
+  }
   return normalized;
 }
 

@@ -253,17 +253,31 @@ def entry(
     japanese: str,
     english: str,
 ) -> Dict[str, str]:
+    # Unified readings row shape (ADR 0010); readings Taiwan lacks are "".
     return {
         "name": zh_hant,
         "zh_Hant": zh_hant,
         "zh_Hans": zh_hans,
-        "ja": japanese,
         "en": english,
+        "ja": japanese,
+        "kana": "",
+        "katakana": "",
+        "romaji": "",
     }
 
 
 def fallback_entry(name: str) -> Dict[str, str]:
     return entry(name, simplified_name(name), "", "")
+
+
+def platform_station_code(uid: str) -> str:
+    # ADR 0010: the Kaohsiung light rail's KLRT-NETWORK-C1 UID is published
+    # as KLRT-C1; readers alias the old shape. Twin of the helper in
+    # build-taiwan-rail-package.py.
+    parts = uid.split("-")
+    if len(parts) >= 3 and parts[1] == "NETWORK":
+        return "-".join([parts[0], *parts[2:]])
+    return uid
 
 
 def afr_station_uid(group_id: str) -> Optional[str]:
@@ -282,8 +296,10 @@ def build_table(
     # interchange line-specific codes and operational records that are not a
     # separate marker in the current display package.  The map aliases added
     # below are extra lookup keys, not a filter on the official station table.
+    # Bare keys use the platform-code grammar (ADR 0010), matching
+    # build-taiwan-rail-package.py's emitted n02_station_code.
     by_code: Dict[str, Dict[str, str]] = {
-        row.uid: entry(
+        platform_station_code(row.uid): entry(
             row.zh_hant,
             row.zh_hans,
             row.japanese,
@@ -291,6 +307,8 @@ def build_table(
         )
         for row in official_stations
     }
+    if len(by_code) != len(official_stations):
+        raise RuntimeError("platform station codes collide after dropping NETWORK")
     by_uid = {row.uid: row for row in official_stations}
     matched_uids = set()
     fallback_aliases: List[str] = []
@@ -351,12 +369,7 @@ def build_table(
             ambiguous_names.append(key)
             continue
         row = values[0]
-        by_name[key] = {
-            "zh_Hant": row["zh_Hant"],
-            "zh_Hans": row["zh_Hans"],
-            "ja": row["ja"],
-            "en": row["en"],
-        }
+        by_name[key] = entry(row["zh_Hant"], row["zh_Hans"], row["ja"], row["en"])
 
     return {
         "note": (
@@ -365,6 +378,7 @@ def build_table(
             "missing translations are empty. Zh-Hans uses an official field "
             "when available, otherwise a deterministic conversion of Zh-Hant."
         ),
+        "schema": "station-readings/1",
         "country": "TW",
         "languages": ["zh-Hant", "zh-Hans", "ja", "en"],
         "officialRevision": revision,

@@ -185,6 +185,7 @@ test("§1.1: the browser chrome matches the page, and is not black either", () =
 test("the cascade order this policy depends on is unchanged", () => {
   // solid-surfaces.css owns the material and must still load after the two
   // layers it overrides, and before the layout layer that owns geometry.
+  // The final ticket sheet targets only Passport's printed face.
   const html = fs.readFileSync(
     new URL("../public/index.html", import.meta.url),
     "utf8",
@@ -195,5 +196,6 @@ test("the cascade order this policy depends on is unchanged", () => {
     "styles/ios-presentation.css",
     "styles/solid-surfaces.css",
     "styles/device-layout.css",
+    "styles/stats-ticket.css",
   ]);
 });

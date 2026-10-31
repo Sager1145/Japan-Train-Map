@@ -126,7 +126,12 @@ export async function buildStaticSite({
     await fs.cp(publicDir, stagingDir, {
       recursive: true,
       dereference: true,
-      filter: (sourcePath) => !sourcePath.endsWith(".gz"),
+      // Precompressed HTTP sidecars are excluded, but OCR language files
+      // are compressed source data consumed by the worker itself.
+      filter: (sourcePath) => !sourcePath.endsWith(".gz") || (
+        path.dirname(sourcePath) === path.join(publicDir, "vendor", "tesseract", "lang") &&
+        sourcePath.endsWith(".traineddata.gz")
+      ),
     });
     // app-core is source-owned by shared/ because both the browser and Node
     // server consume it. Keep its historical public URL in the built artifact.

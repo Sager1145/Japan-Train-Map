@@ -73,7 +73,8 @@
     <link rel="stylesheet" href="styles/railprint-base.css?v=20260822-flighty2" />
     <link rel="stylesheet" href="styles/ios-presentation.css?v=20260822-flighty2" />
     <link rel="stylesheet" href="styles/solid-surfaces.css?v=20260822-flighty1" />
-    <link rel="stylesheet" href="styles/device-layout.css?v=20260822-flighty1" />
+    <link rel="stylesheet" href="styles/device-layout.css?v=20260929-responsive1" />
+    <link rel="stylesheet" href="styles/stats-ticket.css?v=20260930-ticket1" />
     <!-- Preload the render-critical stations dataset during HTML parse. The
          9.2 MB rail/jp-2025.json national-network package is intentionally NOT
          preloaded: it is deferred (opt-in via the 全部鐵路線 toggle) and fetched
@@ -230,9 +231,11 @@
             <div class="form-grid">
               <label><span data-i18n="field.id">列車 ID</span> <input id="field-id" /></label>
               <label><span data-i18n="field.number">車次</span> <input id="field-number" /></label>
+              <label><span data-i18n="field.numberEn">英文車次</span> <input id="field-number-en" /></label>
               <label
                 ><span data-i18n="field.trainType">車輛類型</span> <input id="field-train-type" data-i18n-ph="ph.trainType" placeholder="特急／普通／新幹線"
               /></label>
+              <label><span data-i18n="field.vehicleType">車輛型號</span> <input id="field-vehicle-type" /></label>
               <label
                 ><span data-i18n="field.company">車輛公司</span> <input id="field-company" data-i18n-ph="ph.company" placeholder="JR西日本；直通用／分隔多家公司"
               /></label>
@@ -249,6 +252,13 @@
               <button id="move-up" data-i18n="btn.moveUp">上移</button>
               <button id="move-down" data-i18n="btn.moveDown">下移</button>
             </div>
+            <details class="passport-stat-card" id="timetable-match">
+              <summary data-i18n="timetable.title">時刻表匹配（日本）</summary>
+              <p class="hint" data-i18n="timetable.note">先套用列車欄位；須有日期、起終站編號及到發時刻。僅搜尋已收錄的同日起終點完整吻合班次。</p>
+              <label><span data-i18n="timetable.service">服務名稱（留空使用車次）</span><input id="timetable-service" /></label>
+              <button type="button" id="timetable-search" data-i18n="timetable.search" disabled>搜尋吻合時刻表</button>
+              <div id="timetable-results" role="status" aria-live="polite"></div>
+            </details>
             <div class="status" id="field-status" role="status" aria-live="polite" aria-atomic="true"></div>
             <div class="divider"></div>
             <h3 class="subhead" data-i18n="sec.stops">停靠站與通過站</h3>
@@ -353,11 +363,19 @@
             <div class="passport-coverage" id="passport-coverage-map"></div>
             <div class="stats-daily" id="stats-daily"></div>
             <div class="stats-headline" id="stats-headline"></div>
+            <details class="passport-stat-card" id="passport-regions">
+              <summary data-i18n="passport.regions">跨地區乘車記錄</summary>
+              <p class="hint" data-i18n="passport.regionsNote">彙總各地區保存的實際乘車記錄；目前地區使用畫面上的資料，其他地區不載入示例。</p>
+              <button type="button" id="passport-load-regions" data-i18n="passport.refreshRegions">載入／更新彙總</button>
+              <div id="passport-region-summary" role="status" aria-live="polite"></div>
+            </details>
             <div class="stats-rows" id="stats-rows"></div>
             <h3 class="subhead" data-i18n="grp.journeyLog">旅程記錄</h3>
             <div class="passport-journey-log" id="passport-journey-log"></div>
             <h3 class="subhead" data-i18n="grp.passportShare">回放與匯出</h3>
             <div class="toolbar passport-share-actions">
+              <button type="button" id="passport-print-ticket" data-i18n="passport.printTicket">列印車票</button>
+              <button type="button" id="passport-image" data-i18n="passport.image">製作統計圖片</button>
               <button
                 class="primary"
                 id="passport-replay"
@@ -374,6 +392,15 @@
                 匯出 JSON
               </button>
             </div>
+            <div id="passport-image-preview" hidden>
+              <img id="passport-image-result" alt="" />
+              <div class="toolbar">
+                <a id="passport-image-download" data-i18n="passport.downloadImage">下載 PNG</a>
+                <button type="button" id="passport-image-share" data-i18n="passport.shareImage">分享圖片</button>
+                <button type="button" id="passport-image-close" data-i18n="btn.close">關閉</button>
+              </div>
+            </div>
+            <p id="passport-image-status" role="status" aria-live="polite"></p>
             <p class="hint" data-country="jp" data-i18n="stats.hint">
               依全部列車的實際乘坐區間（乘坐勾選）去重合併計算；總里程來自国土数値情報 N02-25 全路網。
             </p>
@@ -442,6 +469,21 @@
               <div class="divider"></div>
             </div>
             <h3 class="subhead" data-i18n="sec.import">JSON 匯入／本地資料</h3>
+            <details id="guide-import" class="passport-stat-card">
+              <summary data-i18n="guide.title">換乘文字／截圖匯入</summary>
+              <p class="hint" data-i18n="guide.note">貼上換乘案內文字，或辨識截圖。每站一行（例如 09:00 發 東京），車次名稱獨立一行。匯入前核對日期、車站與乘坐狀態。</p>
+              <textarea id="guide-text" rows="8" data-i18n-aria-label="guide.text" aria-label="換乘文字" spellcheck="false"></textarea>
+              <label><span data-i18n="guide.date">日期</span><input type="date" id="guide-date" /></label>
+              <label><input type="checkbox" id="guide-ridden" /><span data-i18n="guide.ridden">已實際乘坐</span></label>
+              <label><span data-i18n="guide.images">依序選取換乘截圖</span><input type="file" id="guide-image" accept="image/*" multiple /></label>
+              <p class="hint" id="guide-ocr-note" data-i18n="guide.ocrNote">截圖在本機辨識日文與英文，不會上傳。首次辨識需載入語言資料；請按頁面順序選取圖片，並檢查文字後預覽。</p>
+              <div class="toolbar">
+                <button type="button" id="guide-read" data-i18n="guide.preview">預覽行程</button>
+                <button type="button" id="guide-commit" data-i18n="guide.commit" disabled>加入所選行程</button>
+              </div>
+              <div id="guide-status" role="status" aria-live="polite"></div>
+              <div id="guide-preview"></div>
+            </details>
             <!-- The big paste area ships collapsed on mobile (bindEvents opens
                  every details.collapse-desktop-open on wide screens). -->
             <details class="collapse-desktop-open" id="import-json-details">
@@ -755,13 +797,21 @@
     <script src="app-persistence.js?v=20260821-refactor10"></script>
     <script src="app-import.js?v=20260821-refactor10"></script>
     <script src="app-import-controller.js?v=20260821-refactor3"></script>
+    <script src="app-guide-ocr.js?v=20260930-ocr1"></script>
+    <script src="app-guide-import.js?v=20260930-guide1"></script>
     <script src="app-store-ops.js?v=20260821-refactor10"></script>
     <script src="app-map-init.js?v=20260822-video16"></script>
     <script src="app-panel-motion.js?v=20260822-flighty2"></script>
     <script src="app-events.js?v=20260822-flighty2"></script>
     <script src="app-stats.js?v=20260822-flighty2"></script>
+    <script src="app-stats-passport.js?v=20260930-passport1"></script>
+    <script src="app-stats-ticket.js?v=20260930-ticket1"></script>
+    <script src="app-stats-passport-render.js?v=20260930-passport1"></script>
+    <script src="app-stats-regions.js?v=20260930-regions1"></script>
+    <script src="app-stats-image.js?v=20260930-image1"></script>
     <script src="app-stats-render.js?v=20260822-flighty2"></script>
     <script src="app-render.js?v=20260822-flighty2"></script>
+    <script src="app-timetable.js?v=20260930-timetable1"></script>
     <script src="app-editor.js?v=20260807-twlogos2"></script>
     <script src="app-route-render.js?v=20260822-video16"></script>
     <script src="app-overlap-lanes.js?v=20260821-refactor10"></script>

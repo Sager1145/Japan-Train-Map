@@ -60,6 +60,9 @@ Japan Train Map turns personal trip records into routes that follow the railway 
 - Calculates selected-day and all-time ridden distance.
 - Reports railway-network coverage and actual ride totals.
 - Breaks results down by line and ride count.
+- Shows iOS-style cumulative and selected-day ride tickets, with printing and PNG download/system sharing.
+- Shows yearly, monthly and weekday ride distribution, averages, journey extremes and station/operator/route rankings.
+- Reads saved regional ride counts and time without switching the current railway network.
 - Lists the most frequently ridden sections.
 - Deduplicates overlapping ridden geometry when calculating coverage.
 
@@ -81,6 +84,8 @@ Only segments whose effective ridden state is true contribute to the rendered tr
 - Progressively imports large stores one train at a time and reports progress.
 - Opens and saves local JSON files where the browser supports the File System Access API, with download/share fallbacks elsewhere.
 - Runs with server-backed autosave and live refresh locally, or browser-only IndexedDB persistence on static hosting.
+- Imports Japanese transfer-guide text or screenshots through an editable preview, requiring station identity and time review before adding trains. Screenshot OCR runs locally with bundled Japanese/English language data.
+- Preserves iOS English service names, vehicle models, region and observed arrival/departure fields in canonical JSON.
 - Exposes an HTTP endpoint that lets scripts and AI agents import trips into the local server.
 
 ## Supported regions
@@ -264,6 +269,44 @@ These advanced fields are not exposed by the basic train form. Edit or generate 
 Open **Statistics** after routes are solved. The panel reports the selected date and complete store separately, including coverage, actual ride totals, line breakdowns, ride counts, and most-ridden sections.
 
 Statistics are based on resolved geometry and effective `ride_segment` state. A train that validates but has no ridden stops contributes no visible trip and no ridden mileage.
+
+The cumulative ticket covers the active region's complete store. Selecting a date also issues a daily ticket. **Print Tickets** uses the browser print dialog; **Create statistics image** makes a local PNG preview with the displayed ticket numbers, chart selection and rankings. Download it or use **Share image** where file sharing is available. A date, region or statistics change closes a stale preview.
+
+Open **Rides across regions** and press **Load / refresh totals** to read saved ride counts and time from each region. The current region includes its unsaved edits; static sample mode is excluded. Other regions use saved stores only. This view follows the Passport date scope and reports unavailable regions separately. It does not aggregate regional mileage or network-coverage denominators.
+
+### Import Japanese transfer directions
+
+1. Open **Data Library → Import Japanese transfer text / screenshots**.
+2. Paste directions with station names, times and train/line headings, or select screenshots in page order. Images are recognized on this device; no image upload or runtime OCR CDN is used.
+3. Check the recognized text and choose the journey date. Leave **Already ridden** unchecked for future plans.
+4. Press **Preview journeys**. Correct station names and choose the matching station/line when multiple codes exist. Check arrival/departure times, including extended hours after midnight.
+5. Exclude unwanted legs and press **Add selected journeys**. The existing progressive import and persistence flow applies; repeat imports receive unique IDs.
+
+The adapter reads Japanese transfer-guide layouts. Walking, bus and flight legs are excluded. It does not invent omitted intermediate stations or fill missing timetable calls. OCR mistakes, unfamiliar layouts and overlapping screenshot pages may need text corrections before preview. A small backward time must be corrected; an evening-to-morning crossing uses extended hours such as `24:09`.
+
+### Match a Japanese timetable
+
+In a saved train's editor, open **Timetable match (Japan)**. Apply edits first: the train needs a valid date, origin/destination station codes, departure and arrival times. Optionally enter the canonical service name (for example `北斗`) instead of the stored train number, then search. Candidates require the entire trip's endpoints and both clock times to agree on that service date; a rider's shorter segment is not expanded. Overnight clocks use extended hours.
+
+Results are read-only stop/time and source previews. Published `レ` and `||` symbol rows stay separate from actual stop chains. Calendar removals, additions and dated stop/number overrides are applied; holiday-dependent calendars without a verified holiday year are excluded. No candidate means no match in this partial snapshot, not that a service did not run. Line and historical evidence gaps prevent automatic application to routes.
+
+The snapshot JSON is exported from a stable, integrity-checked native SQLite snapshot with its source SHA-256 and metadata. It is local-only and not committed, because most of its sources are operator timetables marked for verification only; without it, the match reports that the timetable is unavailable. Generate it using `python3 app/scripts/build/export-web-timetable.py /absolute/path/to/train-service-timetable.sqlite app/public/timetable/snapshot.json`; the exporter opens the source read-only and rejects changes during export. Static builds copy the same snapshot without querying a native database.
+
+### Web and iOS feature scope
+
+The WebApp keeps its Express/local-server and browser-only static deployment paths. Statistics presentation, ride summaries, image export, regional counts/time and transfer-guide import use separate modules over the existing canonical train store.
+
+| iOS capability | Web status |
+| --- | --- |
+| Cumulative/day tickets, printing, ride distribution, averages/extremes and rankings | Available |
+| Statistics image | Local PNG preview, download and browser file sharing; map snapshot is not included |
+| Cross-region statistics | Saved ride counts and time; mileage/coverage stays within the active region |
+| English service, vehicle model, region and observed stop times | Import/export supported; service/model and observed times directly editable |
+| Japanese transfer text and screenshot OCR | Editable preview, station-code selection and time validation |
+| Native timetable matching | Read-only exact date/endpoints/time lookup with calendars, dated overrides and source links; partial published snapshot |
+| Historical network denominators | Not ported; coverage uses the active Web railway package |
+| Native AI providers, Photos, Siri/App Intents and iCloud storage | Platform-specific; no Web counterpart in this change |
+
 
 ## Map controls
 

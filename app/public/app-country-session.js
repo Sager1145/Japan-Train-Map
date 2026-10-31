@@ -64,6 +64,10 @@ async function switchCountrySession(next) {
 
     persistUiDateState();
     activeCountry = next;
+    invalidateGuideDraft();
+    resetTimetablePreview();
+    closeStatsImage();
+    invalidateStatsRegions();
     if (window.I18N && typeof I18N.setCountry === "function") {
       I18N.setCountry(next);
       I18N.applyStatic(document);

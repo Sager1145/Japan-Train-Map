@@ -63,6 +63,9 @@ async function createFixture({ includeTrainStore = true } = {}) {
   );
   await fs.writeFile(path.join(stylesDir, "device-layout.css"), "body {}\n");
   await fs.writeFile(path.join(stylesDir, "device-layout.css.gz"), "ignored");
+  const ocrLangDir = path.join(publicDir, "vendor", "tesseract", "lang");
+  await fs.mkdir(ocrLangDir, {recursive: true});
+  await fs.writeFile(path.join(ocrLangDir, "jpn.traineddata.gz"), "compressed-language-data");
   await fs.writeFile(
     path.join(sharedDir, "app-core.js"),
     "globalThis.AppCore = { fixture: true };\n",
@@ -193,6 +196,7 @@ test("static build preserves application source and writes Pages runtime config"
       ),
       { code: "ENOENT" },
     );
+    assert.equal(await fs.readFile(path.join(fixture.outputDir, "vendor", "tesseract", "lang", "jpn.traineddata.gz"), "utf8"), "compressed-language-data");
     await fs.access(path.join(fixture.outputDir, ".nojekyll"));
     await assert.rejects(
       fs.access(path.join(fixture.outputDir, "styles", "device-layout.css.gz")),

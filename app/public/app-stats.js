@@ -816,11 +816,40 @@ function dropContainedSections(rows) {
 // that parks between phases — and aborts by throwing when a newer job token
 // superseded this one.
 async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
-  const overall = aggregateMileageStats(idx, entries);
-  overall.rideMinutes = sumRideMinutes(trains);
-  overall.services = serviceGroupStats(trains, entries);
+  // A journey counts only when at least one adjacent interval was ridden.
+  // Keep the per-train geometry entries aligned with that filtered list.
+  const riddenTrains = [];
+  const riddenEntries = [];
+  trains.forEach((train, index) => {
+    const stops = train.stops || [];
+    if (!stops.some((_, segment) =>
+      segment < stops.length - 1 && isRideSegment(train, segment),
+    )) return;
+    riddenTrains.push(train);
+    riddenEntries.push(entries[index]);
+  });
+  const overall = aggregateMileageStats(idx, riddenEntries);
+  overall.rideMinutes = sumRideMinutes(riddenTrains);
+  overall.services = serviceGroupStats(riddenTrains, riddenEntries);
+  const riddenOperators = new Set();
+  for (const [line, byCategory] of overall.lineRidByCat) {
+    if (!Object.values(byCategory).some((km) => km > 0)) continue;
+    const operator = overall.lineOperator && overall.lineOperator.get(line);
+    if (operator) riddenOperators.add(operator);
+  }
+  const datedDays = [...new Set(riddenTrains.map(getTrainDate).filter((date) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(date),
+  ))].sort();
+  const ticket = {
+    rideCount: riddenTrains.length,
+    stopCount: riddenTrains.reduce((count, train) => count + (train.stops || []).length, 0),
+    operatorCount: riddenOperators.size,
+    firstDate: datedDays[0] || null,
+    lastDate: datedDays[datedDays.length - 1] || null,
+  };
+  const passport = buildPassportSummary(riddenTrains, riddenEntries);
   if (yieldPoint) await yieldPoint();
-  overall.topSegments = topRiddenSegments(entries);
+  overall.topSegments = topRiddenSegments(riddenEntries);
   // §5.3.1: the day scoped HERE is Passport's own, not the journeys date
   // filter. They used to be one value, which meant clicking a journey — which
   // jumps the journeys filter to that journey's date — silently re-scoped the
@@ -830,22 +859,23 @@ async function buildMileageStatsView(idx, trains, entries, yieldPoint) {
     if (yieldPoint) await yieldPoint();
     const dayTrains = [];
     const dayEntries = [];
-    trains.forEach((t, i) => {
+    riddenTrains.forEach((t, i) => {
       if (getTrainDate(t) === passportScopeDate) {
         dayTrains.push(t);
-        dayEntries.push(entries[i]);
+        dayEntries.push(riddenEntries[i]);
       }
     });
     const stats = aggregateMileageStats(idx, dayEntries);
     stats.rideMinutes = sumRideMinutes(dayTrains);
     stats.services = serviceGroupStats(dayTrains, dayEntries);
     daily = {
+      rawDate: passportScopeDate,
       date: dateLabel(passportScopeDate),
       trainCount: dayTrains.length,
       stats,
     };
   }
-  return { overall, daily, categories: activeStatCategories() };
+  return { overall, daily, ticket, passport, categories: activeStatCategories() };
 }
 
 
